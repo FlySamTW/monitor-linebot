@@ -1,0 +1,4 @@
+# 此資料夾存放下載的 LOG 檔案
+# 由 download_log.bat 自動產生
+*.txt
+*.log
