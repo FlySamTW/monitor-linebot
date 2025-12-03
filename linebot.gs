@@ -1,6 +1,11 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 23.0.0 (Flash-Lite 省錢大更新 + 精準 PDF 匹配)
+ * Version: 23.1.0 (精準型號匹配 + 別稱雙向映射)
+ * 
+ * 🔥 v23.1.0 更新：
+ * - 修正 S 系列型號正則，完整匹配 S27DG602SC（不再只取 S27DG）
+ * - 新增別稱雙向映射：G80SD → S32DG802SC（從 CLASS_RULES 自動建立）
+ * - 提取 LS 系列完整型號供 PDF 匹配使用
  * 
  * 🔥 v23.0.0 重大更新：
  * - 改用 Gemini 2.5 Flash-Lite（輸入省 67%、輸出省 84%）
@@ -217,6 +222,17 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           // 分流邏輯
           if (key.startsWith("LS")) {
               specsContent += `* ${text}\n`;
+              
+              // 🆕 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
+              // 格式: LS32DG802SCXZW,型號：G80SD,...
+              const aliasMatch = text.match(/型號[：:]\s*(\w+)/);
+              if (aliasMatch) {
+                  const alias = aliasMatch[1].toUpperCase();
+                  // 從 LS 編號提取 S 型號 (LS32DG802SCXZW → S32DG802SC)
+                  const sModel = key.replace(/^LS/, 'S').replace(/XZW$/, '');
+                  keywordMap[alias] = sModel; // G80SD → S32DG802SC
+                  writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
+              }
           } else {
               definitionsContent += `* ${text}\n`;
           }
@@ -528,22 +544,51 @@ function getRelevantKBFiles(messages, kbList) {
     // 3. 關鍵字擴充 (查字典) + 提取完整型號
     let extendedQuery = combinedQuery;
     let exactModels = []; // 精準型號清單
+    
+    // 🔧 修正型號正則：
+    // G系列: G90XF, G80SD, G60F 等（G + 2位數 + 1~2字母）
+    // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
+    // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
+    const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2})\b/g;
+    
     Object.keys(keywordMap).forEach(key => {
         if (combinedQuery.includes(key)) {
             const mappedValue = keywordMap[key].toUpperCase();
             extendedQuery += " " + mappedValue;
-            // 提取型號 (G90XF, G80SD 等格式)
-            const modelMatch = mappedValue.match(/\b(G\d{2}[A-Z]{1,2}|M\d[A-Z]?|S\d{2}[A-Z]{0,2})\b/g);
+            
+            // 從映射值提取型號
+            const modelMatch = mappedValue.match(MODEL_REGEX);
             if (modelMatch) {
                 exactModels = exactModels.concat(modelMatch);
             }
+            
+            // 🆕 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
+            const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+            if (lsMatch) {
+                lsMatch.forEach(ls => {
+                    // 去掉 LS 前綴和 XZW 後綴
+                    const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+                    exactModels.push(cleanModel);
+                });
+            }
         }
     });
+    
     // 也從原始查詢提取型號
-    const directModelMatch = combinedQuery.match(/\b(G\d{2}[A-Z]{1,2}|M\d[A-Z]?|S\d{2}[A-Z]{0,2})\b/g);
+    const directModelMatch = combinedQuery.match(MODEL_REGEX);
     if (directModelMatch) {
         exactModels = exactModels.concat(directModelMatch);
     }
+    
+    // 🆕 從原始查詢提取 LS 系列
+    const directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+    if (directLsMatch) {
+        directLsMatch.forEach(ls => {
+            const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+            exactModels.push(cleanModel);
+        });
+    }
+    
     exactModels = [...new Set(exactModels)]; // 去重
 
     // 4. 分級載入（只用精準匹配，不做模糊匹配）
