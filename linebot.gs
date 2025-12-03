@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash)
- * Version: 22.24.0 (Main chat keeps Thinking, QA tasks use thinkingBudget=0)
+ * Version: 22.25.0 (Smart PDF Mode Exit - reduce token cost)
  * * * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)，拒絕單行縮寫，確保邏輯清晰。
  * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句，支援連續追問 (如：請給我更多細節)。
@@ -835,8 +835,21 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
     
     // 檢查是否在 PDF 模式（之前觸發過深度搜尋，同主題追問繼續用 PDF）
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
-    const isInPdfMode = cache.get(pdfModeKey) === 'true';
-    if (isInPdfMode) {
+    let isInPdfMode = cache.get(pdfModeKey) === 'true';
+    
+    // 智慧退出：簡單問題不需要 PDF（價格、官網、日期、閒聊等）
+    const simplePatterns = [
+        /多少錢|價格|價錢|售價/i,
+        /官網|網址|網站|連結|link/i,
+        /今天|日期|幾號|幾月/i,
+        /謝謝|感謝|好的|了解|OK|掰/i,
+        /^.{1,5}$/  // 少於 5 字的簡短回覆
+    ];
+    const isSimpleQuestion = simplePatterns.some(p => p.test(msg));
+    if (isInPdfMode && isSimpleQuestion) {
+        writeLog("[PDF Mode] 簡單問題，暫時跳過 PDF");
+        isInPdfMode = false;  // 這次不掛 PDF，但不清除模式（下次複雜問題還會用）
+    } else if (isInPdfMode) {
         writeLog("[PDF Mode] 延續 PDF 模式");
     }
 
@@ -874,6 +887,22 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
               writeLog("[New Topic] 偵測到換題，退出 PDF 模式");
               finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
               cache.remove(pdfModeKey);
+              replyText = finalText;
+          }
+          // === 智慧退出：回答不需要 PDF 時自動退出 ===
+          else if (isInPdfMode) {
+              // 檢測是否為簡單回答（不需要 PDF 的回答）
+              const exitPatterns = [
+                  /找Sam|問Sam|問一下Sam/i,           // 引導找 Sam
+                  /官網確認|samsung\.com/i,            // 價格引導到官網
+                  /沒有.*資料|資料.*沒有/i,            // 查無資料
+                  /商業機密|不能透漏/i                  // 拒答
+              ];
+              const shouldExit = exitPatterns.some(p => p.test(finalText));
+              if (shouldExit) {
+                  writeLog("[PDF Mode] 回答不需 PDF，自動退出");
+                  cache.remove(pdfModeKey);
+              }
               replyText = finalText;
           }
           else {
