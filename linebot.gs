@@ -1,17 +1,21 @@
 /**
- * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash)
- * Version: 22.28.0 (Cost optimization: image analysis + PDF matching)
- * * * 版本保證：
- * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)，拒絕單行縮寫，確保邏輯清晰。
- * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句，支援連續追問 (如：請給我更多細節)。
- * 3. [通用映射] 透過 CLASS_RULES 自動建立關鍵字關聯 (如 Odyssey3D -> G90XF)。
- * 4. [功能完整] Log 完整紀錄、LS過濾、指令鎖定、Zero-Wait RAG。
- * 5. [AUTO_SEARCH_PDF] AI 自動判斷資料不足時觸發深度搜尋，無需使用者手動輸入。
- * 6. [NEW_TOPIC] AI 判斷換題時自動退出 PDF 模式，回到極速模式。
- * 7. [簡化建檔] /紀錄 寫入 QA 格式：問題 / A：答案。
- * 8. [型號識別] 知識庫內建型號模式識別指南，價格查詢用原始型號。
- * 9. [健壯化] callGeminiToPolish/Modify 加入完整錯誤處理。
- * 10. [省錢優化] 圖片分析也關閉 Thinking Mode，PDF 精準匹配優先。
+ * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
+ * Version: 23.0.0 (Flash-Lite 省錢大更新 + 精準 PDF 匹配)
+ * 
+ * 🔥 v23.0.0 重大更新：
+ * - 改用 Gemini 2.5 Flash-Lite（輸入省 67%、輸出省 84%）
+ * - 極速模式：thinkingBudget=512（低成本思考）
+ * - PDF/圖片模式：thinkingBudget=0（不思考）
+ * - PDF 匹配改為純精準匹配（不再有 Tier2 模糊匹配）
+ * - 403/404 錯誤自動背景重建，用戶無感
+ * 
+ * 版本保證：
+ * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)。
+ * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句。
+ * 3. [通用映射] 透過 CLASS_RULES 自動建立關鍵字關聯。
+ * 4. [AUTO_SEARCH_PDF] AI 判斷資料不足時提示使用者選擇深度搜尋。
+ * 5. [NEW_TOPIC] AI 判斷換題時自動退出 PDF 模式。
+ * 6. [精準匹配] PDF 只載入完全匹配型號的手冊，不做模糊匹配。
  */
 
 // ==========================================
@@ -37,7 +41,7 @@ const CACHE_KEYS = {
 };
 
 const CONFIG = {
-  MODEL_NAME: 'models/gemini-2.5-flash', 
+  MODEL_NAME: 'models/gemini-2.5-flash-lite',  // 省錢：輸入$0.10 輸出$0.40 (vs Flash: $0.30/$2.50)
   MAX_OUTPUT_TOKENS: 8192, 
   HISTORY_PAIR_LIMIT: 10, 
   CACHE_TTL_SEC: 3600,
@@ -542,10 +546,9 @@ function getRelevantKBFiles(messages, kbList) {
     }
     exactModels = [...new Set(exactModels)]; // 去重
 
-    // 4. 分級載入
+    // 4. 分級載入（只用精準匹配，不做模糊匹配）
     const tier0 = []; // 必載 (QA + CLASS_RULES)
     const tier1 = []; // 精準匹配 (完整型號)
-    const tier2 = []; // 模糊匹配 (baseKeywords)
     
     kbList.forEach(file => {
         // Tier 0: 必載
@@ -564,23 +567,13 @@ function getRelevantKBFiles(messages, kbList) {
         }
     });
     
-    // 5. 若 Tier1 已有精準匹配，跳過 Tier2 模糊匹配（加速）
-    //    只有在完全沒有精準匹配時才啟用 Tier2
-    if (tier1.length === 0) {
-        const baseKeywords = ["G9","G8","G7","G6","G5","G4","G3","M8","M7","M5","S9","S8","S6","ODYSSEY","SMART","VIEWFINITY"];
-        kbList.forEach(file => {
-            if (file.isPriority) return;
-            const fileName = file.name.toUpperCase();
-            const isTier2 = baseKeywords.some(k => extendedQuery.includes(k) && fileName.includes(k));
-            if (isTier2 && tier2.length < MAX_PDF_COUNT) {
-                tier2.push(file);
-            }
-        });
-    }
+    // 5. 純精準匹配策略：不啟用模糊匹配
+    //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
+    //    （例如問 G90XF 不應該載到 G80SD 的手冊）
     
-    // 6. 組合結果
-    const result = [...tier0, ...tier1, ...tier2];
-    writeLog(`[KB Select] Tier0: ${tier0.length}, Tier1: ${tier1.length}/${exactModels.join(',')}, Tier2: ${tier2.length}, Total: ${result.length}`);
+    // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
+    const result = [...tier0, ...tier1];
+    writeLog(`[KB Select] Tier0: ${tier0.length}, Tier1: ${tier1.length}/${exactModels.join(',') || 'none'}, Total: ${result.length}`);
     
     return result;
 }
@@ -672,19 +665,20 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     const payload = {
         contents: geminiContents,
         systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-        // Thinking Mode 策略：
-        // - 極速模式（純文字）：保留 Thinking，提供複雜推理
-        // - PDF 模式 / 圖片分析：關閉 Thinking，省 token（答案已在資料中）
+        // Flash-Lite Thinking 策略：
+        // - 極速模式：thinkingBudget=512（低成本思考，提供基本推理）
+        // - PDF/圖片模式：thinkingBudget=0（不思考，答案已在資料中）
+        // Flash-Lite 預設不思考，要明確設定才會啟用
         generationConfig: (attachPDFs || imageBlob)
             ? { 
                 maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
                 temperature: tempSetting,
-                thinkingConfig: { thinkingBudget: 0 }  // PDF/圖片模式關閉 Thinking
+                thinkingConfig: { thinkingBudget: 0 }  // PDF/圖片模式：不思考
               }
             : { 
                 maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
-                temperature: tempSetting
-                // 極速模式保留 Thinking，提供複雜推理能力
+                temperature: tempSetting,
+                thinkingConfig: { thinkingBudget: 512 }  // 極速模式：低成本思考
               },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
@@ -918,20 +912,17 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
         // 第一次呼叫：如果在 PDF 模式就帶 PDF，否則極速模式
         let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, isInPdfMode, false, userId); 
         
-        // === [KB_EXPIRED] 攔截：PDF 過期，自動退出 PDF 模式並用極速模式重試 ===
+        // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
         if (rawResponse === "[KB_EXPIRED]") {
-            writeLog("[KB Expired] PDF 過期，退出 PDF 模式，用極速模式重試");
+            writeLog("[KB Expired] PDF 過期，退出 PDF 模式，背景重建中");
             cache.remove(pdfModeKey);  // 清除 PDF 模式
             
             // 自動預約 1 分鐘後背景重建
             scheduleImmediateRebuild();
             
+            // 用極速模式重試（不帶 PDF），用戶完全無感
             rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
-            if (rawResponse === "[KB_EXPIRED]") {
-                rawResponse = "⚠️ 系統正在背景更新手冊，請稍後再試";
-            } else if (rawResponse) {
-                rawResponse += "\n\n📚 手冊正在背景更新中，稍後會自動完成";
-            }
+            // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
         }
         
         if (rawResponse) {
