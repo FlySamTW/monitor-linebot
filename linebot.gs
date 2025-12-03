@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash)
- * Version: 22.27.0 (Auto fallback on KB expired + smarter PDF skip)
+ * Version: 22.28.0 (Cost optimization: image analysis + PDF matching)
  * * * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)，拒絕單行縮寫，確保邏輯清晰。
  * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句，支援連續追問 (如：請給我更多細節)。
@@ -11,6 +11,7 @@
  * 7. [簡化建檔] /紀錄 寫入 QA 格式：問題 / A：答案。
  * 8. [型號識別] 知識庫內建型號模式識別指南，價格查詢用原始型號。
  * 9. [健壯化] callGeminiToPolish/Modify 加入完整錯誤處理。
+ * 10. [省錢優化] 圖片分析也關閉 Thinking Mode，PDF 精準匹配優先。
  */
 
 // ==========================================
@@ -671,11 +672,14 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     const payload = {
         contents: geminiContents,
         systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-        generationConfig: attachPDFs 
+        // Thinking Mode 策略：
+        // - 極速模式（純文字）：保留 Thinking，提供複雜推理
+        // - PDF 模式 / 圖片分析：關閉 Thinking，省 token（答案已在資料中）
+        generationConfig: (attachPDFs || imageBlob)
             ? { 
                 maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
                 temperature: tempSetting,
-                thinkingConfig: { thinkingBudget: 0 }  // PDF 模式關閉 Thinking，省 token
+                thinkingConfig: { thinkingBudget: 0 }  // PDF/圖片模式關閉 Thinking
               }
             : { 
                 maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
