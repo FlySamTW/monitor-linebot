@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash)
- * Version: 22.26.0 (PDF mode disables Thinking to save tokens)
+ * Version: 22.27.0 (Auto fallback on KB expired + smarter PDF skip)
  * * * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)，拒絕單行縮寫，確保邏輯清晰。
  * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句，支援連續追問 (如：請給我更多細節)。
@@ -418,6 +418,55 @@ function scheduleNextSync() {
 }
 
 /**
+ * 排程 1 分鐘後背景重建知識庫
+ * 用於 403/404 過期時自動修復，用戶不需等待
+ */
+function scheduleImmediateRebuild() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const rebuildKey = 'REBUILD_SCHEDULED';
+    
+    // 如果近期已排程，不重複建立
+    if (cache.get(rebuildKey)) {
+      writeLog("[Rebuild] 已有背景重建排程，跳過");
+      return;
+    }
+    
+    // 清除現有的 immediateSync 觸發器（如果有）
+    const triggers = ScriptApp.getProjectTriggers();
+    triggers.forEach(t => { 
+        if (t.getHandlerFunction() === 'immediateKnowledgeRebuild') {
+            ScriptApp.deleteTrigger(t);
+        }
+    });
+    
+    // 建立 1 分鐘後執行的觸發器
+    ScriptApp.newTrigger('immediateKnowledgeRebuild').timeBased().after(1 * 60 * 1000).create();
+    
+    // 標記已排程，10 分鐘內不重複
+    cache.put(rebuildKey, 'true', 10 * 60);
+    
+    writeLog("🔧 已排程 1 分鐘後背景重建知識庫");
+  } catch (e) {
+    writeLog(`⚠️ 背景重建排程失敗: ${e.message}`);
+  }
+}
+
+/**
+ * 立即重建知識庫的觸發器入口
+ * 由 scheduleImmediateRebuild 排程呼叫
+ */
+function immediateKnowledgeRebuild() {
+  writeLog("[Rebuild] 開始背景重建知識庫...");
+  try {
+    const result = syncGeminiKnowledgeBase(true);  // forceRebuild = true
+    writeLog(`[Rebuild] 背景重建完成: ${result.substring(0, 100)}`);
+  } catch (e) {
+    writeLog(`[Rebuild Error] ${e.message}`);
+  }
+}
+
+/**
  * 檢查觸發器是否存在，不存在則自動建立
  * 使用快取避免每則訊息都檢查（快取 6 小時）
  */
@@ -678,15 +727,15 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             }
             if (code === 404) { 
                 writeLog(`[API 404] 檔案不存在: ${text.substring(0, 200)}`);
-                // 標記需要重建，但不立即清除（讓用戶決定）
+                // 標記需要重建，並返回特殊標記讓外層處理
                 CacheService.getScriptCache().put('kb_need_rebuild', 'true', 3600);
-                return "⚠️ 部分檔案過期，請輸入 /重啟 重建知識庫"; 
+                return "[KB_EXPIRED]"; 
             }
             if (code === 403) { 
                 writeLog(`[API 403] ${text.substring(0, 300)}`);
-                // 標記需要重建，但不立即清除
+                // 標記需要重建，並返回特殊標記讓外層處理
                 CacheService.getScriptCache().put('kb_need_rebuild', 'true', 3600);
-                return "⚠️ 部分檔案過期，請輸入 /重啟 重建知識庫"; 
+                return "[KB_EXPIRED]"; 
             }
             if (code === 429) {
                 writeLog(`[API 429] 配額限制，等待重試...`);
@@ -849,11 +898,13 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
         /官網|網址|網站|連結|link/i,
         /今天|日期|幾號|幾月/i,
         /謝謝|感謝|好的|了解|OK|掰/i,
-        /^.{1,5}$/  // 少於 5 字的簡短回覆
+        /^.{1,5}$/,  // 少於 5 字的簡短回覆
+        /根據|哪裡|為什麼|怎麼知道|來源/i,  // 追問來源類（不需要再查 PDF）
+        /還有嗎|其他|更多|繼續/i  // 追問更多類
     ];
     const isSimpleQuestion = simplePatterns.some(p => p.test(msg));
     if (isInPdfMode && isSimpleQuestion) {
-        writeLog("[PDF Mode] 簡單問題，暫時跳過 PDF");
+        writeLog("[PDF Mode] 簡單/追問類問題，跳過 PDF");
         isInPdfMode = false;  // 這次不掛 PDF，但不清除模式（下次複雜問題還會用）
     } else if (isInPdfMode) {
         writeLog("[PDF Mode] 延續 PDF 模式");
@@ -861,32 +912,68 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
 
     try {
         // 第一次呼叫：如果在 PDF 模式就帶 PDF，否則極速模式
-        const rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, isInPdfMode, false, userId); 
+        let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, isInPdfMode, false, userId); 
+        
+        // === [KB_EXPIRED] 攔截：PDF 過期，自動退出 PDF 模式並用極速模式重試 ===
+        if (rawResponse === "[KB_EXPIRED]") {
+            writeLog("[KB Expired] PDF 過期，退出 PDF 模式，用極速模式重試");
+            cache.remove(pdfModeKey);  // 清除 PDF 模式
+            
+            // 自動預約 1 分鐘後背景重建
+            scheduleImmediateRebuild();
+            
+            rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
+            if (rawResponse === "[KB_EXPIRED]") {
+                rawResponse = "⚠️ 系統正在背景更新手冊，請稍後再試";
+            } else if (rawResponse) {
+                rawResponse += "\n\n📚 手冊正在背景更新中，稍後會自動完成";
+            }
+        }
         
         if (rawResponse) {
           let finalText = formatForLineMobile(rawResponse);
           let replyText = finalText;
           
-          // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截：自動重試 ===
+          // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
           if (finalText.includes("[AUTO_SEARCH_PDF]") || finalText.includes("[NEED_DOC]")) {
-              writeLog("[Auto Search] 偵測到搜尋暗號，自動重試...");
+              writeLog("[Auto Search] 偵測到搜尋暗號");
               finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
               finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
               
-              // 自動重試，帶 PDF
-              const retryResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
-              if (retryResponse) {
-                  finalText = formatForLineMobile(retryResponse);
-                  // 清理可能殘留的暗號
-                  finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-                  finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-                  finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
-              }
+              // 檢測是否為硬體規格問題（這類問題 CLASS_RULES 沒寫就是沒有，不該查 PDF）
+              const hardwarePatterns = [
+                  /耳機孔|3\.5mm|音源孔|耳機插孔/i,
+                  /USB|HDMI|DP|DisplayPort|Type-C|連接埠/i,
+                  /KVM|切換器/i,
+                  /喇叭|揚聲器|音響/i,
+                  /VESA|壁掛/i,
+                  /解析度|Hz|更新率|刷新率/i,
+                  /尺寸|吋|英寸/i,
+                  /曲面|平面|曲率/i
+              ];
+              const isHardwareQuestion = hardwarePatterns.some(p => p.test(msg));
               
-              // 設定 PDF 模式（無時間限制，靠 AI 判斷換題）
-              cache.put(pdfModeKey, 'true', 21600); // 6 小時上限（GAS 快取最大值）
-              writeLog("[PDF Mode] 進入 PDF 模式");
-              replyText = finalText;
+              if (isHardwareQuestion) {
+                  // 硬體規格問題：CLASS_RULES 沒寫就是沒有，不查 PDF
+                  writeLog("[Hardware Q] 硬體規格問題，不進 PDF，直接用極速模式答案");
+                  // finalText 已經是極速模式的回答，直接用
+                  replyText = finalText;
+              } else {
+                  // 操作步驟類問題：詢問使用者要不要深度搜尋
+                  writeLog("[Operation Q] 操作類問題，詢問使用者是否深度搜尋");
+                  
+                  // 預測會用到哪些 PDF
+                  const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
+                  const relevantFiles = getRelevantKBFiles([...history, userMsgObj], kbList);
+                  const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', '')).slice(0, 3);
+                  const pdfHint = pdfNames.length > 0 ? `\n📖 將查閱：${pdfNames.join('、')}` : '';
+                  
+                  // 儲存待查詢，等使用者確認
+                  cache.put(CACHE_KEYS.PENDING_QUERY + userId, msg, 300);  // 5 分鐘有效
+                  
+                  finalText += `\n\n---\n💡 需要查閱產品手冊嗎？（約需 30 秒）${pdfHint}\n👉 回覆「1」或「深度」繼續搜尋`;
+                  replyText = finalText;
+              }
           }
           // === [NEW_TOPIC] 攔截：退出 PDF 模式 ===
           else if (finalText.includes("[NEW_TOPIC]")) {
@@ -942,16 +1029,22 @@ function handleDeepSearch(originalQuery, userId, replyToken, contextId) {
     const userMsgObj = { role: "user", content: originalQuery }; 
 
     try {
+        // 預測使用的 PDF（在呼叫前計算，用於回報）
+        const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
+        const relevantFiles = getRelevantKBFiles([...history, userMsgObj], kbList);
+        const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
+        const pdfHint = pdfNames.length > 0 ? `\n📖 參考：${pdfNames.slice(0, 3).join('、')}` : '';
+        
         // 深度呼叫
         const rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId); 
         
         if (rawResponse) {
             let finalText = formatForLineMobile(rawResponse);
-            replyMessage(replyToken, `🚀 深度搜尋結果：\n\n${finalText}`);
+            replyMessage(replyToken, `🚀 深度搜尋結果：\n\n${finalText}${pdfHint}`);
             
             writeRecordDirectly(userId, `[深度] ${originalQuery}`, contextId, 'user', '');
             writeRecordDirectly(userId, finalText, contextId, 'assistant', 'DEEP_SEARCH');
-            writeLog(`[Deep Reply] ${finalText}`);
+            writeLog(`[Deep Reply] PDF: ${pdfNames.slice(0, 3).join(', ')} | ${finalText.substring(0, 200)}`);
             updateHistorySheetAndCache(contextId, history, { role: 'user', content: originalQuery }, { role: 'assistant', content: `(深度搜尋) ${finalText}` });
         }
     } catch (e) { 
