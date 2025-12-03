@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash)
- * Version: 22.25.0 (Smart PDF Mode Exit - reduce token cost)
+ * Version: 22.26.0 (PDF mode disables Thinking to save tokens)
  * * * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)，拒絕單行縮寫，確保邏輯清晰。
  * 2. [上下文增強] getRelevantKBFiles 讀取雙方最近 6 句，支援連續追問 (如：請給我更多細節)。
@@ -622,11 +622,17 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     const payload = {
         contents: geminiContents,
         systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-        generationConfig: { 
-            maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
-            temperature: tempSetting
-            // 主要對話保留 Thinking Mode（預設啟用），提供複雜推理能力
-        },
+        generationConfig: attachPDFs 
+            ? { 
+                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
+                temperature: tempSetting,
+                thinkingConfig: { thinkingBudget: 0 }  // PDF 模式關閉 Thinking，省 token
+              }
+            : { 
+                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
+                temperature: tempSetting
+                // 極速模式保留 Thinking，提供複雜推理能力
+              },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
 
