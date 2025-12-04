@@ -1,6 +1,9 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 23.1.0 (精準型號匹配 + 別稱雙向映射)
+ * Version: 23.2.0 (別稱映射 Log 優化)
+ * 
+ * 🔥 v23.2.0 更新：
+ * - 別稱映射只在真正有差異時才 Log（避免 S27FG706EC → S27FG706EC 無意義輸出）
  * 
  * 🔥 v23.1.0 更新：
  * - 修正 S 系列型號正則，完整匹配 S27DG602SC（不再只取 S27DG）
@@ -223,15 +226,18 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           if (key.startsWith("LS")) {
               specsContent += `* ${text}\n`;
               
-              // 🆕 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
+              // 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
               // 格式: LS32DG802SCXZW,型號：G80SD,...
               const aliasMatch = text.match(/型號[：:]\s*(\w+)/);
               if (aliasMatch) {
                   const alias = aliasMatch[1].toUpperCase();
                   // 從 LS 編號提取 S 型號 (LS32DG802SCXZW → S32DG802SC)
                   const sModel = key.replace(/^LS/, 'S').replace(/XZW$/, '');
-                  keywordMap[alias] = sModel; // G80SD → S32DG802SC
-                  writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
+                  // 只有別稱與 S 型號不同時才建立映射並 Log（避免 S27FG706EC → S27FG706EC 這種無意義映射）
+                  if (alias !== sModel) {
+                      keywordMap[alias] = sModel;
+                      writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
+                  }
               }
           } else {
               definitionsContent += `* ${text}\n`;
