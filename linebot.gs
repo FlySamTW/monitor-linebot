@@ -1,18 +1,17 @@
 /**
- * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.0 Flash-Lite)
- * Version: 23.3.0 (成本優化版)
+ * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
+ * Version: 23.4.0 (Gemini 2.5 Flash-Lite)
+ * 
+ * 🔥 v23.4.0 更新：
+ * - 模型升級：全面改用 Gemini 2.5 Flash-Lite (gemini-2.5-flash-lite)
+ * - 性能提升：官方數據指出 2.5 Flash-Lite 在數學與推理能力顯著優於 2.0 版本
+ * - 成本維持：維持高性價比策略，並移除 Thinking Mode 以節省 Output Tokens
  * 
  * 🔥 v23.3.0 更新：
- * - 模型更換：正式啟用 gemini-2.0-flash-lite-preview-02-05 (更低成本)
- * - 移除 Thinking Mode：完全關閉思考預算 (thinkingBudget) 以節省 Output Tokens
- * - 成本控制：回應不強制極簡，但移除額外思考開銷
+ * - 移除 Thinking Mode：完全關閉思考預算 (thinkingBudget)
  * 
  * 🔥 v23.2.0 更新：
  * - 別稱映射只在真正有差異時才 Log
- * 
- * 🔥 v23.1.0 更新：
- * - 修正 S 系列型號正則
- * - 新增別稱雙向映射：G80SD → S32DG802SC
  * 
  * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)。
@@ -46,7 +45,7 @@ const CACHE_KEYS = {
 };
 
 const CONFIG = {
-  MODEL_NAME: 'models/gemini-2.0-flash-lite-preview-02-05',  // 成本優化：Flash-Lite (Preview 02-05)
+  MODEL_NAME: 'models/gemini-2.5-flash-lite',  // 升級：Gemini 2.5 Flash-Lite (更強、更平衡)
   MAX_OUTPUT_TOKENS: 8192, 
   HISTORY_PAIR_LIMIT: 10, 
   CACHE_TTL_SEC: 3600,
