@@ -1,21 +1,18 @@
 /**
- * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 23.2.0 (別稱映射 Log 優化)
+ * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.0 Flash-Lite)
+ * Version: 23.3.0 (成本優化版)
+ * 
+ * 🔥 v23.3.0 更新：
+ * - 模型更換：正式啟用 gemini-2.0-flash-lite-preview-02-05 (更低成本)
+ * - 移除 Thinking Mode：完全關閉思考預算 (thinkingBudget) 以節省 Output Tokens
+ * - 成本控制：回應不強制極簡，但移除額外思考開銷
  * 
  * 🔥 v23.2.0 更新：
- * - 別稱映射只在真正有差異時才 Log（避免 S27FG706EC → S27FG706EC 無意義輸出）
+ * - 別稱映射只在真正有差異時才 Log
  * 
  * 🔥 v23.1.0 更新：
- * - 修正 S 系列型號正則，完整匹配 S27DG602SC（不再只取 S27DG）
- * - 新增別稱雙向映射：G80SD → S32DG802SC（從 CLASS_RULES 自動建立）
- * - 提取 LS 系列完整型號供 PDF 匹配使用
- * 
- * 🔥 v23.0.0 重大更新：
- * - 改用 Gemini 2.5 Flash-Lite（輸入省 67%、輸出省 84%）
- * - 極速模式：thinkingBudget=512（低成本思考）
- * - PDF/圖片模式：thinkingBudget=0（不思考）
- * - PDF 匹配改為純精準匹配（不再有 Tier2 模糊匹配）
- * - 403/404 錯誤自動背景重建，用戶無感
+ * - 修正 S 系列型號正則
+ * - 新增別稱雙向映射：G80SD → S32DG802SC
  * 
  * 版本保證：
  * 1. [絕對展開] 所有函式與邏輯判斷強制展開 (Block Style)。
@@ -49,7 +46,7 @@ const CACHE_KEYS = {
 };
 
 const CONFIG = {
-  MODEL_NAME: 'models/gemini-2.5-flash-lite',  // 省錢：輸入$0.10 輸出$0.40 (vs Flash: $0.30/$2.50)
+  MODEL_NAME: 'models/gemini-2.0-flash-lite-preview-02-05',  // 成本優化：Flash-Lite (Preview 02-05)
   MAX_OUTPUT_TOKENS: 8192, 
   HISTORY_PAIR_LIMIT: 10, 
   CACHE_TTL_SEC: 3600,
@@ -716,21 +713,13 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     const payload = {
         contents: geminiContents,
         systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-        // Flash-Lite Thinking 策略：
-        // - 極速模式：thinkingBudget=512（低成本思考，提供基本推理）
-        // - PDF/圖片模式：thinkingBudget=0（不思考，答案已在資料中）
-        // Flash-Lite 預設不思考，要明確設定才會啟用
-        generationConfig: (attachPDFs || imageBlob)
-            ? { 
-                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
-                temperature: tempSetting,
-                thinkingConfig: { thinkingBudget: 0 }  // PDF/圖片模式：不思考
-              }
-            : { 
-                maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
-                temperature: tempSetting,
-                thinkingConfig: { thinkingBudget: 512 }  // 極速模式：低成本思考
-              },
+        // Flash-Lite 策略：
+        // - 移除 thinkingConfig 以節省 Output Tokens (元凶一)
+        // - 保持 maxOutputTokens 與 temperature 設定
+        generationConfig: { 
+            maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
+            temperature: tempSetting
+        },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
 
