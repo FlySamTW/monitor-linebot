@@ -1,10 +1,11 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.2 (API 400 修復)
+ * Version: 24.1.2 (API 400 修復 - thinkingConfig 位置修正)
  * 
  * 🔥 v24.1.2 更新 - 修復 API 400 錯誤：
- * - 移除無效的 thinkingConfig 參數（Google Gemini API 不支援此參數）
- * - 所有 API 呼叫現在使用有效的 generationConfig 配置
+ * - 根本原因：thinkingConfig 參數位置錯誤（應在 generationConfig 內部，非 payload 頂層）
+ * - 修復方案：將所有 thinkingConfig 移至 generationConfig 內部
+ * - 恢復 Think Mode 功能：PDF Mode 開啟 thinkingBudget: 2048，Fast Mode 設為 0
  * - 解決「Invalid JSON payload received. Unknown name \"thinkingConfig\"」錯誤
  * 
  * 🔥 v24.1.1 更新 - 測試模式顯示 Token 用量：
@@ -1108,7 +1109,8 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         // - Fast 模式：關閉 Think (QA/Rules 已是整理好的答案，不需思考)
         generationConfig: { 
             maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
-            temperature: tempSetting
+            temperature: tempSetting,
+            thinkingConfig: attachPDFs ? { thinkingBudget: 2048 } : { thinkingBudget: 0 }
         },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
@@ -1850,7 +1852,8 @@ function findSimilarQA(newContent, polishedQA) {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: { 
                 maxOutputTokens: 100, 
-                temperature: 0.1
+                temperature: 0.1,
+                thinkingConfig: { thinkingBudget: 0 }
             }
         };
         
@@ -1953,7 +1956,8 @@ function callGeminiToMergeQA(existingQAs, newQA) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3
+            temperature: 0.3,
+            thinkingConfig: { thinkingBudget: 0 }
         }
     };
     
@@ -2062,7 +2066,8 @@ ${historyText}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3
+            temperature: 0.3,
+            thinkingConfig: { thinkingBudget: 0 }
         }
     };
     
@@ -2145,7 +2150,8 @@ ${input}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3
+            temperature: 0.3,
+            thinkingConfig: { thinkingBudget: 0 }
         }
     };
     
@@ -2219,7 +2225,8 @@ function callGeminiToModify(currentText, instruction) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 500, 
-            temperature: 0.4
+            temperature: 0.4,
+            thinkingConfig: { thinkingBudget: 0 }
         }
     };
     
@@ -2428,7 +2435,8 @@ ${convo}`;
             contents: [{ role: 'user', parts: [{ text: prompt }] }], 
             generationConfig: { 
                 maxOutputTokens: 300, 
-                temperature: 0.3
+                temperature: 0.3,
+                thinkingConfig: { thinkingBudget: 0 }
             } 
         };
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
