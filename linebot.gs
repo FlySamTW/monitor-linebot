@@ -1,6 +1,11 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.0 (Smart Token + Think Mode)
+ * Version: 24.1.1 (Smart Token + Debug Mode)
+ * 
+ * 🔥 v24.1.1 更新 - 測試模式顯示 Token 用量：
+ * - DEBUG_SHOW_TOKENS: 在回覆末尾顯示 In/Out/Total + NT$成本
+ * - 匯率更新: 32 (原 30)
+ * - 費率確認: Input $0.10/1M, Output $0.40/1M (含 thinking)
  * 
  * 🔥 v24.1.0 更新 - Token 優化 + PDF 閱讀理解提升：
  * 
