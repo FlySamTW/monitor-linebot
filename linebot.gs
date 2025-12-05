@@ -1105,7 +1105,6 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
             temperature: tempSetting
         },
-        thinkingConfig: attachPDFs ? { thinkingBudget: 2048 } : { thinkingBudget: 0 },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
 
@@ -1846,8 +1845,7 @@ function findSimilarQA(newContent, polishedQA) {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: { 
                 maxOutputTokens: 100, 
-                temperature: 0.1,
-                thinkingConfig: { thinkingBudget: 0 }
+                temperature: 0.1
             }
         };
         
@@ -1950,8 +1948,7 @@ function callGeminiToMergeQA(existingQAs, newQA) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.3
         }
     };
     
@@ -2060,8 +2057,7 @@ ${historyText}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.3
         }
     };
     
@@ -2144,8 +2140,7 @@ ${input}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.3
         }
     };
     
@@ -2219,8 +2214,7 @@ function callGeminiToModify(currentText, instruction) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 500, 
-            temperature: 0.4,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.4
         }
     };
     
@@ -2429,8 +2423,7 @@ ${convo}`;
             contents: [{ role: 'user', parts: [{ text: prompt }] }], 
             generationConfig: { 
                 maxOutputTokens: 300, 
-                temperature: 0.3,
-                thinkingConfig: { thinkingBudget: 0 }
+                temperature: 0.3
             } 
         };
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
