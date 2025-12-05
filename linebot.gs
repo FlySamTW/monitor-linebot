@@ -319,6 +319,12 @@ try {
 
 const ALLOW_PUSH = (PropertiesService.getScriptProperties().getProperty("ALLOW_PUSH") || "false") === "true";
 
+// v24.1.0: 測試模式 - 在回覆末尾顯示 Token 用量和成本
+const DEBUG_SHOW_TOKENS = (PropertiesService.getScriptProperties().getProperty("DEBUG_SHOW_TOKENS") || "true") === "true";
+
+// 最後一次 API 呼叫的 Token 資訊 (用於測試模式顯示)
+let lastTokenUsage = null;
+
 /**
  * 從型號或關鍵字提取 LS 編號，產生三星官網搜尋連結
  * 例：G80SD -> LS32DG802SCXZW -> https://www.samsung.com/tw/search/?searchvalue=LS32DG802SCXZW
@@ -1127,10 +1133,19 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                     // 📊 Token 用量紀錄
                     if (json.usageMetadata) {
                         const usage = json.usageMetadata;
-                        // 估算成本 (Gemini 2.5 Flash-Lite 定價: Input $0.10/1M, Output $0.40/1M, 匯率 30)
+                        // Gemini 2.5 Flash-Lite 定價 (2025-12 官網確認): Input $0.10/1M, Output $0.40/1M
+                        // 包含 thinking tokens
                         const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
-                        const costTWD = costUSD * 30;
+                        const costTWD = costUSD * 32;  // 匯率更新為 32
                         writeLog(`[Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)} | 費率: 2.5 Flash-Lite)`);
+                        
+                        // v24.1.0: 儲存到全域變數，供測試模式顯示
+                        lastTokenUsage = {
+                            input: usage.promptTokenCount,
+                            output: usage.candidatesTokenCount,
+                            total: usage.totalTokenCount,
+                            costTWD: costTWD
+                        };
                     }
 
                     const candidates = json && json.candidates ? json.candidates : [];
@@ -1459,6 +1474,12 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
           }
           else {
               replyText = finalText;
+          }
+
+          // v24.1.0: 測試模式 - 在回覆末尾附加 Token 資訊
+          if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+              const tokenInfo = `\n\n---\n📊 In:${lastTokenUsage.input} Out:${lastTokenUsage.output} = ${lastTokenUsage.total} (NT$${lastTokenUsage.costTWD.toFixed(4)})`;
+              replyText += tokenInfo;
           }
 
           replyMessage(replyToken, replyText);
