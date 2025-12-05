@@ -1,6 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.7 (動畫計時器重置 + M7 面板信息補全)
+ * Version: 24.1.8 (型號提取正則修正)
+ * 
+ * 🔥 v24.1.8 更新 - 型號變化偵測修復（M7 型號提取）：
+ * - 修復：extractModelNumbers() 的 M 系列正則邏輯
+ *   原本 /\bM([5789][\dA-Z]*)\b/g 只提取括號內的數字部分（「7」）
+ *   改為 /\bM[5789][\dA-Z]*\b/g 完整保留「M7」「M70D」等
+ * - 現在「m7是什麼面板」能正確偵測到型號變化，清除 PDF Mode
+ * - 系統先用 CLASS_RULES 查詢 M7 規格（VA 平面），不浪費 Token 讀 PDF
  * 
  * 🔥 v24.1.7 更新 - 重啟後第一次詢問改進：
  * - 修復：/重啟 後清除動畫計時器，讓下一個詢問能立即顯示 Loading 動畫
@@ -8,11 +15,6 @@
  * - 現在「m7 是什麼面板」能正確回答「VA 平面螢幕」
  * 
  * 🔥 v24.1.6 更新 - Odyssey Hub 關鍵字匹配：
- * - 新增 checkAndClearPdfModeOnModelChange() 函數
- * - 新增 extractModelNumbers() 函數提取型號編碼
- * - 當用戶從 Odyssey 3D (G90XF) 切換到 M7 時，自動清除 PDF Mode
- * - 優先使用 Fast Mode (QA/CLASS_RULES) 回答，避免浪費 Token 讀不相關 PDF
- * - 符合 Brain-First 架構設計理念
  * 
  * 🔥 v24.1.4 更新 - 編輯 API 成本追蹤：
  * - callGeminiToPolish：加入 Token 和成本記錄
@@ -217,7 +219,7 @@ function extractModelNumbers(text) {
         // 型號正則表達式（涵蓋所有常見格式）
         const modelPatterns = [
             /\b([SG][\dA-Z]+[CDEFGHKLMNPSTX]{0,3})\b/g,  // S27FG900, G90XF 等
-            /\bM([5789][\dA-Z]*)\b/g,                      // M5, M7, M8, M9 系列
+            /\bM[5789][\dA-Z]*\b/g,                       // M5, M7, M8, M9 系列 (完整保留)
             /\bARK\s*(?:DIAL|HUB)?\b/gi,                  // ARK / ARK DIAL / ARK HUB
             /\bODYSSEY\s*(?:HUB|3D)?\b/gi                 // Odyssey / Odyssey Hub / Odyssey 3D
         ];
@@ -225,8 +227,9 @@ function extractModelNumbers(text) {
         modelPatterns.forEach(pattern => {
             let match;
             while ((match = pattern.exec(upperText)) !== null) {
+                // v24.1.7: 修正 - 確保完整保留型號（不使用括號分組）
                 const model = match[1] || match[0];
-                if (model.length >= 3 && !models.includes(model)) {
+                if (model.length >= 2 && !models.includes(model)) {
                     models.push(model);
                 }
             }

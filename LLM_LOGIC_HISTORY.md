@@ -5,6 +5,85 @@
 
 ---
 
+## Version 24.1.8 - 型號提取正則修正（M7 型號偵測修復）
+**日期**: 2025/12/05
+**類型**: Bug Fix / 型號偵測邏輯
+
+### 問題背景
+v24.1.7 已修復：
+1. ✅ 動畫計時器清除
+2. ✅ M7 規格補全（加入「VA 平面」）
+
+但用戶仍反映「m7是什麼面板」不知道答案。
+
+LOG 顯示：
+```
+[HandleMsg] 收到: m7是什麼面板
+[PDF Mode] 延續 PDF 模式  ← v24.1.5 的型號變化清除應該工作，但沒有
+[KB Load] AttachPDFs: true
+[AI Reply] 這題資料沒寫,看Sam知不知道。
+```
+
+### 根本原因
+
+`extractModelNumbers()` 函數在提取 M 系列型號時有 bug：
+
+```javascript
+// 原始邏輯 (v24.1.5):
+/\bM([5789][\dA-Z]*)\b/g    // ❌ 使用了括號分組
+
+// 在 while 迴圈中：
+const model = match[1] || match[0];
+
+// 當輸入「m7是什麼面板」時：
+// match[0] = "M7"
+// match[1] = "7"   ← 只有括號內的部分！
+// 所以 model = "7" 而非 "M7"
+```
+
+這導致型號比對失敗：
+```
+currentModels = ["7"]
+previousModels = ["M70D"]
+isSameModel = false 但邏輯無法比對...
+```
+
+實際上系統無法識別「7」是「M 系列」的一部分，導致型號變化偵測完全失效。
+
+### 修復方案
+
+改為完整正則，不使用括號分組：
+
+```javascript
+// 修正 (v24.1.8):
+/\bM[5789][\dA-Z]*\b/g      // ✓ 完整模式
+
+// match[0] = "M7"
+// match[1] = undefined
+// const model = match[1] || match[0];
+// model = "M7" ✓
+```
+
+同時將最小長度從 3 改為 2，支援「M7」「M5」等短型號。
+
+### 邏輯流程驗證
+
+修復後：
+```
+用戶: "m7是什麼面板"
+  ↓ extractModelNumbers("m7是什麼面板")
+  ↓ 提取型號: ["M7"]
+  ↓ 檢查歷史: 前一個型號是 ["M70D", "G90XF", "S27FG900"]
+  ↓ M7 vs M70D？都是 M 系列！
+  ↓ 型號相同？否 (M7 ≠ M70D) ✓
+  ↓ 清除 PDF Mode ✓
+  ↓ 回到 Fast Mode，查 CLASS_RULES
+  ↓ 找到：「別稱_M7,Smart Monitor M7...VA平面面板...」
+  ↓ 回答：「M7 是 VA 平面螢幕...」
+```
+
+---
+
 ## Version 24.1.7 - M7 面板規格補全
 **日期**: 2025/12/05
 **類型**: 數據完善 / 使用者體驗改善
