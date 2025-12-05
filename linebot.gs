@@ -150,7 +150,12 @@ function buildDynamicContext(messages) {
         const keywords = (upperMsg.match(/[A-Z0-9]{3,}/g) || []);
         // 加入一些常見中文關鍵字 (可擴充)
         const cnKeywords = (upperMsg.match(/耳機|喇叭|壁掛|支架|旋轉|升降|3D|HUB|遙控器|電源|線材|DP|HDMI|TYPE-C/g) || []);
-        const allKeywords = [...new Set([...keywords, ...cnKeywords])];
+        
+        // 2025-12-05: 排除過於寬泛的關鍵字，避免 Token 爆炸 (如 ODYSSEY, SAMSUNG, MONITOR)
+        const stopList = ["ODYSSEY", "SAMSUNG", "MONITOR", "GAMING", "SMART", "OLED", "QLED", "UHD", "WQHD"];
+        const filteredKeywords = keywords.filter(k => !stopList.includes(k));
+        
+        const allKeywords = [...new Set([...filteredKeywords, ...cnKeywords])];
         
         let relevantContext = "【精選 QA & 規格】\n";
         
@@ -178,13 +183,16 @@ function buildDynamicContext(messages) {
         // 篩選 Rules
         if (fullRules) {
             const ruleLines = fullRules.split('\n');
+            let matchCount = 0;
             ruleLines.forEach(line => {
                 if (!line.trim()) return;
-                // 總是保留 "定義" 類 (不含型號的行)? 不，太長了
+                if (matchCount > 50) return; // 限制最大行數，避免 Token 爆炸
+                
                 // 只保留匹配行
                 if (allKeywords.length > 0) {
                     if (allKeywords.some(k => line.toUpperCase().includes(k))) {
                         relevantContext += line + "\n";
+                        matchCount++;
                     }
                 }
             });
@@ -2379,10 +2387,10 @@ function getHistoryFromCacheOrSheet(cid) {
   }
   try {
     const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-    if (f) {
-        return JSON.parse(s.getRange(f.getRow(), 2).getValue());
-    }
+    // const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+    // if (f) {
+    //     return JSON.parse(s.getRange(f.getRow(), 2).getValue());
+    // }
   } catch(e) {}
   return [];
 }
@@ -2395,25 +2403,25 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
     }
     const newHist = [...base, uMsg, aMsg].slice(-(CONFIG.HISTORY_PAIR_LIMIT * 2));
     const json = JSON.stringify(newHist);
-    const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+    // const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+    // const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
     
-    if (f) {
-        s.getRange(f.getRow(), 2).setValue(json);
-    } else {
-        s.appendRow([cid, json]);
-    }
+    // if (f) {
+    //     s.getRange(f.getRow(), 2).setValue(json);
+    // } else {
+    //     s.appendRow([cid, json]);
+    // }
     CacheService.getScriptCache().put(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`, json, CONFIG.CACHE_TTL_SEC);
   } catch (e) {}
 }
 
 function clearHistorySheetAndCache(cid) {
   try {
-    const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-    if (f) {
-        s.getRange(f.getRow(), 2).clearContent();
-    }
+    // const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+    // const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+    // if (f) {
+    //     s.getRange(f.getRow(), 2).clearContent();
+    // }
     const cache = CacheService.getScriptCache();
     cache.remove(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`);
     // 同時清除 PDF 模式
