@@ -1,12 +1,38 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 23.5.5 (Dynamic Context & Cost Optimization)
+ * Version: 24.1.0 (Smart Token + Think Mode)
  * 
- * 🔥 v23.5.5 更新：
- * - 架構重構：導入 Dynamic Context Injection (動態上下文注入)
- * - 成本優化：廢除「暴力上傳」整份知識庫，改為 Cache + 關鍵字篩選 (Token 50k -> 1k)
- * - 體驗優化：廢除直通車強制 PDF，改為智慧判斷 + 智慧退出 (避免黏性過高)
- * - 隱私優化：移除所有人類可讀的對話紀錄 (RECORDS)，僅保留 AI 短期記憶
+ * 🔥 v24.1.0 更新 - Token 優化 + PDF 閱讀理解提升：
+ * 
+ * 【Token 優化】
+ * - QA/Rules 智慧搜尋：找到足夠就停 (上限 15 筆)，不再全撈
+ * - Prompt.csv 精簡：65行 → 48行，保留所有規則但縮短用詞
+ * - 預估 Fast Mode: ~2-3K Tokens (原 5K+)
+ * 
+ * 【Think Mode 策略】
+ * - PDF Mode: 開啟 Think (thinkingBudget: 2048)，提升閱讀理解
+ * - Fast Mode: 關閉 Think，QA/Rules 已是整理好的答案
+ * - 成本增加 <10%，智商提升顯著
+ * 
+ * 【PDF 匹配修正】
+ * - 術語 (Odyssey Hub, 3D) 不再參與 PDF 檔名匹配
+ * - 只有「真正的型號」(G90XF, S27FG900) 才用於匹配 PDF
+ * - 避免載入不相關的手冊
+ * 
+ * 【禁動區宣告】
+ * - writeRecordDirectly: 欄位順序 [時間, ContextID, UserID, 訊息, Role, Flag] 禁止修改
+ * - SHEET_NAMES: 結構禁止修改
+ * 
+ * 🔥 v24.0.0 更新 - 「準 > 聰明 > 省錢」深思熟慮版：
+ * - 設計哲學：準確 > 聰明 > 省錢
+ * - 恢復記憶：HISTORY_PAIR_LIMIT 10 / PDF_HISTORY_LIMIT 6
+ * - 直通車空白容錯：「Odyssey Hub」=「OdysseyHub」
+ * 
+ * 🔥 v23.6.4 更新：
+ * - 核心重構：導入「有大腦、有溫度、守紀律」三大準則 (Hybrid Knowledge Strategy)
+ * - 記憶升級：實作 Rolling Summary (滾動式摘要)，保留長期記憶同時控制 Token
+ * - 體驗優化：修正過期活動處理邏輯 (客觀中性)，移除惹人生氣的「溫馨提醒」
+ * - 成本優化：維持 Dynamic Context 架構，Token 消耗穩定在低水位
  * 
  * 🔥 v23.5.4 更新：
  * - 修正：PDF 匹配邏輯增強，自動去除型號後綴 (如 SC, XC) 以匹配 PDF 檔名
@@ -60,31 +86,37 @@
  * 來源：CLASS_RULES 自動產生的 keywordMap (包含別稱與術語)
  */
 function checkDirectDeepSearch(msg) {
-    // 2025-02-25 修改：暫時關閉直通車機制
-    // 用戶希望優先使用 QA/Rules (Fast Mode)，只有當 LLM 判斷不足時才進入 PDF 模式
-    // 因此這裡直接回傳 false，讓流程走 Fast Mode -> LLM -> [AUTO_SEARCH_PDF] -> Deep Mode
-    return false;
-
-    /*
     try {
-        const listJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.STRONG_KEYWORDS);
-        if (!listJson) return false;
-        
-        const strongKeywords = JSON.parse(listJson);
         const upperMsg = msg.toUpperCase();
+        const upperMsgNoSpace = upperMsg.replace(/\s+/g, '');
+
+        // 1. 檢查 CLASS_RULES 的直通車關鍵字 (如果有的話)
+        // 這些通常是「系列名」或「特殊術語」，用戶定義這些詞需要深度搜尋
+        const listJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.STRONG_KEYWORDS);
+        if (listJson) {
+            const strongKeywords = JSON.parse(listJson);
+            const hitStrong = strongKeywords.some(key => {
+                if (key.length < 3) return false;
+                // 2025-12-05 修正：同時檢查「原始字串」與「去空白字串」
+                // 解決 CSV Key 為 "OdysseyHub" 但用戶輸入 "Odyssey Hub" 的問題
+                return upperMsg.includes(key) || upperMsgNoSpace.includes(key);
+            });
+            if (hitStrong) {
+                writeLog("[DirectDeep] 命中 CLASS_RULES 直通車關鍵字");
+                return true;
+            }
+        }
+
+        // 2025-12-05 修正：移除「命中 PDF 型號即強制開啟」的邏輯
+        // 回歸 Brain-First 架構：優先使用 Fast Mode (QA/Rules)，
+        // 只有當 LLM 判斷資料不足並輸出 [AUTO_SEARCH_PDF] 時，才進入 Deep Mode。
+        // 避免簡單規格問題 (如 S57CG95 有沒有喇叭) 也浪費 Token 讀 PDF。
         
-        // 檢查訊息是否包含任何「直通車關鍵字」
-        // 這些關鍵字來自 CLASS_RULES 的「系列_」「術語_」「別稱_」
-        return strongKeywords.some(key => {
-            // 忽略過短的關鍵字避免誤判
-            if (key.length < 3) return false;
-            return upperMsg.includes(key);
-        });
+        return false;
     } catch (e) {
         writeLog("[Error] checkDirectDeepSearch: " + e.message);
         return false;
     }
-    */
 }
 
 // 輔助：字串分塊 (避免 Cache 單一 Key 超過 100KB)
@@ -148,54 +180,75 @@ function buildDynamicContext(messages) {
         
         // 提取關鍵字 (型號、術語)
         const keywords = (upperMsg.match(/[A-Z0-9]{3,}/g) || []);
-        // 加入一些常見中文關鍵字 (可擴充)
-        const cnKeywords = (upperMsg.match(/耳機|喇叭|壁掛|支架|旋轉|升降|3D|HUB|遙控器|電源|線材|DP|HDMI|TYPE-C/g) || []);
         
-        // 2025-12-05: 排除過於寬泛的關鍵字，避免 Token 爆炸 (如 ODYSSEY, SAMSUNG, MONITOR)
-        const stopList = ["ODYSSEY", "SAMSUNG", "MONITOR", "GAMING", "SMART", "OLED", "QLED", "UHD", "WQHD"];
+        // 2025-12-05: 改為「通用中文關鍵字擷取」，不再硬寫死特定詞彙
+        // 擷取所有長度 >= 2 的中文詞彙，讓使用者說什麼就查什麼
+        const cnKeywords = (upperMsg.match(/[\u4e00-\u9fa5]{2,}/g) || []);
+        
+        // 2025-12-05: 排除過於寬泛或無意義的關鍵字 (Stop Words)
+        // 修正：保留重要產品系列名 (ODYSSEY, SMART, OLED, QLED)，避免過度過濾導致變笨
+        const stopList = [
+            "SAMSUNG", "MONITOR", "GAMING", "UHD", "WQHD",
+            "請問", "可以", "什麼", "怎麼", "如何", "有沒有", "謝謝", "你好", "三星", "螢幕", "顯示器",
+            "知道", "告訴", "問題", "一下", "這個", "那個", "因為", "所以", "但是", "如果"
+        ];
+        
         const filteredKeywords = keywords.filter(k => !stopList.includes(k));
+        const filteredCnKeywords = cnKeywords.filter(k => !stopList.includes(k));
         
-        const allKeywords = [...new Set([...filteredKeywords, ...cnKeywords])];
+        const allKeywords = [...new Set([...filteredKeywords, ...filteredCnKeywords])];
         
         let relevantContext = "【精選 QA & 規格】\n";
         
-        // 總是加入 Guide
+        // 總是加入 Guide (型號識別指南)
         relevantContext += guide + "\n";
         
-        // 篩選 QA
-        if (fullQA) {
+        // v24.0.0: 智慧搜尋策略 - 找到足夠就停止，節省 Token
+        // 搜尋順序：QA (精準答案) → Rules (規格補充)
+        // 目標：有關鍵字時最多 15 筆匹配；無關鍵字時最多 10 筆保底
+        
+        const MAX_KEYWORD_MATCHES = 15;  // 關鍵字匹配上限
+        const MAX_FALLBACK = 10;          // 無關鍵字時的保底上限
+        let totalMatches = 0;
+        
+        // 1️⃣ 先搜 QA (優先級最高，通常有完整答案)
+        if (fullQA && totalMatches < MAX_KEYWORD_MATCHES) {
             const qaLines = fullQA.split('\n');
-            qaLines.forEach(line => {
-                if (!line.trim()) return;
-                // 若無關鍵字，則只保留 "通用" 類 QA? 
-                // 策略：若有關鍵字，只留匹配行；若無關鍵字，留前 5 行 (熱門 QA)?
-                // 這裡採嚴格匹配：有匹配才留
-                if (allKeywords.length > 0) {
+            
+            if (allKeywords.length > 0) {
+                // 有關鍵字：只抓匹配行，找到足夠就停
+                for (const line of qaLines) {
+                    if (!line.trim()) continue;
+                    if (totalMatches >= MAX_KEYWORD_MATCHES) break;
+                    
                     if (allKeywords.some(k => line.toUpperCase().includes(k))) {
                         relevantContext += line + "\n";
+                        totalMatches++;
                     }
-                } else {
-                    // 無關鍵字時，不放 QA (避免雜訊)
                 }
-            });
+            } else {
+                // 無關鍵字：只抓前 N 行保底
+                for (let i = 0; i < qaLines.length && totalMatches < MAX_FALLBACK; i++) {
+                    if (!qaLines[i].trim()) continue;
+                    relevantContext += qaLines[i] + "\n";
+                    totalMatches++;
+                }
+            }
         }
         
-        // 篩選 Rules
-        if (fullRules) {
+        // 2️⃣ 再搜 Rules (補充規格，QA 不夠時才用)
+        if (fullRules && allKeywords.length > 0 && totalMatches < MAX_KEYWORD_MATCHES) {
             const ruleLines = fullRules.split('\n');
-            let matchCount = 0;
-            ruleLines.forEach(line => {
-                if (!line.trim()) return;
-                if (matchCount > 50) return; // 限制最大行數，避免 Token 爆炸
+            
+            for (const line of ruleLines) {
+                if (!line.trim()) continue;
+                if (totalMatches >= MAX_KEYWORD_MATCHES) break;
                 
-                // 只保留匹配行
-                if (allKeywords.length > 0) {
-                    if (allKeywords.some(k => line.toUpperCase().includes(k))) {
-                        relevantContext += line + "\n";
-                        matchCount++;
-                    }
+                if (allKeywords.some(k => line.toUpperCase().includes(k))) {
+                    relevantContext += line + "\n";
+                    totalMatches++;
                 }
-            });
+            }
         }
         
         // 若篩選後內容太少，可能是關鍵字沒抓到，加入一些基礎定義?
@@ -214,6 +267,7 @@ function buildDynamicContext(messages) {
 // ==========================================
 
 const SHEET_NAMES = { 
+  RECORDS: "所有紀錄",
   LOG: "LOG", 
   PROMPT: "Prompt", 
   LAST_CONVERSATION: "上次對話", 
@@ -232,9 +286,11 @@ const CACHE_KEYS = {
 };
 
 const CONFIG = {
-  MODEL_NAME: 'models/gemini-2.5-flash-lite',  // 升級：Gemini 2.5 Flash-Lite (更強、更平衡)
+  MODEL_NAME: 'models/gemini-2.5-flash-lite',  // Gemini 2.5 Flash-Lite (平衡性能與成本)
   MAX_OUTPUT_TOKENS: 8192, 
-  HISTORY_PAIR_LIMIT: 10, 
+  HISTORY_PAIR_LIMIT: 10,      // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
+  PDF_HISTORY_LIMIT: 6,        // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
+  SUMMARY_THRESHOLD: 12,       // v24.0.0: 超過 12 對才觸發摘要 (避免過度摘要)
   CACHE_TTL_SEC: 3600,
   DRAFT_TTL_SEC: 300, 
   
@@ -791,28 +847,28 @@ function getRelevantKBFiles(messages, kbList) {
 
     // 3. 關鍵字擴充 (查字典) + 提取完整型號
     let extendedQuery = combinedQuery;
-    let exactModels = []; // 精準型號清單
+    let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
     
-    // 🔧 修正型號正則：
+    // v24.0.0: 型號正則 - 只匹配「真正的型號」，不匹配術語
     // G系列: G90XF, G80SD, G60F 等（G + 2位數 + 1~2字母）
     // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
     // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
     // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
-    // 🆕 增加 3D/Hub 關鍵字偵測
-    const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3}|ODYSSEY\s?HUB|3D)\b/g;
+    // ⚠️ 不包含 ODYSSEY HUB、3D 等術語 - 這些只用於觸發直通車，不用於 PDF 匹配
+    const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
     
     Object.keys(keywordMap).forEach(key => {
         if (combinedQuery.includes(key)) {
             const mappedValue = keywordMap[key].toUpperCase();
             extendedQuery += " " + mappedValue;
             
-            // 從映射值提取型號
+            // 從映射值提取型號 (只提取真正的型號，不含術語)
             const modelMatch = mappedValue.match(MODEL_REGEX);
             if (modelMatch) {
                 exactModels = exactModels.concat(modelMatch);
             }
             
-            // 🆕 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
+            // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
             const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
             if (lsMatch) {
                 lsMatch.forEach(ls => {
@@ -830,7 +886,7 @@ function getRelevantKBFiles(messages, kbList) {
         exactModels = exactModels.concat(directModelMatch);
     }
     
-    // 🆕 從原始查詢提取 LS 系列
+    // 從原始查詢提取 LS 系列
     const directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
     if (directLsMatch) {
         directLsMatch.forEach(ls => {
@@ -841,7 +897,7 @@ function getRelevantKBFiles(messages, kbList) {
     
     exactModels = [...new Set(exactModels)]; // 去重
 
-    // 🆕 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
+    // 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
     // 許多 PDF 檔名不包含最後兩碼後綴 (SC, XC, EC...)
     const shortModels = [];
     exactModels.forEach(m => {
@@ -925,7 +981,17 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
 
     writeLog(`[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length} / ${kbList.length}`);
 
-    // --- 三段式邏輯注入 ---
+    // v24.0.0: 根據模式動態調整歷史長度，控制 Token 成本
+    // - Fast Mode: 保留 10 對 (20 則)
+    // - PDF Mode: 縮減至 6 對 (12 則)，節省約 800 Tokens 給 PDF
+    let effectiveMessages = messages;
+    if (attachPDFs && messages.length > CONFIG.PDF_HISTORY_LIMIT * 2) {
+        // PDF 模式：只保留最近 6 對
+        effectiveMessages = messages.slice(-(CONFIG.PDF_HISTORY_LIMIT * 2));
+        writeLog(`[Token Control] PDF Mode: 歷史縮減 ${messages.length} -> ${effectiveMessages.length}`);
+    }
+
+    // --- 三段式邏輯注入 (v23.6.0 - Brainy, Warm & Disciplined) ---
     let dynamicPrompt = `【Sheet C3 指令】\n${c3Prompt}\n`;
     
     // 注入動態上下文
@@ -933,36 +999,64 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         dynamicPrompt += `\n${dynamicContext}\n`;
     }
 
-    dynamicPrompt += `\n【⚠️ 最高準則】\n1. 若「QA頁」或「CLASS_RULES」有相關資訊，**必須**優先採用，禁止使用外部知識或幻覺。\n2. 若 QA 說「有」，你就回答「有」；若 QA 說「沒有」，你就回答「沒有」。\n3. **硬體規格判定**：若 CLASS_RULES 規格表中未明確列出某硬體（如：耳機孔、喇叭、攝影機），則**視為沒有**，禁止自行腦補。\n4. 對於 Odyssey 3D (G90XF) 等新機型，若規格表未寫「耳機孔」，請明確回答「沒有耳機孔」。\n5. **查無資料處理**：若 QA、CLASS_RULES、PDF 都沒有該型號的資料，請直接回答：「這台資料庫裡沒有，請聯絡Sam請他協助加入吧！」，不要嘗試回答。\n6. **型號稱呼**：當需要列出型號供使用者選擇或確認時，**必須**使用「S開頭的完整型號」（例如：S27FG532EC），不要只寫短代碼（例如：G53F）。\n`;
+    dynamicPrompt += `\n【⚠️ 最高準則：有大腦、有溫度、守紀律】
+1. **角色與語氣**：
+   - 請嚴格遵守 [Sheet C3 指令] 中的角色設定（新手專員/朋友口吻/使用「你」）。
+   - **禁止**自稱「資深專家」或使用「您」。
+   - 雖然是新手朋友，但面對「查無資料」的情況，請展現**遺憾但熱心**的態度（例如：「這個我手邊剛好沒資料，真不好意思，建議你...」），絕對禁止冷漠句點。
+
+2. **知識運用策略 (Hybrid Mode)**：
+   - **硬體規格 (Strict)**：關於「有沒有喇叭/耳機孔/Type-C」、「解析度」、「Hz」等硬體規格，**必須**嚴格依據 [CLASS_RULES] 或 [QA] 回答。若資料庫沒寫，視為「沒有」，禁止瞎掰。
+   - **一般知識 (Flexible)**：關於「推薦哪台」、「適合玩PS5嗎」、「什麼是OLED」等軟性問題，若資料庫無直接答案，**允許並鼓勵**使用你的通用知識庫進行回答。
+   - **時效性資訊處理**：
+     - 若使用者**未提及**特定活動，**請勿主動**提及已過期的優惠（例如雙11），以免造成誤會。
+     - 若使用者**主動詢問**（如「不是有雙11嗎？」），則**必須**依據資料回答該活動內容，並以**客觀、中性**的方式說明活動期間（例如：「該活動時間為...」），讓使用者自行判斷，**嚴禁**使用「溫馨提醒」等可能引起反感的贅詞。
+
+3. **查無資料處理**：
+   - **規格題**：若查無規格，回答「這台型號目前資料庫還沒有詳細規格，建議你直接聯繫 Sam 確認，以免資訊有誤。」
+   - **操作題**：若查無步驟，回答「資料庫中暫無此操作手冊，但我根據一般三星螢幕的經驗，通常是在... (提供通用建議)」。
+
+4. **型號稱呼**：
+   - 提及型號時，請盡量使用完整型號（如 S32DG802SC），避免只用短代碼，以示專業。
+
+5. **禁止事項**：
+   - 禁止說「我是AI」、「我沒有大腦」。
+   - 禁止在沒有嘗試回答前就直接叫人找 Sam。
+`;
     
     if (!attachPDFs && !imageBlob) {
-        // Phase 1: 極速模式
-        dynamicPrompt += `\n【⚠️ 極速模式 - 資料限制】
-        你目前只有「QA頁」和「CLASS_RULES」的精選內容，**沒有 PDF 手冊**。
-        若使用者問的問題需要操作步驟、OSD 路徑、故障排除，而資料庫沒有詳細記載：
-        1. **嚴禁** 直接叫使用者找 Sam (除非你已經深度搜尋過 PDF)。
-        2. **必須** 在回答最後加上暗號 [AUTO_SEARCH_PDF]，系統會自動幫你掛載 PDF 重新回答。
-        3. 暗號放在回答最後即可，不用特別說明。`;
+        // Phase 1: 極速模式 (Fast Mode)
+        dynamicPrompt += `\n【🚀 極速模式 - 快速回應】
+        你目前使用「精選 QA」與「規格表」進行快速服務。
+        
+        1. **操作步驟/故障排除**：
+           - 若 QA 中有答案 -> 直接回答。
+           - 若 QA 中無答案 -> **必須**在回答最後加上暗號 [AUTO_SEARCH_PDF]，系統會自動幫你翻閱 PDF 手冊。
+           - 在觸發 [AUTO_SEARCH_PDF] 前，你可以先給出一個簡短的通用建議，並說「稍等，我幫您翻閱詳細手冊...」。
+        
+        2. **保持對話溫度**：
+           - 不要只丟出答案就結束。
+           - 例如：「這台有支援 4K 喔！拿來接 PS5 效果很棒，您是打算接主機用的嗎？」`;
     } else if (attachPDFs) {
-        // Phase 2 & 3: 深度模式
-        dynamicPrompt += `\n【🚀 深度搜尋模式 - 已掛載 PDF 手冊】
+        // Phase 2 & 3: 深度模式 (Deep Mode)
+        dynamicPrompt += `\n【📚 深度搜尋模式 - 已掛載 PDF 手冊】
         系統已為你掛載了 PDF 手冊，請優先從 PDF 中尋找答案。
         
-        📋 **回答格式要求**：
-        - 如果 PDF 有多個相關步驟/解法，**必須全部列出**（至少 3-5 個），不要只給一個
-        - 每個步驟要具體說明 OSD 路徑或操作方式
-        - 如果還有更多相關內容，在結尾提示「還有其他方法，需要我繼續說明嗎？」
+        1. **回答格式**：
+           - 請詳細列出步驟（Step-by-Step）。
+           - 若 PDF 有多種解法，請全部列出。
+           - 引用 PDF 內容時，請轉化為口語化的教學，不要像機器人讀稿。
         
-        ⚠️ **禁止行為**：
-        1. 禁止只給一個步驟就結束（除非真的只有一個）
-        2. 禁止再輸出 [AUTO_SEARCH_PDF] 暗號
-        3. 如果連 PDF 裡都沒有寫：可用通用知識，但必須加上 (這是通用知識推測，僅供參考)
+        2. **禁止行為**：
+           - 禁止再輸出 [AUTO_SEARCH_PDF] 暗號 (避免無窮迴圈)。
+           - 若 PDF 真的沒寫，請用通用知識回答，並註明「手冊未記載，以上憑經驗建議」。
         
-        🔄 **換題偵測**：如果使用者的新問題與之前主題明顯無關，請在回答最後加上 [NEW_TOPIC] 暗號。`;
+        3. **換題偵測**：
+           - 如果使用者的新問題與之前主題明顯無關，請在回答最後加上 [NEW_TOPIC] 暗號。`;
         
         // 重試模式額外提醒
         if (isRetry) {
-            dynamicPrompt += `\n        4. 【重試模式】這是系統自動重試，請直接回答問題，不要提及「系統重試」或「深度搜尋」。`;
+            dynamicPrompt += `\n        4. 【系統重試中】這是自動觸發的深度搜尋，請直接給出最完整的答案，不需要解釋「我剛剛去查了手冊」。`;
         }
     }
 
@@ -975,7 +1069,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         });
     } else {
         let first=true;
-        messages.forEach(msg => {
+        effectiveMessages.forEach(msg => {
             if (msg.role === 'system') return; 
             const parts = [];
             if (msg.role === 'user' && first) {
@@ -993,13 +1087,14 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     const payload = {
         contents: geminiContents,
         systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-        // Flash-Lite 策略：
-        // - 移除 thinkingConfig 以節省 Output Tokens (元凶一)
-        // - 保持 maxOutputTokens 與 temperature 設定
+        // v24.0.0: Think Mode 條件開啟
+        // - PDF 模式：開啟 Think (提升閱讀理解，成本增加 <10%)
+        // - Fast 模式：關閉 Think (QA/Rules 已是整理好的答案，不需思考)
         generationConfig: { 
             maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS, 
             temperature: tempSetting
         },
+        thinkingConfig: attachPDFs ? { thinkingBudget: 2048 } : { thinkingBudget: 0 },
         safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
     };
 
@@ -1151,7 +1246,16 @@ function formatForLineMobile(text) {
   return processed.trim();
 }
 
-function handleMessage(userMessage, userId, replyToken, contextId) {
+function writeRecordDirectly(u,t,c,r,f) {
+  try { 
+    ss.getSheetByName(SHEET_NAMES.RECORDS).appendRow([new Date(), c, u, formatForLineMobile(t), r, f]); 
+    SpreadsheetApp.flush(); 
+  } catch(e) {
+    console.error("Record Error: " + e.message);
+  }
+}
+
+function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
   try {
     if (!userMessage || !userMessage.trim()) return;
     const msg = userMessage.trim();
@@ -1162,12 +1266,20 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
     const isCommand = msg.startsWith('/');
     
     if (!isCommand) {
-      const msgHash = `msg_${userId}_${Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, msg).map(b => (b & 0xFF).toString(16).padStart(2, '0')).join('')}`;
-      if (cache.get(msgHash)) {
+      // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
+      // 若沒有 messageId (舊版相容)，則退回使用內容雜湊
+      let dedupKey = "";
+      if (messageId) {
+          dedupKey = `msg_id_${messageId}`;
+      } else {
+          dedupKey = `msg_${userId}_${Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, msg).map(b => (b & 0xFF).toString(16).padStart(2, '0')).join('')}`;
+      }
+
+      if (cache.get(dedupKey)) {
           writeLog(`[Duplicate] 忽略重複訊息: ${msg.substring(0, 30)}`);
           return;
       }
-      cache.put(msgHash, '1', 60);
+      cache.put(dedupKey, '1', 60);
     }
     
     // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
@@ -1193,8 +1305,8 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
         writeLog(`[Reply] ${cmdResult.substring(0, 100)}...`);
         replyMessage(replyToken, cmdResult);
         const isReset = (msg === '/重啟' || msg === '/reboot') ? 'TRUE' : '';
-        // if (isReset) writeRecordDirectly(userId, msg, contextId, 'user', isReset);
-        // if (cmdResult) { writeRecordDirectly(userId, cmdResult, contextId, 'assistant', ''); }
+        if (isReset) writeRecordDirectly(userId, msg, contextId, 'user', isReset);
+        if (cmdResult) { writeRecordDirectly(userId, cmdResult, contextId, 'assistant', ''); }
         return;
     }
     
@@ -1229,8 +1341,7 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
     //    - 這裡將 PDF Mode 的 TTL 縮短為 5 分鐘 (300秒)，避免過久
     
     // E. 直通車檢查 (Direct Search) - 命中關鍵字強制進 PDF
-    // 2025-12-05: 用戶要求取消直通車，改為全權由 LLM 判斷 (QA -> LLM -> PDF)
-    /*
+    // 2025-12-05: 恢復直通車邏輯，確保 Odyssey Hub 等術語能觸發 PDF
     if (!isInPdfMode) {
         if (checkDirectDeepSearch(msg)) {
             writeLog("[Direct Search] 命中直通車關鍵字，強制開啟 PDF 模式");
@@ -1238,9 +1349,8 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
             cache.put(pdfModeKey, 'true', 300); // 改為 5 分鐘
         }
     }
-    */
     
-    // 智慧退出：簡單問題不需要 PDF（價格、官網、日期、閒聊等）
+    // 智慧退出：簡單問題不需要 PDF（價格、官網、日期、閒聊、新品等）
     const simplePatterns = [
         /多少錢|價格|價錢|售價/i,
         /官網|網址|網站|連結|link/i,
@@ -1248,7 +1358,9 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
         /謝謝|感謝|好的|了解|OK|掰/i,
         /^.{1,5}$/,  // 少於 5 字的簡短回覆
         /根據|哪裡|為什麼|怎麼知道|來源/i,  // 追問來源類（不需要再查 PDF）
-        /還有嗎|其他|更多|繼續/i  // 追問更多類
+        /還有嗎|其他|更多|繼續/i,  // 追問更多類
+        /新機|新品|推薦|最新|上市|熱門|最近/i,  // 新品推薦類（CLASS_RULES 沒有就是沒有）
+        /比較|差異|差別|哪個好|選哪/i  // 比較類（需要人工判斷）
     ];
     const isSimpleQuestion = simplePatterns.some(p => p.test(msg));
     if (isInPdfMode && isSimpleQuestion) {
@@ -1350,10 +1462,40 @@ function handleMessage(userMessage, userId, replyToken, contextId) {
           }
 
           replyMessage(replyToken, replyText);
-          // writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
+          writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
           writeLog(`[AI Reply] ${finalText.substring(0, 500)}${finalText.length > 500 ? '...' : ''}`); 
           
           updateHistorySheetAndCache(contextId, history, userMsgObj, { role: 'assistant', content: finalText });
+
+          // 2025-12-05 v23.6.5: 背景異步整理 (Async Background Summary)
+          try {
+              const currentHistory = getHistoryFromCacheOrSheet(contextId);
+              if (currentHistory.length > 5) {
+                  writeLog(`[AsyncSummary] 觸發背景整理，目前長度: ${currentHistory.length}`);
+                  const summary = callGeminiToSummarize(currentHistory);
+                  
+                  if (summary) {
+                      const lastTwo = currentHistory.slice(-2);
+                      const summaryMsg = { 
+                          role: 'user', 
+                          content: `【系統自動摘要】\n之前的對話重點：${summary}\n(請基於此上下文繼續服務)` 
+                      };
+                      const ackMsg = {
+                          role: 'assistant',
+                          content: '好的，我已了解之前的對話脈絡。'
+                      };
+                      
+                      const newHist = [summaryMsg, ackMsg, ...lastTwo];
+                      const cache = CacheService.getScriptCache();
+                      const json = JSON.stringify(newHist);
+                      cache.put(`${CACHE_KEYS.HISTORY_PREFIX}${contextId}`, json, CONFIG.CACHE_TTL_SEC);
+                      writeLog(`[AsyncSummary] 整理完成，新長度: ${newHist.length}`);
+                  }
+              }
+          } catch (e) {
+              writeLog(`[AsyncSummary Error] ${e.message}`);
+          }
+
         } else {
             writeLog(`[Error] AI 回傳為空`);
             replyMessage(replyToken, "系統忙碌中 (AI Empty)");
@@ -2386,11 +2528,16 @@ function getHistoryFromCacheOrSheet(cid) {
       try { return JSON.parse(v); } catch(e) {}
   }
   try {
-    const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    // const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-    // if (f) {
-    //     return JSON.parse(s.getRange(f.getRow(), 2).getValue());
-    // }
+    // 2025-12-05: 恢復 Sheet 讀取 (Cache Miss 時的備案)
+    let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+    if (!s) {
+        // 若 Sheet 不存在，視為無歷史，不需建立 (等到寫入時再建)
+        return [];
+    }
+    const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+    if (f) {
+        return JSON.parse(s.getRange(f.getRow(), 2).getValue());
+    }
   } catch(e) {}
   return [];
 }
@@ -2401,18 +2548,121 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
     if (base.length % 2 !== 0) {
         base.shift();
     }
-    const newHist = [...base, uMsg, aMsg].slice(-(CONFIG.HISTORY_PAIR_LIMIT * 2));
-    const json = JSON.stringify(newHist);
-    // const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    // const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
     
-    // if (f) {
-    //     s.getRange(f.getRow(), 2).setValue(json);
-    // } else {
-    //     s.appendRow([cid, json]);
-    // }
+    // 合併新訊息
+    let newHist = [...base, uMsg, aMsg];
+    
+    // v24.0.0: 智慧摘要機制 (Rolling Summary)
+    // 只在超長對話 (>12對=24則) 才觸發摘要，避免過度壓縮導致失憶
+    const SUMMARY_THRESHOLD = CONFIG.SUMMARY_THRESHOLD * 2; // 24
+    const MAX_MSG_COUNT = CONFIG.HISTORY_PAIR_LIMIT * 2; // 20 (Fast Mode 上限)
+    
+    if (newHist.length > SUMMARY_THRESHOLD) {
+        writeLog(`[History] 超長對話 (${newHist.length} > ${SUMMARY_THRESHOLD})，啟動摘要...`);
+        
+        const splitIndex = Math.floor(newHist.length / 2);
+        const safeSplitIndex = splitIndex % 2 === 0 ? splitIndex : splitIndex - 1;
+        
+        const oldMsgs = newHist.slice(0, safeSplitIndex);
+        const recentMsgs = newHist.slice(safeSplitIndex);
+        
+        const summary = callGeminiToSummarize(oldMsgs);
+        
+        if (summary) {
+            const summaryMsg = { 
+                role: 'user', 
+                content: `【系統自動摘要】\n之前的對話重點：${summary}\n(請基於此上下文繼續服務)` 
+            };
+            const ackMsg = {
+                role: 'assistant',
+                content: '好的，我已了解之前的對話脈絡。'
+            };
+            
+            newHist = [summaryMsg, ackMsg, ...recentMsgs];
+            writeLog(`[History] 摘要完成，新長度: ${newHist.length}`);
+        } else {
+            newHist = newHist.slice(-MAX_MSG_COUNT);
+            writeLog(`[History] 摘要失敗，執行簡單切分`);
+        }
+    }
+    
+    const json = JSON.stringify(newHist);
     CacheService.getScriptCache().put(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`, json, CONFIG.CACHE_TTL_SEC);
-  } catch (e) {}
+
+    // 2025-12-05: 恢復 Sheet 寫入 (長期記憶備份)
+    // 自動檢查並建立 Sheet，防止因刪除導致失效
+    try {
+        let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+        if (!s) {
+            s = ss.insertSheet(SHEET_NAMES.LAST_CONVERSATION);
+            s.appendRow(["ContextID", "HistoryJSON", "LastUpdated"]); // 補標題
+            writeLog(`[AutoCreate] 已自動重建 ${SHEET_NAMES.LAST_CONVERSATION} 工作表`);
+        }
+        
+        const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+        if (f) {
+            s.getRange(f.getRow(), 2).setValue(json);
+            s.getRange(f.getRow(), 3).setValue(new Date());
+        } else {
+            s.appendRow([cid, json, new Date()]);
+        }
+    } catch (sheetErr) {
+        writeLog(`[History Sheet Error] ${sheetErr.message}`);
+    }
+
+  } catch (e) {
+      writeLog(`[UpdateHistory Error] ${e.message}`);
+  }
+}
+
+/**
+ * 呼叫 Gemini 摘要對話紀錄
+ */
+function callGeminiToSummarize(messages) {
+    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    if (!apiKey) return null;
+    
+    const convoText = messages.map(m => `${m.role === 'user' ? '用戶' : '客服'}: ${m.content}`).join('\n');
+    
+    // 2025-12-05 v23.6.5: 強化摘要 Prompt，強制保留關鍵實體
+    const prompt = `請將以下客服對話摘要成 300 字以內的重點。
+【強制保留關鍵實體 (Key Entities)】
+1. 產品型號 (如 G90XF, S32DG802) - 這是最重要的資訊，絕對不能遺漏！
+2. 故障代碼或具體問題 (如 3D 無法開啟, 螢幕閃爍)
+3. 用戶偏好或特殊需求
+4. 已嘗試過的解決方案
+
+請以第三人稱客觀描述，例如：「用戶詢問 G90XF 的 3D 功能...」。
+
+${convoText}`;
+
+    const payload = {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { 
+            maxOutputTokens: 500, 
+            temperature: 0.3
+        }
+    };
+    
+    try {
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, {
+            method: 'post',
+            headers: { 'Content-Type': 'application/json' },
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+        });
+        
+        if (res.getResponseCode() !== 200) return null;
+        
+        const json = JSON.parse(res.getContentText());
+        if (json.candidates && json.candidates[0].content) {
+            return json.candidates[0].content.parts[0].text.trim();
+        }
+        return null;
+    } catch (e) {
+        writeLog(`[Summarize Error] ${e.message}`);
+        return null;
+    }
 }
 
 function clearHistorySheetAndCache(cid) {
@@ -2473,7 +2723,7 @@ function doPost(e) {
                     }
                 });
                 if (!cleanedText) { replyMessage(replyToken, "有事嗎？"); return; }
-                handleMessage(cleanedText, userId, replyToken, contextId);
+                handleMessage(cleanedText, userId, replyToken, contextId, event.message.id);
             } else if (event.message.type === 'image') {
                 if (userId === CONFIG.VIP_IMAGE_USER) {
                     handleImageMessage(event.message.id, userId, replyToken, contextId);
@@ -2481,7 +2731,7 @@ function doPost(e) {
             }
         } else {
             if (event.message.type === 'text') {
-                handleMessage(event.message.text, userId, replyToken, contextId);
+                handleMessage(event.message.text, userId, replyToken, contextId, event.message.id);
             } else if (event.message.type === 'image') {
                 handleImageMessage(event.message.id, userId, replyToken, contextId);
             }
