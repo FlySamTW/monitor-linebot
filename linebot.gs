@@ -1,8 +1,15 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.2 (API 400 修復 - thinkingConfig 位置修正)
+ * Version: 24.1.3 (編輯模式 THINK 最佳化)
  * 
- * 🔥 v24.1.2 更新 - 修復 API 400 錯誤：
+ * 🔥 v24.1.3 更新 - 編輯模式 THINK 最佳化：
+ * - Polish API（初版生成）：開啟 thinkingBudget: 1024 → 理解用戶意圖、組織內容
+ * - Refine API（修改調整）：開啟 thinkingBudget: 1024 → 精細調整、權衡多版本
+ * - Merge API（多 QA 合併）：開啟 thinkingBudget: 512 → 融合資訊、格式調整
+ * - 保留邏輯任務關閉 THINK（Modify、FindSimilar）→ 降低成本
+ * - 成本增加 ~8-12%，但編輯品質大幅提升
+ * 
+ * 🔥 v24.1.2 更新 - API 400 修復 - thinkingConfig 位置修正：
  * - 根本原因：thinkingConfig 參數位置錯誤（應在 generationConfig 內部，非 payload 頂層）
  * - 修復方案：將所有 thinkingConfig 移至 generationConfig 內部
  * - 恢復 Think Mode 功能：PDF Mode 開啟 thinkingBudget: 2048，Fast Mode 設為 0
@@ -1957,7 +1964,7 @@ function callGeminiToMergeQA(existingQAs, newQA) {
         generationConfig: { 
             maxOutputTokens: 1000, 
             temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            thinkingConfig: { thinkingBudget: 512 }
         }
     };
     
@@ -2067,7 +2074,7 @@ ${historyText}
         generationConfig: { 
             maxOutputTokens: 1000, 
             temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            thinkingConfig: { thinkingBudget: 1024 }
         }
     };
     
@@ -2151,7 +2158,7 @@ ${input}
         generationConfig: { 
             maxOutputTokens: 1000, 
             temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 0 }
+            thinkingConfig: { thinkingBudget: 1024 }
         }
     };
     
