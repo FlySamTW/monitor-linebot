@@ -5,6 +5,63 @@
 
 ---
 
+## Version 24.1.6 - Odyssey Hub 關鍵字匹配修復（第一問題解決）
+**日期**: 2025/12/05
+**類型**: 關鍵字匹配 / 使用者體驗優化
+
+### 問題背景
+用戶詢問：「我用Odyssey Hub開啟遊戲但是沒有顯示3D耶？」
+系統反應：
+1. ✅ 直通車觸發，進入 PDF Mode
+2. ❌ 但 LOG 顯示 Files: 0 / 56，沒有載入任何 PDF
+3. ❌ 回答不完整，用戶需要追問「繼續」才能得到完整答案
+
+### 根本原因
+在 `getRelevantKBFiles()` 函數中，KEYWORD_MAP 的查詢邏輯沒有「去空白」處理：
+- 用戶輸入：「Odyssey Hub」(帶空格)
+- KEYWORD_MAP 的 Key：「OdysseyHub」(無空格)
+- 結果：`combinedQuery.includes(key)` 返回 false，無法匹配到 OdysseyHub
+- 最終：無法提取 G90XF 型號，故找不到對應的 PDF
+
+### 修復方案
+
+**1. 關鍵字匹配優化**：
+```javascript
+const combinedQueryNoSpace = combinedQuery.replace(/\s+/g, '');
+if (combinedQuery.includes(key) || combinedQueryNoSpace.includes(key)) {
+    // 匹配成功，提取型號...
+}
+```
+
+**2. PDF 名稱友善化**：
+```javascript
+// 舊版：「將查閱：S27FG900」
+// 新版：「將查閱：Odyssey 3D 產品手冊」
+const productNames = pdfNames.map(name => getPdfProductName(name));
+```
+
+### 新增函數
+
+**`getPdfProductName(pdfFileName)`**
+- 將 PDF 檔名（如 S27FG900）轉換為產品名稱（如 Odyssey 3D）
+- 優先從 KEYWORD_MAP 反向查詢，失敗則使用簡單規則
+- 回退策略確保不會失敗
+
+### 效果驗證
+
+修復前：
+```
+[KB Load] AttachPDFs: true, isRetry: false, Files: 0 / 56
+```
+
+修復後：
+```
+[KB Load] AttachPDFs: true, isRetry: false, Files: 2 / 56
+→ 可正確載入 Odyssey 3D 相關 PDF
+```
+
+---
+
 ## Version 24.1.5 - PDF Mode 黏性修復（型號變化自動清除）
 **日期**: 2025/12/05
 **類型**: 架構優化 / 智慧退出機制

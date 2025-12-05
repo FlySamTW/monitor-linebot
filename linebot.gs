@@ -1,6 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.5 (型號變化自動清除 PDF Mode)
+ * Version: 24.1.6 (Odyssey Hub 關鍵字匹配 + PDF 名稱友善化)
+ * 
+ * 🔥 v24.1.6 更新 - 第一問題修復：
+ * - 修復：getRelevantKBFiles 現在支援「去空白」的關鍵字匹配
+ *   當用戶說「Odyssey Hub」時，系統可正確匹配「OdysseyHub」並提取 G90XF
+ * - 優化：回覆時使用產品名稱代替 PDF 檔名
+ *   例如：「將查閱：Odyssey 3D 產品手冊」而非「將查閱：S27FG900」
+ * - 新增：getPdfProductName() 函數進行智慧轉換
  * 
  * 🔥 v24.1.5 更新 - PDF Mode 黏性修復（型號變化自動退出）：
  * - 新增 checkAndClearPdfModeOnModelChange() 函數
@@ -231,6 +238,79 @@ function extractModelNumbers(text) {
     } catch (e) {
         writeLog("[Error] extractModelNumbers: " + e.message);
         return [];
+    }
+}
+
+/**
+ * v24.1.5 新增：將 PDF 檔名轉換為用戶友善的產品名稱
+ * 例如：S27FG900 → Odyssey G7 (27吋)
+ * 如果轉換失敗，則返回原始檔名
+ */
+function getPdfProductName(pdfFileName) {
+    try {
+        if (!pdfFileName) return '';
+        
+        const upperName = pdfFileName.toUpperCase();
+        
+        // 從 CLASS_RULES 讀取映射關係
+        let productMap = {};
+        try {
+            const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+            if (mapJson) {
+                const keywordMap = JSON.parse(mapJson);
+                // 從 KEYWORD_MAP 反向建立 型號→產品名稱 的映射
+                Object.keys(keywordMap).forEach(key => {
+                    const value = keywordMap[key];
+                    // 提取型號部分
+                    const modelMatch = value.match(/\(([A-Z]\d{2}[A-Z]{1,3})\)/);
+                    if (modelMatch) {
+                        const model = modelMatch[1];
+                        // 保留最簡潔的產品名稱（不含規格詳情）
+                        const productName = value.split('\n')[0] || value;
+                        productMap[model] = productName;
+                    }
+                });
+            }
+        } catch(e) {}
+        
+        // 嘗試從檔名提取型號，然後查表
+        // 例如 S27FG900 → 查表找「Odyssey G7」
+        const possibleModels = [
+            ...pdfFileName.match(/\b([SG]\d{2}[A-Z]{1,3})\b/g) || [],
+            ...pdfFileName.match(/\bM[5789]\d?[A-Z]?\b/g) || []
+        ];
+        
+        for (const model of possibleModels) {
+            if (productMap[model]) {
+                return productMap[model];
+            }
+        }
+        
+        // 如果找不到映射，使用簡單的型號別稱規則
+        const simpleNames = {
+            'G90': 'Odyssey 3D',
+            'G80': 'Odyssey G8',
+            'G70': 'Odyssey G7',
+            'G60': 'Odyssey G6',
+            'G50': 'Odyssey G5',
+            'G9': 'Odyssey G9',
+            'M7': 'Smart Monitor M7',
+            'M8': 'Smart Monitor M8',
+            'M9': 'Smart Monitor M9',
+            'M5': 'Smart Monitor M5'
+        };
+        
+        for (const [key, name] of Object.entries(simpleNames)) {
+            if (upperName.includes(key)) {
+                return name;
+            }
+        }
+        
+        // 預設返回原始檔名
+        return pdfFileName.replace('.pdf', '');
+        
+    } catch (e) {
+        return pdfFileName.replace('.pdf', '');
     }
 }
 
@@ -978,8 +1058,13 @@ function getRelevantKBFiles(messages, kbList) {
     // ⚠️ 不包含 ODYSSEY HUB、3D 等術語 - 這些只用於觸發直通車，不用於 PDF 匹配
     const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
     
+    // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
+    // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
+    const combinedQueryNoSpace = combinedQuery.replace(/\s+/g, '');
+    
     Object.keys(keywordMap).forEach(key => {
-        if (combinedQuery.includes(key)) {
+        // v24.1.5: 修正：同時檢查原始查詢和去空白查詢
+        if (combinedQuery.includes(key) || combinedQueryNoSpace.includes(key)) {
             const mappedValue = keywordMap[key].toUpperCase();
             extendedQuery += " " + mappedValue;
             
@@ -1562,8 +1647,10 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                   // 預測會用到哪些 PDF
                   const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
                   const relevantFiles = getRelevantKBFiles([...history, userMsgObj], kbList);
-                  const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', '')).slice(0, 3);
-                  const pdfHint = pdfNames.length > 0 ? `\n📖 將查閱：${pdfNames.join('、')}` : '';
+                  const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
+                  // v24.1.5: 使用產品名稱代替檔名
+                  const productNames = pdfNames.map(name => getPdfProductName(name)).slice(0, 3);
+                  const pdfHint = productNames.length > 0 ? `\n📖 將查閱：${productNames.join('、')} 產品手冊` : '';
                   
                   // 儲存待查詢，等使用者確認
                   cache.put(CACHE_KEYS.PENDING_QUERY + userId, msg, 300);  // 5 分鐘有效
@@ -1666,7 +1753,9 @@ function handleDeepSearch(originalQuery, userId, replyToken, contextId) {
         const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
         const relevantFiles = getRelevantKBFiles([...history, userMsgObj], kbList);
         const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
-        const pdfHint = pdfNames.length > 0 ? `\n📖 參考：${pdfNames.slice(0, 3).join('、')}` : '';
+        // v24.1.5: 使用產品名稱代替檔名
+        const productNames = pdfNames.map(name => getPdfProductName(name));
+        const pdfHint = productNames.length > 0 ? `\n📖 參考：${productNames.slice(0, 3).join('、')} 產品手冊` : '';
         
         // 深度呼叫
         const rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId); 
