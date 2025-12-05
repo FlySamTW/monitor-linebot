@@ -1,6 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.4 (編輯 API Token 記錄完善)
+ * Version: 24.1.5 (型號變化自動清除 PDF Mode)
+ * 
+ * 🔥 v24.1.5 更新 - PDF Mode 黏性修復（型號變化自動退出）：
+ * - 新增 checkAndClearPdfModeOnModelChange() 函數
+ * - 新增 extractModelNumbers() 函數提取型號編碼
+ * - 當用戶從 Odyssey 3D (G90XF) 切換到 M7 時，自動清除 PDF Mode
+ * - 優先使用 Fast Mode (QA/CLASS_RULES) 回答，避免浪費 Token 讀不相關 PDF
+ * - 符合 Brain-First 架構設計理念
  * 
  * 🔥 v24.1.4 更新 - 編輯 API 成本追蹤：
  * - callGeminiToPolish：加入 Token 和成本記錄
@@ -141,6 +148,89 @@ function checkDirectDeepSearch(msg) {
     } catch (e) {
         writeLog("[Error] checkDirectDeepSearch: " + e.message);
         return false;
+    }
+}
+
+/**
+ * v24.1.5 新增：偵測型號變化，自動清除不相關的 PDF Mode
+ * 當用戶問的型號與當前 PDF Mode 的型號不同時，清除 PDF Mode
+ * 讓系統先用 CLASS_RULES（Fast Mode）回答
+ */
+function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
+    try {
+        const cache = CacheService.getScriptCache();
+        
+        // 從當前訊息提取型號
+        const currentModels = extractModelNumbers(msg);
+        if (currentModels.length === 0) {
+            return false;  // 沒有提到型號，不需要清除
+        }
+        
+        // 從歷史對話中提取前一個提到的型號
+        let previousModels = [];
+        if (currentHistory && currentHistory.length > 0) {
+            // 查看最近 3 句（往前看）
+            for (let i = Math.max(0, currentHistory.length - 6); i < currentHistory.length; i++) {
+                const histMsg = currentHistory[i];
+                if (histMsg && histMsg.content) {
+                    const models = extractModelNumbers(histMsg.content);
+                    if (models.length > 0) {
+                        previousModels = models;
+                        break;  // 找到最近提到的型號就停止
+                    }
+                }
+            }
+        }
+        
+        // 比對：如果型號不同，清除 PDF Mode
+        if (previousModels.length > 0 && currentModels.length > 0) {
+            const isSameModel = previousModels.some(pm => currentModels.some(cm => pm === cm));
+            if (!isSameModel) {
+                writeLog(`[ModelChange] 偵測到型號變化：${previousModels.join(',')} → ${currentModels.join(',')}，清除 PDF Mode`);
+                return true;  // 表示需要清除 PDF Mode
+            }
+        }
+        
+        return false;
+    } catch (e) {
+        writeLog("[Error] checkAndClearPdfModeOnModelChange: " + e.message);
+        return false;
+    }
+}
+
+/**
+ * v24.1.5 新增：提取訊息中的型號編碼
+ * 支援 S27FG900、G90XF、M70D 等各種格式
+ */
+function extractModelNumbers(text) {
+    try {
+        if (!text) return [];
+        
+        const models = [];
+        const upperText = text.toUpperCase();
+        
+        // 型號正則表達式（涵蓋所有常見格式）
+        const modelPatterns = [
+            /\b([SG][\dA-Z]+[CDEFGHKLMNPSTX]{0,3})\b/g,  // S27FG900, G90XF 等
+            /\bM([5789][\dA-Z]*)\b/g,                      // M5, M7, M8, M9 系列
+            /\bARK\s*(?:DIAL|HUB)?\b/gi,                  // ARK / ARK DIAL / ARK HUB
+            /\bODYSSEY\s*(?:HUB|3D)?\b/gi                 // Odyssey / Odyssey Hub / Odyssey 3D
+        ];
+        
+        modelPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(upperText)) !== null) {
+                const model = match[1] || match[0];
+                if (model.length >= 3 && !models.includes(model)) {
+                    models.push(model);
+                }
+            }
+        });
+        
+        return models;
+    } catch (e) {
+        writeLog("[Error] extractModelNumbers: " + e.message);
+        return [];
     }
 }
 
@@ -1379,6 +1469,14 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     //    - 若用戶換話題 (NEW_TOPIC)，AI 會自動退出
     //    - 若用戶問簡單問題 (Simple Question)，暫時不掛 PDF
     //    - 這裡將 PDF Mode 的 TTL 縮短為 5 分鐘 (300秒)，避免過久
+    
+    // v24.1.5: 型號變化自動清除 PDF Mode
+    // 當用戶切換到不同型號時，自動清除 PDF Mode，先用 Fast Mode (QA/Rules) 回答
+    if (isInPdfMode && checkAndClearPdfModeOnModelChange(msg, history)) {
+        writeLog("[PDF Mode] 偵測到型號變化，清除 PDF Mode，回到 Fast Mode");
+        isInPdfMode = false;
+        cache.remove(pdfModeKey);
+    }
     
     // E. 直通車檢查 (Direct Search) - 命中關鍵字強制進 PDF
     // 2025-12-05: 恢復直通車邏輯，確保 Odyssey Hub 等術語能觸發 PDF

@@ -5,6 +5,46 @@
 
 ---
 
+## Version 24.1.5 - PDF Mode 黏性修復（型號變化自動清除）
+**日期**: 2025/12/05
+**類型**: 架構優化 / 智慧退出機制
+
+### 問題背景
+用戶從詢問 Odyssey 3D (G90XF) 的 3D 設定問題，切換到詢問 M7 的面板規格。
+系統仍延續 PDF Mode，導致：
+1. 載入 G90XF 相關 PDF（浪費 Token）
+2. PDF 中沒有 M7 面板規格 → 回答「資料沒寫」
+3. 忽視了 CLASS_RULES 中明確記載的 M7 VA 面板規格
+
+### 根本原因
+PDF Mode 的「黏性」（TTL 5 分鐘）設計本意是讓同一主題的連續追問能重複使用 PDF。
+但當用戶**型號變化**（從 A 型號切換到 B 型號）時，系統沒有偵測到，仍載入 A 型號的 PDF。
+
+### 修復方案
+**新增型號變化偵測邏輯**：
+1. `extractModelNumbers(text)` - 從訊息提取所有型號
+2. `checkAndClearPdfModeOnModelChange(msg, history)` - 比對當前型號與歷史型號
+3. 當型號不同時，自動清除 PDF Mode，回到 Fast Mode (QA + CLASS_RULES)
+
+**邏輯流程**：
+```
+用戶: "m7用什麼面板"
+  ↓ 提取型號: M7
+  ↓ 檢查歷史: 上一個討論的是 G90XF
+  ↓ 型號不同? YES
+  ↓ 清除 PDF Mode，回到 Fast Mode
+  ↓ 查詢 CLASS_RULES → 找到 "M7: VA 平面螢幕" ✓
+  ↓ 直接回答，不浪費 Token 讀 PDF
+```
+
+### 支援的型號格式
+- Samsung 標準型號: S27FG900, S32DG802
+- 電競型號: G90XF, G80SD
+- Smart Monitor: M7, M8, M9, M70D, S27FM703UC
+- 特殊機種: ARK, ARK DIAL, Odyssey, Odyssey 3D, Odyssey Hub
+
+---
+
 ## Version 24.1.4 - 編輯 API 成本追蹤完善
 **日期**: 2025/12/05
 **類型**: 工程優化 / 監測強化
