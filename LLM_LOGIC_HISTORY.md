@@ -5,6 +5,31 @@
 
 ---
 
+## Version 24.1.4 - 編輯 API 成本追蹤完善
+**日期**: 2025/12/05
+**類型**: 工程優化 / 監測強化
+
+### 編輯 API Token 完整記錄
+
+**新增內容**：
+- `callGeminiToPolish` - 初版 QA 生成時記錄 Token 用量和成本
+- `callGeminiToRefineQA` - 用戶修改指令後記錄 Token 用量和成本
+- `callGeminiToMergeQA` - 合併多個 QA 時記錄 Token 用量和成本
+
+**記錄格式**：
+```
+[Polish Tokens] In: 345, Out: 128, Total: 473 (約 NT$0.0189)
+[RefineQA Tokens] In: 567, Out: 234, Total: 801 (約 NT$0.0321)
+[MergeQA Tokens] In: 789, Out: 345, Total: 1134 (約 NT$0.0454)
+```
+
+**用途**：
+- 分析建檔系統的 Token 消耗分佈
+- 評估編輯模式的性價比
+- 追蹤 Think Mode (1024/512 budget) 實際消耗
+
+---
+
 ## Version 23.6.4 - Brainy, Warm & Disciplined
 **日期**: 2025/12/05
 **類型**: 邏輯修正 / 體驗優化

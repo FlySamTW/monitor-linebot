@@ -1,6 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.3 (編輯模式 THINK 最佳化)
+ * Version: 24.1.4 (編輯 API Token 記錄完善)
+ * 
+ * 🔥 v24.1.4 更新 - 編輯 API 成本追蹤：
+ * - callGeminiToPolish：加入 Token 和成本記錄
+ * - callGeminiToRefineQA：加入 Token 和成本記錄
+ * - callGeminiToMergeQA：加入 Token 和成本記錄
+ * - 建檔系統現在可完整追蹤每個步驟的 API 消耗
+ * - 便於分析編輯操作的成本占比
  * 
  * 🔥 v24.1.3 更新 - 編輯模式 THINK 最佳化：
  * - Polish API（初版生成）：開啟 thinkingBudget: 1024 → 理解用戶意圖、組織內容
@@ -1986,6 +1993,15 @@ function callGeminiToMergeQA(existingQAs, newQA) {
         }
         
         var json = JSON.parse(body);
+        
+        // 記錄 Token 用量
+        if (json.usageMetadata) {
+            var usage = json.usageMetadata;
+            var costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
+            var costTWD = costUSD * 32;
+            writeLog(`[MergeQA Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+        }
+        
         var candidates = (json && json.candidates) ? json.candidates : [];
         if (candidates.length === 0) return newQA;
         
@@ -2102,6 +2118,14 @@ ${historyText}
             return simpleModifyFallback(currentQA, conversation[conversation.length - 1]);
         }
 
+        // 記錄 Token 用量
+        if (json.usageMetadata) {
+            const usage = json.usageMetadata;
+            const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
+            const costTWD = costUSD * 32;
+            writeLog(`[RefineQA Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+        }
+
         const candidates = (json && json.candidates) ? json.candidates : [];
         const firstCandidate = (candidates.length > 0) ? candidates[0] : null;
         const finishReason = (firstCandidate && firstCandidate.finishReason) ? firstCandidate.finishReason : 'UNKNOWN';
@@ -2185,6 +2209,14 @@ ${input}
         } catch (parseErr) {
             writeLog(`[Polish Parse Error] ${parseErr.message}`);
             return simplePolishFallback(input);
+        }
+
+        // 記錄 Token 用量
+        if (json.usageMetadata) {
+            const usage = json.usageMetadata;
+            const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
+            const costTWD = costUSD * 32;
+            writeLog(`[Polish Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
         }
 
         // 安全取得第一個候選文字 (GAS 不支援 Optional Chaining)
