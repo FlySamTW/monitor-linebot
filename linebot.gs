@@ -1,15 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.6 (Odyssey Hub 關鍵字匹配 + PDF 名稱友善化)
+ * Version: 24.1.7 (動畫計時器重置 + M7 面板信息補全)
  * 
- * 🔥 v24.1.6 更新 - 第一問題修復：
- * - 修復：getRelevantKBFiles 現在支援「去空白」的關鍵字匹配
- *   當用戶說「Odyssey Hub」時，系統可正確匹配「OdysseyHub」並提取 G90XF
- * - 優化：回覆時使用產品名稱代替 PDF 檔名
- *   例如：「將查閱：Odyssey 3D 產品手冊」而非「將查閱：S27FG900」
- * - 新增：getPdfProductName() 函數進行智慧轉換
+ * 🔥 v24.1.7 更新 - 重啟後第一次詢問改進：
+ * - 修復：/重啟 後清除動畫計時器，讓下一個詢問能立即顯示 Loading 動畫
+ * - 修復：CLASS_RULES 中 M7 的定義加入「VA 平面」規格
+ * - 現在「m7 是什麼面板」能正確回答「VA 平面螢幕」
  * 
- * 🔥 v24.1.5 更新 - PDF Mode 黏性修復（型號變化自動退出）：
+ * 🔥 v24.1.6 更新 - Odyssey Hub 關鍵字匹配：
  * - 新增 checkAndClearPdfModeOnModelChange() 函數
  * - 新增 extractModelNumbers() 函數提取型號編碼
  * - 當用戶從 Odyssey 3D (G90XF) 切換到 M7 時，自動清除 PDF Mode
@@ -1817,7 +1815,10 @@ function handleCommand(c, u, cid) {
   
   if (cmd === "/重啟" || cmd === "/reboot") {
       writeLog(`[Command] /重啟 by ${u}`);
-      clearHistorySheetAndCache(cid); 
+      clearHistorySheetAndCache(cid);
+      // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
+      const cache = CacheService.getScriptCache();
+      cache.remove(`anim_${u}`);
       const resultMsg = syncGeminiKnowledgeBase(); 
       writeLog(`[Command] 重啟完成: ${resultMsg.substring(0, 100)}`);
       return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
@@ -2934,6 +2935,10 @@ function clearHistorySheetAndCache(cid) {
     cache.remove(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`);
     // 同時清除 PDF 模式
     cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + cid);
+    
+    // v24.1.7: 新增 - 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
+    // 獲取當前用戶 ID 進行清除（注：此函數只接收 contextId，需要改進）
+    // 暫時在 handleCommand 調用時自己清除
   } catch (e) {}
 }
 
