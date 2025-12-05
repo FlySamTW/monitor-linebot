@@ -1,6 +1,11 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.5 Flash-Lite)
- * Version: 24.1.1 (Smart Token + Debug Mode)
+ * Version: 24.1.2 (API 400 修復)
+ * 
+ * 🔥 v24.1.2 更新 - 修復 API 400 錯誤：
+ * - 移除無效的 thinkingConfig 參數（Google Gemini API 不支援此參數）
+ * - 所有 API 呼叫現在使用有效的 generationConfig 配置
+ * - 解決「Invalid JSON payload received. Unknown name \"thinkingConfig\"」錯誤
  * 
  * 🔥 v24.1.1 更新 - 測試模式顯示 Token 用量：
  * - DEBUG_SHOW_TOKENS: 在回覆末尾顯示 In/Out/Total + NT$成本
