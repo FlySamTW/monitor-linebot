@@ -25,7 +25,7 @@ if not exist ".clasp.json" (
     exit /b 1
 )
 
-echo [1/4] Pushing to GAS...
+echo [1/3] Pushing to GAS...
 call clasp push -f
 if errorlevel 1 (
     echo.
@@ -35,24 +35,14 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/4] Creating version...
+echo [2/3] Creating version...
 for /f "tokens=*" %%i in ('powershell -Command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
 call clasp version "%TIMESTAMP% deploy"
 
 echo.
-echo [3/4] Auto-initializing trigger...
-call clasp run ensureSyncTriggerExists
-if errorlevel 1 (
-    echo [WARN] Auto-init failed. You may need to open Web App URL once.
-) else (
-    echo [OK] Trigger initialized!
-)
-
-echo.
 echo ========================================
-echo [DONE] Deploy complete!
+echo [DONE] Code pushed successfully!
 echo [DONE] Version: %TIMESTAMP%
-echo [DONE] Trigger: Auto-scheduled
 echo ========================================
 echo.
 pause
