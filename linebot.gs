@@ -1857,24 +1857,6 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
         }
     }
     
-    // 🏛️ 天律 #2: 競品相關問題（不能回答）
-    const competitorKeywords = ['dell', 'asus', 'lg', 'acer', 'hp', 'benq', 'msi', 'gigabyte', '戴爾', '華碩', '宏碁'];
-    if (competitorKeywords.some(k => msg.toLowerCase().includes(k))) {
-        const reply = `抱歉，我只能回答 Samsung 三星產品相關問題。\n\n如您對其他品牌螢幕感興趣，建議查詢該品牌官網。`;
-        replyMessage(replyToken, reply);
-        writeLog(`[BlockCompetitor] 攔截競品問題: ${msg.substring(0, 50)}`);
-        return;
-    }
-    
-    // 🏛️ 天律 #2: 股價、投資、匯率（絕對不能回答）
-    const forbiddenKeywords = ['股價', '股票', '報酬', '投資', '獲利', '賺錢', '匯率', '外匯', '投資建議'];
-    if (forbiddenKeywords.some(k => msg.includes(k))) {
-        const reply = `抱歉，我無法提供股價、投資或匯率相關建議。\n\n請查詢專業金融網站（如 Yahoo 股市、XE.com）。`;
-        replyMessage(replyToken, reply);
-        writeLog(`[BlockForbidden] 攔截禁止問題: ${msg.substring(0, 50)}`);
-        return;
-    }
-    
     // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
     // 但指令類別不做去重，因為用戶可能需要重試
     const cache = CacheService.getScriptCache();
