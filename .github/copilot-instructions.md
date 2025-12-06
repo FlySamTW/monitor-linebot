@@ -4,6 +4,17 @@
 1. **每次修改代碼後，必須更新 `linebot.gs` 頂部的版本號 (Version)。**
 2. **每次修改完成後，必須執行 `clasp push -f` 推送至 GAS。**
 3. **Prompt 修改必須在 `Prompt.csv` 進行，禁止硬編碼在 `linebot.gs`。**
+4. **競品相關問題、股價投資問題應在 Prompt.csv C3 中配置規則，不要硬編碼檢查。**
+5. **不要隨意新建立 Markdown 檔案，架構文檔已完整，只在必讀區段更新。**
+6. **性能、邏輯架構問題應在既有文檔中記述，不需特別撰寫額外說明。**
+7. **三層記憶架構（Cache/Sheet/API）的實現邏輯不應硬寫在 GAS，應由 Prompt 引導 AI。**
+
+## 🔄 v24.3.0 核心改動（2025/12/06）
+- **三層記憶架構**：Layer 1 (Cache 300s) → Layer 2 (Sheet 永久) → Layer 3 (API 實時)
+- **上下文自動提取**：`extractContextFromHistory()` 從對話歷史自動提取型號、品牌、功能、場景
+- **使用者隔離**：所有 Cache 鍵改用 `${userId}:key` 前綴，防止多用戶互相干擾
+- **實時資訊 API**：日期、時間直接回答，不經由 Gemini
+- **防守邏輯轉移**：競品、股價等問題的回答規則應在 Prompt.csv C3 配置，不在代碼硬編碼
 
 ## 專案概述
 Google Apps Script (GAS) 專案，整合 LINE Messaging API + Gemini 2.5 Flash，為台灣三星電腦螢幕提供 AI 客服。
