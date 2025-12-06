@@ -5,6 +5,114 @@
 
 ---
 
+## Version 24.4.4 - PDF 智慧匹配修復 + 反問流程優化
+**日期**: 2025/12/06  
+**類型**: Bug Fix / Flow Optimization
+
+### 問題背景
+
+v24.4.0~24.4.3 的 PDF 智慧匹配功能有多個嚴重問題：
+1. 反問時附加了 Fast Mode 的錯誤回答（既然需要查 PDF，Fast Mode 回答就是錯的）
+2. `updateHistorySheetAndCache` 參數順序錯誤導致 history 格式錯亂
+3. `getRelevantKBFiles` 假設所有 messages 都有 content，導致 `undefined.toUpperCase()` 錯誤
+4. 反問時更新 history 為「等待用戶選擇型號」，污染對話記錄
+
+### 修復內容
+
+#### 1. 反問流程優化
+
+**之前（錯誤）**：
+```
+用戶：「M8 視訊鏡頭怎麼用」
+  ↓
+Fast Mode 回答：「根據我的資料庫...（錯誤內容）」
+  ↓
+反問：「Fast Mode 回答...\n---\nM8 有幾個版本...」
+```
+
+**現在（正確）**：
+```
+用戶：「M8 視訊鏡頭怎麼用」
+  ↓
+Fast Mode 判斷：需要查 PDF → 輸出 [AUTO_SEARCH_PDF]
+  ↓
+直接反問：「Smart Monitor M8 有幾個版本...」
+（不顯示 Fast Mode 的錯誤回答）
+```
+
+#### 2. History 更新時機
+
+**之前（錯誤）**：
+- 反問時就更新 history → `「等待用戶選擇型號」` 進入對話記錄
+- 下次讀取 history 時格式錯亂 → API 400 錯誤
+
+**現在（正確）**：
+- 反問時**不更新** history
+- 等用戶選擇型號後，一次性更新：`原始問題 → AI 回答`
+
+#### 3. 防護性程式碼
+
+```javascript
+// v24.4.4: 防護 undefined.toUpperCase() 錯誤
+for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg && msg.content && typeof msg.content === 'string') {
+        combinedQuery += " " + msg.content.toUpperCase();
+    }
+    ...
+}
+```
+
+### 完整流程圖（v24.4.4 修正版）
+
+```
+用戶問產品相關問題（如「M8 視訊鏡頭怎麼用」）
+  ↓
+直通車命中 M8 → 記錄關鍵字到 Cache（不開 PDF Mode）
+  ↓
+Fast Mode（QA + CLASS_RULES，不帶 PDF）
+  ↓
+AI 判斷：資料不足 → 輸出 [AUTO_SEARCH_PDF]
+  ↓
+檢測到 [AUTO_SEARCH_PDF] + 有直通車關鍵字
+  ↓
+searchPdfByAliasPattern("M8") → 從 CLASS_RULES 提取型號模式
+  ↓
+┌─────────────────────────────────────────────────────┐
+│ 0 個匹配 → 引導找 Sam                               │
+│ 1 個匹配 → 直接載入 PDF，重新回答                   │
+│ 多個匹配 → 反問用戶選擇（不更新 history）           │
+└─────────────────────────────────────────────────────┘
+  ↓ [多個匹配]
+系統反問：「M8 有幾個版本，請問型號開頭是？」
+  ↓
+用戶回覆「2」
+  ↓
+handlePdfSelectionReply() 處理
+  ↓
+showLoadingAnimation() → 顯示打字中（最長 60 秒）
+  ↓
+注入型號到 Cache → 載入對應 PDF → 用原始問題重新呼叫 API
+  ↓
+回覆用戶（含 Token 花費顯示）
+  ↓
+更新 history（原始問題 → AI 回答）
+```
+
+### 修復的錯誤清單
+
+| 版本 | 錯誤 | 修復 |
+|------|------|------|
+| v24.4.0 | 觸發時機錯誤（直通車+操作類就反問） | 改為 `[AUTO_SEARCH_PDF]` 時才觸發 |
+| v24.4.1 | 缺少 Loading 動畫 | 加入 `showLoadingAnimation(userId, 60)` |
+| v24.4.2 | 缺少 Token 花費顯示 | 加入 `DEBUG_SHOW_TOKENS` 支援 |
+| v24.4.3 | `updateHistorySheetAndCache` 參數錯誤 | 修正參數順序 `(cid, prev, uMsg, aMsg)` |
+| v24.4.4 | 反問附加 Fast Mode 錯誤回答 | 直接反問，不附加 |
+| v24.4.4 | history 污染 | 反問時不更新 history |
+| v24.4.4 | `undefined.toUpperCase()` 錯誤 | 加入防護性檢查 |
+
+---
+
 ## Version 24.4.0 - PDF 智慧匹配 + 型號反問機制
 **日期**: 2025/12/06  
 **類型**: Architecture / UX Improvement / PDF Selection
@@ -79,25 +187,6 @@ PENDING_PDF_SELECTION: 'pending_pdf_sel_'  // 等待用戶選擇 PDF 型號
 ```
 
 ### 流程圖
-
-```
-用戶問操作類問題
-  ↓
-直通車命中（如 M8）
-  ↓
-searchPdfByAliasPattern() 搜尋 PDF
-  ↓
-┌─────────────────────────────────────┐
-│ 0 個匹配 → Fast Mode 回答           │
-│ 1 個匹配 → 直接開 PDF Mode          │
-│ 多個匹配 → 反問用戶選擇             │
-└─────────────────────────────────────┘
-  ↓ [反問]
-用戶回覆
-  ↓
-handlePdfSelectionReply() 處理
-  ↓
-┌─────────────────────────────────────┐
 │ 數字 → 載入對應 PDF，重新回答       │
 │ 完整型號 → 精確匹配 PDF             │
 │ 新問題 → 清除狀態，正常處理         │
