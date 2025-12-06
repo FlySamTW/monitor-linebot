@@ -1,5 +1,10 @@
 # Copilot Instructions - LINE Bot 三星螢幕客服 (GAS)
 
+## ⚠️ 開發鐵律 (Development Iron Rules)
+1. **每次修改代碼後，必須更新 `linebot.gs` 頂部的版本號 (Version)。**
+2. **每次修改完成後，必須執行 `clasp push -f` 推送至 GAS。**
+3. **Prompt 修改必須在 `Prompt.csv` 進行，禁止硬編碼在 `linebot.gs`。**
+
 ## 專案概述
 Google Apps Script (GAS) 專案，整合 LINE Messaging API + Gemini 2.5 Flash，為台灣三星電腦螢幕提供 AI 客服。
 

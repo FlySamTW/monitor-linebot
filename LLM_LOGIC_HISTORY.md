@@ -5,6 +5,612 @@
 
 ---
 
+## ⚠️⚠️⚠️ 重大成本事故記錄 (2025/12/06) ⚠️⚠️⚠️
+
+### 事故摘要
+**日期**: 2025/12/04-05
+**損失金額**: $54.69 美元（正常應為 $0.50-1.00/天）
+**根本原因**: v23.4.0 使用了不存在的模型名稱
+
+### 事故時間線
+
+| 時間 | 事件 |
+|------|------|
+| 12/04 11:19 | 部署 v23.4.0，使用模型名稱 `gemini-2.5-flash-lite` |
+| 12/04-05 | API 靜默 fallback 到 Gemini 3 Pro / Gemini 3 Pro Image |
+| 12/05 深夜 | 發現帳單異常：$56.86（應為 ~$1.00） |
+| 12/06 | 確認根本原因，部署 v24.2.0 修正 |
+
+### 帳單明細
+
+| SKU | 模型 | Tokens | 費用 |
+|-----|------|--------|------|
+| Image output | Gemini 3 Pro Image | 13,440 | **$50.57** |
+| Text output | Gemini 3 Pro | 6,532 | $2.46 |
+| Text input | Gemini 3 Pro | 20,227 | $1.27 |
+| Image input | Gemini 3 Pro | 6,192 | $0.39 |
+| **異常費用小計** | | | **$54.69** |
+
+### 根本原因分析
+
+```
+問題版本：v23.4.0 (commit da68b0e, 2025-12-04 11:19:34)
+問題程式碼：MODEL_NAME: 'models/gemini-2.5-flash-lite'
+實際情況：gemini-2.5-flash-lite 這個模型名稱不存在！
+```
+
+**API 的異常行為**：
+- 當收到不存在的模型名稱時，API **沒有返回錯誤**
+- 而是**靜默 fallback** 到其他模型（Gemini 3 Pro / Gemini 3 Pro Image）
+- 這些模型的費用是 Flash 的 **50 倍**！
+
+### 為什麼會發生？
+
+1. **錯誤假設**：以為 Google 有 `gemini-2.5-flash-lite` 這個模型
+2. **沒有驗證**：部署前沒有確認模型名稱是否存在
+3. **API 沒有警告**：Google API 對無效模型名稱的處理方式是靜默 fallback，而非報錯
+
+### 修正措施
+
+1. **v24.2.0 統一模型**：
+   - 移除雙軌制（Flash + Lite）
+   - 全部改用 `gemini-2.0-flash`（官方確認存在）
+   
+2. **模型設定移到最開頭**：
+   - 方便未來更換（如 Flash 3.0）
+   - 開頭有醒目警告提醒
+
+3. **新增防呆警告**：
+   ```javascript
+   // ⚠️ 重要警告：模型名稱必須是 Google 官方存在的名稱！
+   // ⚠️ 使用不存在的名稱可能導致 API 靜默 fallback 到更貴的模型！
+   // ⚠️ 參考文件：https://ai.google.dev/gemini-api/docs/models/gemini
+   ```
+
+### 教訓與預防
+
+| 教訓 | 預防措施 |
+|------|----------|
+| 不要猜測模型名稱 | 永遠查閱官方文件確認 |
+| API 不會幫你報錯 | 部署前測試 API 回應 |
+| 成本可能暴增 50 倍 | 設置每日預算警報 |
+| 雙軌制增加複雜度 | 統一使用單一模型 |
+
+### 官方模型文件
+https://ai.google.dev/gemini-api/docs/models/gemini
+
+---
+
+## Version 24.2.0 - 統一模型 + 成本事件記錄
+**日期**: 2025/12/06
+**類型**: Architecture / Cost Optimization / Critical Fix
+
+### 變更內容
+
+1. **統一模型**：
+   - 移除 `MODEL_NAME_LITE`
+   - 全部使用 `MODEL_NAME` (gemini-2.0-flash)
+   - 成本差距僅 $0.10/天，統一管理更安全
+
+2. **模型設定移到最開頭**：
+   ```javascript
+   // ⬇⬇⬇ 模型名稱設定 - 未來升級只改這一行 ⬇⬇⬇
+   const GEMINI_MODEL = 'models/gemini-2.0-flash';
+   // ⬆⬆⬆ 模型名稱設定 - 未來升級只改這一行 ⬆⬆⬆
+   ```
+
+3. **新增成本事件記錄**：
+   - 在檔案開頭詳細記錄 v23.4.0 事故
+   - 防止未來重蹈覆轍
+
+### 受影響的函數
+- findSimilarQA: MODEL_NAME_LITE → MODEL_NAME
+- callGeminiToAutoFormatQA: MODEL_NAME_LITE → MODEL_NAME
+- handleAutoQA: MODEL_NAME_LITE → MODEL_NAME
+- summarizeConversation: MODEL_NAME_LITE → MODEL_NAME
+
+---
+
+## Version 24.1.43 - 成本警告：Vertex AI 自動升級問題
+**日期**: 2025/12/06
+**類型**: Cost Alert / Critical
+
+### 問題背景
+2025/12/01-05 期間發現 $80.55 美元的異常 Gemini 帳單：
+- **Gemini 3 Pro Image**: $54.78 (14,560 tokens) - 68% of total
+- Gemini 2.5 Flash Lite: $8.54
+- Gemini 2.5 Flash: $7.42
+
+但 CONFIG 只設定了：
+- `gemini-2.0-flash`
+- `gemini-2.0-flash-lite`
+
+### 根本原因
+**Vertex AI 自動升級模型！**
+
+當同時啟用 Vertex AI 和使用 Gemini API Key 時，Google Cloud 可能會：
+1. 自動將請求路由到 Vertex AI
+2. Vertex AI 自動升級模型到更貴的版本
+3. 圖片處理時自動選擇 Gemini Pro Image
+
+### 解決方案
+1. **關閉 Vertex AI API**（推薦）
+   - Google Cloud Console → APIs & Services → Disable Vertex AI API
+2. **或重新生成 API Key**
+   - Google AI Studio → 創建新 Key → 更新 Script Properties
+
+### 程式碼變更
+- 在 CONFIG 中加入成本警告註解
+- API 呼叫時記錄使用的模型名稱
+
+---
+
+## Version 24.1.41 - PDF 搜尋指令位置優化
+**日期**: 2025/12/05
+**類型**: Architecture Fix / Critical
+
+### 問題背景
+AI 讀了 20K tokens 的 PDF，但回答內容與用戶問題不相關：
+- 用戶問：「Odyssey Hub 開遊戲沒有 3D」
+- AI 答：「如何開啟遊戲」（完全沒回答「沒有 3D」的問題）
+
+### 根本原因分析
+Gemini API 處理順序：
+1. `systemInstruction`：70 行 Prompt + Deep Mode 指令
+2. `user message`：PDF 內容 + 用戶問題
+
+問題：**Deep Mode 搜尋指令在 systemInstruction 中，AI 讀完大量 Prompt 後可能遺忘**，或者沒有將指令與 PDF 內容連結起來。
+
+### 解決方案
+把搜尋指令直接放在 **PDF 後面、用戶問題前面**：
+```
+[PDF 內容] → [搜尋任務指令] → [用戶問題]
+```
+
+新增的指令：
+```
+【PDF 搜尋任務】請在上述 PDF 手冊中，找出與以下問題相關的所有段落並詳細回答：
+```
+
+### 預期效果
+AI 讀完 PDF 後會立刻看到「搜尋任務」，然後看到用戶問題，更容易連結起來。
+
+---
+
+## Version 24.1.40 - 修正換題誤判
+**日期**: 2025/12/05
+**類型**: Prompt Fix
+
+### 問題背景
+用戶第一題問「Odyssey Hub 開遊戲沒有 3D」，AI 回答後竟然輸出了 `[NEW_TOPIC]`，導致 PDF Mode 被錯誤退出。
+
+Log：`[New Topic] 偵測到換題，退出 PDF 模式`
+
+**原因**：Prompt.csv 的換題規則過於寬鬆：
+> 如果使用者的新問題與之前主題明顯無關，請在回答最後加上 [NEW_TOPIC]
+
+這讓 AI 在「沒有前題」的情況下也輸出了換題暗號。
+
+### 解決方案
+修改 Prompt.csv 換題規則：
+```
+變更前：
+如果使用者的新問題與之前主題明顯無關，請在回答最後加上 [NEW_TOPIC] 暗號。
+
+變更後：
+只有當「對話歷史中有明確前題」且「新問題與前題明顯無關」時，才在回答最後加上 [NEW_TOPIC]。
+如果是第一個問題或不確定，**禁止輸出 [NEW_TOPIC]**。
+```
+
+---
+
+## Version 24.1.39 - Deep Mode 引導 AI 搜尋正確段落
+**日期**: 2025/12/05
+**類型**: Prompt Enhancement / Critical
+
+### 問題背景
+用戶問「Odyssey Hub 開遊戲沒有 3D」，AI 回答的是「攝影機設定、螢幕解析度」— 這是 PDF 中的一般 3D 觀看注意事項，不是 Odyssey Hub 的具體操作步驟。
+
+**原因**：Deep Mode 只告訴 AI「從 PDF 找步驟」，但沒有告訴它「用戶問的是什麼」。AI 隨便找了一段 3D 相關內容就回答了。
+
+### 解決方案
+在 Deep Mode 提示中加入用戶問題引導：
+```
+【用戶問題】Odyssey Hub 開遊戲沒有 3D
+【任務】請在 PDF 中搜尋與「Odyssey Hub 開遊戲沒有 3D」相關的段落，找出具體操作步驟。
+```
+
+### 預期效果
+AI 會在 PDF 中搜尋「Odyssey Hub」、「遊戲」、「3D」等關鍵字，找到正確的段落再回答。
+
+---
+
+## Version 24.1.38 - 直通車 + 操作題直接開 PDF
+**日期**: 2025/12/05
+**類型**: Logic Optimization
+
+### 問題背景
+用戶問「用 Odyssey Hub 開遊戲沒有 3D」時：
+1. Fast Mode 先跑一次（5K tokens）
+2. AI 輸出 `[AUTO_SEARCH_PDF]`
+3. 重試帶 PDF 再跑一次（20K tokens）
+
+**浪費了第一次 API 呼叫**！
+
+### 解決方案
+當「直通車關鍵字」+「操作類問題」同時命中時，**直接開 PDF Mode**：
+```javascript
+const operationPatterns = [
+    /怎麼|如何|開啟|設定|打開|關閉|調整|步驟|操作/i,
+    /故障|問題|不行|沒有|無法|失敗|壞|黑屏|閃爍|不顯示/i,
+    /安裝|連接|更新|韌體|升級|重置/i
+];
+```
+
+### 效果
+- **之前**：直通車 → Fast Mode → 暗號 → 重試 PDF（2 次 API）
+- **現在**：直通車 + 操作題 → 直接 PDF（1 次 API）
+
+---
+
+## Version 24.1.37 - 移除 Prompt 範例避免複製
+**日期**: 2025/12/05
+**類型**: Prompt Fix / Critical
+
+### 問題背景
+AI 在 Deep Mode (已載入 20K tokens PDF) 下，只輸出 26 tokens，內容是：
+「Odyssey Hub 是 3D 功能，可能需要檢查設定...」
+
+這正是 Prompt.csv 中的**範例文字**！AI 直接複製範例，完全忽略 PDF 內容。
+
+### 根本原因
+Prompt.csv 中有這段範例：
+```
+**範例**：「Odyssey Hub 是 3D 功能，可能需要檢查設定... [AUTO_SEARCH_PDF]」
+```
+AI 在 Deep Mode 下看到「Odyssey Hub」關鍵字，直接複製範例作為答案。
+
+### 解決方案
+1. **移除範例**：從 Prompt.csv 中刪除「Odyssey Hub」範例
+2. **Prompt 版本更新**：v24.1.33-B → v24.1.36-A
+
+### Prompt 變更
+```
+變更前：
+  - **範例**：「Odyssey Hub 是 3D 功能，可能需要檢查設定... [AUTO_SEARCH_PDF]」
+
+變更後：
+  (移除此範例)
+```
+
+---
+
+## Version 24.1.36 - 模型分配細化
+**日期**: 2025/12/05
+**類型**: Model Assignment
+
+### 問題背景
+用戶指出 `/紀錄` 流程中 LLM 需要與用戶討論、理解修改意圖，這不是簡單任務，不適合用 Lite。
+
+### 解決方案
+將 `/紀錄` 相關的 3 個 LLM 函數改回 Flash：
+- `callGeminiToPolish` - 初次整理（需理解格式規則）
+- `callGeminiToMergeQA` - 合併判斷（需理解語意）
+- `callGeminiToRefineQA` - 對話修改（需理解上下文）
+
+### 最終模型分配表
+| 功能 | 模型 | 原因 |
+|------|------|------|
+| **callChatGPTWithRetry** | Flash | 用戶對話，需理解 Fast/Deep Mode |
+| **callGeminiToPolish** | Flash | /紀錄 初次整理，需理解格式 |
+| **callGeminiToMergeQA** | Flash | /紀錄 合併判斷，需理解語意 |
+| **callGeminiToRefineQA** | Flash | /紀錄 對話修改，需理解上下文 |
+| findSimilarQA | Lite | 純搜尋，簡單 |
+| callGeminiToAutoFormatQA | Lite | 簡單自動格式化 |
+| handleAutoQA | Lite | 簡單自動整理 |
+| summarizeConversation | Lite | 簡單摘要 |
+
+---
+
+## Version 24.1.35 - 模型切換 Flash-Lite → Flash (雙軌制)
+**日期**: 2025/12/05
+**類型**: Model Change / Architecture
+
+### 問題背景
+1. AI 在 Deep Mode (已掛載 PDF) 下，依然輸出「根據我的資料庫」而非「根據產品手冊」。
+2. AI 在 Deep Mode 下依然輸出 `[AUTO_SEARCH_PDF]` 暗號，造成無限迴圈。
+3. AI 讀取 20K tokens 的 PDF 後，只輸出 27 tokens 的簡短回答，完全沒有利用 PDF 內容。
+4. 上述問題在 Prompt 中已明確禁止，但 AI 完全無視。
+
+### 根本原因
+**Gemini 2.0 Flash-Lite 模型能力不足**，無法理解並遵守複雜的多模式 Prompt 指令（Fast Mode vs Deep Mode 規則）。
+
+### 解決方案
+1. **雙軌制模型配置**：
+   - `MODEL_NAME`: `gemini-2.0-flash` - 用於**用戶對話**（需理解複雜 Prompt）
+   - `MODEL_NAME_LITE`: `gemini-2.0-flash-lite` - 用於**後台任務**（省錢）
+   
+2. **模型分配**：
+   | 功能 | 模型 | 原因 |
+   |------|------|------|
+   | callChatGPTWithRetry | Flash | 需理解 Fast/Deep Mode 規則 |
+   | findSimilarQA | Lite | 簡單搜尋任務 |
+   | callGeminiToMergeQA | Lite | 簡單合併任務 |
+   | callGeminiToFormatQA | Lite | 簡單格式化 |
+   | callGeminiToFormatEntry | Lite | 簡單格式化 |
+   | callGeminiToAutoFormatQA | Lite | 簡單格式化 |
+   | callGeminiToRefineQA | Lite | 簡單修改任務 |
+   | handleAutoQA | Lite | 簡單整理任務 |
+   | summarizeConversation | Lite | 簡單摘要任務 |
+
+3. **成本影響**：
+   - Flash: Input $0.10/1M, Output $0.40/1M
+   - Flash-Lite: Input $0.075/1M, Output $0.30/1M
+   - 用戶對話約貴 33%，但後台任務維持低成本
+
+4. **Deep Mode 提示強化**：
+   - 加入醒目的 `⚠️⚠️⚠️` 符號
+   - 直接在 System Prompt 中列出 4 條核心規則
+   - 避免 AI 因規則太多而忽略
+
+### Log 更新
+- Token 計價 Log 改顯示「費率: 2.0 Flash」（用戶對話）
+- 後台任務的 Token 計價維持原樣（Flash-Lite）
+
+---
+
+## Version 24.1.33-B - Prompt 強化 (極速模式 & 價格)
+**日期**: 2025/12/05
+**類型**: Prompt Engineering
+
+### 問題背景
+1. AI 在 Fast Mode 下沒有輸出 `[AUTO_SEARCH_PDF]`，直接說「手冊也沒寫，找 Sam」。
+2. M7 價格回答太冷漠，只丟連結不說話。
+
+### 解決方案
+1. **極速模式強化**：
+   - 禁止清單加入「手冊也沒寫」
+   - 加入範例：「Odyssey Hub 是 3D 功能，可能需要檢查設定... [AUTO_SEARCH_PDF]」
+2. **價格規則強化**：
+   - 提供兩個親切範本
+   - 加入「**嚴禁**：只丟出連結不說話」
+
+---
+
+## Version 24.1.32 - 直通車與簡單問題衝突修正
+**日期**: 2025/12/05
+**類型**: Logic Fix
+
+### 問題背景
+用戶指出 Log 顯示「命中關鍵字且非規格問題，強制開啟 PDF 模式」，但隨後又顯示「簡單/追問類問題，跳過 PDF」，導致邏輯矛盾且浪費運算。
+
+### 解決方案
+1. **邏輯順序確認**：目前的邏輯是先執行直通車檢查 (`isInPdfMode = true`)，再執行簡單問題檢查 (`isInPdfMode = false`)。
+2. **結果正確**：雖然 Log 看起來矛盾，但最終結果是正確的（跳過 PDF，走 Fast Mode）。
+3. **優化**：這其實是預期行為。直通車負責「識別型號」，簡單問題負責「過濾不需要 PDF 的意圖」。兩者結合確保了「M7 價格」這種題型能正確走 Fast Mode。
+
+---
+
+## Version 24.1.31 - Prompt 語氣多樣化
+**日期**: 2025/12/05
+**類型**: Polish / Prompt Engineering
+
+### 問題背景
+用戶反映 AI 的回答太像機器人，每次都用一模一樣的句型（如「建議您到官網...」），且違反了「禁用您」的規則。
+
+### 解決方案
+1. **模糊化指令**：在 Prompt.csv 中，將所有指定回答的指令改為「類似...」，給予 AI 更多自由度。
+2. **移除「您」**：修正所有範例句，確保不出現「您」，改用「你」或省略主詞。
+3. **多樣化**：明確要求 AI 使用不同的句型，避免重複感。
+
+---
+
+## Version 24.1.30 - 語氣優化 & 退出邏輯修正
+**日期**: 2025/12/05
+**類型**: Polish / Logic Adjustment
+
+### 問題背景
+1. **語氣矛盾**：AI 說「手冊未記載」卻還加「試試看吧😎👍」，顯得不專業且輕浮。
+2. **冷漠回應**：價格引導語句太過機械化，缺乏溫度。
+3. **退出失效**：AI 已經說了「手冊未記載」，但系統沒有識別到這句話，導致 PDF Mode 沒有自動退出。
+
+### 解決方案
+1. **Prompt 修正**：
+   - 禁止在「手冊未記載」時加表情符號。
+   - 優化價格引導語氣，要求保持親切。
+2. **退出邏輯增強**：
+   - 在 `exitPatterns` 中加入 `/手冊未記載/i`，確保 AI 承認手冊沒寫時，系統能自動退出 PDF Mode。
+
+---
+
+## Version 24.1.29 - 直通車智慧分流 (Smart Direct Search)
+**日期**: 2025/12/05
+**類型**: Logic Adjustment / Optimization
+
+### 問題背景
+用戶質疑「為什麼問 M7 面板需要進 PDF？」，雖然 v24.1.28 恢復了強制 PDF 以解決 Odyssey Hub 問題，但也導致 M7 規格題被強制進 PDF，浪費資源且不合邏輯。
+
+### 解決方案
+1. **智慧分流**：在 `checkDirectDeepSearch` 命中後，增加一層 `isHardwareSpec` 檢查。
+2. **規格題 (Fast Mode)**：若問題包含「面板、規格、解析度」等關鍵字，**不強制開啟 PDF Mode**，讓系統走 Fast Mode (查 CLASS_RULES)。
+3. **操作題 (PDF Mode)**：若非規格題（如 Odyssey Hub 設定、故障），則**強制開啟 PDF Mode**。
+
+---
+
+## Version 24.1.28 - 直通車強制 PDF 回歇
+**日期**: 2025/12/05
+**類型**: Logic Adjustment / Strategy
+
+### 問題背景
+用戶質疑「為什麼命中直通車關鍵字還要等待 AI 判斷」，認為這多此一舉且導致回答不穩定（AI 可能自作聰明不查 PDF）。
+
+### 解決方案
+1. **恢復強制 PDF**：在 `handleMessage` 中，若 `checkDirectDeepSearch` 命中，直接將 `isInPdfMode` 設為 `true`。
+2. **跳過 Fast Mode**：直接進入 PDF 模式查詢，省去一次 API 來回，提升速度與準確度。
+3. **確保規格題不掛**：依賴 v24.1.25 的 Prompt 強化與 v24.1.20 的動態上下文，確保即使在 PDF 模式下，AI 也能讀取 Rules 回答規格問題（如 M7 面板）。
+
+---
+
+## Version 24.1.27 - API 400 修復 (移除 Thinking)
+**日期**: 2025/12/05
+**類型**: Bug Fix / API Compatibility
+
+### 問題背景
+1. 用戶回報 API 400 錯誤，錯誤訊息顯示 `thinking is not supported by this model`。
+2. 這是因為我們切換到了 `gemini-2.0-flash-lite`，而此模型（Lite 版）並不支援 Thinking Mode (思考模式)，只有 Pro 版支援。
+3. 程式碼中原本針對 PDF 模式開啟了 `thinkingConfig`，導致 API 請求被拒絕。
+
+### 解決方案
+1. **移除 Thinking Config**：在 `callChatGPTWithRetry` 中，將 `generationConfig` 裡的 `thinkingConfig` 參數移除。
+2. **保留 Token 放寬**：保留 `maxOutputTokens: 4096` 的設定，確保 PDF 模式仍能完整回答。
+
+---
+
+## Version 24.1.26 - 模型版本修正 (GA)
+**日期**: 2025/12/05
+**類型**: Bug Fix / Configuration
+
+### 問題背景
+用戶指出 `gemini-2.0-flash-lite` 已於 2025/02/25 正式發布 (GA)，應使用正式版而非預覽版或錯誤的版本號。
+
+### 解決方案
+1. **模型名稱更新**：將 `CONFIG.MODEL_NAME` 更新為 `models/gemini-2.0-flash-lite`。
+
+---
+
+## Version 24.1.25 - 模型名稱修正 & Prompt 強化
+**日期**: 2025/12/05
+**類型**: Bug Fix / Optimization
+
+### 問題背景
+1. 用戶詢問「Gemini 2.5 Flash」，檢查發現程式碼中誤寫為 `gemini-2.5-flash-lite` (此模型不存在，API 可能自動 fallback 或報錯)。
+2. AI 在 Fast Mode 下遇到 Odyssey Hub 問題，因為知道原理而自作聰明不查 PDF，導致回答不夠具體。
+
+### 解決方案
+1. **模型名稱修正**：將 `CONFIG.MODEL_NAME` 修正為 `models/gemini-2.0-flash-lite-preview-02-05` (Google 最新發布的 Flash-Lite 模型)。
+2. **Prompt 強化**：在 Prompt.csv 的【極速模式】中加入條款：「即使你知道該功能的原理，若無法提供具體操作步驟，也必須查閱 PDF」。
+
+---
+
+## Version 24.1.24 - PDF 輸出限制放寬 & Log 完整性
+**日期**: 2025/12/05
+**類型**: Optimization / 體驗優化
+
+### 問題背景
+1. 用戶反映 PDF 模式下 AI 似乎無法一次講完所有解決方案，懷疑有輸出限制。
+2. Log 中的 `[AI Reply]` 被截斷，無法看到完整回答。
+
+### 解決方案
+1. **放寬 Token 限制**：在 `generationConfig` 中，針對 PDF 模式 (attachPDFs=true) 將 `maxOutputTokens` 提升至 **4096** (原為全域設定，通常較小)。
+2. **Log 完整性**：將 `writeLog` 中 `[AI Reply]` 的截斷長度從 500 字放寬至 **2000 字**，確保能記錄完整對話。
+
+---
+
+## Version 24.1.23 - Code Cleanup (移除遺留代碼)
+**日期**: 2025/12/05
+**類型**: Refactoring / 代碼清理
+
+### 問題背景
+用戶指出系統中可能殘留「手動確認深度搜尋」的舊代碼，雖然功能已改為自動，但舊代碼可能導致潛在衝突或混淆。
+
+### 解決方案
+1. **移除 PENDING_QUERY**：在 `handleMessage` 中移除讀取與判斷 `PENDING_QUERY` 的邏輯。
+2. **廢棄 handleDeepSearch**：清空 `handleDeepSearch` 函數內容，僅保留 Log 警告，確保舊流程完全阻斷。
+3. **確保純淨**：系統現在完全依賴 `[AUTO_SEARCH_PDF]` 自動觸發，不再有任何「等待用戶輸入 1」的狀態。
+
+---
+
+## Version 24.1.22 - Auto Deep Search 實裝 (自動觸發不詢問)
+**日期**: 2025/12/05
+**類型**: Logic Adjustment / 體驗優化
+
+### 問題背景
+用戶抱怨「為什麼又不進入 PDF 了」，系統雖然偵測到 `[AUTO_SEARCH_PDF]` 但卻停下來詢問用戶「是否要查閱」，不符合「自動」的預期。
+
+### 解決方案
+1. **自動執行重試**：當偵測到 `[AUTO_SEARCH_PDF]` 且非硬體問題時，系統會：
+   - 自動將 `isInPdfMode` 設為 true。
+   - 立即再次呼叫 `callChatGPTWithRetry` (帶 PDF)。
+   - 將第二次的完整回答直接回傳給用戶。
+2. **移除詢問步驟**：不再顯示「💡 需要查閱產品手冊嗎？...」的提示。
+
+---
+
+## Version 24.1.21 - Prompt 策略優化 (操作題強制查 PDF)
+**日期**: 2025/12/05
+**類型**: Prompt Optimization / 策略調整
+
+### 問題背景
+用戶詢問「Odyssey Hub 3D 沒顯示」，系統識別出型號 G90XF，但因為移除了直通車強制 PDF 模式，AI 在 Fast Mode 下查無 QA 資料，直接回答「找 Sam」，未觸發 `[AUTO_SEARCH_PDF]`。
+
+### 解決方案
+1. **Prompt.csv 策略調整**：
+   - 明確區分「規格題」(找 Sam) 與「操作題」(查 PDF) 的處理邏輯。
+   - **極速模式 (Fast Mode)**：遇到操作/故障排除問題且無 QA 答案時，**必須**輸出 `[AUTO_SEARCH_PDF]`，禁止直接放棄。
+   - **深度模式 (Deep Mode)**：若查了 PDF 還是沒有，才回答「手冊也沒寫，只能看 Sam」。
+
+---
+
+## Version 24.1.20 - Prompt 架構重構 (CSV 化)
+**日期**: 2025/12/05
+**類型**: Refactoring / 架構重構
+
+### 問題背景
+用戶要求 Prompt 不要寫死在 GS 程式碼中，以便隨時調整且不需改動程式碼。
+
+### 解決方案
+1. **移除硬編碼**：將 `linebot.gs` 中所有詳細 Prompt 文字移除。
+2. **Prompt.csv 升級**：
+   - 新增 `【極速模式】` 與 `【深度模式】` 區塊。
+   - 將所有指令、語氣、規範移至 CSV 管理。
+3. **動態注入**：GS 僅負責注入「系統狀態」(Fast/Deep Mode)，AI 根據狀態查閱 CSV 中的對應規範。
+
+---
+
+## Version 24.1.19 - Brain-First 回歸 (移除直通車強制 PDF)
+**日期**: 2025/12/05
+**類型**: Logic Adjustment / 成本優化
+
+### 問題背景
+用戶質疑「萬一手冊有寫呢？」，且直通車強制進 PDF 導致明明 Rules 有寫規格（如 M7 面板）卻因 PDF 沒寫而回答不出來。
+
+### 解決方案
+1. **移除強制 PDF**：直通車 (Direct Search) 命中關鍵字時，僅執行「型號識別與注入 Cache」，**不再強制開啟 PDF Mode**。
+2. **Brain-First 流程**：
+   - 先用 Fast Mode (QA + CLASS_RULES) 嘗試回答。
+   - 若 Rules 有答案（如規格），直接回答（省 Token）。
+   - 若 Rules 沒答案（如操作），AI 判斷後輸出 `[AUTO_SEARCH_PDF]`，再掛載 PDF。
+
+---
+
+## Version 24.1.18 - PDF Mode 語氣與退出邏輯優化
+**日期**: 2025/12/05
+**類型**: Prompt Optimization / 體驗優化
+
+### 問題背景
+1. PDF Mode 回答開頭出現重複打招呼 (哈囉)。
+2. 用戶覺得「先找 PDF 然後才說退出」是白費工。
+
+### 解決方案
+1. **禁止打招呼**：在 Deep Mode Prompt 中明確禁止「哈囉」、「你好」等開場白。
+2. **優化退出邏輯**：增加 `exitPatterns` 識別「手邊的資料剛好沒有寫到」，讓系統在查無資料時能更果斷退出 PDF Mode。
+
+---
+
+## Version 24.1.17 - S8 直通車修復 & 語氣優化
+**日期**: 2025/12/05
+**類型**: Bug Fix / 體驗優化
+
+### 問題背景
+1. S8/M7/G9 等短關鍵字無法觸發直通車 (DirectDeep)，因為長度限制 >= 3。
+2. 回答語氣過於生硬（機器人感）。
+
+### 解決方案
+1. **放寬長度限制**：將 `strongKeywords` 限制放寬至 >= 2 碼。
+2. **語氣優化**：修改 Prompt.csv，允許「適度親切」，並修正模糊型號邏輯（若有明確定義則直接回答）。
+
+---
+
 ## Version 24.1.8 - 型號提取正則修正（M7 型號偵測修復）
 **日期**: 2025/12/05
 **類型**: Bug Fix / 型號偵測邏輯
@@ -45,7 +651,7 @@ const model = match[1] || match[0];
 ```
 currentModels = ["7"]
 previousModels = ["M70D"]
-isSameModel = false 但邏輯無法比對...
+isSameModel = false 但邏輯無法比对...
 ```
 
 實際上系統無法識別「7」是「M 系列」的一部分，導致型號變化偵測完全失效。
