@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.4.3 (修復 updateHistorySheetAndCache 參數順序)
+ * Version: 24.4.4 (徹底修復：updateHistorySheetAndCache 參數 + 反問邏輯)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1703,8 +1703,12 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     let userCount = 0;
     
     // 1. 讀取上下文 (User + AI, 最近 6 句)
+    // v24.4.4: 加入防護，避免 undefined.toUpperCase() 錯誤
     for (let i = messages.length - 1; i >= 0; i--) {
-        combinedQuery += " " + messages[i].content.toUpperCase();
+        const msg = messages[i];
+        if (msg && msg.content && typeof msg.content === 'string') {
+            combinedQuery += " " + msg.content.toUpperCase();
+        }
         userCount++;
         if (userCount >= 6) break; 
     }
@@ -2443,19 +2447,15 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                           };
                           cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
                           
-                          // 發送反問訊息（先給 Fast Mode 的部分回答 + 反問）
-                          let askMsg = "";
-                          if (finalText && finalText.length > 10) {
-                              // 如果 Fast Mode 有部分回答，先顯示
-                              askMsg = finalText + "\n\n---\n\n";
-                          }
-                          askMsg += buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
+                          // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
+                          // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
+                          const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
                           
                           replyMessage(replyToken, askMsg);
                           writeLog(`[PDF Match] 已發送型號選擇反問`);
                           
-                          // 更新歷史（只記錄問題，不記錄反問訊息）
-                          updateHistorySheetAndCache(contextId, userId, msg, "（等待用戶選擇型號）");
+                          // v24.4.4: 不更新 history，等用戶回覆後再一起更新
+                          // 避免 history 中出現「等待用戶選擇型號」這種非對話內容
                           writeRecordDirectly(userId, msg, contextId, 'user', '');
                           return; // 等待用戶回覆
                           
