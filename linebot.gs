@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.5.0 (PDF Mode 優化：每題先走 Fast Mode，省錢省時間)
+ * Version: 24.5.2 (修復 PDF 反問時對話記憶丟失問題 + CLASS_RULES 永遠注入)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1071,16 +1071,20 @@ function buildDynamicContext(messages) {
             }
         }
         
-        // 2️⃣ 再搜 Rules (補充規格，QA 不夠時才用)
-        if (fullRules && allKeywords.length > 0 && totalMatches < MAX_KEYWORD_MATCHES) {
+        // 2️⃣ 再搜 Rules (v24.5.0: CLASS_RULES 是權威規格定義，永遠優先搜尋)
+        // 不再受 QA 匹配數量限制，確保型號規格定義一定會被注入
+        if (fullRules && allKeywords.length > 0) {
             const ruleLines = fullRules.split('\n');
+            let rulesMatches = 0;
+            const MAX_RULES_MATCHES = 10; // Rules 單獨上限
             
             for (const line of ruleLines) {
                 if (!line.trim()) continue;
-                if (totalMatches >= MAX_KEYWORD_MATCHES) break;
+                if (rulesMatches >= MAX_RULES_MATCHES) break;
                 
                 if (allKeywords.some(k => line.toUpperCase().includes(k))) {
                     relevantContext += line + "\n";
+                    rulesMatches++;
                     totalMatches++;
                 }
             }
@@ -2489,9 +2493,16 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                               replyMessage(replyToken, askMsg);
                               writeLog(`[PDF Match] 已發送型號選擇反問`);
                               
-                              // v24.4.4: 不更新 history，等用戶回覆後再一起更新
-                              // 避免 history 中出現「等待用戶選擇型號」這種非對話內容
+                              // v24.5.2: 修復對話記憶丟失問題
+                              // 即使是反問，也要將用戶問題和反問記錄到歷史
+                              // 這樣用戶後續回覆時才能看到上下文
                               writeRecordDirectly(userId, msg, contextId, 'user', '');
+                              writeRecordDirectly(userId, askMsg, contextId, 'assistant', '');
+                              
+                              // v24.5.2: 更新對話歷史（關鍵修復！）
+                              const askMsgObj = { role: 'assistant', content: askMsg };
+                              updateHistorySheetAndCache(contextId, history, userMsgObj, askMsgObj);
+                              
                               return; // 等待用戶回覆
                           
                           } else if (pdfSearchResult.matchedPdfs.length === 1) {
