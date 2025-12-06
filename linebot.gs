@@ -1996,7 +1996,9 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     
     if (isInPdfMode && isSimpleQuestion) {
         writeLog("[PDF Mode] 簡單/追問類問題，跳過 PDF");
-        isInPdfMode = false;  // 這次不掛 PDF，但不清除模式（下次複雜問題還會用）
+        isInPdfMode = false;  
+        // v24.3.1 修復：清除 Cache 中的 PDF Mode 標記，防止下一題錯誤延續
+        cache.remove(pdfModeKey);
     } else if (isInPdfMode) {
         writeLog("[PDF Mode] 延續 PDF 模式");
         // 續命：若還在 PDF 模式且問了複雜問題，延長 5 分鐘
