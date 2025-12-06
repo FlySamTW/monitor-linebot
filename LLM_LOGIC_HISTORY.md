@@ -5,6 +5,81 @@
 
 ---
 
+## Version 24.2.3 - 雙模型策略 + API 錯誤中文提示
+**日期**: 2025/12/06
+**類型**: Architecture / UX Improvement
+
+### 改進內容
+
+#### 1. 雙模型策略
+
+根據任務難度使用不同模型，平衡成本和質量：
+
+| 場景 | 模型 | 思考預算 | 定價 (per 1M tokens) | 用途 |
+|------|------|----------|-------------------|------|
+| **一般對話** (Fast Mode) | `gemini-2.0-flash` | ❌ 無 | In: $0.10, Out: $0.40 | 快速回應，不需複雜推理 |
+| **PDF 深讀** (PDF Mode) | `gemini-2.5-flash` | 🧠 2048 | In: $0.15, Out: $3.50 | 深度閱讀、複雜理解 |
+| **QA 搜尋** (findSimilarQA) | `gemini-2.0-flash` | ❌ 無 | In: $0.10, Out: $0.40 | 簡單關鍵字匹配 |
+| **QA 合併** (callGeminiToMergeQA) | `gemini-2.5-flash` | 🧠 512 | In: $0.15, Out: $3.50 | 理解語意，融合多個 QA |
+| **QA 修改** (callGeminiToRefineQA) | `gemini-2.5-flash` | 🧠 1024 | In: $0.15, Out: $3.50 | 理解對話，修改 QA |
+| **格式轉換** (callGeminiToPolish) | `gemini-2.5-flash` | 🧠 1024 | In: $0.15, Out: $3.50 | 理解用戶意圖，轉為標準格式 |
+| **QA 格式化** (callGeminiToAutoFormatQA) | `gemini-2.0-flash` | ❌ 無 | In: $0.10, Out: $0.40 | 簡單格式調整 |
+| **自動整理** (handleAutoQA) | `gemini-2.0-flash` | ❌ 無 | In: $0.10, Out: $0.40 | 對話濃縮成一行 |
+| **對話摘要** (summarizeConversation) | `gemini-2.0-flash` | ❌ 無 | In: $0.10, Out: $0.40 | 快速摘要，不需深思 |
+
+#### 2. 成本估算 (每日 1000 次問答)
+
+| 場景 | 平均成本 | 月成本 |
+|------|---------|--------|
+| 平均每則對話 | ~NT$0.018 | ~NT$540 |
+| 含 PDF 深讀 | ~NT$0.050 | ~NT$1,500 |
+| 每日知識庫重建 | ~NT$0.10 | ~NT$3.00 |
+| **預估月費** | | **~NT$2,000** |
+
+#### 3. API 錯誤處理改進
+
+所有 HTTP 錯誤碼都加上用戶友善的中文提示：
+
+```javascript
+// 400: 參數錯誤 → "請求參數有誤"
+// 403: 檔案過期 → "檔案已過期或無權限" (自動觸發重建)
+// 404: 檔案不存在 → 標記 KB_EXPIRED，自動重建
+// 429: 配額限制 → "系統暫時忙碌，請稍後重試"
+// 500/503: 伺服器錯誤 → "Google 伺服器暫時故障"
+```
+
+### 實作細節
+
+**新增全域常量** (linebot.gs 第 35-37 行):
+```javascript
+const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';
+const GEMINI_MODEL_THINK = 'models/gemini-2.5-flash';
+```
+
+**修改 CONFIG** (linebot.gs 第 763-765 行):
+```javascript
+const CONFIG = {
+  MODEL_NAME_FAST: GEMINI_MODEL_FAST,
+  MODEL_NAME_THINK: GEMINI_MODEL_THINK,
+  ...
+};
+```
+
+**主要 API 呼叫邏輯** (linebot.gs 第 1617-1633 行):
+```javascript
+const useThinkModel = attachPDFs; // PDF 模式才用 Think 模型
+const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
+const genConfig = { 
+    maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS,
+    temperature: tempSetting
+};
+if (useThinkModel) {
+    genConfig.thinkingConfig = { thinkingBudget: 2048 };
+}
+```
+
+---
+
 ## Version 24.2.1 - Think Mode 開啟 + 每日 04:00 自動重建
 **日期**: 2025/12/06
 **類型**: Feature / Bug Fix

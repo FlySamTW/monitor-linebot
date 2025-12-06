@@ -1611,7 +1611,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
 
         // v24.2.3: 雙模型策略
         // - Fast Mode (無 PDF)：gemini-2.0-flash（快速、便宜）
-        // - PDF Mode (有 PDF)：gemini-2.5-flash + thinkingBudget: 1024（深度閱讀）
+        // - PDF Mode (有 PDF)：gemini-2.5-flash + thinkingBudget: 2048（深度閱讀）
         const useThinkModel = attachPDFs; // PDF 模式才用 Think 模型
         const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
         
@@ -1621,8 +1621,9 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         };
         
         // v24.2.3: 只有 gemini-2.5-flash 才加入 thinkingConfig
+        // PDF 深度閱讀用 2048，確保充分思考
         if (useThinkModel) {
-            genConfig.thinkingConfig = { thinkingBudget: 1024 };
+            genConfig.thinkingConfig = { thinkingBudget: 2048 };
         }
 
         const payload = {
@@ -1692,6 +1693,12 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             if (code === 400 && text.includes("token")) {
                 return "⚠️ 資料量過大，請提供關鍵字。";
             }
+            if (code === 400) {
+                writeLog(`[API 400] 參數錯誤: ${text.substring(0, 200)}`);
+                lastError = "請求參數有誤";
+                retryCount++;
+                continue;
+            }
             if (code === 404) { 
                 writeLog(`[API 404] 檔案不存在: ${text.substring(0, 200)}`);
                 // 標記需要重建，並返回特殊標記讓外層處理
@@ -1699,34 +1706,35 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                 return "[KB_EXPIRED]"; 
             }
             if (code === 403) { 
-                writeLog(`[API 403] ${text.substring(0, 300)}`);
+                writeLog(`[API 403] 檔案已過期或無權限: ${text.substring(0, 300)}`);
                 // 標記需要重建，並返回特殊標記讓外層處理
                 CacheService.getScriptCache().put('kb_need_rebuild', 'true', 3600);
                 return "[KB_EXPIRED]"; 
             }
             if (code === 429) {
                 writeLog(`[API 429] 配額限制，等待重試...`);
-                lastError = "API 配額限制";
+                lastError = "系統暫時忙碌，請稍後重試";
                 retryCount++;
                 Utilities.sleep(5000 * retryCount); // 429 要等久一點
                 continue;
             }
             if (code === 500 || code === 503) {
-                writeLog(`[API ${code}] 伺服器錯誤，重試中...`);
-                lastError = `伺服器錯誤 ${code}`;
+                writeLog(`[API ${code}] Google 伺服器錯誤，重試中...`);
+                lastError = `Google 伺服器暫時故障`;
                 retryCount++;
                 Utilities.sleep(2000 * retryCount);
                 continue;
             }
             
             // 其他錯誤
-            lastError = `API ${code}`;
+            lastError = `API 錯誤 ${code}`;
             writeLog(`[API Error] Code: ${code}, Body: ${text.substring(0, 300)}`);
             retryCount++;
             Utilities.sleep(1000 * Math.pow(2, retryCount));
             
         } catch (e) {
-            lastError = e.message;
+            lastError = e.message || "未知錯誤";
+
             writeLog(`[API Exception] ${e.message}`);
             if (e.message.includes("token")) return e.message;
             retryCount++; 
@@ -2082,9 +2090,9 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
               replyText = finalText;
           }
 
-          // v24.1.0: 測試模式 - 在回覆末尾附加 Token 資訊
+          // v24.2.3: 改進 Token 資訊顯示格式
           if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
-              const tokenInfo = `\n\n---\n📊 In:${lastTokenUsage.input} Out:${lastTokenUsage.output} = ${lastTokenUsage.total} (NT$${lastTokenUsage.costTWD.toFixed(4)})`;
+              const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
               replyText += tokenInfo;
           }
 
