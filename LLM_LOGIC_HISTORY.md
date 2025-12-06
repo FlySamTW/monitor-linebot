@@ -5,6 +5,66 @@
 
 ---
 
+## Version 24.2.1 - Think Mode 開啟 + 每日 04:00 自動重建
+**日期**: 2025/12/06
+**類型**: Feature / Bug Fix
+
+### 問題背景
+1. **PDF 不到 48 小時就過期 (403)**：
+   - 12/6 00:03 重啟時顯示 `沿用舊檔：56 本`
+   - 12/6 19:56 就出現 403 過期（不到 20 小時）
+   - 原因：舊檔案是更早之前上傳的，已接近 48 小時期限
+   
+2. **自動重啟沒有執行**：
+   - 排程是 47 小時後，不是每天固定時間
+   - 每次 `/重啟` 會重置計時器，可能永遠不會觸發
+
+3. **Think Mode 被關閉**：
+   - 之前為了相容 Flash-Lite 而關閉
+   - 但 Flash 支援 Thinking Mode，可以提升 PDF 閱讀理解
+
+### 解決方案
+
+1. **開啟 Think Mode**：
+   - PDF 模式啟用 `thinkingBudget: 2048`
+   - Fast 模式維持關閉（不需要思考）
+
+2. **改為每日 04:00 固定重建**：
+   - 使用 `timeBased().atHour(4).everyDays(1)` 觸發器
+   - 強制 `forceRebuild=true`，重新上傳所有 PDF
+   - 確保 PDF 永遠不會過期
+
+3. **溫度設定確認**：
+   - 已確認有讀取 Prompt Sheet B3 儲存格
+   - 程式碼：`promptSheet.getRange("B3:C3").getValues()[0]`
+
+### 程式碼變更
+
+**新增函數**：
+```javascript
+function dailyKnowledgeRefresh() {
+  writeLog("[Daily] 開始每日知識庫重建 (04:00)...");
+  syncGeminiKnowledgeBase(true); // forceRebuild = true
+  writeLog("[Daily] 每日知識庫重建完成");
+}
+```
+
+**修改觸發器**：
+```javascript
+ScriptApp.newTrigger('dailyKnowledgeRefresh')
+    .timeBased()
+    .atHour(4)
+    .everyDays(1)
+    .inTimezone('Asia/Taipei')
+    .create();
+```
+
+### 使用者需執行
+
+部署後請執行一次 `/重啟` 以建立新的每日觸發器。
+
+---
+
 ## ⚠️⚠️⚠️ 重大成本事故記錄 (2025/12/06) ⚠️⚠️⚠️
 
 ### 事故摘要

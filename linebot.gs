@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.0 Flash)
- * Version: 24.2.1 (Think Mode + 每日 04:00 自動重建)
+ * Version: 24.2.2 (修復 Think Mode 400 錯誤 + 每日 04:00 自動重建)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -30,10 +30,12 @@ const GEMINI_MODEL = 'models/gemini-2.0-flash';
 // ⬆⬆⬆ 模型名稱設定 - 未來升級只改這一行 ⬆⬆⬆
 
 /**
+ * 🔥 v24.2.2 更新：
+ * - 修復：移除 thinkingConfig（gemini-2.0-flash 不支援！）
+ *   └─ 只有 gemini-2.0-flash-thinking-exp-1219 才支援 Thinking Mode
+ *   └─ 普通 Flash 加入 thinkingConfig 會返回 400 錯誤
+ * 
  * 🔥 v24.2.1 更新：
- * - Think Mode 開啟：PDF 模式啟用 thinkingBudget: 2048
- *   └─ Flash 支援 Thinking Mode，提升閱讀理解
- *   └─ Fast 模式仍關閉 Think（QA/Rules 已是整理好的答案）
  * - 每日 04:00 自動重建：改用固定時間觸發器
  *   └─ 之前：47 小時後重建（可能錯過）
  *   └─ 現在：每日 04:00 (台北時間) 強制重建 (forceRebuild=true)
@@ -1611,17 +1613,16 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         // - Fast 模式：關閉 Think (QA/Rules 已是整理好的答案，不需思考)
         // v24.1.24: 針對 PDF 模式放寬輸出限制，確保能完整回答
         // v24.1.27: 修正 Gemini 2.0 Flash-Lite 不支援 thinkingConfig 的問題
-        // 根據官方文件，Flash-Lite 目前不支援 Thinking Mode，必須移除該參數
+        // v24.2.2: 修正 Gemini 2.0 Flash 也不支援 thinkingConfig！
+        // 只有 gemini-2.0-flash-thinking-exp 才支援，普通 Flash 不支援
         const genConfig = { 
             maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS, // PDF 模式放寬至 4096
             temperature: tempSetting
         };
         
-        // v24.2.0: Flash 支援 Thinking Mode，PDF 模式開啟以提升閱讀理解
-        // 注意：Flash-Lite 不支援，但我們已統一改用 Flash
-        if (attachPDFs) {
-            genConfig.thinkingConfig = { thinkingBudget: 2048 };
-        }
+        // ⚠️ 注意：gemini-2.0-flash 不支援 Thinking Mode！
+        // 只有 gemini-2.0-flash-thinking-exp-1219 才支援
+        // 這裡移除 thinkingConfig 以避免 400 錯誤
 
         const payload = {
             contents: geminiContents,
