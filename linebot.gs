@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.3.0 (三層記憶架構、上下文自動提取、實時資訊 API、使用者隔離)
+ * Version: 24.3.1 (修復 userId is not defined + PDF Mode 清除邏輯)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1336,7 +1336,7 @@ function ensureSyncTriggerExists() {
 // 3. Gemini API (通用映射 + 上下文智慧搜尋)
 // ==========================================
 
-function getRelevantKBFiles(messages, kbList) {
+function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
     const MAX_TIER1_COUNT = 2; // 精準匹配上限
     
@@ -1369,27 +1369,30 @@ function getRelevantKBFiles(messages, kbList) {
     // 原設計缺陷：cache.put(..., 300) 無法應對店員隔天回來繼續問的場景
     // 新設計：從 Sheet 對話歷史中自動提取型號，不依賴短期 Cache
     
-    // 嘗試從 Sheet 對話歷史中提取型號（用於跨時間邊界的延續提問）
-    const contextFromHistory = extractContextFromHistory(userId, contextId);
-    if (contextFromHistory && contextFromHistory.models && contextFromHistory.models.length > 0) {
-        exactModels = exactModels.concat(contextFromHistory.models);
-        writeLog(`[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(', ')}`);
-    }
-    
-    // 嘗試從短期 Cache 讀取（用於同一句話的多步驟流程）
-    try {
-        const cache = CacheService.getScriptCache();
-        const injectedModelsJson = cache.get(`${userId}:direct_search_models`);
-        if (injectedModelsJson) {
-            const injectedModels = JSON.parse(injectedModelsJson);
-            if (Array.isArray(injectedModels)) {
-                exactModels = exactModels.concat(injectedModels);
-                writeLog(`[KB Select] 從 Cache 讀取直通車注入型號: ${injectedModels.join(', ')}`);
-                // 不刪除 Cache，保留給同一對話的其他步驟使用
-            }
+    // v24.3.1: 只有在有 userId 時才嘗試提取上下文（避免 userId is not defined）
+    if (userId) {
+        // 嘗試從 Sheet 對話歷史中提取型號（用於跨時間邊界的延續提問）
+        const contextFromHistory = extractContextFromHistory(userId, contextId);
+        if (contextFromHistory && contextFromHistory.models && contextFromHistory.models.length > 0) {
+            exactModels = exactModels.concat(contextFromHistory.models);
+            writeLog(`[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(', ')}`);
         }
-    } catch(e) {
-        // 靜默失敗，繼續執行
+        
+        // 嘗試從短期 Cache 讀取（用於同一句話的多步驟流程）
+        try {
+            const cache = CacheService.getScriptCache();
+            const injectedModelsJson = cache.get(`${userId}:direct_search_models`);
+            if (injectedModelsJson) {
+                const injectedModels = JSON.parse(injectedModelsJson);
+                if (Array.isArray(injectedModels)) {
+                    exactModels = exactModels.concat(injectedModels);
+                    writeLog(`[KB Select] 從 Cache 讀取直通車注入型號: ${injectedModels.join(', ')}`);
+                    // 不刪除 Cache，保留給同一對話的其他步驟使用
+                }
+            }
+        } catch(e) {
+            // 靜默失敗，繼續執行
+        }
     }
     
     // v24.0.0: 型號正則 - 只匹配「真正的型號」，不匹配術語
@@ -1528,7 +1531,8 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         dynamicContext = buildDynamicContext(messages);
     } else if (attachPDFs) {
         // PDF 模式：掛載 PDF + Dynamic Context
-        filesToAttach = getRelevantKBFiles(messages, kbList);
+        // v24.3.1: 傳入 userId 以支援上下文提取
+        filesToAttach = getRelevantKBFiles(messages, kbList, userId);
         dynamicContext = buildDynamicContext(messages);
     } else {
         // 極速模式：只注入 Dynamic Context，不掛載任何檔案
@@ -2058,7 +2062,8 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                   
                   // 預測會用到哪些 PDF
                   const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
-                  const relevantFiles = getRelevantKBFiles([userMsgObj], kbList);
+                  // v24.3.1: 傳入 userId 以支援上下文提取
+                  const relevantFiles = getRelevantKBFiles([userMsgObj], kbList, userId);
                   const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
                   const productNames = pdfNames.map(name => getPdfProductName(name)).slice(0, 3);
                   
