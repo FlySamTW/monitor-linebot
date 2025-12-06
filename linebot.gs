@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.3.1 (修復 userId is not defined + PDF Mode 清除邏輯)
+ * Version: 24.4.0 (PDF 智慧匹配 + 型號反問機制)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -433,6 +433,330 @@ function checkDirectDeepSearch(msg, userId) {
 }
 
 /**
+ * v24.4.0 新增：檢查直通車關鍵字並返回命中的關鍵字
+ * 與 checkDirectDeepSearch 類似，但返回結構化結果
+ * @returns {Object} { hit: boolean, key: string|null }
+ */
+function checkDirectDeepSearchWithKey(msg, userId) {
+    try {
+        const upperMsg = msg.toUpperCase();
+        const upperMsgNoSpace = upperMsg.replace(/\s+/g, '');
+
+        const listJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.STRONG_KEYWORDS);
+        if (listJson) {
+            const strongKeywords = JSON.parse(listJson);
+            
+            let hitKey = null;
+            let maxLength = 0;
+            
+            for (const key of strongKeywords) {
+                if (key.length < 2) continue;
+                const matches = (upperMsg.includes(key) || upperMsgNoSpace.includes(key));
+                if (matches && key.length > maxLength) {
+                    hitKey = key;
+                    maxLength = key.length;
+                }
+            }
+            
+            if (hitKey) {
+                writeLog(`[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKey} (長度: ${hitKey.length})`);
+                
+                // 從 KEYWORD_MAP 提取型號（與原函數相同邏輯）
+                try {
+                    const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+                    if (mapJson) {
+                        const keywordMap = JSON.parse(mapJson);
+                        const mappedValue = keywordMap[hitKey];
+                        writeLog(`[DirectDeep] 查詢 KEYWORD_MAP[${hitKey}] = ${mappedValue ? mappedValue.substring(0, 50) + '...' : 'NOT FOUND'}`);
+                        
+                        if (mappedValue) {
+                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+                            const models = [];
+                            let match;
+                            while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
+                                if (!models.includes(match[0])) {
+                                    models.push(match[0]);
+                                }
+                            }
+                            
+                            writeLog(`[DirectDeep] 從映射值提取型號: ${models.length > 0 ? models.join(', ') : 'NONE'}`);
+                            
+                            if (models.length > 0) {
+                                const cache = CacheService.getScriptCache();
+                                cache.put(`${userId}:direct_search_models`, JSON.stringify(models), 300);
+                                writeLog(`[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${models.join(', ')}`);
+                            }
+                        }
+                    }
+                } catch(e) {
+                    writeLog("[DirectDeep] 型號提取失敗: " + e.message);
+                }
+                
+                return { hit: true, key: hitKey };
+            }
+        }
+        
+        return { hit: false, key: null };
+    } catch (e) {
+        writeLog("[Error] checkDirectDeepSearchWithKey: " + e.message);
+        return { hit: false, key: null };
+    }
+}
+
+/**
+ * v24.4.0 新增：從 CLASS_RULES 別稱行提取「型號模式」並搜尋匹配的 PDF
+ * @param {string} aliasKey - 別稱關鍵字（如 M8, G9, ODYSSEYHUB）
+ * @returns {Object} { pattern: string, matchedPdfs: [{name, models}], needAsk: boolean }
+ */
+function searchPdfByAliasPattern(aliasKey) {
+    try {
+        const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
+        if (!kbListJson) return { pattern: null, matchedPdfs: [], needAsk: false };
+        
+        const kbList = JSON.parse(kbListJson);
+        const pdfFiles = kbList.filter(f => f.mimeType === 'application/pdf');
+        
+        // 1. 從 CLASS_RULES 讀取別稱行，提取「型號模式為：XXX」
+        const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+        if (!sheet) return { pattern: null, matchedPdfs: [], needAsk: false };
+        
+        const data = sheet.getDataRange().getValues();
+        let pdfPattern = null;
+        let aliasName = aliasKey; // 別稱名稱（用於反問訊息）
+        
+        for (const row of data) {
+            const firstCol = String(row[0] || '').toUpperCase();
+            // 檢查是否為別稱行且包含此關鍵字
+            if (firstCol.startsWith('別稱_') && firstCol.includes(aliasKey.toUpperCase())) {
+                const content = String(row[0] || '') + ',' + String(row[1] || '');
+                // 提取「型號模式為：XXX」
+                const patternMatch = content.match(/型號模式為[：:]\s*(.+?)(?:$|,|，)/);
+                if (patternMatch) {
+                    pdfPattern = patternMatch[1].trim();
+                    // 提取別稱的友善名稱（如「Smart Monitor M8」）
+                    const nameMatch = content.match(/別稱_\w+[,，]\s*([^,，]+)/);
+                    if (nameMatch) {
+                        aliasName = nameMatch[1].split('，')[0].split('。')[0].trim();
+                    }
+                    writeLog(`[PDF Search] 從 CLASS_RULES 提取模式: ${aliasKey} → ${pdfPattern}`);
+                    break;
+                }
+            }
+        }
+        
+        // 2. 如果沒有找到模式，用別稱關鍵字直接搜尋
+        if (!pdfPattern) {
+            pdfPattern = aliasKey;
+            writeLog(`[PDF Search] 無型號模式，使用關鍵字搜尋: ${aliasKey}`);
+        }
+        
+        // 3. 解析模式並搜尋 PDF
+        // 模式格式：「M80D或S32?M80*」→ 分割成多個子模式
+        const subPatterns = pdfPattern.split(/或|\|/);
+        const matchedPdfs = [];
+        const seenPrefixes = new Set(); // 用於去重型號開頭
+        
+        for (const pdf of pdfFiles) {
+            const fileName = pdf.name.toUpperCase().replace('.PDF', '');
+            // 從檔名提取所有型號（逗號分隔）
+            const modelsInFile = fileName.split(',').map(m => m.trim());
+            
+            for (const subPattern of subPatterns) {
+                const cleanPattern = subPattern.trim().toUpperCase();
+                // 將 ? 替換為 . (正則任意單字元)，* 替換為 .* (任意多字元)
+                // ## 替換為 \d{2} (兩位數字)
+                let regexStr = cleanPattern
+                    .replace(/\?/g, '.')
+                    .replace(/\*/g, '.*')
+                    .replace(/##/g, '\\d{2}');
+                
+                try {
+                    const regex = new RegExp(regexStr);
+                    
+                    for (const model of modelsInFile) {
+                        if (regex.test(model)) {
+                            // 提取型號開頭（前 6~7 碼，用於顯示給用戶）
+                            // 例如 S32BM801 → S32BM8
+                            let prefix = model.substring(0, Math.min(7, model.length));
+                            // 確保結尾是數字或字母，不是半截
+                            if (prefix.length >= 6) {
+                                prefix = prefix.substring(0, 6);
+                            }
+                            
+                            if (!seenPrefixes.has(prefix)) {
+                                seenPrefixes.add(prefix);
+                                matchedPdfs.push({
+                                    name: pdf.name,
+                                    uri: pdf.uri,
+                                    matchedModel: model,
+                                    prefix: prefix
+                                });
+                            }
+                            break; // 這個 PDF 已匹配，繼續下一個
+                        }
+                    }
+                } catch (regexErr) {
+                    writeLog(`[PDF Search] 正則錯誤: ${regexStr} - ${regexErr.message}`);
+                }
+            }
+        }
+        
+        // 4. 按字母順序排序
+        matchedPdfs.sort((a, b) => a.prefix.localeCompare(b.prefix));
+        
+        // 5. 判斷是否需要反問
+        const needAsk = matchedPdfs.length > 1;
+        
+        writeLog(`[PDF Search] 結果: ${matchedPdfs.length} 個匹配 (needAsk: ${needAsk})`);
+        
+        return {
+            pattern: pdfPattern,
+            aliasName: aliasName,
+            matchedPdfs: matchedPdfs,
+            needAsk: needAsk
+        };
+        
+    } catch (e) {
+        writeLog(`[Error] searchPdfByAliasPattern: ${e.message}`);
+        return { pattern: null, matchedPdfs: [], needAsk: false };
+    }
+}
+
+/**
+ * v24.4.0 新增：處理用戶對 PDF 型號選擇的回覆
+ * @param {string} msg - 用戶訊息
+ * @param {string} userId - 用戶 ID
+ * @param {string} replyToken - LINE 回覆 Token
+ * @param {string} contextId - 上下文 ID
+ * @returns {boolean} 是否已處理（true = 已處理，不需繼續；false = 非選擇回覆，繼續正常流程）
+ */
+function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+    try {
+        const cache = CacheService.getScriptCache();
+        const pendingKey = CACHE_KEYS.PENDING_PDF_SELECTION + userId;
+        const pendingJson = cache.get(pendingKey);
+        
+        if (!pendingJson) return false; // 沒有等待選擇的狀態
+        
+        const pending = JSON.parse(pendingJson);
+        // pending = { originalQuery, aliasKey, options: [{prefix, pdfName, uri}] }
+        
+        // 檢查用戶回覆是否為數字選擇
+        const numMatch = msg.match(/^[1-9]$/);
+        
+        if (numMatch) {
+            const choice = parseInt(numMatch[0]);
+            
+            if (choice <= pending.options.length) {
+                // 有效選擇
+                const selected = pending.options[choice - 1];
+                writeLog(`[PDF Select] 用戶選擇 ${choice}: ${selected.prefix} → ${selected.pdfName}`);
+                
+                // 清除等待狀態
+                cache.remove(pendingKey);
+                
+                // 注入選中的 PDF 型號到 Cache
+                cache.put(`${userId}:direct_search_models`, JSON.stringify([selected.matchedModel]), 300);
+                
+                // 設定 PDF Mode
+                const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+                cache.put(pdfModeKey, 'true', 300);
+                
+                // 用原始問題重新處理（現在有了正確的 PDF）
+                writeLog(`[PDF Select] 使用原始問題重新處理: ${pending.originalQuery}`);
+                
+                // 取得歷史
+                const history = getHistoryFromCacheOrSheet(contextId);
+                const userMsgObj = { role: "user", content: pending.originalQuery };
+                
+                // 呼叫 API（帶 PDF）
+                const response = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId);
+                
+                if (response) {
+                    let finalText = formatForLineMobile(response);
+                    finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                    finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+                    
+                    replyMessage(replyToken, finalText);
+                    
+                    // 更新歷史
+                    updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
+                    writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
+                    writeRecordDirectly(userId, finalText, contextId, 'assistant', '');
+                }
+                
+                return true;
+            }
+        }
+        
+        // 檢查用戶是否輸入了完整型號（如 S32FM803）
+        const modelMatch = msg.toUpperCase().match(/^[SC]\d{2}[A-Z]{1,2}\d{2,3}[A-Z]{0,2}$/);
+        if (modelMatch) {
+            const inputModel = modelMatch[0];
+            writeLog(`[PDF Select] 用戶輸入完整型號: ${inputModel}`);
+            
+            // 清除等待狀態
+            cache.remove(pendingKey);
+            
+            // 注入型號到 Cache
+            cache.put(`${userId}:direct_search_models`, JSON.stringify([inputModel]), 300);
+            
+            // 設定 PDF Mode
+            const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+            cache.put(pdfModeKey, 'true', 300);
+            
+            // 用原始問題重新處理
+            const history = getHistoryFromCacheOrSheet(contextId);
+            const userMsgObj = { role: "user", content: pending.originalQuery };
+            
+            const response = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId);
+            
+            if (response) {
+                let finalText = formatForLineMobile(response);
+                finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                
+                replyMessage(replyToken, finalText);
+                updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
+                writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
+                writeRecordDirectly(userId, finalText, contextId, 'assistant', '');
+            }
+            
+            return true;
+        }
+        
+        // 用戶回覆不是數字也不是型號 → 當作新問題，清除等待狀態
+        writeLog(`[PDF Select] 用戶未選擇，當作新問題處理: ${msg}`);
+        cache.remove(pendingKey);
+        return false; // 繼續正常流程
+        
+    } catch (e) {
+        writeLog(`[Error] handlePdfSelectionReply: ${e.message}`);
+        return false;
+    }
+}
+
+/**
+ * v24.4.0 新增：生成 PDF 型號選擇的反問訊息
+ * @param {string} aliasName - 別稱友善名稱（如「Smart Monitor M8」）
+ * @param {Array} matchedPdfs - 匹配的 PDF 列表
+ * @returns {string} 反問訊息
+ */
+function buildPdfSelectionMessage(aliasName, matchedPdfs) {
+    let msg = `${aliasName} 有幾個版本，請問你的螢幕型號開頭是？\n`;
+    
+    matchedPdfs.forEach((pdf, index) => {
+        const num = index + 1;
+        const emoji = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'][index] || `${num}.`;
+        msg += `${emoji} ${pdf.prefix}...\n`;
+    });
+    
+    msg += `\n都不是的話可以找 Sam 幫你查喔！\n`;
+    msg += `或直接告訴我完整型號（通常在螢幕背面標籤）`;
+    
+    return msg;
+}
+
+/**
  * v24.1.5 新增：偵測型號變化，自動清除不相關的 PDF Mode
  * 當用戶問的型號與當前 PDF Mode 的型號不同時，清除 PDF Mode
  * 讓系統先用 CLASS_RULES（Fast Mode）回答
@@ -760,7 +1084,9 @@ const CACHE_KEYS = {
   HISTORY_PREFIX: 'hist:', 
   ENTRY_DRAFT_PREFIX: 'entry_draft_', 
   PENDING_QUERY: 'pending_query_',
-  PDF_MODE_PREFIX: 'pdf_mode_'
+  PDF_MODE_PREFIX: 'pdf_mode_',
+  // v24.4.0: PDF 型號選擇機制
+  PENDING_PDF_SELECTION: 'pending_pdf_sel_'  // 等待用戶選擇 PDF 型號
 };
 
 const CONFIG = {
@@ -1928,6 +2254,12 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     }
     */
     
+    // C2. v24.4.0: PDF 型號選擇回覆處理
+    // 如果用戶之前被問了「請選擇型號」，這裡處理他的回覆
+    if (handlePdfSelectionReply(msg, userId, replyToken, contextId)) {
+        return; // 已處理完成
+    }
+    
     // D. 一般對話
     const history = getHistoryFromCacheOrSheet(contextId);
     const userMsgObj = { role: "user", content: msg };
@@ -1964,13 +2296,53 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     ];
     const isOperationQuestion = operationPatterns.some(p => p.test(msg));
     
+    // v24.4.0: 記錄命中的直通車關鍵字，用於後續 PDF 智慧匹配
+    let hitAliasKey = null;
+    
     if (!isInPdfMode) {
-        if (checkDirectDeepSearch(msg, userId)) {
+        // 先檢查直通車，同時記錄命中的關鍵字
+        const directSearchResult = checkDirectDeepSearchWithKey(msg, userId);
+        
+        if (directSearchResult.hit) {
+            hitAliasKey = directSearchResult.key;
+            
             if (isOperationQuestion) {
-                // 操作類問題 + 直通車命中 → 直接開 PDF Mode，省掉重試
-                writeLog("[Direct Search] 命中直通車 + 操作類問題，直接開啟 PDF Mode");
-                isInPdfMode = true;
-                cache.put(pdfModeKey, 'true', 300);
+                // v24.4.0: 操作類問題 + 直通車命中 → 先搜尋 PDF，可能需要反問
+                writeLog("[Direct Search] 命中直通車 + 操作類問題，開始 PDF 智慧匹配");
+                
+                const pdfSearchResult = searchPdfByAliasPattern(hitAliasKey);
+                
+                if (pdfSearchResult.needAsk && pdfSearchResult.matchedPdfs.length > 1) {
+                    // 多個 PDF 匹配 → 反問用戶選擇
+                    writeLog(`[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`);
+                    
+                    // 儲存等待選擇的狀態
+                    const pendingData = {
+                        originalQuery: msg,
+                        aliasKey: hitAliasKey,
+                        options: pdfSearchResult.matchedPdfs.slice(0, 9) // 最多 9 個選項
+                    };
+                    cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
+                    
+                    // 發送反問訊息
+                    const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
+                    replyMessage(replyToken, askMsg);
+                    writeLog(`[PDF Match] 已發送型號選擇反問`);
+                    return; // 等待用戶回覆
+                    
+                } else if (pdfSearchResult.matchedPdfs.length === 1) {
+                    // 只有一個 PDF → 直接使用
+                    writeLog(`[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`);
+                    cache.put(`${userId}:direct_search_models`, JSON.stringify([pdfSearchResult.matchedPdfs[0].matchedModel]), 300);
+                    isInPdfMode = true;
+                    cache.put(pdfModeKey, 'true', 300);
+                    
+                } else if (pdfSearchResult.matchedPdfs.length === 0) {
+                    // 沒有匹配的 PDF → 不開 PDF Mode，但繼續用 Fast Mode
+                    writeLog(`[PDF Match] 無匹配 PDF，使用 Fast Mode`);
+                    // 不設定 isInPdfMode，讓系統用 Fast Mode 回答
+                }
+                
             } else {
                 // 規格類問題 → 等 AI 判斷
                 writeLog("[Direct Search] 命中直通車 + 規格類問題，等待 AI 判斷");
