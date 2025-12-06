@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.4.1 (全盤修復：PDF 觸發時機 + API 400 + Loading 動畫)
+ * Version: 24.4.2 (修復 Token 花費顯示 + 全盤修復)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -625,6 +625,7 @@ function searchPdfByAliasPattern(aliasKey) {
 /**
  * v24.4.0 新增：處理用戶對 PDF 型號選擇的回覆
  * v24.4.1 修復：加入 Loading 動畫 + 正確處理 history（不存 PDF blob）
+ * v24.4.2 修復：加入 Token 花費顯示
  * @param {string} msg - 用戶訊息
  * @param {string} userId - 用戶 ID
  * @param {string} replyToken - LINE 回覆 Token
@@ -682,12 +683,19 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
                     finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
                     
-                    replyMessage(replyToken, finalText);
+                    // v24.4.2: 加入 Token 花費顯示
+                    let replyText = finalText;
+                    if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+                        const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+                        replyText += tokenInfo;
+                    }
+                    
+                    replyMessage(replyToken, replyText);
                     
                     // v24.4.1: 更新歷史（只存文字，不存 PDF 內容）
                     updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
                     writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
-                    writeRecordDirectly(userId, finalText, contextId, 'assistant', '');
+                    writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
                 } else {
                     replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
                 }
@@ -726,10 +734,17 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
                 finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
                 
-                replyMessage(replyToken, finalText);
+                // v24.4.2: 加入 Token 花費顯示
+                let replyText = finalText;
+                if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+                    const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+                    replyText += tokenInfo;
+                }
+                
+                replyMessage(replyToken, replyText);
                 updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
                 writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
-                writeRecordDirectly(userId, finalText, contextId, 'assistant', '');
+                writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
             } else {
                 replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
             }
