@@ -1361,6 +1361,7 @@ function getRelevantKBFiles(messages, kbList) {
     let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
     
     // v24.1.9 新增：讀取直通車注入的型號（命中關鍵字時）
+    // v24.2.5 修復：直通車型號應該在對話期間持續有效，而不是一次性使用後刪除
     try {
         const cache = CacheService.getScriptCache();
         const injectedModelsJson = cache.get('direct_search_models');
@@ -1369,7 +1370,8 @@ function getRelevantKBFiles(messages, kbList) {
             if (Array.isArray(injectedModels)) {
                 exactModels = exactModels.concat(injectedModels);
                 writeLog(`[KB Select] 讀取直通車注入型號: ${injectedModels.join(', ')}`);
-                cache.remove('direct_search_models'); // 一次性使用後刪除
+                // v24.2.5: 不刪除，保留給同一對話的下一個問題使用（TTL 已設為 300s）
+                // cache.remove('direct_search_models');
             }
         }
     } catch(e) {
@@ -1425,6 +1427,14 @@ function getRelevantKBFiles(messages, kbList) {
             const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
             exactModels.push(cleanModel);
         });
+    }
+    
+    // v24.2.5 新增：如果當前查詢沒有提到型號，且 Cache 中有直通車注入的型號，
+    // 則認為用戶在繼續討論同一產品（如「M7 價格是多少」→「那它是什麼面板」）
+    // 這樣可以確保後續問題持續使用之前提到的型號
+    if (directModelMatch === null && directLsMatch === null && exactModels.length > 0) {
+        // exactModels 中已包含直通車注入的型號，無需重複
+        writeLog(`[KB Select] 當前查詢無型號，沿用直通車注入型號: ${exactModels.join(', ')}`);
     }
     
     exactModels = [...new Set(exactModels)]; // 去重
