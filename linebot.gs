@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.0 Flash)
- * Version: 24.2.0 (統一模型 + 成本事件記錄)
+ * Version: 24.2.1 (Think Mode + 每日 04:00 自動重建)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -30,6 +30,16 @@ const GEMINI_MODEL = 'models/gemini-2.0-flash';
 // ⬆⬆⬆ 模型名稱設定 - 未來升級只改這一行 ⬆⬆⬆
 
 /**
+ * 🔥 v24.2.1 更新：
+ * - Think Mode 開啟：PDF 模式啟用 thinkingBudget: 2048
+ *   └─ Flash 支援 Thinking Mode，提升閱讀理解
+ *   └─ Fast 模式仍關閉 Think（QA/Rules 已是整理好的答案）
+ * - 每日 04:00 自動重建：改用固定時間觸發器
+ *   └─ 之前：47 小時後重建（可能錯過）
+ *   └─ 現在：每日 04:00 (台北時間) 強制重建 (forceRebuild=true)
+ *   └─ 解決 Google 48 小時檔案過期問題
+ * - 溫度設定：讀取 Prompt Sheet B3 儲存格（已確認有讀取）
+ * 
  * 🔥 v24.2.0 更新：
  * - 統一模型：全部改用 gemini-2.0-flash（移除 Flash-Lite 雙軌制）
  *   └─ 原因：Flash 和 Lite 成本差距僅 $0.10/天，統一管理更方便
@@ -38,26 +48,6 @@ const GEMINI_MODEL = 'models/gemini-2.0-flash';
  * - 新增成本事件記錄：詳細記錄 v23.4.0 的 $54.69 事故
  * 
  * 🔥 v24.1.43 更新：
- * - 修正：PDF 搜尋指令從 systemInstruction 移到 user message
- *   └─ 之前：指令在 systemInstruction，AI 讀完 Prompt 後可能忘記
- *   └─ 現在：指令在 PDF 後面、用戶問題前面，確保 AI 明確知道要搜尋什麼
- *   └─ 結構：[PDF 內容] → [搜尋任務] → [用戶問題]
- * 
- * 🔥 v24.1.40 更新：
- * - 修正：Prompt.csv 換題偵測規則過於寬鬆
- *   └─ AI 在第一題就輸出 [NEW_TOPIC]，導致 PDF Mode 被錯誤退出
- *   └─ 現在：只有「確實有前題」且「明顯無關」才能輸出 [NEW_TOPIC]
- * 
- * 🔥 v24.1.39 更新：
- * - 修正：Deep Mode 加入用戶問題引導
- *   └─ 之前：AI 只知道「從 PDF 找步驟」，但不知道找什麼
- *   └─ 現在：明確告訴 AI「用戶問題是什麼」，引導搜尋正確段落
- *   └─ 範例：【用戶問題】Odyssey Hub 開遊戲沒有 3D
- *           【任務】請在 PDF 中搜尋與此相關的段落
- * 
- * 🔥 v24.1.38 更新：
- * - 修正：/紀錄 流程的 LLM 改回 Flash
- *   └─ callGeminiToPolish（初次整理）需要理解複雜格式規則
  *   └─ callGeminiToMergeQA（合併判斷）需要理解語意
  *   └─ callGeminiToRefineQA（對話修改）需要理解上下文
  * - 模型分配最終版：
@@ -1225,15 +1215,33 @@ function scheduleNextSync() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
     triggers.forEach(t => { 
-        if (t.getHandlerFunction() === 'syncGeminiKnowledgeBase') {
+        if (t.getHandlerFunction() === 'dailyKnowledgeRefresh') {
             ScriptApp.deleteTrigger(t);
         }
     });
-    ScriptApp.newTrigger('syncGeminiKnowledgeBase').timeBased().after(47 * 60 * 60 * 1000).create();
-    writeLog("🕒 已預約 47 小時後自動更新知識庫");
+    // v24.2.0: 改為每日 04:00 自動重建 (forceRebuild=true)
+    // 確保 PDF 不會過期 (Google 48小時限制)
+    ScriptApp.newTrigger('dailyKnowledgeRefresh')
+        .timeBased()
+        .atHour(4)
+        .everyDays(1)
+        .inTimezone('Asia/Taipei')
+        .create();
+    writeLog("🕒 已設定每日 04:00 (台北時間) 自動重建知識庫");
   } catch (e) { 
     writeLog(`⚠️ 排程設定失敗: ${e.message}`); 
   }
+}
+
+/**
+ * 每日 04:00 自動重建知識庫
+ * 使用 forceRebuild=true 確保所有 PDF 重新上傳
+ * 避免 Google 48 小時檔案過期問題
+ */
+function dailyKnowledgeRefresh() {
+  writeLog("[Daily] 開始每日知識庫重建 (04:00)...");
+  syncGeminiKnowledgeBase(true); // forceRebuild = true
+  writeLog("[Daily] 每日知識庫重建完成");
 }
 
 /**
@@ -1298,10 +1306,16 @@ function ensureSyncTriggerExists() {
     if (cache.get(cacheKey)) return;
     
     const triggers = ScriptApp.getProjectTriggers();
-    const hasSyncTrigger = triggers.some(t => t.getHandlerFunction() === 'syncGeminiKnowledgeBase');
+    const hasSyncTrigger = triggers.some(t => t.getHandlerFunction() === 'dailyKnowledgeRefresh');
     if (!hasSyncTrigger) {
-      ScriptApp.newTrigger('syncGeminiKnowledgeBase').timeBased().after(47 * 60 * 60 * 1000).create();
-      writeLog("🔄 偵測到無排程，已自動建立 47 小時後同步觸發器");
+      // v24.2.0: 改為每日 04:00 重建
+      ScriptApp.newTrigger('dailyKnowledgeRefresh')
+          .timeBased()
+          .atHour(4)
+          .everyDays(1)
+          .inTimezone('Asia/Taipei')
+          .create();
+      writeLog("🔄 偵測到無排程，已自動建立每日 04:00 同步觸發器");
     }
     
     // 標記已確認，6 小時內不再檢查
@@ -1603,13 +1617,11 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             temperature: tempSetting
         };
         
-        // 只有支援 Thinking 的模型 (如 Pro) 才加入 thinkingConfig
-        // 目前 Flash-Lite 不支援，所以這裡直接註解掉，避免 400 錯誤
-        /*
-        if (attachPDFs && CONFIG.MODEL_NAME.includes("pro")) {
-             genConfig.thinkingConfig = { thinkingBudget: 2048 };
+        // v24.2.0: Flash 支援 Thinking Mode，PDF 模式開啟以提升閱讀理解
+        // 注意：Flash-Lite 不支援，但我們已統一改用 Flash
+        if (attachPDFs) {
+            genConfig.thinkingConfig = { thinkingBudget: 2048 };
         }
-        */
 
         const payload = {
             contents: geminiContents,
