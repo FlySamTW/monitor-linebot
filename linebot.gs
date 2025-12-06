@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.4.5 (Prompt 修復：有回答就不說「資料沒寫」)
+ * Version: 24.5.0 (PDF Mode 優化：每題先走 Fast Mode，省錢省時間)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2373,14 +2373,25 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
         // v24.3.1 修復：清除 Cache 中的 PDF Mode 標記，防止下一題錯誤延續
         cache.remove(pdfModeKey);
     } else if (isInPdfMode) {
-        writeLog("[PDF Mode] 延續 PDF 模式");
-        // 續命：若還在 PDF 模式且問了複雜問題，延長 5 分鐘
+        // v24.5.0: 記住 PDF 模式，但不直接開 PDF
+        // 改為先走 Fast Mode，如果 Fast Mode 能答就省錢省時間
+        // 只有 Fast Mode 說 [AUTO_SEARCH_PDF] 時才用記住的 PDF
+        writeLog("[PDF Mode] 記住 PDF 模式，但先走 Fast Mode 嘗試回答");
+        // 續命：延長 5 分鐘（等 Fast Mode 判斷完再決定是否用 PDF）
         cache.put(pdfModeKey, 'true', 300);
     }
+    
+    // v24.5.0: 記住原始的 PDF Mode 狀態，供後續 [AUTO_SEARCH_PDF] 使用
+    const hadPdfModeMemory = isInPdfMode;
+    
+    // v24.5.0: 檢查是否有已選過的 PDF 型號（避免重複反問）
+    const cachedDirectModels = cache.get(`${userId}:direct_search_models`);
+    const hasSelectedPdf = cachedDirectModels && cachedDirectModels.length > 2; // 不是空 JSON
 
     try {
-        // 第一次呼叫：如果在 PDF 模式就帶 PDF，否則極速模式
-        let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, isInPdfMode, false, userId); 
+        // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
+        // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
+        let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId); 
         
         // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
         if (rawResponse === "[KB_EXPIRED]") {
@@ -2425,41 +2436,65 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                   // finalText 已經是極速模式的回答，直接用
                   replyText = finalText;
               } else {
-                  // v24.4.1: 非硬體問題，需要查 PDF
-                  // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
-                  const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
-                  
-                  if (cachedAliasKey) {
-                      // 有直通車關鍵字 → 使用 PDF 智慧匹配
-                      writeLog(`[Auto Search] 使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey}`);
+                  // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
+                  // 如果有，直接用之前選的 PDF，不要再反問
+                  if (hadPdfModeMemory && hasSelectedPdf) {
+                      writeLog(`[Auto Search] 有 PDF 記憶，直接使用已選的 PDF: ${cachedDirectModels}`);
                       
-                      const pdfSearchResult = searchPdfByAliasPattern(cachedAliasKey);
+                      // 設定 PDF 模式並重試
+                      isInPdfMode = true;
+                      cache.put(pdfModeKey, 'true', 300);
                       
-                      if (pdfSearchResult.needAsk && pdfSearchResult.matchedPdfs.length > 1) {
-                          // 多個 PDF 匹配 → 反問用戶選擇
-                          writeLog(`[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`);
+                      // v24.5.0: 顯示 Loading 動畫
+                      showLoadingAnimation(userId, 60);
+                      
+                      const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+                      
+                      if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                          finalText = formatForLineMobile(deepResponse);
+                          finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                          finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+                      } else {
+                          finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                      }
+                      replyText = finalText;
+                      
+                  } else {
+                      // v24.4.1: 非硬體問題，需要查 PDF
+                      // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
+                      const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
+                      
+                      if (cachedAliasKey) {
+                          // 有直通車關鍵字 → 使用 PDF 智慧匹配
+                          writeLog(`[Auto Search] 使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey}`);
                           
-                          // 儲存等待選擇的狀態
-                          const pendingData = {
-                              originalQuery: msg,
-                              aliasKey: cachedAliasKey,
-                              options: pdfSearchResult.matchedPdfs.slice(0, 9)
-                          };
-                          cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
+                          const pdfSearchResult = searchPdfByAliasPattern(cachedAliasKey);
                           
-                          // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
-                          // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
-                          const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
+                          if (pdfSearchResult.needAsk && pdfSearchResult.matchedPdfs.length > 1) {
+                              // 多個 PDF 匹配 → 反問用戶選擇
+                              writeLog(`[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`);
+                              
+                              // 儲存等待選擇的狀態
+                              const pendingData = {
+                                  originalQuery: msg,
+                                  aliasKey: cachedAliasKey,
+                                  options: pdfSearchResult.matchedPdfs.slice(0, 9)
+                              };
+                              cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
+                              
+                              // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
+                              // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
+                              const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
+                              
+                              replyMessage(replyToken, askMsg);
+                              writeLog(`[PDF Match] 已發送型號選擇反問`);
+                              
+                              // v24.4.4: 不更新 history，等用戶回覆後再一起更新
+                              // 避免 history 中出現「等待用戶選擇型號」這種非對話內容
+                              writeRecordDirectly(userId, msg, contextId, 'user', '');
+                              return; // 等待用戶回覆
                           
-                          replyMessage(replyToken, askMsg);
-                          writeLog(`[PDF Match] 已發送型號選擇反問`);
-                          
-                          // v24.4.4: 不更新 history，等用戶回覆後再一起更新
-                          // 避免 history 中出現「等待用戶選擇型號」這種非對話內容
-                          writeRecordDirectly(userId, msg, contextId, 'user', '');
-                          return; // 等待用戶回覆
-                          
-                      } else if (pdfSearchResult.matchedPdfs.length === 1) {
+                          } else if (pdfSearchResult.matchedPdfs.length === 1) {
                           // 只有一個 PDF → 直接使用
                           writeLog(`[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`);
                           cache.put(`${userId}:direct_search_models`, JSON.stringify([pdfSearchResult.matchedPdfs[0].matchedModel]), 300);
@@ -2520,7 +2555,8 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                           replyText = finalText;
                       }
                   }
-              }
+                  } // v24.5.0: 結束 else { 有直通車關鍵字 } 區塊
+              } // v24.5.0: 結束 else { 沒有 PDF 記憶 } 區塊
           }
           // === [NEW_TOPIC] 攔截：退出 PDF 模式 ===
           else if (finalText.includes("[NEW_TOPIC]")) {

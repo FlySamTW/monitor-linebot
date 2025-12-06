@@ -5,6 +5,109 @@
 
 ---
 
+## Version 24.5.0 - PDF Mode 優化：每題先走 Fast Mode
+**日期**: 2025/12/06  
+**類型**: Performance Optimization / Cost Reduction
+
+### 問題背景
+
+用戶問「M8 有附視訊鏡頭嗎」時：
+1. 之前已經選過 M8 的 PDF（S32DM803）
+2. 系統因為「延續 PDF 模式」直接開 PDF
+3. PDF 只寫「連接 USB 相機」，沒寫「有附」
+4. AI 回答「沒有隨附視訊鏡頭」→ **錯誤！**
+
+**但 CLASS_RULES 有寫：**
+```
+別稱_M8,Smart Monitor M8，高階智慧螢幕，32吋4K，附磁吸視訊鏡頭(SlimFitCamera)...
+```
+
+**根本原因：** 延續 PDF 模式時跳過了 Fast Mode（QA + CLASS_RULES），直接讀 PDF。
+
+### 解決方案
+
+#### 1. 每題都先走 Fast Mode
+
+```
+舊邏輯：
+  isInPdfMode = true → 直接開 PDF → 跳過 QA/CLASS_RULES
+
+新邏輯：
+  isInPdfMode = true → 記住狀態，但先走 Fast Mode
+    → Fast Mode 能答 → 回答（省錢省時間）
+    → Fast Mode 說 [AUTO_SEARCH_PDF] → 用記住的 PDF
+```
+
+#### 2. 有 PDF 記憶時不重複反問
+
+```
+[AUTO_SEARCH_PDF] 觸發時：
+  → 檢查 direct_search_models Cache
+      → 有（已選過型號）→ 直接用之前的 PDF，不反問
+      → 沒有 → 走智慧匹配流程（可能反問）
+```
+
+### 新增變數
+
+```javascript
+// v24.5.0: 記住原始的 PDF Mode 狀態
+const hadPdfModeMemory = isInPdfMode;
+
+// v24.5.0: 檢查是否有已選過的 PDF 型號
+const hasSelectedPdf = cachedDirectModels && cachedDirectModels.length > 2;
+```
+
+### 完整流程圖（v24.5.0）
+
+```
+用戶問任何問題
+  ↓
+【每題都先走 Fast Mode】（QA + CLASS_RULES，不帶 PDF）
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ Fast Mode 能回答（如規格問題）                          │
+│   → 直接回答 ✅ 省錢省時間                              │
+├─────────────────────────────────────────────────────────┤
+│ Fast Mode 說 [AUTO_SEARCH_PDF]（如操作問題）            │
+│   ↓                                                     │
+│   檢查有沒有 PDF 記憶（direct_search_models）            │
+│   ├── 有 → 直接用記住的 PDF，不反問                     │
+│   └── 沒有 → 智慧匹配（可能反問選型號）                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 效益
+
+| 情境 | 舊版本 | v24.5.0 |
+|------|--------|---------|
+| 規格問題（如「M8 有附鏡頭嗎」） | 開 PDF（50K tokens） | Fast Mode（2K tokens） |
+| 操作追問（同型號） | 開 PDF + 可能反問 | 開 PDF（不反問） |
+| 換型號 | 反問 | 反問 |
+
+**預估節省：追問規格問題時節省 96% Token**
+
+---
+
+## Version 24.4.5 - Prompt 修復：有回答就不說「資料沒寫」
+**日期**: 2025/12/06  
+**類型**: Prompt Optimization
+
+### 問題
+
+AI 回答正確後還加上「這題資料沒寫，看 Sam 知不知道」
+
+### 修復
+
+修改 Prompt.csv 第 20 行：
+```
+舊：1.查無規格資料:「這題資料沒寫,看Sam知不知道」
+
+新：1.查無規格資料且你無法給出任何具體答案時:「這題資料沒寫,看Sam知不知道」。
+    **但如果你已經回答出具體內容(如規格、功能說明),就不要再說「資料沒寫」或「找Sam」**。
+```
+
+---
+
 ## Version 24.4.4 - PDF 智慧匹配修復 + 反問流程優化
 **日期**: 2025/12/06  
 **類型**: Bug Fix / Flow Optimization
