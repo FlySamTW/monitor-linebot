@@ -5,6 +5,107 @@
 
 ---
 
+## Version 24.4.0 - PDF 智慧匹配 + 型號反問機制
+**日期**: 2025/12/06  
+**類型**: Architecture / UX Improvement / PDF Selection
+
+### 問題背景
+
+用戶問「M8 的視訊鏡頭該如何使用」時：
+1. 直通車提取內部代號 `M80D`
+2. 但 PDF 檔名是 `S32BM801.pdf`、`S32FM803.pdf`、`S32DM803.pdf`
+3. `M80D` 無法匹配任何 PDF → 載入錯誤的手冊
+
+### 解決方案
+
+#### 1. 從 CLASS_RULES 提取「型號模式」
+
+CLASS_RULES 別稱行已有定義：
+```
+別稱_M8,...型號模式為：M80D或S32?M80*
+```
+
+新函數 `searchPdfByAliasPattern()` 會：
+1. 解析「型號模式為：XXX」
+2. 將 `?` 轉為正則 `.`，`*` 轉為 `.*`
+3. 用正則匹配 PDF 檔名
+
+#### 2. 多個匹配時反問用戶
+
+```
+用戶：「M8 的視訊鏡頭該如何使用」
+  ↓
+匹配到 3 個 PDF：S32BM801, S32DM803, S32FM803
+  ↓
+系統反問：
+「Smart Monitor M8 有幾個版本，請問你的螢幕型號開頭是？
+  1️⃣ S32BM8...
+  2️⃣ S32DM8...
+  3️⃣ S32FM8...
+  都不是的話可以找 Sam 幫你查喔！
+  或直接告訴我完整型號（通常在螢幕背面標籤）」
+```
+
+#### 3. 用戶回覆處理
+
+| 用戶回覆 | 處理方式 |
+|---------|---------|
+| 數字 `1`/`2`/`3` | 載入對應 PDF，用原始問題重新回答 |
+| 完整型號 `S32FM803` | 精確匹配 PDF |
+| 其他（新問題） | 清除等待狀態，當作新問題處理 |
+
+#### 4. 選項排序
+
+按字母順序排列（B → D → F）：
+```
+1️⃣ S32BM8...
+2️⃣ S32DM8...
+3️⃣ S32FM8...
+```
+
+### 新增函數
+
+| 函數 | 用途 |
+|------|------|
+| `searchPdfByAliasPattern(aliasKey)` | 從 CLASS_RULES 提取模式並搜尋 PDF |
+| `handlePdfSelectionReply(msg, userId, replyToken, contextId)` | 處理用戶的型號選擇回覆 |
+| `buildPdfSelectionMessage(aliasName, matchedPdfs)` | 生成反問訊息 |
+| `checkDirectDeepSearchWithKey(msg, userId)` | 直通車檢查並返回命中關鍵字 |
+
+### 新增 Cache Key
+
+```javascript
+PENDING_PDF_SELECTION: 'pending_pdf_sel_'  // 等待用戶選擇 PDF 型號
+```
+
+### 流程圖
+
+```
+用戶問操作類問題
+  ↓
+直通車命中（如 M8）
+  ↓
+searchPdfByAliasPattern() 搜尋 PDF
+  ↓
+┌─────────────────────────────────────┐
+│ 0 個匹配 → Fast Mode 回答           │
+│ 1 個匹配 → 直接開 PDF Mode          │
+│ 多個匹配 → 反問用戶選擇             │
+└─────────────────────────────────────┘
+  ↓ [反問]
+用戶回覆
+  ↓
+handlePdfSelectionReply() 處理
+  ↓
+┌─────────────────────────────────────┐
+│ 數字 → 載入對應 PDF，重新回答       │
+│ 完整型號 → 精確匹配 PDF             │
+│ 新問題 → 清除狀態，正常處理         │
+└─────────────────────────────────────┘
+```
+
+---
+
 ## Version 24.3.0 - 三層記憶架構 + 上下文自動提取
 **日期**: 2025/12/06  
 **類型**: Architecture / Memory Management / Context Awareness
