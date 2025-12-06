@@ -341,8 +341,9 @@ const GEMINI_MODEL_THINK = 'models/gemini-2.5-flash';     // PDF 深度閱讀用
 /**
  * 檢查是否命中直通車關鍵字 (強制開啟 PDF 模式)
  * 來源：CLASS_RULES 自動產生的 keywordMap (包含別稱與術語)
+ * v24.3.0: 添加 userId 參數用於隔離不同使用者的 Cache
  */
-function checkDirectDeepSearch(msg) {
+function checkDirectDeepSearch(msg, userId) {
     try {
         const upperMsg = msg.toUpperCase();
         const upperMsgNoSpace = upperMsg.replace(/\s+/g, '');
@@ -397,11 +398,13 @@ function checkDirectDeepSearch(msg) {
                             writeLog(`[DirectDeep] 從映射值提取型號: ${models.length > 0 ? models.join(', ') : 'NONE'}`);
                             
                             // 注入到 Cache，讓 getRelevantKBFiles() 使用
+                            // v24.3.0: 使用 userId:key 隔離不同使用者
                             if (models.length > 0) {
                                 const cache = CacheService.getScriptCache();
-                                // v24.1.12: 修正 TTL 為 300秒 (5分鐘)，與 PDF Mode 保持一致
-                                cache.put('direct_search_models', JSON.stringify(models), 300);
-                                writeLog(`[DirectDeep] ✅ 注入型號到 Cache: ${models.join(', ')}`);
+                                // TTL 為 300秒 (5分鐘)，用於同一句話的多步驟流程
+                                // 跨越時間邊界的型號提取應依賴 Sheet 歷史，不依賴 Cache
+                                cache.put(`${userId}:direct_search_models`, JSON.stringify(models), 300);
+                                writeLog(`[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${models.join(', ')}`);
                             } else {
                                 writeLog(`[DirectDeep] ⚠️  無法從映射值提取型號（術語無型號），跳過注入`);
                             }
@@ -1361,17 +1364,28 @@ function getRelevantKBFiles(messages, kbList) {
     let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
     
     // v24.1.9 新增：讀取直通車注入的型號（命中關鍵字時）
-    // v24.2.5 修復：直通車型號應該在對話期間持續有效，而不是一次性使用後刪除
+    // v24.3.0 修復：改用 Sheet 歷史而非 Cache，解決跨時間問題
+    // 
+    // 原設計缺陷：cache.put(..., 300) 無法應對店員隔天回來繼續問的場景
+    // 新設計：從 Sheet 對話歷史中自動提取型號，不依賴短期 Cache
+    
+    // 嘗試從 Sheet 對話歷史中提取型號（用於跨時間邊界的延續提問）
+    const contextFromHistory = extractContextFromHistory(userId, contextId);
+    if (contextFromHistory && contextFromHistory.models && contextFromHistory.models.length > 0) {
+        exactModels = exactModels.concat(contextFromHistory.models);
+        writeLog(`[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(', ')}`);
+    }
+    
+    // 嘗試從短期 Cache 讀取（用於同一句話的多步驟流程）
     try {
         const cache = CacheService.getScriptCache();
-        const injectedModelsJson = cache.get('direct_search_models');
+        const injectedModelsJson = cache.get(`${userId}:direct_search_models`);
         if (injectedModelsJson) {
             const injectedModels = JSON.parse(injectedModelsJson);
             if (Array.isArray(injectedModels)) {
                 exactModels = exactModels.concat(injectedModels);
-                writeLog(`[KB Select] 讀取直通車注入型號: ${injectedModels.join(', ')}`);
-                // v24.2.5: 不刪除，保留給同一對話的下一個問題使用（TTL 已設為 300s）
-                // cache.remove('direct_search_models');
+                writeLog(`[KB Select] 從 Cache 讀取直通車注入型號: ${injectedModels.join(', ')}`);
+                // 不刪除 Cache，保留給同一對話的其他步驟使用
             }
         }
     } catch(e) {
@@ -1822,6 +1836,27 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     if (!userMessage || !userMessage.trim()) return;
     const msg = userMessage.trim();
     
+    // v24.3.0: 實時資訊快速回答（日期、時間）
+    // 不需要問 AI，直接回答準確資訊
+    if (/今天|現在|幾月|幾號|幾點|幾分|時間|日期/i.test(msg)) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('zh-TW', {year: 'numeric', month: 'long', day: 'numeric'});
+        const timeStr = now.toLocaleTimeString('zh-TW');
+        
+        let response = null;
+        if (/今天|幾月|幾號|日期|幾日/i.test(msg) && !/時間|幾點/i.test(msg)) {
+            response = `📅 今天是 ${dateStr}`;
+        } else if (/現在|幾點|幾分|時間/i.test(msg)) {
+            response = `🕒 現在是 ${timeStr}`;
+        }
+        
+        if (response) {
+            replyMessage(replyToken, response);
+            writeLog(`[RealTime] 實時資訊快速回答: ${response}`);
+            return;
+        }
+    }
+    
     // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
     // 但指令類別不做去重，因為用戶可能需要重試
     const cache = CacheService.getScriptCache();
@@ -1926,7 +1961,7 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     const isOperationQuestion = operationPatterns.some(p => p.test(msg));
     
     if (!isInPdfMode) {
-        if (checkDirectDeepSearch(msg)) {
+        if (checkDirectDeepSearch(msg, userId)) {
             if (isOperationQuestion) {
                 // 操作類問題 + 直通車命中 → 直接開 PDF Mode，省掉重試
                 writeLog("[Direct Search] 命中直通車 + 操作類問題，直接開啟 PDF Mode");
@@ -3191,6 +3226,84 @@ function writeLog(msg) {
       } catch(e){} 
   }
   console.log(msg);
+}
+
+/**
+ * v24.3.0 新增：從對話歷史自動提取上下文
+ * 用途：支援跨越時間邊界的延續提問（如店員隔天回來繼續問）
+ * 
+ * 提取內容：型號、品牌、功能特徵、使用場景
+ * 範圍：回溯最近 10 條訊息（避免過度搜尋舊訊息）
+ */
+function extractContextFromHistory(userId, contextId) {
+    try {
+        const history = getHistoryFromCacheOrSheet(contextId);
+        if (!history || history.length === 0) {
+            return null;
+        }
+        
+        // 合併最近 10 條訊息的內容
+        const recentMsgs = history.slice(-10).map(m => m.content || '').join(' ');
+        
+        // 提取型號
+        const MODEL_REGEX = /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{2}[A-Z]|G\d{2}[A-Z]{1,2})\b/g;
+        const models = [];
+        let match;
+        while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
+            if (!models.includes(match[0])) {
+                models.push(match[0]);
+            }
+        }
+        
+        // 提取品牌（簡單方法：檢查是否提到 Samsung/三星）
+        const hasSamsung = /samsung|三星|SAMSUNG/i.test(recentMsgs);
+        const brand = hasSamsung ? 'Samsung' : null;
+        
+        // 提取功能特徵（簡單方法：檢查常見術語）
+        const features = [];
+        const featureKeywords = {
+            '4K': /4K|UHD|3840x2160/i,
+            'OLED': /OLED/i,
+            'MiniLED': /MiniLED|mini led/i,
+            'IPS': /IPS/i,
+            'VA': /VA/i,
+            '曲面': /curved|曲|1000R|1800R/i,
+            'USB-C': /USB-C|type-c/i,
+            'Thunderbolt': /thunderbolt/i
+        };
+        
+        for (const [name, pattern] of Object.entries(featureKeywords)) {
+            if (pattern.test(recentMsgs)) {
+                features.push(name);
+            }
+        }
+        
+        // 提取場景（簡單方法：檢查常見場景詞）
+        const scenario = [];
+        const scenarioKeywords = {
+            '電競': /gaming|電競|遊戲|FPS|RTX/i,
+            '創意工作': /creative|design|修圖|色域|DCI-P3/i,
+            '商務': /business|office|商務|辦公/i,
+            '居家': /home|living|家用|living room/i
+        };
+        
+        for (const [name, pattern] of Object.entries(scenarioKeywords)) {
+            if (pattern.test(recentMsgs)) {
+                scenario.push(name);
+            }
+        }
+        
+        return {
+            models: models.length > 0 ? models : null,
+            brand: brand,
+            features: features.length > 0 ? features : null,
+            scenario: scenario.length > 0 ? scenario : null
+        };
+        
+    } catch (e) {
+        writeLog(`[extractContextFromHistory] 錯誤: ${e.message}`);
+        return null;
+    }
 }
 
 function getHistoryFromCacheOrSheet(cid) {
