@@ -1,17 +1,21 @@
 /**
- * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 2.0 Flash)
- * Version: 24.2.2 (修復 Think Mode 400 錯誤 + 每日 04:00 自動重建)
+ * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型)
+ * Version: 24.2.3 (雙模型策略：Flash + 2.5 Flash Thinking)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
  * ════════════════════════════════════════════════════════════════
  * 
- * 當前模型：gemini-2.0-flash
- * 下次升級：等 gemini-3.0-flash 正式發布後再更換
+ * 【一般對話】gemini-2.0-flash - 快速、便宜
+ * 【PDF 深讀】gemini-2.5-flash - 支援思考 (thinkingBudget)
  * 
  * ⚠️ 重要警告：模型名稱必須是 Google 官方存在的名稱！
  * ⚠️ 使用不存在的名稱可能導致 API 靜默 fallback 到更貴的模型！
  * ⚠️ 參考文件：https://ai.google.dev/gemini-api/docs/models/gemini
+ * 
+ * 【定價參考】(per 1M tokens)
+ * - gemini-2.0-flash: Input $0.10, Output $0.40
+ * - gemini-2.5-flash: Input $0.15, Output $0.60 (無思考) / $3.50 (含思考)
  * 
  * ════════════════════════════════════════════════════════════════
  * 💸 成本事件記錄 (2025/12/06)
@@ -20,39 +24,35 @@
  * 【事件】v23.4.0 使用不存在的模型名稱 "gemini-2.5-flash-lite"
  * 【後果】API 靜默 fallback 到 Gemini 3 Pro Image，產生 $54.69 異常費用
  * 【教訓】永遠使用官方文件中存在的模型名稱，不要猜測
- * 【修正】v24.2.0 統一使用 gemini-2.0-flash，並將設定移到最開頭
+ * 【修正】v24.2.0+ 使用官方確認存在的模型
  * 
  * ════════════════════════════════════════════════════════════════
  */
 
-// ⬇⬇⬇ 模型名稱設定 - 未來升級只改這一行 ⬇⬇⬇
-const GEMINI_MODEL = 'models/gemini-2.0-flash';
-// ⬆⬆⬆ 模型名稱設定 - 未來升級只改這一行 ⬆⬆⬆
+// ⬇⬇⬇ 模型名稱設定 - 未來升級請改這裡 ⬇⬇⬇
+const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';      // 快速對話用
+const GEMINI_MODEL_THINK = 'models/gemini-2.5-flash';     // PDF 深度閱讀用 (支援思考)
+// ⬆⬆⬆ 模型名稱設定 - 未來升級請改這裡 ⬆⬆⬆
 
 /**
+ * 🔥 v24.2.3 更新：
+ * - 雙模型策略：
+ *   └─ Fast Mode (一般對話)：gemini-2.0-flash（便宜、快速）
+ *   └─ PDF Mode (深度閱讀)：gemini-2.5-flash + thinkingBudget: 1024
+ *   └─ /紀錄 (需理解複雜格式)：gemini-2.5-flash + thinkingBudget: 512
+ * - 成本估算（每日 1000 次問答）：
+ *   └─ Fast Mode 約 $0.40/天
+ *   └─ PDF Mode 約 $0.50/天（含思考）
+ * 
  * 🔥 v24.2.2 更新：
- * - 修復：移除 thinkingConfig（gemini-2.0-flash 不支援！）
- *   └─ 只有 gemini-2.0-flash-thinking-exp-1219 才支援 Thinking Mode
- *   └─ 普通 Flash 加入 thinkingConfig 會返回 400 錯誤
+ * - 修復：gemini-2.0-flash 不支援 thinkingConfig（只有 2.5 系列支援）
  * 
  * 🔥 v24.2.1 更新：
  * - 每日 04:00 自動重建：改用固定時間觸發器
- *   └─ 之前：47 小時後重建（可能錯過）
- *   └─ 現在：每日 04:00 (台北時間) 強制重建 (forceRebuild=true)
  *   └─ 解決 Google 48 小時檔案過期問題
  * - 溫度設定：讀取 Prompt Sheet B3 儲存格（已確認有讀取）
  * 
  * 🔥 v24.2.0 更新：
- * - 統一模型：全部改用 gemini-2.0-flash（移除 Flash-Lite 雙軌制）
- *   └─ 原因：Flash 和 Lite 成本差距僅 $0.10/天，統一管理更方便
- *   └─ 好處：避免混淆、易於升級、更穩定
- * - 模型設定移到最開頭：方便未來更換（如 Flash 3.0）
- * - 新增成本事件記錄：詳細記錄 v23.4.0 的 $54.69 事故
- * 
- * 🔥 v24.1.43 更新：
- *   └─ callGeminiToMergeQA（合併判斷）需要理解語意
- *   └─ callGeminiToRefineQA（對話修改）需要理解上下文
- * - 模型分配最終版：
  *   └─ Flash: 用戶對話、/紀錄 流程（需理解複雜指令）
  *   └─ Lite: 搜尋、摘要、簡單格式化（省錢）
  * 
@@ -761,8 +761,9 @@ const CACHE_KEYS = {
 };
 
 const CONFIG = {
-  // v24.2.0: 統一使用頂部定義的 GEMINI_MODEL
-  MODEL_NAME: GEMINI_MODEL,
+  // v24.2.3: 雙模型策略
+  MODEL_NAME_FAST: GEMINI_MODEL_FAST,   // 快速對話用
+  MODEL_NAME_THINK: GEMINI_MODEL_THINK, // PDF 深度閱讀 & /紀錄 用
   MAX_OUTPUT_TOKENS: 8192, 
   HISTORY_PAIR_LIMIT: 10,      // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
   PDF_HISTORY_LIMIT: 6,        // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
@@ -1608,21 +1609,21 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         if (first) geminiContents.push({ role: 'user', parts: [{ text: "你好" }] });
     }
 
-        // v24.0.0: Think Mode 條件開啟
-        // - PDF 模式：開啟 Think (提升閱讀理解，成本增加 <10%)
-        // - Fast 模式：關閉 Think (QA/Rules 已是整理好的答案，不需思考)
-        // v24.1.24: 針對 PDF 模式放寬輸出限制，確保能完整回答
-        // v24.1.27: 修正 Gemini 2.0 Flash-Lite 不支援 thinkingConfig 的問題
-        // v24.2.2: 修正 Gemini 2.0 Flash 也不支援 thinkingConfig！
-        // 只有 gemini-2.0-flash-thinking-exp 才支援，普通 Flash 不支援
+        // v24.2.3: 雙模型策略
+        // - Fast Mode (無 PDF)：gemini-2.0-flash（快速、便宜）
+        // - PDF Mode (有 PDF)：gemini-2.5-flash + thinkingBudget: 1024（深度閱讀）
+        const useThinkModel = attachPDFs; // PDF 模式才用 Think 模型
+        const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
+        
         const genConfig = { 
             maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS, // PDF 模式放寬至 4096
             temperature: tempSetting
         };
         
-        // ⚠️ 注意：gemini-2.0-flash 不支援 Thinking Mode！
-        // 只有 gemini-2.0-flash-thinking-exp-1219 才支援
-        // 這裡移除 thinkingConfig 以避免 400 錯誤
+        // v24.2.3: 只有 gemini-2.5-flash 才加入 thinkingConfig
+        if (useThinkModel) {
+            genConfig.thinkingConfig = { thinkingBudget: 1024 };
+        }
 
         const payload = {
             contents: geminiContents,
@@ -1631,8 +1632,8 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
         };
 
-    const url = `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`;
-    writeLog(`[API Call] Model: ${CONFIG.MODEL_NAME}, PDF: ${attachPDFs}, Retry: ${isRetry}`);
+    const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
+    writeLog(`[API Call] Model: ${modelName}, PDF: ${attachPDFs}, Think: ${useThinkModel}, Retry: ${isRetry}`);
     const start = new Date().getTime();
     let lastLoadingTime = start; // 追蹤上次發送 Loading 的時間
     
@@ -2422,12 +2423,12 @@ function findSimilarQA(newContent, polishedQA) {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: { 
                 maxOutputTokens: 100, 
-                temperature: 0.1,
-                thinkingConfig: { thinkingBudget: 0 }
+                temperature: 0.1
             }
         };
         
-        var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME + ':generateContent?key=' + apiKey, {
+        // v24.2.3: 簡單搜尋用 Fast 模型
+        var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME_FAST + ':generateContent?key=' + apiKey, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -2532,7 +2533,8 @@ function callGeminiToMergeQA(existingQAs, newQA) {
     };
     
     try {
-        var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME + ':generateContent?key=' + apiKey, {
+        // v24.2.3: 語意合併用 Think 模型
+        var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME_THINK + ':generateContent?key=' + apiKey, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -2651,7 +2653,8 @@ ${historyText}
     };
     
     try {
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, {
+        // v24.2.3: 對話修改用 Think 模型
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -2743,7 +2746,8 @@ ${input}
     };
     
     try {
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, {
+        // v24.2.3: 理解用戶意圖用 Think 模型
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -2820,13 +2824,13 @@ function callGeminiToModify(currentText, instruction) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { 
             maxOutputTokens: 500, 
-            temperature: 0.4,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.4
         }
     };
     
     try {
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, {
+        // v24.2.3: 簡單格式化用 Fast 模型
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -3041,11 +3045,11 @@ ${convo}`;
             contents: [{ role: 'user', parts: [{ text: prompt }] }], 
             generationConfig: { 
                 maxOutputTokens: 300, 
-                temperature: 0.3,
-                thinkingConfig: { thinkingBudget: 0 }
+                temperature: 0.3
             } 
         };
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
+        // v24.2.3: 簡單整理用 Fast 模型
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
 
         let qaLine = '';
         if (res.getResponseCode() === 200) {
@@ -3296,7 +3300,8 @@ ${convoText}`;
     };
     
     try {
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME}:generateContent?key=${apiKey}`, {
+        // v24.2.3: 簡單摘要用 Fast 模型
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
