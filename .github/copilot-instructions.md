@@ -9,13 +9,6 @@
 6. **性能、邏輯架構問題應在既有文檔中記述，不需特別撰寫額外說明。**
 7. **三層記憶架構（Cache/Sheet/API）的實現邏輯不應硬寫在 GAS，應由 Prompt 引導 AI。**
 
-## 🔄 v24.3.0 核心改動（2025/12/06）
-- **三層記憶架構**：Layer 1 (Cache 300s) → Layer 2 (Sheet 永久) → Layer 3 (API 實時)
-- **上下文自動提取**：`extractContextFromHistory()` 從對話歷史自動提取型號、品牌、功能、場景
-- **使用者隔離**：所有 Cache 鍵改用 `${userId}:key` 前綴，防止多用戶互相干擾
-- **實時資訊 API**：日期、時間直接回答，不經由 Gemini
-- **防守邏輯轉移**：競品、股價等問題的回答規則應在 Prompt.csv C3 配置，不在代碼硬編碼
-
 ## 專案概述
 Google Apps Script (GAS) 專案，整合 LINE Messaging API + Gemini 2.5 Flash，為台灣三星電腦螢幕提供 AI 客服。
 
