@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.4.2 (修復 Token 花費顯示 + 全盤修復)
+ * Version: 24.4.3 (修復 updateHistorySheetAndCache 參數順序)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -626,6 +626,7 @@ function searchPdfByAliasPattern(aliasKey) {
  * v24.4.0 新增：處理用戶對 PDF 型號選擇的回覆
  * v24.4.1 修復：加入 Loading 動畫 + 正確處理 history（不存 PDF blob）
  * v24.4.2 修復：加入 Token 花費顯示
+ * v24.4.3 修復：修正 updateHistorySheetAndCache 參數順序
  * @param {string} msg - 用戶訊息
  * @param {string} userId - 用戶 ID
  * @param {string} replyToken - LINE 回覆 Token
@@ -692,8 +693,9 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     
                     replyMessage(replyToken, replyText);
                     
-                    // v24.4.1: 更新歷史（只存文字，不存 PDF 內容）
-                    updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
+                    // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
+                    const asstMsgObj = { role: "assistant", content: finalText };
+                    updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
                     writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
                     writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
                 } else {
@@ -742,7 +744,10 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 }
                 
                 replyMessage(replyToken, replyText);
-                updateHistorySheetAndCache(contextId, userId, pending.originalQuery, finalText);
+                
+                // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
+                const asstMsgObj = { role: "assistant", content: finalText };
+                updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
                 writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
                 writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
             } else {
