@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 26.1.0 (修復：M8 別稱不應自動推薦 M80D；完整 API 回傳記錄診斷空白回答；Prompt 清理重複內容)
+ * Version: 26.2.0 (修復：M8/G8 別稱問題僅限 Prompt 回答層；恢復邏輯層完整型號提取能力；API 回傳診斷)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1847,7 +1847,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // v26.1.0: 修復型號推薦過度問題
     // 別稱（M8、G8 等內部代號）不應自動補充型號
     // 只有完整型號和 LS 系列才應提取
-    // 例如：別稱_M8 定義說「型號模式為 M80D」，但不應自動推薦 M80D PDF
+    // 根據 KEYWORD_MAP 擴展查詢（LS/系列/術語）
     if (!hasInjectedModels) {
         Object.keys(keywordMap).forEach(key => {
             // v24.1.5: 修正：同時檢查原始查詢和去空白查詢
@@ -1855,24 +1855,20 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
                 const mappedValue = keywordMap[key].toUpperCase();
                 extendedQuery += " " + mappedValue;
                 
-                // v26.1.0: 別稱不提取型號
-                // 別稱_M8、別稱_G8 等只用於定義，不用於自動推薦型號 PDF
-                if (!key.startsWith('別稱_')) {
-                    // 只對「系列_」和「術語_」和「LS 開頭型號」提取
-                    const modelMatch = mappedValue.match(MODEL_REGEX);
-                    if (modelMatch) {
-                        exactModels = exactModels.concat(modelMatch);
-                    }
-                    
-                    // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
-                    const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
-                    if (lsMatch) {
-                        lsMatch.forEach(ls => {
-                            // 去掉 LS 前綴和 XZW 後綴
-                            const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
-                            exactModels.push(cleanModel);
-                        });
-                    }
+                // 提取型號（包括 LS 型號和 M/G 系列型號代碼）
+                const modelMatch = mappedValue.match(MODEL_REGEX);
+                if (modelMatch) {
+                    exactModels = exactModels.concat(modelMatch);
+                }
+                
+                // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
+                const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+                if (lsMatch) {
+                    lsMatch.forEach(ls => {
+                        // 去掉 LS 前綴和 XZW 後綴
+                        const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+                        exactModels.push(cleanModel);
+                    });
                 }
             }
         });
