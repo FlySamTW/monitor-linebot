@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.5.4 (成本優化：改用 gemini-2.0-flash + 降 thinkingBudget 1024)
+ * Version: 24.5.5 (PDF 路由修復：精確控制 [AUTO_SEARCH_PDF] 觸發，防止通識問題進 PDF)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -31,6 +31,12 @@
  * 【影響】65K tokens × $0.30 = $1.95 (vs 2.0-flash 的 $0.65)，差 3 倍成本
  * 【根因】低估了 Input Token 數量 (每次 RAG 查詢 6-7 萬 tokens) × 高費率的威力
  * 【修正】v24.5.4 改用 gemini-2.0-flash，節省 84% 成本
+ * 
+ * 【事件 3】v24.5.4 [AUTO_SEARCH_PDF] 觸發邏輯過於寬鬆
+ * 【表現】「什麼是 HDR」、「HDR10 優點」等通識問題誤觸 PDF 進入
+ * 【原因】Prompt 指令不夠精確，LLM 誤認「QA 無完整答案 = 需要查 PDF」
+ * 【根本】PDF 是「產品手冊」，不是「技術教科書」，不該用於回答通識知識
+ * 【修正】v24.5.5 精確定義觸發條件，縮小非必要 PDF 查詢範圍
  * 
  * ════════════════════════════════════════════════════════════════
  */
@@ -2440,23 +2446,33 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
               finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
               finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
               
-              // 檢測是否為硬體規格問題（這類問題 CLASS_RULES 沒寫就是沒有，不該查 PDF）
-              const hardwarePatterns = [
+              // v24.5.4: 檢測是否為「不需要 PDF 的問題」
+              // 包括：1) 硬體規格定義  2) 通識知識  3) 技術概念解釋
+              // 這些問題 CLASS_RULES/QA 沒寫或 LLM 可用通用知識回答，不該查 PDF
+              const nonPdfPatterns = [
+                  // 硬體規格問題
                   /耳機孔|3\.5mm|音源孔|耳機插孔/i,
-                  /USB|HDMI|DP|DisplayPort|Type-C|連接埠/i,
+                  /USB|HDMI|DP|DisplayPort|Type-C|連接埠|接口/i,
                   /KVM|切換器/i,
-                  /喇叭|揚聲器|音響/i,
-                  /VESA|壁掛/i,
-                  /解析度|Hz|更新率|刷新率/i,
-                  /尺寸|吋|英寸/i,
-                  /曲面|平面|曲率/i,
-                  /面板|panel|螢幕材質|VA|IPS|OLED|TN/i
+                  /喇叭|揚聲器|音響|音箱/i,
+                  /VESA|壁掛|架台/i,
+                  /解析度|Hz|更新率|刷新率|頻率/i,
+                  /尺寸|吋|英寸|大小/i,
+                  /曲面|平面|曲率|設計/i,
+                  /面板|panel|螢幕材質|VA|IPS|OLED|TN|LCD|LED/i,
+                  
+                  // 通識知識、技術概念（不是操作步驟）
+                  /什麼是|什么是|定義|定义|優點|缺點|比較|对比|差異|差异/i,
+                  /HDR|色域|色溫|對比度|背光|LED背光|量子點/i,
+                  /Gsync|Freesync|垂直同步|V-Sync/i,
+                  /色準|色彩|Gamma|黑位/i,
+                  /PPI|密度|DPI/i
               ];
-              const isHardwareQuestion = hardwarePatterns.some(p => p.test(msg));
+              const isNonPdfQuestion = nonPdfPatterns.some(p => p.test(msg));
               
-              if (isHardwareQuestion) {
-                  // 硬體規格問題：CLASS_RULES 沒寫就是沒有，不查 PDF
-                  writeLog("[Hardware Q] 硬體規格問題，不進 PDF，直接用極速模式答案");
+              if (isNonPdfQuestion) {
+                  // 不需要 PDF 的問題：使用 CLASS_RULES 或 LLM 通用知識回答
+                  writeLog("[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案");
                   // finalText 已經是極速模式的回答，直接用
                   replyText = finalText;
               } else {
