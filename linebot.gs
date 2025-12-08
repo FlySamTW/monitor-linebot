@@ -1,13 +1,13 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.5.3 (補充 Odyssey 3D「3D遊戲」定義 + v23.4.0 費用事件詳細記錄)
+ * Version: 24.5.4 (成本優化：改用 gemini-2.0-flash + 降 thinkingBudget 1024)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
  * ════════════════════════════════════════════════════════════════
  * 
  * 【一般對話】gemini-2.0-flash - 快速、便宜
- * 【PDF 深讀】gemini-2.5-flash - 支援思考 (thinkingBudget: 2048)
+ * 【PDF 深讀】gemini-2.0-flash - 平民戰神（成本優化，2.5 Flash 太貴）
  * 
  * ⚠️ 重要警告：模型名稱必須是 Google 官方存在的名稱！
  * ⚠️ 使用不存在的名稱可能導致 API 靜默 fallback 到更貴的模型！
@@ -26,12 +26,18 @@
  * 【教訓】永遠使用官方文件中存在的模型名稱，不要猜測
  * 【修正】v24.2.0+ 使用官方確認存在的模型
  * 
+ * 【事件 2】v24.5.3 誤用 gemini-2.5-flash 進行 PDF 閱讀
+ * 【發現】2025/12/08 發現該模型費率極高（Input $0.30/1M, Output $2.50/1M）
+ * 【影響】65K tokens × $0.30 = $1.95 (vs 2.0-flash 的 $0.65)，差 3 倍成本
+ * 【根因】低估了 Input Token 數量 (每次 RAG 查詢 6-7 萬 tokens) × 高費率的威力
+ * 【修正】v24.5.4 改用 gemini-2.0-flash，節省 84% 成本
+ * 
  * ════════════════════════════════════════════════════════════════
  */
 
 // ⬇⬇⬇ 模型名稱設定 - 未來升級請改這裡 ⬇⬇⬇
-const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';      // 快速對話用
-const GEMINI_MODEL_THINK = 'models/gemini-2.5-flash';     // PDF 深度閱讀用 (支援思考)
+const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';      // 快速對話用 (Input $0.10, Output $0.40)
+const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';     // PDF 深度閱讀用 (成本優化，2.0 足夠聰明)
 // ⬆⬆⬆ 模型名稱設定 - 未來升級請改這裡 ⬆⬆⬆
 
 /**
@@ -635,6 +641,12 @@ function searchPdfByAliasPattern(aliasKey) {
  */
 function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
     try {
+        // v24.5.4: 防呆檢查，避免 undefined.toUpperCase() 錯誤
+        if (!msg || typeof msg !== 'string' || msg.trim().length === 0) {
+            writeLog(`[PDF Select] ⚠️ 無效輸入: msg=${msg}`);
+            return false;
+        }
+        
         const cache = CacheService.getScriptCache();
         const pendingKey = CACHE_KEYS.PENDING_PDF_SELECTION + userId;
         const pendingJson = cache.get(pendingKey);
@@ -1991,7 +2003,14 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             const parts = [];
             if (msg.role === 'user' && first) {
                 if (filesToAttach.length > 0) {
-                    filesToAttach.forEach(k => parts.push({ file_data: { mime_type: k.mimeType || "text/plain", file_uri: k.uri } }));
+                    // v24.5.4: 防護檢查，避免空 URI 導致 API 400 錯誤
+                    filesToAttach.forEach(k => {
+                        if (k.uri && k.uri.trim().length > 0) {
+                            parts.push({ file_data: { mime_type: k.mimeType || "text/plain", file_uri: k.uri } });
+                        } else {
+                            writeLog(`[API Protection] ⚠️ 跳過無效 URI: ${k.name}`);
+                        }
+                    });
                     // v24.1.41: 在 PDF 後面、用戶問題前面加入搜尋指令
                     // 這樣 AI 讀完 PDF 後會立刻看到要搜尋什麼
                     parts.push({ text: `\n\n【PDF 搜尋任務】請在上述 PDF 手冊中，找出與以下問題相關的所有段落並詳細回答：\n\n` });
@@ -2004,9 +2023,10 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         if (first) geminiContents.push({ role: 'user', parts: [{ text: "你好" }] });
     }
 
-        // v24.2.3: 雙模型策略
+        // v24.5.4: 成本優化
         // - Fast Mode (無 PDF)：gemini-2.0-flash（快速、便宜）
-        // - PDF Mode (有 PDF)：gemini-2.5-flash + thinkingBudget: 2048（深度閱讀）
+        // - PDF Mode (有 PDF)：gemini-2.0-flash + thinkingBudget: 1024（平衡成本與質量）
+        // 理由：2.0 Flash 已足夠聰明，2.5 Flash 太貴（Output $2.50 vs $0.40）
         const useThinkModel = attachPDFs; // PDF 模式才用 Think 模型
         const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
         
@@ -2015,10 +2035,10 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             temperature: tempSetting
         };
         
-        // v24.2.3: 只有 gemini-2.5-flash 才加入 thinkingConfig
-        // PDF 深度閱讀用 2048，確保充分思考
+        // v24.5.4: 降低 thinkingBudget 至 1024（實測發現 2048 時多數問題只輸出 295 tokens）
+        // 說明：過高的 Budget 未被充分利用，浪費 Output Token 費用
         if (useThinkModel) {
-            genConfig.thinkingConfig = { thinkingBudget: 2048 };
+            genConfig.thinkingConfig = { thinkingBudget: 1024 };
         }
 
         const payload = {
