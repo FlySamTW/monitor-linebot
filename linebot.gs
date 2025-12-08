@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 26.5.0 (Prompt 強化：操作問題「因型號而異」，禁止通用知識回答；必須輸出 [AUTO_SEARCH_PDF])
+ * Version: 26.6.0 (診斷加強：記錄 Out < 50 tokens 的實際回應內容，追蹤空白回答根因)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2178,6 +2178,12 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         const firstPart = candidates[0].content.parts[0];
                         if (!firstPart.text || firstPart.text.trim().length === 0) {
                             writeLog(`[API Warning] 回應為空文本: parts=${JSON.stringify(candidates[0].content.parts).substring(0, 300)}`);
+                        }
+                        
+                        // v26.6.0: 記錄短回答（Out < 50 tokens）的實際內容
+                        if (usage && usage.candidatesTokenCount < 50) {
+                            const responseText = firstPart.text || '';
+                            writeLog(`[API Short Response] Out: ${usage.candidatesTokenCount} tokens, Content: "${responseText.substring(0, 200)}"`);
                         }
                     }
                     
