@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 25.0.2 (緊急修復：補上缺失的用戶訊息記錄)
+ * Version: 25.0.3 (重大修復：選擇型號後保留完整對話歷史，避免遺失上下文)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -715,15 +715,13 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
                 cache.put(pdfModeKey, 'true', 300);
                 
-                // 用原始問題重新處理（現在有了正確的 PDF）
-                writeLog(`[PDF Select] 使用原始問題重新處理: ${pending.originalQuery}`);
-                
-                // 取得歷史（只取文字歷史，不含 PDF）
+                // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
                 const history = getHistoryFromCacheOrSheet(contextId);
-                const userMsgObj = { role: "user", content: pending.originalQuery };
                 
-                // 呼叫 API（帶 PDF）
-                const response = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId);
+                writeLog(`[PDF Select] 完整歷史長度: ${history.length} 則`);
+                
+                // history 已包含原始問題和反問，直接用完整歷史查詢 PDF
+                const response = callChatGPTWithRetry(history, null, true, false, userId);
                 
                 if (response) {
                     let finalText = formatForLineMobile(response);
@@ -740,9 +738,10 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     
                     replyMessage(replyToken, replyText);
                     
-                    // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
+                    // v25.0.3: 用戶選擇「3」後，新增該選擇和回答到歷史
+                    const selectMsgObj = { role: "user", content: msg };  // "3"
                     const asstMsgObj = { role: "assistant", content: finalText };
-                    updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+                    updateHistorySheetAndCache(contextId, history, selectMsgObj, asstMsgObj);
                     // v25.0.1 修復：記錄用戶選擇的「3」而非原始問題
                     writeRecordDirectly(userId, msg, contextId, 'user', '');
                     writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
