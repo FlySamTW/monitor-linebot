@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 26.8.0 (修復：規格沒寫=直接說「沒有」；移除荒謬的50字強制；Deep Mode合理回應長度)
+ * Version: 26.9.0 (修復嚴重Bug：usage作用域錯誤導致API Parse Error；現在可正常診斷短回應)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2152,8 +2152,9 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                     const json = JSON.parse(text);
                     
                     // 📊 Token 用量紀錄
+                    let usage = null;  // v26.9.0: 提升作用域，供後續診斷使用
                     if (json.usageMetadata) {
-                        const usage = json.usageMetadata;
+                        usage = json.usageMetadata;
                         // Gemini 2.0 Flash 定價: Input $0.10/1M, Output $0.40/1M (2025-12 官網確認)
                         // 包含 thinking tokens
                         const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
