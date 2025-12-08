@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 25.0.0 (型號汙染修復：直通車確定型號後不再從 KEYWORD_MAP 擴充)
+ * Version: 25.0.1 (歷史對話乾淨化 + 計費完整化 + PDF 選擇記錄修復)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -743,7 +743,8 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
                     const asstMsgObj = { role: "assistant", content: finalText };
                     updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
-                    writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
+                    // v25.0.1 修復：記錄用戶選擇的「3」而非原始問題
+                    writeRecordDirectly(userId, msg, contextId, 'user', '');
                     writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
                 } else {
                     replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
@@ -3067,6 +3068,18 @@ function findSimilarQA(newContent, polishedQA) {
         if (code !== 200) return null;
         
         var json = JSON.parse(body);
+        
+        // v25.0.1 新增：記錄 Token 成本（確保計費完整）
+        if (json.usageMetadata) {
+            var inputTokens = json.usageMetadata.promptTokenCount || 0;
+            var outputTokens = json.usageMetadata.candidatesTokenCount || 0;
+            var totalTokens = inputTokens + outputTokens;
+            var costUSD = (inputTokens * 0.10 / 1000000) + (outputTokens * 0.40 / 1000000);
+            var costTWD = costUSD * 32;
+            lastTokenUsage = { input: inputTokens, output: outputTokens, total: totalTokens, costUSD: costUSD, costTWD: costTWD };
+            writeLog('[FindSimilar Tokens] In:' + inputTokens + '/Out:' + outputTokens + '=Total:' + totalTokens + ', Cost:NT$' + costTWD.toFixed(4));
+        }
+        
         var candidates = (json && json.candidates) ? json.candidates : [];
         if (candidates.length === 0) return null;
         
