@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.2.2 (設計修復：/重啟 指令不應執行 forceRebuild，知識庫維護由自動排程和錯誤自動修復負責)
+ * Version: 27.2.3 (致命修復：Deep Mode 禁用 Google Search 工具，防止搜尋超時導致空白/Emoji 回應)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2102,10 +2102,16 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
 
         // v24.5.8: Google Search 工具僅在 PDF 模式必要時啟用
         // Fast Mode 禁用搜尋；Deep Mode 允許搜尋以補齊官方公告/韌體/驅動/安全性/異常
+        // v27.2.3: 修復 Deep Mode 搜尋工具導致空白回應
+        // 問題：在掛載 PDF 時啟用 Google Search，AI 試圖搜尋補充導致超時/失敗，最後只返回 emoji
+        // 解決：Deep Mode 禁用搜尋，專注於 PDF 內容。客戶端層級需要時可用 [AUTO_SEARCH_PDF] 重試
         let tools = undefined;
-        if (attachPDFs && !imageBlob) {
-            tools = [{ google_search: {} }];
-        }
+        // 搜尋工具現已禁用，因為：
+        // 1. Fast Mode: [AUTO_SEARCH_PDF] 可讓系統自動進 Deep Mode
+        // 2. Deep Mode: PDF 已足夠完整，搜尋反而造成混亂和超時
+        // if (attachPDFs && !imageBlob) {
+        //     tools = [{ google_search: {} }];
+        // }
 
         const payload = {
             contents: geminiContents,
