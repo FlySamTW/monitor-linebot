@@ -978,7 +978,7 @@ function chunkString(str, size) {
  * 建立動態上下文 (Dynamic Context)
  * 根據用戶訊息，從 Cache 中撈取相關的 QA 和 Rules
  */
-function buildDynamicContext(messages) {
+function buildDynamicContext(messages, userId) {
     try {
         const cache = CacheService.getScriptCache();
         
@@ -992,6 +992,22 @@ function buildDynamicContext(messages) {
         }
         const upperMsg = combinedMsg.toUpperCase();
         
+        // v24.5.5: 注入直通車偵測到的型號定義 (Fix Bug A)
+        // 解決 Fast Mode 不知道 "M8" 是 "M80D" 的問題
+        let inferredModelContext = "";
+        if (userId) {
+            const cachedModels = cache.get(`${userId}:direct_search_models`);
+            if (cachedModels) {
+                try {
+                    const models = JSON.parse(cachedModels);
+                    if (models && models.length > 0) {
+                        inferredModelContext = `【系統偵測型號】用戶提及的型號（如 M8/M7）已在系統定義為：${models.join(', ')}。請優先針對此型號回答，不要說「沒有精確定義」。\n`;
+                        writeLog(`[DynamicContext] 注入推斷型號: ${models.join(', ')}`);
+                    }
+                } catch(e) {}
+            }
+        }
+
         // 2. 載入 QA
         let fullQA = "";
         const qaCount = parseInt(cache.get('KB_QA_COUNT') || '0');
@@ -1053,6 +1069,11 @@ function buildDynamicContext(messages) {
         
         let relevantContext = "【精選 QA & 規格】\n";
         
+        // 注入推斷型號上下文
+        if (inferredModelContext) {
+            relevantContext += inferredModelContext + "\n";
+        }
+
         // 總是加入 Guide (型號識別指南)
         relevantContext += guide + "\n";
         
@@ -1913,15 +1934,15 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         // 圖片模式：仍使用舊邏輯 (或可優化)
         // 暫時維持原樣，但因為 samsung_kb_priority.txt 已不再生成，這裡需要注意
         // 圖片模式通常不需要太多文字 Context，或者我們也可以注入 Dynamic Context
-        dynamicContext = buildDynamicContext(messages);
+        dynamicContext = buildDynamicContext(messages, userId);
     } else if (attachPDFs) {
         // PDF 模式：掛載 PDF + Dynamic Context
         // v24.3.1: 傳入 userId 以支援上下文提取
         filesToAttach = getRelevantKBFiles(messages, kbList, userId);
-        dynamicContext = buildDynamicContext(messages);
+        dynamicContext = buildDynamicContext(messages, userId);
     } else {
         // 極速模式：只注入 Dynamic Context，不掛載任何檔案
-        dynamicContext = buildDynamicContext(messages);
+        dynamicContext = buildDynamicContext(messages, userId);
     }
 
     writeLog(`[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length} / ${kbList.length}`);
@@ -2041,17 +2062,26 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             temperature: tempSetting
         };
         
-        // v24.5.4: 降低 thinkingBudget 至 1024（實測發現 2048 時多數問題只輸出 295 tokens）
-        // 說明：過高的 Budget 未被充分利用，浪費 Output Token 費用
-        if (useThinkModel) {
+        // v24.5.5: 修正 Bug B - gemini-2.0-flash 不支援 thinkingConfig
+        // 只有當模型名稱明確包含 "thinking" 時才啟用 thinkingConfig
+        if (useThinkModel && modelName.includes("thinking")) {
             genConfig.thinkingConfig = { thinkingBudget: 1024 };
+        }
+
+        // v24.5.5: 啟用 Google Search 工具 (僅 Fast Mode)
+        // 嚴格限制：僅用於官方公告/韌體/驅動/安全性/異常
+        // 價格/銷售/競品/負面新聞/通用保養 -> 必須在 Prompt 中嚴格禁止
+        let tools = undefined;
+        if (!attachPDFs && !imageBlob) {
+            tools = [{ google_search: {} }];
         }
 
         const payload = {
             contents: geminiContents,
             systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
             generationConfig: genConfig,
-            safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}]
+            safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}],
+            tools: tools
         };
 
     const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
