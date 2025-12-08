@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 24.5.8 (來源標註修正，Search 僅 PDF 模式、Fast 僅 QA)
+ * Version: 25.0.0 (型號汙染修復：直通車確定型號後不再從 KEYWORD_MAP 擴充)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -47,6 +47,15 @@
  *   - Fast Mode 搜尋不到就輸出 [AUTO_SEARCH_PDF]，强制進 PDF
  *   - 來源標註標準化：Fast Mode 只用「[來源: QA資料庫]」
  *   - Deep Mode 允許「[來源: 網路搜尋]」和「[來源: 非三星官方]」，但須必要
+ * 
+ * 【事件 5】v25.0.0 型號汙染導致 PDF 載入過多 (2025/12/08)
+ * 【徵兆】日誌顯示「從 Cache 讀取直通車注入型號: S32FM803」，但隨後「命中型號: S32FM803, M80D, M70D, S32DM803UC...」
+ * 【根因】已確定型號後，還繼續從 KEYWORD_MAP 擴充型號，導致載了多本不相關 PDF
+ * 【帳單】載 2 本 PDF 造成 input token 增加 2 倍（114K tokens vs 預期 50K），多花 $0.12
+ * 【修正】v25.0.0
+ *   - 新增 hasInjectedModels 標記，若已從直通車讀到型號，跳過 KEYWORD_MAP 擴充步驟
+ *   - 確保型號來源清晰：直通車型號 > 對話歷史型號 > 當前查詢型號
+ *   - 只有「無明確型號」的延續提問，才沿用 exactModels 中已有的型號
  * 
  * ════════════════════════════════════════════════════════════════
  */
@@ -1788,6 +1797,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // 3. 關鍵字擴充 (查字典) + 提取完整型號
     let extendedQuery = combinedQuery;
     let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
+    let hasInjectedModels = false; // 標記是否已從 Cache 讀到直通車注入型號
     
     // v24.1.9 新增：讀取直通車注入的型號（命中關鍵字時）
     // v24.3.0 修復：改用 Sheet 歷史而非 Cache，解決跨時間問題
@@ -1812,6 +1822,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
                 const injectedModels = JSON.parse(injectedModelsJson);
                 if (Array.isArray(injectedModels)) {
                     exactModels = exactModels.concat(injectedModels);
+                    hasInjectedModels = true; // ← v25.0.0: 標記已讀到直通車型號
                     writeLog(`[KB Select] 從 Cache 讀取直通車注入型號: ${injectedModels.join(', ')}`);
                     // 不刪除 Cache，保留給同一對話的其他步驟使用
                 }
@@ -1833,29 +1844,35 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
     const combinedQueryNoSpace = combinedQuery.replace(/\s+/g, '');
     
-    Object.keys(keywordMap).forEach(key => {
-        // v24.1.5: 修正：同時檢查原始查詢和去空白查詢
-        if (combinedQuery.includes(key) || combinedQueryNoSpace.includes(key)) {
-            const mappedValue = keywordMap[key].toUpperCase();
-            extendedQuery += " " + mappedValue;
-            
-            // 從映射值提取型號 (只提取真正的型號，不含術語)
-            const modelMatch = mappedValue.match(MODEL_REGEX);
-            if (modelMatch) {
-                exactModels = exactModels.concat(modelMatch);
+    // v25.0.0: 修復型號汙染問題
+    // 如果已從直通車 Cache 讀到型號，就不應該再從 KEYWORD_MAP 擴充型號
+    // （原因：KEYWORD_MAP 可能包含別稱的多個相關型號，導致載錯 PDF）
+    // 例如：别稱_M8 含有 M80D/M70D 等，但 Cache 已確定是 S32FM803
+    if (!hasInjectedModels) {
+        Object.keys(keywordMap).forEach(key => {
+            // v24.1.5: 修正：同時檢查原始查詢和去空白查詢
+            if (combinedQuery.includes(key) || combinedQueryNoSpace.includes(key)) {
+                const mappedValue = keywordMap[key].toUpperCase();
+                extendedQuery += " " + mappedValue;
+                
+                // 從映射值提取型號 (只提取真正的型號，不含術語)
+                const modelMatch = mappedValue.match(MODEL_REGEX);
+                if (modelMatch) {
+                    exactModels = exactModels.concat(modelMatch);
+                }
+                
+                // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
+                const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+                if (lsMatch) {
+                    lsMatch.forEach(ls => {
+                        // 去掉 LS 前綴和 XZW 後綴
+                        const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+                        exactModels.push(cleanModel);
+                    });
+                }
             }
-            
-            // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
-            const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
-            if (lsMatch) {
-                lsMatch.forEach(ls => {
-                    // 去掉 LS 前綴和 XZW 後綴
-                    const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
-                    exactModels.push(cleanModel);
-                });
-            }
-        }
-    });
+        });
+    }
     
     // 也從原始查詢提取型號
     const directModelMatch = combinedQuery.match(MODEL_REGEX);
@@ -1872,12 +1889,12 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
         });
     }
     
-    // v24.2.5 新增：如果當前查詢沒有提到型號，且 Cache 中有直通車注入的型號，
+    // v24.2.5 新增：如果當前查詢沒有提到型號，且已有直通車注入或歷史型號，
     // 則認為用戶在繼續討論同一產品（如「M7 價格是多少」→「那它是什麼面板」）
     // 這樣可以確保後續問題持續使用之前提到的型號
     if (directModelMatch === null && directLsMatch === null && exactModels.length > 0) {
         // exactModels 中已包含直通車注入的型號，無需重複
-        writeLog(`[KB Select] 當前查詢無型號，沿用直通車注入型號: ${exactModels.join(', ')}`);
+        writeLog(`[KB Select] 當前查詢無型號，沿用已知型號: ${exactModels.join(', ')}`);
     }
     
     exactModels = [...new Set(exactModels)]; // 去重
