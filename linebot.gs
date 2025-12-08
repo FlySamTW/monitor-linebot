@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 26.0.0 (緊急修復：移除 Prompt 過度限制導致 LLM 不回答的問題；簡化規則提高回答質量)
+ * Version: 26.1.0 (修復：M8 別稱不應自動推薦 M80D；完整 API 回傳記錄診斷空白回答；Prompt 清理重複內容)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1844,10 +1844,10 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
     const combinedQueryNoSpace = combinedQuery.replace(/\s+/g, '');
     
-    // v25.0.0: 修復型號汙染問題
-    // 如果已從直通車 Cache 讀到型號，就不應該再從 KEYWORD_MAP 擴充型號
-    // （原因：KEYWORD_MAP 可能包含別稱的多個相關型號，導致載錯 PDF）
-    // 例如：别稱_M8 含有 M80D/M70D 等，但 Cache 已確定是 S32FM803
+    // v26.1.0: 修復型號推薦過度問題
+    // 別稱（M8、G8 等內部代號）不應自動補充型號
+    // 只有完整型號和 LS 系列才應提取
+    // 例如：別稱_M8 定義說「型號模式為 M80D」，但不應自動推薦 M80D PDF
     if (!hasInjectedModels) {
         Object.keys(keywordMap).forEach(key => {
             // v24.1.5: 修正：同時檢查原始查詢和去空白查詢
@@ -1855,20 +1855,24 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
                 const mappedValue = keywordMap[key].toUpperCase();
                 extendedQuery += " " + mappedValue;
                 
-                // 從映射值提取型號 (只提取真正的型號，不含術語)
-                const modelMatch = mappedValue.match(MODEL_REGEX);
-                if (modelMatch) {
-                    exactModels = exactModels.concat(modelMatch);
-                }
-                
-                // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
-                const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
-                if (lsMatch) {
-                    lsMatch.forEach(ls => {
-                        // 去掉 LS 前綴和 XZW 後綴
-                        const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
-                        exactModels.push(cleanModel);
-                    });
+                // v26.1.0: 別稱不提取型號
+                // 別稱_M8、別稱_G8 等只用於定義，不用於自動推薦型號 PDF
+                if (!key.startsWith('別稱_')) {
+                    // 只對「系列_」和「術語_」和「LS 開頭型號」提取
+                    const modelMatch = mappedValue.match(MODEL_REGEX);
+                    if (modelMatch) {
+                        exactModels = exactModels.concat(modelMatch);
+                    }
+                    
+                    // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
+                    const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+                    if (lsMatch) {
+                        lsMatch.forEach(ls => {
+                            // 去掉 LS 前綴和 XZW 後綴
+                            const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+                            exactModels.push(cleanModel);
+                        });
+                    }
                 }
             }
         });
@@ -2170,6 +2174,17 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                     }
 
                     const candidates = json && json.candidates ? json.candidates : [];
+                    
+                    // v26.1.0: 完整 API 回傳紀錄，便於診斷空白回答問題
+                    if (candidates.length === 0) {
+                        writeLog(`[API Warning] 無候選回應: ${JSON.stringify(json).substring(0, 500)}`);
+                    } else if (candidates[0].content && candidates[0].content.parts) {
+                        const firstPart = candidates[0].content.parts[0];
+                        if (!firstPart.text || firstPart.text.trim().length === 0) {
+                            writeLog(`[API Warning] 回應為空文本: parts=${JSON.stringify(candidates[0].content.parts).substring(0, 300)}`);
+                        }
+                    }
+                    
                     if (candidates.length > 0 && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts.length > 0) {
                         return (candidates[0].content.parts[0].text || '').trim();
                     }
