@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.2.3 (致命修復：Deep Mode 禁用 Google Search 工具，防止搜尋超時導致空白/Emoji 回應)
+ * Version: 27.2.4 (解除字數限制，移除「100-300字」限制並加強 emoji 禁令；確保 Deep Mode 不被短回答限制困縛)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2039,10 +2039,10 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         dynamicPrompt += `用戶問題：${userQuestion}\n\n`;
         dynamicPrompt += `任務：\n`;
         dynamicPrompt += `1. 在手冊中搜尋與「${userQuestion}」相關的內容\n`;
-        dynamicPrompt += `2. 如果找到，詳細回答（100-300 字）\n`;
+        dynamicPrompt += `2. 如果找到，詳細回答（無字數限制，詳細為優先）\n`;
         dynamicPrompt += `3. 如果找不到，說「手冊中沒有相關說明」，並嘗試用通用知識補充（需標註來源）\n`;
         dynamicPrompt += `4. 禁止輸出 [AUTO_SEARCH_PDF]（已在讀手冊了）\n`;
-        dynamicPrompt += `5. 禁止空白回答或只輸出標點符號\n`;
+        dynamicPrompt += `5. 禁止空白回答或只輸出標點符號或 emoji\n`;
         dynamicPrompt += `6. 回答開頭加「根據產品手冊」`;
         
         // 重試模式額外提醒
