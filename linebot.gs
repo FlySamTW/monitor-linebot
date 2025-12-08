@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 25.0.1 (歷史對話乾淨化 + 計費完整化 + PDF 選擇記錄修復)
+ * Version: 25.0.2 (緊急修復：補上缺失的用戶訊息記錄)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2715,6 +2715,8 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
           }
 
           replyMessage(replyToken, replyText);
+          // v25.0.2 修復：補上缺失的 user 訊息記錄
+          writeRecordDirectly(userId, msg, contextId, 'user', '');
           writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
           // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
           writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`); 
