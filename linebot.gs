@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 26.9.0 (修復嚴重Bug：usage作用域錯誤導致API Parse Error；現在可正常診斷短回應)
+ * Version: 27.2.0 (邏輯重構：解除 Deep Mode 嚴格禁止通用知識的限制，恢復 v26.3.0 的 Fallback 能力，解決 PDF 搜尋失敗時導致的空白/Emoji 回應問題)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -729,9 +729,10 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
                     finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
                     
-                    // v24.4.2: 加入 Token 花費顯示
+                    // v27.0.0: 修復費用顯示邏輯
+                    // 只在有有效回答和有 lastTokenUsage 時才顯示費用
                     let replyText = finalText;
-                    if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+                    if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
                         const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
                         replyText += tokenInfo;
                     }
@@ -783,9 +784,9 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
                 finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
                 
-                // v24.4.2: 加入 Token 花費顯示
+                // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
                 let replyText = finalText;
-                if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+                if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
                     const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
                     replyText += tokenInfo;
                 }
@@ -2028,32 +2029,25 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)，請參考 Prompt 中的【極速模式】規範。\n【來源標註規則】\n- 只能使用 QA/CLASS_RULES，回答末尾標註「[來源: QA資料庫]」。\n- 嚴禁網路搜尋與「[來源: 非三星官方]」，找不到就輸出 [AUTO_SEARCH_PDF] 轉 PDF。\n- 禁用「[來源: 產品手冊]」(未掛 PDF)。`;
     } else if (attachPDFs) {
         // Phase 2 & 3: 深度模式 (Deep Mode)
-        // v24.1.39: 加強 Deep Mode 提示，告訴 AI 要找什麼
-        // 提取用戶訊息中的關鍵字，引導 AI 在 PDF 中搜尋正確段落
+        // v27.0.0: 簡化 Deep Mode prompt，避免 AI 困惑導致空白回應
+        // 原問題：多層 prompt 疊加 + 複雜指令 → AI 返回 emoji 或空白
+        // 解決：明確的單一任務 + 清晰的備選方案
         const lastUserMsg = effectiveMessages.filter(m => m.role === 'user').pop();
         const userQuestion = lastUserMsg ? lastUserMsg.content : '';
         
-        dynamicPrompt += `\n\n⚠️⚠️⚠️【重要：深度模式 Deep Mode】⚠️⚠️⚠️
-你現在正在讀取 PDF 手冊！
-
-【用戶問題】${userQuestion}
-
-【任務】請在 PDF 中搜尋與「${userQuestion}」相關的段落，找出具體操作步驟。
-
-【規則】
-1. 開頭說「根據產品手冊」，禁止說「根據我的資料庫」
-2. 找出 PDF 中與用戶問題最相關的段落，詳細回答
-3. 如果有多種解法，請全部列出
-4. 禁止輸出 [AUTO_SEARCH_PDF]，你已經在讀 PDF 了！
-5. 如果 PDF 真的沒有相關內容，才說「手冊未記載」
-6. 來源標註：
-    - 直接用手冊 → 「[來源: 產品手冊]」
-    - 若必要啟用搜尋工具補充 → 末尾加「[來源: 網路搜尋]」（手冊足夠就不要用）
-    - 若手冊確定沒寫且少量通用知識補充 → 加「[來源: 非三星官方]」`;
+        dynamicPrompt += `\n\n⚠️【深度模式】正在讀取產品手冊\n`;
+        dynamicPrompt += `用戶問題：${userQuestion}\n\n`;
+        dynamicPrompt += `任務：\n`;
+        dynamicPrompt += `1. 在手冊中搜尋與「${userQuestion}」相關的內容\n`;
+        dynamicPrompt += `2. 如果找到，詳細回答（100-300 字）\n`;
+        dynamicPrompt += `3. 如果找不到，說「手冊中沒有相關說明」，並嘗試用通用知識補充（需標註來源）\n`;
+        dynamicPrompt += `4. 禁止輸出 [AUTO_SEARCH_PDF]（已在讀手冊了）\n`;
+        dynamicPrompt += `5. 禁止空白回答或只輸出標點符號\n`;
+        dynamicPrompt += `6. 回答開頭加「根據產品手冊」`;
         
         // 重試模式額外提醒
         if (isRetry) {
-            dynamicPrompt += `\n【系統重試中】這是自動觸發的深度搜尋，請直接給出最完整的答案。`;
+            dynamicPrompt += `\n\n【系統重試】這是自動觸發的深度搜尋，請務必給出完整答案，不要只輸出 emoji 或標點。`;
         }
     }
 
@@ -2092,10 +2086,11 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     }
 
         // v24.5.4: 成本優化
-        // - Fast Mode (無 PDF)：gemini-2.0-flash（快速、便宜）
-        // - PDF Mode (有 PDF)：gemini-2.0-flash + thinkingBudget: 1024（平衡成本與質量）
-        // 理由：2.0 Flash 已足夠聰明，2.5 Flash 太貴（Output $2.50 vs $0.40）
-        const useThinkModel = attachPDFs; // PDF 模式才用 Think 模型
+        // v27.0.0: 恢復原始邏輯（Thinking Mode 修復）
+        // 問題診斷：gemini-2.0-flash 本身沒有 Thinking Mode 版本區別
+        // 之前的 thinkingConfig 設定對 2.0 Flash 無效，不是根本原因
+        // 根本原因：PDF 載入 + Deep Mode prompt 複雜度導致回應異常
+        const useThinkModel = attachPDFs; // PDF 模式才需要更好的模型理解
         const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
         
         const genConfig = { 
@@ -2103,11 +2098,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             temperature: tempSetting
         };
         
-        // v24.5.5: 修正 Bug B - gemini-2.0-flash 不支援 thinkingConfig
-        // 只有當模型名稱明確包含 "thinking" 時才啟用 thinkingConfig
-        if (useThinkModel && modelName.includes("thinking")) {
-            genConfig.thinkingConfig = { thinkingBudget: 1024 };
-        }
+        // v27.0.0: 移除 thinkingConfig（2.0 Flash 不支援，無效設定）
 
         // v24.5.8: Google Search 工具僅在 PDF 模式必要時啟用
         // Fast Mode 禁用搜尋；Deep Mode 允許搜尋以補齊官方公告/韌體/驅動/安全性/異常
@@ -2151,12 +2142,12 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                 try {
                     const json = JSON.parse(text);
                     
-                    // 📊 Token 用量紀錄
-                    let usage = null;  // v26.9.0: 提升作用域，供後續診斷使用
+                    // 📊 Token 用量紀錄 - v27.0.0: 修復費用對應錯誤
+                    // 無論是否有 usageMetadata，都要明確設置 lastTokenUsage
+                    // 這樣可以避免舊費用被誤用到新查詢上
                     if (json.usageMetadata) {
-                        usage = json.usageMetadata;
+                        const usage = json.usageMetadata;
                         // Gemini 2.0 Flash 定價: Input $0.10/1M, Output $0.40/1M (2025-12 官網確認)
-                        // 包含 thinking tokens
                         const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
                         const costTWD = costUSD * 32;  // 匯率更新為 32
                         writeLog(`[Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)} | 費率: 2.0 Flash)`);
@@ -2168,9 +2159,25 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                             total: usage.totalTokenCount,
                             costTWD: costTWD
                         };
+                    } else {
+                        // v27.0.0: 如果沒有 usage data，清除舊的 lastTokenUsage
+                        // 避免 LINE 上顯示上一次查詢的費用
+                        lastTokenUsage = null;
+                        writeLog(`[Tokens] API 未返回 usageMetadata，已清除舊費用紀錄`);
                     }
 
                     const candidates = json && json.candidates ? json.candidates : [];
+                    
+                    // v27.0.0: 防護機制 - 檢測異常短回應（Deep Mode + PDF 但輸出只有 emoji）
+                    if (attachPDFs && candidates.length > 0 && candidates[0].content && candidates[0].content.parts) {
+                        const responseText = candidates[0].content.parts[0].text || '';
+                        // 如果 PDF Mode 但回答只有 emoji（1 token）或完全空白，記錄警告
+                        if (usage && usage.candidatesTokenCount <= 2 && responseText.trim().length <= 3) {
+                            writeLog(`[PDF Mode ERROR] ⚠️ 異常短回應: In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Content: "${responseText}"`);
+                            writeLog(`[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 問題`);
+                            // 在這裡可以添加自動重試邏輯或備選策略
+                        }
+                    }
                     
                     // v26.1.0: 完整 API 回傳紀錄，便於診斷空白回答問題
                     if (candidates.length === 0) {
@@ -2725,8 +2732,8 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
               replyText = finalText;
           }
 
-          // v24.2.3: 改進 Token 資訊顯示格式
-          if (DEBUG_SHOW_TOKENS && lastTokenUsage) {
+          // v27.0.0: 修復費用顯示邏輯（確保費用正確對應當前查詢）
+          if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
               const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
               replyText += tokenInfo;
           }
