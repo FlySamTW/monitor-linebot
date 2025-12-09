@@ -4,7 +4,7 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-  <title>LINE Bot 測試模擬器 v2.1</title>
+  <title>LINE Bot 模擬器 v2.2</title>
   <style>
     :root {
       --bg-color: #8C9DAF;
@@ -348,7 +348,7 @@
       <div class="header">三星螢幕小幫手 🤖</div>
       <div id="chat-box"></div>
       <div id="queue-bar">
-        <span class="queue-label">⏳ 等待發送:</span>
+        <span style="color:#ff9800;font-weight:bold;">⏳ 排程:</span>
         <div id="queue-list"></div>
       </div>
       <div class="input-area">
@@ -362,9 +362,9 @@
     <div class="panel-header">
       <span>SERVER LOGS</span>
       <div style="display:flex; gap:5px;">
-        <button class="icon-btn" onclick="copyLogs()" title="複製 LOG 到剪貼簿">📋 複製</button>
-        <button class="icon-btn" onclick="clearLogUI()" title="只清除畫面 LOG">🗑️ 清空</button>
-        <button class="icon-btn danger" onclick="clearSession()" title="清除全部快取與紀錄">⚡️ 重置</button>
+        <button class="icon-btn" onclick="copyLogs()">📋 複製</button>
+        <button class="icon-btn" onclick="clearLogUI()">🗑️ 清空</button>
+        <button class="icon-btn danger" onclick="clearSession()">⚡️ 重置</button>
       </div>
     </div>
     
@@ -373,7 +373,7 @@
     </div>
     
     <div class="panel-header" style="border-top:1px solid #333; margin-top:0;">
-      <span>歷史候選 (點擊連發)</span>
+      <span>歷史候選</span>
       <button class="icon-btn" onclick="clearHistory()" style="padding:2px 6px; font-size:11px;">清空</button>
     </div>
     <div class="history-section">
@@ -394,39 +394,15 @@
   var isBotProcessing = false; 
   var sentHistory = new Set(); 
   var defaultHistory = ["M8有視訊鏡頭嗎", "那M9呢", "那M8要怎麼用", "3"];
+  var TEST_USER_ID = "TEST_DEV_001";
   
   window.onload = function() {
-    addMsg("bot", "測試模式啟動！<br>點擊右側歷史卡片，可將訊息加入「等待發送」佇列。");
+    addMsg("bot", "模擬器已連線！<br>自動執行重啟中...");
     defaultHistory.forEach(addHistoryItem);
     addToQueue("/重啟");
   };
 
-  // --- LOG 工具函式 ---
-  
-  function copyLogs() {
-    var logBox = document.getElementById("log-box");
-    var text = logBox.innerText;
-    navigator.clipboard.writeText(text).then(function() {
-      showToast("✅ LOG 已複製！");
-    }, function(err) {
-      showToast("❌ 複製失敗");
-    });
-  }
-
-  function clearLogUI() {
-    document.getElementById("log-box").innerHTML = "";
-    showToast("🗑️ LOG 面板已清空");
-  }
-
-  function showToast(text) {
-    var toast = document.getElementById("toast");
-    toast.innerText = text;
-    toast.style.opacity = 1;
-    setTimeout(() => toast.style.opacity = 0, 2000);
-  }
-
   // --- 排程系統 ---
-
   function addToQueue(text) {
     if(!text) return;
     messageQueue.push(text);
@@ -453,7 +429,6 @@
   }
 
   // --- 發送邏輯 ---
-
   function sendMessage() {
     var input = document.getElementById("msg-input");
     var text = input.value.trim();
@@ -469,43 +444,35 @@
     var loadingId = addMsg("bot", "思考中<span class='loading-dots'></span>");
 
     google.script.run
-      .withSuccessHandler(function(responseLogs) {
+      .withSuccessHandler(function(res) {
         isBotProcessing = false;
         removeMsg(loadingId);
         
-        var botReply = "（無回覆）";
-        if (responseLogs && responseLogs.length > 0) {
-          updateLogs(responseLogs);
-          for (var i = responseLogs.length - 1; i >= 0; i--) {
-            var log = responseLogs[i];
-            if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1 || log.indexOf("[API Short Response]") > -1) {
-              botReply = log.split("Content:").pop().trim();
-              botReply = botReply.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
-              break;
-            }
-          }
-          if (botReply === "（無回覆）" && responseLogs.some(l => l.indexOf("反問") > -1)) {
-             botReply = "請選擇型號 (請看右側 LOG 確認選項)";
-          }
+        // 後端回傳格式: { success: true, reply: "...", logs: [...], tokens: "..." }
+        if (res && res.logs && res.logs.length > 0) {
+          updateLogs(res.logs);
         }
         
-        if(text === "/重啟" && botReply.indexOf("重啟完成") > -1) {
-             botReply = "✅ 重啟成功！";
+        // 顯示回覆
+        var replyText = res.reply || "(無回覆)";
+        if(text === "/重啟" && replyText.indexOf("重啟完成") > -1) {
+             replyText = "✅ 重啟成功！";
         }
-        addMsg("bot", botReply);
+        addMsg("bot", replyText);
+        
+        // 繼續排程
         setTimeout(processQueue, 800);
       })
       .withFailureHandler(function(err) {
         isBotProcessing = false;
         removeMsg(loadingId);
-        addMsg("bot", "❌ 錯誤: " + err);
+        addMsg("bot", "❌ 連線錯誤: " + err);
         setTimeout(processQueue, 1000);
       })
       .testMessage(text, TEST_USER_ID);
   }
 
-  // --- 歷史與其他 ---
-
+  // --- UI 輔助 ---
   function addHistoryItem(text) {
     if (sentHistory.has(text)) return;
     sentHistory.add(text);
@@ -534,8 +501,7 @@
     messageQueue = [];
     renderQueue();
     isBotProcessing = false;
-    google.script.run.clearTestSession("TEST_DEV_001");
-    showToast("⚡️ 已重置");
+    google.script.run.clearTestSession(TEST_USER_ID);
   }
 
   function addMsg(role, text) {
@@ -564,6 +530,16 @@
       logBox.insertAdjacentHTML('beforeend', html);
     });
     logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function copyLogs() {
+    var text = document.getElementById("log-box").innerText;
+    navigator.clipboard.writeText(text);
+    alert("Logs 已複製");
+  }
+
+  function clearLogUI() {
+    document.getElementById("log-box").innerHTML = "";
   }
 
   function checkEnter(e) {

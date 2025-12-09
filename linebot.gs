@@ -4435,127 +4435,108 @@ function testDraftFunction(inputText) {
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 清除測試介面時請刪除此整個區塊 + 頂部的 TEST MODE GLOBALS + TestUI.html
 
-/**
- * Web App 入口：提供測試介面
- * URL: https://script.google.com/macros/s/SCRIPT_ID/exec (GET)
- */
+// ==========================================
+// 9. TEST UI (測試介面專用 - V27.3.6 終極版)
+// ==========================================
+
+// 1. 網頁入口
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('TestUI')
-    .setTitle('LINE Bot 測試介面')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  return HtmlService.createTemplateFromFile('TestUI')
+      .evaluate()
+      .setTitle('LINE Bot 測試模擬器 v2.2')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
 }
 
-/**
- * 測試訊息處理：模擬 LINE Webhook
- */
+// 2. 接收測試訊息 (核心邏輯 - V27.3.6)
 function testMessage(msg, userId) {
-  IS_TEST_MODE = true;
-  TEST_LOGS = [];
-  
-  // 防呆：確保 msg 是字串且不為空
-  if (!msg) msg = "";
-  
-  writeLog(userId || 'TEST_DEV_001', 'UserRecord', `[TEST] 收到測試訊息: ${msg}`);
-  
-  // 偽造一個真實的 LINE Event 物件
-  const fakeEvent = {
-    replyToken: 'TEST_REPLY_TOKEN',
-    source: { 
-      type: 'user',
-      userId: userId || 'TEST_DEV_001'
-    },
-    message: { 
-      type: 'text', 
-      text: msg,
-      id: 'TEST_MSG_' + new Date().getTime()
-    },
-    type: 'message',
+  // 1. 初始化環境
+  IS_TEST_MODE = true; 
+  TEST_LOGS = []; // 重置 Log
+  if (!msg) msg = ""; // 防呆
+  userId = userId || "TEST_DEV_001";
+
+  // 2. 偽造 LINE Event
+  var fakeEvent = {
+    replyToken: "TEST_REPLY_TOKEN",
+    source: { type: "user", userId: userId },
+    message: { type: "text", text: msg, id: "TEST_MSG_" + new Date().getTime() },
+    type: "message",
     timestamp: new Date().getTime()
   };
-  
+
+  // 3. 執行主邏輯 (攔截錯誤)
   try {
-    // 呼叫原本的 doPost 邏輯（模擬 LINE webhook）
-    // handleMessage 期望參數：(userMessage, userId, replyToken, contextId, messageId)
-    const response = handleMessage(
-      msg,                          // userMessage
-      userId || 'TEST_DEV_001',    // userId
-      'TEST_REPLY_TOKEN',          // replyToken
-      userId || 'TEST_DEV_001',    // contextId（用 userId 替代）
-      fakeEvent.message.id         // messageId
-    );
-    
-    const logs = TEST_LOGS.slice();
-    
-    // 解析 Token 使用量
-    let tokenInfo = '無 Token 資訊';
-    const tokenLog = logs.find(log => log.includes('[Token]'));
-    if (tokenLog) {
-      const match = tokenLog.match(/Input:\s*(\d+),\s*Output:\s*(\d+)/);
-      if (match) {
-        tokenInfo = `輸入: ${match[1]} tokens | 輸出: ${match[2]} tokens`;
-      }
-    }
-    
-    IS_TEST_MODE = false;
-    TEST_LOGS = [];
-    
-    return {
-      text: response || '(Bot 無回應)',
-      logs: logs,
-      tokenInfo: tokenInfo
-    };
+    handleMessage(fakeEvent); 
   } catch (e) {
-    IS_TEST_MODE = false;
-    const errorMsg = `${e.message} (行: ${e.lineNumber || '?'})`;
-    TEST_LOGS.push(`[ERROR] 系統崩潰: ${errorMsg}`);
-    
-    return {
-      text: `❌ 錯誤: ${errorMsg}`,
-      logs: TEST_LOGS,
-      tokenInfo: '錯誤'
-    };
+    var errStr = e.toString();
+    // 忽略一些 GAS 特有的非致命錯誤 (例如 ContentService)
+    if (errStr.indexOf("ContentService") === -1) {
+       writeLog(userId, "Error", "Test Crash: " + errStr);
+       TEST_LOGS.push(`[Error] 系統崩潰: ${errStr}`);
+    }
   }
+
+  // 4. 智慧提取回覆 (從 Logs 裡挖出最後一句 AI 說的話)
+  var botResponse = "(無回覆)";
+  var tokenInfo = "-";
+  
+  // 反向搜尋 Log
+  for (var i = TEST_LOGS.length - 1; i >= 0; i--) {
+    var log = TEST_LOGS[i];
+    
+    // 抓 Token 統計
+    if (log.indexOf("[Tokens]") > -1) {
+       tokenInfo = log.split("Total:")[1] || "-";
+    }
+
+    // 抓回覆內容 (優先級: AI Reply > Reply > API Short Response)
+    if (botResponse === "(無回覆)") {
+        if (log.indexOf("[AI Reply]") > -1) {
+            botResponse = parseLogContent(log, "[AI Reply]");
+        } else if (log.indexOf("[Reply]") > -1) {
+            botResponse = parseLogContent(log, "[Reply]");
+        } else if (log.indexOf("[API Short Response]") > -1) {
+            botResponse = parseLogContent(log, "Content:");
+        } else if (log.indexOf("已發送型號選擇反問") > -1) {
+            botResponse = "請選擇型號 (請見 LOG 選項)";
+        }
+    }
+  }
+
+  // 5. 關閉測試模式並回傳
+  IS_TEST_MODE = false;
+  
+  return {
+    success: true,
+    reply: botResponse,
+    logs: TEST_LOGS,
+    tokens: tokenInfo
+  };
 }
 
-/**
- * 清除測試對話記錄
- */
-function clearTestSession(userId) {
-  try {
-    const cache = CacheService.getScriptCache();
-    
-    // 清除對話歷史快取
-    cache.remove(`HISTORY_${userId}`);
-    
-    // 清除其他可能的測試快取
-    const keys = [
-      `PENDING_PDF_${userId}`,
-      `DIRECT_SEARCH_${userId}`,
-      `KB_URI_LIST`,
-      `KEYWORD_MAP`
-    ];
-    
-    keys.forEach(key => {
-      try {
-        cache.remove(key);
-      } catch (e) {}
-    });
-    
-    TEST_LOGS = [];
-    
-    writeLog(`[TEST] 清除測試用戶 ${userId} 的所有快取`);
-    
-    return { 
-      success: true,
-      message: '測試記錄已清除！'
-    };
-  } catch (e) {
-    writeLog(`[TEST ERROR] 清除失敗: ${e.message}`);
-    return { 
-      success: false,
-      message: `清除失敗: ${e.message}`
-    };
-  }
+// 輔助: 清洗 Log 內容
+function parseLogContent(logLine, keyword) {
+    var content = logLine.split(keyword).pop().trim();
+    // 去除前後引號
+    if (content.startsWith('"') && content.endsWith('"')) {
+        content = content.slice(1, -1);
+    }
+    return content.replace(/\\n/g, '\n');
 }
+
+// 3. 清除測試快取
+function clearTestSession(userId) {
+  var cache = CacheService.getScriptCache();
+  userId = userId || "TEST_DEV_001";
+  
+  cache.remove(`${userId}:context`);
+  cache.remove(`${userId}:pdf_mode`);
+  cache.remove(`${userId}:direct_search_models`);
+  cache.remove(`${userId}:hit_alias_key`);
+  
+  return { success: true, msg: "✅ 快取已清除" };
+}
+
+// ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
