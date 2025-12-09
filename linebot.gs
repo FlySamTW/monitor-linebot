@@ -1,6 +1,6 @@
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.2.4 (解除字數限制，移除「100-300字」限制並加強 emoji 禁令；確保 Deep Mode 不被短回答限制困縛)
+ * Version: 27.3.3 (加強 PDF 回答指令 - 強制詳細教學無視字數限制)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -427,7 +427,7 @@ function checkDirectDeepSearch(msg, userId) {
                         
                         if (mappedValue) {
                             // 從映射值提取型號
-                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
                             const models = [];
                             let match;
                             while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
@@ -511,7 +511,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
                         writeLog(`[DirectDeep] 查詢 KEYWORD_MAP[${hitKey}] = ${mappedValue ? mappedValue.substring(0, 50) + '...' : 'NOT FOUND'}`);
                         
                         if (mappedValue) {
-                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
                             const models = [];
                             let match;
                             while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
@@ -717,11 +717,25 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 
                 // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
                 const history = getHistoryFromCacheOrSheet(contextId);
-                
+
+                // v27.2.6: 重啟後歷史可能為 0，補上原始提問與本次選擇，避免 Deep Mode 無上下文
+                if (history.length === 0 && pending.originalQuery) {
+                    history.push({ role: 'user', content: pending.originalQuery });
+                    history.push({ role: 'assistant', content: buildPdfSelectionMessage(pending.aliasKey, pending.options) });
+                    history.push({ role: 'user', content: msg });
+                }
+
                 writeLog(`[PDF Select] 完整歷史長度: ${history.length} 則`);
+
+                // v27.2.7: 🔥 強制重新提問，不然 AI 看到 "3" 會覺得沒事做
+                // 原因：history 中只有 user:"3"，AI 會以為對話已結束，只回傳 emoji
+                // v27.3.3: 加強強力指令，避免 AI 因為看到上一輪 Fast Mode 回答而偷懶
+                const forceAskMsg = { 
+                    role: "user", 
+                    content: `(我已選擇: ${selected.matchedModel}) 請閱讀這份手冊，**無視任何字數限制**，詳細回答我原本的問題：${pending.originalQuery}\n\n請注意：\n1. 若有操作步驟，請逐一列出，不要省略。\n2. 若有圖片說明，請用文字清晰描述。\n3. 請扮演專業技術人員，提供最完整的教學，絕對不要簡短。` 
+                };
                 
-                // history 已包含原始問題和反問，直接用完整歷史查詢 PDF
-                const response = callChatGPTWithRetry(history, null, true, false, userId);
+                const response = callChatGPTWithRetry([...history, forceAskMsg], null, true, false, userId);
                 
                 if (response) {
                     let finalText = formatForLineMobile(response);
@@ -888,32 +902,70 @@ function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
  * v24.1.5 新增：提取訊息中的型號編碼
  * 支援 S27FG900、G90XF、M70D 等各種格式
  */
+/**
+ * v27.3.0 強化版：提取訊息中的型號編碼 (雙重認證機制)
+ * 1. 使用 Regex 進行廣泛搜捕 (支援中文句型)
+ * 2. 針對短型號 (如 M9, G8) 強制查閱 CLASS_RULES 驗證，避免誤判 (如 3M 膠帶)
+ * 防止誤判：「我要用 3M 膠帶」不會被當成 M3 型號
+ */
 function extractModelNumbers(text) {
     try {
         if (!text) return [];
-        
         const models = [];
         const upperText = text.toUpperCase();
         
-        // 型號正則表達式（涵蓋所有常見格式）
+        // 1. 準備查核清單 (從 Cache 讀取 KEYWORD_MAP，獲得所有合法的短型號)
+        let validKeywords = null;
+        try {
+            const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+            if (mapJson) {
+                const map = JSON.parse(mapJson);
+                validKeywords = Object.keys(map);  // 例如: ['M8', 'M9', 'G9', 'ODYSSEYHUB', ...]
+            }
+        } catch(e) {
+            writeLog("[extractModelNumbers] KEYWORD_MAP 讀取失敗，使用離線模式");
+        }
+
+        // 2. 定義搜捕模式
+        // 注意：短型號在 v27.3.0 會進行二次驗證
         const modelPatterns = [
-            /\b([SG][\dA-Z]+[CDEFGHKLMNPSTX]{0,3})\b/g,  // S27FG900, G90XF 等
-            /\bM[5789][\dA-Z]*\b/g,                       // M5, M7, M8, M9 系列 (完整保留)
-            /\bARK\s*(?:DIAL|HUB)?\b/gi,                  // ARK / ARK DIAL / ARK HUB
-            /\bODYSSEY\s*(?:HUB|3D)?\b/gi                 // Odyssey / Odyssey Hub / Odyssey 3D
+            { pattern: /(?:^|[^A-Z0-9])([SG]\d{2}[A-Z]+[CDEFGHKLMNPSTX]{0,3})(?:$|[^A-Z0-9])/g, needValidate: false },  // 長型號直接放行
+            { pattern: /(?:^|[^A-Z0-9])([MG][1-9]\d{0,1}[A-Z]?)(?:$|[^A-Z0-9])/g, needValidate: true },                   // 短型號需查核
+            { pattern: /\b(ARK\s*(?:DIAL|HUB)?)\b/gi, needValidate: true },
+            { pattern: /\b(ODYSSEY\s*(?:HUB|3D)?)\b/gi, needValidate: true }
         ];
-        
-        modelPatterns.forEach(pattern => {
+
+        // 3. 執行搜捕與查核
+        modelPatterns.forEach(config => {
             let match;
-            while ((match = pattern.exec(upperText)) !== null) {
-                // v24.1.7: 修正 - 確保完整保留型號（不使用括號分組）
-                const model = match[1] || match[0];
-                if (model.length >= 2 && !models.includes(model)) {
-                    models.push(model);
+            while ((match = config.pattern.exec(upperText)) !== null) {
+                let candidate = (match[1] || match[0]).trim();
+                // 去除頭尾非英數字符（例如 "（M8" 會變成 "M8"）
+                candidate = candidate.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, '');
+                
+                if (!candidate || candidate.length < 2 || models.includes(candidate)) continue;
+
+                // 🔥 關鍵：短型號雙重認證 (Short Model Validation)
+                if (config.needValidate && candidate.length < 4) {
+                    // 只有在 CLASS_RULES 裡有登記的短型號 (如 M8, G9) 才算數
+                    // 避免被「3M膠帶」的「3M」或「M3」騙到
+                    if (validKeywords) {
+                        // 完全匹配或包含匹配（例如 "M8" 或 "ODYSSEYHUB" 都要查）
+                        const isValid = validKeywords.some(kw => kw === candidate || kw.includes(candidate));
+                        if (isValid) {
+                            models.push(candidate);
+                        }
+                    } else {
+                        // 離線模式：保守方案，短型號預設信任（因為無法查核）
+                        models.push(candidate);
+                    }
+                } else {
+                    // 長型號直接放行（足夠特殊，不易誤判）
+                    models.push(candidate);
                 }
             }
         });
-        
+
         return models;
     } catch (e) {
         writeLog("[Error] extractModelNumbers: " + e.message);
@@ -1839,7 +1891,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
     // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
     // ⚠️ 不包含 ODYSSEY HUB、3D 等術語 - 這些只用於觸發直通車，不用於 PDF 匹配
-    const MODEL_REGEX = /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+    const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
     
     // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
     // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
@@ -2029,26 +2081,12 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)，請參考 Prompt 中的【極速模式】規範。\n【來源標註規則】\n- 只能使用 QA/CLASS_RULES，回答末尾標註「[來源: QA資料庫]」。\n- 嚴禁網路搜尋與「[來源: 非三星官方]」，找不到就輸出 [AUTO_SEARCH_PDF] 轉 PDF。\n- 禁用「[來源: 產品手冊]」(未掛 PDF)。`;
     } else if (attachPDFs) {
         // Phase 2 & 3: 深度模式 (Deep Mode)
-        // v27.0.0: 簡化 Deep Mode prompt，避免 AI 困惑導致空白回應
-        // 原問題：多層 prompt 疊加 + 複雜指令 → AI 返回 emoji 或空白
-        // 解決：明確的單一任務 + 清晰的備選方案
-        const lastUserMsg = effectiveMessages.filter(m => m.role === 'user').pop();
-        const userQuestion = lastUserMsg ? lastUserMsg.content : '';
+        // v27.2.5: 移除複雜的 Deep Mode prompt，完全依賴 C3 Prompt
+        // 原問題：GAS 內的 Deep Mode prompt 與 C3 Prompt 規則重複，導致 AI 困惑返回空白
+        // 解決：Deep Mode 不再額外添加指令，讓 C3 Prompt 的「深度模式」規則生效
         
-        dynamicPrompt += `\n\n⚠️【深度模式】正在讀取產品手冊\n`;
-        dynamicPrompt += `用戶問題：${userQuestion}\n\n`;
-        dynamicPrompt += `任務：\n`;
-        dynamicPrompt += `1. 在手冊中搜尋與「${userQuestion}」相關的內容\n`;
-        dynamicPrompt += `2. 如果找到，詳細回答（無字數限制，詳細為優先）\n`;
-        dynamicPrompt += `3. 如果找不到，說「手冊中沒有相關說明」，並嘗試用通用知識補充（需標註來源）\n`;
-        dynamicPrompt += `4. 禁止輸出 [AUTO_SEARCH_PDF]（已在讀手冊了）\n`;
-        dynamicPrompt += `5. 禁止空白回答或只輸出標點符號或 emoji\n`;
-        dynamicPrompt += `6. 回答開頭加「根據產品手冊」`;
-        
-        // 重試模式額外提醒
-        if (isRetry) {
-            dynamicPrompt += `\n\n【系統重試】這是自動觸發的深度搜尋，請務必給出完整答案，不要只輸出 emoji 或標點。`;
-        }
+        // v27.2.5: Deep Mode 現在只做一件事：標記「正在讀取手冊」，其他全交給 C3
+        dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。`;
     }
 
     const geminiContents = [];
@@ -2117,12 +2155,27 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             contents: geminiContents,
             systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
             generationConfig: genConfig,
-            safetySettings: [{category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}],
+            safetySettings: [
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+            ],
             tools: tools
         };
 
     const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
     writeLog(`[API Call] Model: ${modelName}, PDF: ${attachPDFs}, Think: ${useThinkModel}, Retry: ${isRetry}`);
+    
+    // v27.2.5: PDF Debug Log
+    if (attachPDFs) {
+        writeLog(`[PDF Debug] 掛載 PDF 數量: ${filesToAttach.length}`);
+        // v27.3.2: 註解掉 Prompt 日誌，避免洗版（完整 Prompt 已由 AI 接收）
+        // writeLog(`[PDF Debug] Dynamic Prompt 前 500 字: ${dynamicPrompt.substring(0, 500)}`);
+        const totalChars = geminiContents.reduce((sum, msg) => sum + JSON.stringify(msg).length, 0);
+        writeLog(`[PDF Debug] 總內容長度: ${totalChars} 字元`);
+    }
+    
     const start = new Date().getTime();
     let lastLoadingTime = start; // 追蹤上次發送 Loading 的時間
     
@@ -2173,6 +2226,10 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         writeLog(`[Tokens] API 未返回 usageMetadata，已清除舊費用紀錄`);
                     }
 
+                    // v27.2.6: 記錄 promptFeedback/safety，追蹤被封鎖原因
+                    if (json && json.promptFeedback) {
+                        writeLog(`[API PromptFeedback] ${JSON.stringify(json.promptFeedback).substring(0, 500)}`);
+                    }
                     const candidates = json && json.candidates ? json.candidates : [];
                     
                     // v27.0.0: 防護機制 - 檢測異常短回應（Deep Mode + PDF 但輸出只有 emoji）
@@ -2181,8 +2238,11 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         // 如果 PDF Mode 但回答只有 emoji（1 token）或完全空白，記錄警告
                         if (usage && usage.candidatesTokenCount <= 2 && responseText.trim().length <= 3) {
                             writeLog(`[PDF Mode ERROR] ⚠️ 異常短回應: In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Content: "${responseText}"`);
-                            writeLog(`[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 問題`);
-                            // 在這裡可以添加自動重試邏輯或備選策略
+                            if (candidates[0].safetyRatings) {
+                                writeLog(`[PDF Mode ERROR] Safety Ratings: ${JSON.stringify(candidates[0].safetyRatings).substring(0, 500)}`);
+                            }
+                            writeLog(`[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 的安全阻擋或工具衝突`);
+                            return "⚠️ 讀取產品手冊時回覆異常，請再問一次或改述問題（PDF模式）";
                         }
                     }
                     
@@ -2517,8 +2577,18 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     const hadPdfModeMemory = isInPdfMode;
     
     // v24.5.0: 檢查是否有已選過的 PDF 型號（避免重複反問）
-    const cachedDirectModels = cache.get(`${userId}:direct_search_models`);
-    const hasSelectedPdf = cachedDirectModels && cachedDirectModels.length > 2; // 不是空 JSON
+    // v27.3.1: 修正 JSON 轉換錯誤 - cache.get() 返回字串，需要 JSON.parse 還原成陣列
+    const cachedDirectModelsJson = cache.get(`${userId}:direct_search_models`);
+    let cachedDirectModels = [];  // 先預設為空陣列
+    try {
+        if (cachedDirectModelsJson) {
+            cachedDirectModels = JSON.parse(cachedDirectModelsJson);  // 🔥 把字串轉回陣列
+        }
+    } catch(e) {
+        writeLog(`[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`);
+    }
+    
+    const hasSelectedPdf = cachedDirectModels.length > 0;
 
     try {
         // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
@@ -2579,9 +2649,15 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                   replyText = finalText;
               } else {
                   // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
-                  // 如果有，直接用之前選的 PDF，不要再反問
-                  if (hadPdfModeMemory && hasSelectedPdf) {
-                      writeLog(`[Auto Search] 有 PDF 記憶，直接使用已選的 PDF: ${cachedDirectModels}`);
+                  // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
+                  const currentMsgModels = extractModelNumbers(msg);
+                  
+                  // 檢查是否提到了「不在」舊記憶裡的新型號（例如舊記憶是 M8，現在問 M9）
+                  const isModelMismatch = currentMsgModels.length > 0 && 
+                      currentMsgModels.some(m => !cachedDirectModels.some(old => old === m));
+                  
+                  if (hadPdfModeMemory && hasSelectedPdf && !isModelMismatch) {
+                      writeLog(`[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`);
                       
                       // 設定 PDF 模式並重試
                       isInPdfMode = true;
@@ -2602,6 +2678,15 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
                       replyText = finalText;
                       
                   } else {
+                      // v27.2.9: 如果有型號衝突，記錄並清除舊記憶
+                      if (isModelMismatch) {
+                          writeLog(`[Auto Search] ⚠️ 偵測到型號衝突: 當前問題提到 ${currentMsgModels.join(',')}，舊記憶是 ${cachedDirectModels.join(',')}，將重新進行 PDF 匹配`);
+                          cache.remove(pdfModeKey);
+                          // v27.3.2: 關鍵修正 - 同時清除舊直通車關鍵字與型號，避免 M8 記憶污染 M9 查詢
+                          cache.remove(`${userId}:hit_alias_key`);
+                          cache.remove(`${userId}:direct_search_models`);
+                      }
+                      
                       // v24.4.1: 非硬體問題，需要查 PDF
                       // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
                       const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
@@ -3867,7 +3952,7 @@ function extractContextFromHistory(userId, contextId) {
         const recentMsgs = history.slice(-10).map(m => m.content || '').join(' ');
         
         // 提取型號
-        const MODEL_REGEX = /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{2}[A-Z]|G\d{2}[A-Z]{1,2})\b/g;
+        const MODEL_REGEX = /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{1,2}[A-Z]?|G\d{2}[A-Z]{0,2})\b/g;
         const models = [];
         let match;
         while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
@@ -4094,6 +4179,11 @@ function clearHistorySheetAndCache(cid) {
     
     // 3. 清除 PDF 模式狀態
     cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + cid);
+
+    // v27.2.6+: 一併清除 PDF 反問暫存與直通車注入的型號，避免重啟後還吃到舊 pending
+    cache.remove(CACHE_KEYS.PENDING_PDF_SELECTION + cid);
+    cache.remove(`${cid}:hit_alias_key`);
+    cache.remove(`${cid}:direct_search_models`);
     
     writeLog(`[ClearHistory] ✅ 完全清除了 ${cid} 的對話記憶 (Sheet + Cache + PDF Mode)`);
   } catch (e) {
