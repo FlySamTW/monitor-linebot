@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.6.0 (終極多重回覆修復版 + V3.0 UI)
+ * Version: 27.6.1 (重複回覆優先級過濾版 + V3.0 UI)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4487,97 +4487,117 @@ function doGet(e) {
 }
 
 /**
- * 測試入口 (V27.6.0 - 終極修復版)
- * 修正重點：補上遺失的 parseLogContent 輔助函式，確保回傳邏輯正常運作
+ * 測試入口 (V27.6.1 - 重複回覆修復版)
+ * 修正重點：採用「優先級過濾」，防止 API Log 和正式 Reply 重複顯示
  */
 function testMessage(msg, userId) {
-    // 1. 初始化環境
-    IS_TEST_MODE = true; 
-    TEST_LOGS = []; 
+  IS_TEST_MODE = true; 
+  TEST_LOGS = []; 
   
-    // 防呆：強制轉字串
-    if (msg === undefined || msg === null) msg = "";
-    if (typeof msg === 'object') {
-            try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
-    }
-    msg = String(msg).trim();
+  // 防呆：強制轉字串
+  if (msg === undefined || msg === null) msg = "";
+  if (typeof msg === 'object') {
+      try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
+  }
+  msg = String(msg).trim();
   
-    userId = userId || "TEST_DEV_001";
+  userId = userId || "TEST_DEV_001";
 
-    // 偽造 Event
-    var fakeEvent = {
-        replyToken: "TEST_REPLY_TOKEN",
-        source: { type: "user", userId: userId },
-        message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
-        type: "message",
-        timestamp: new Date().getTime()
-    };
+  // 偽造 Event
+  var fakeEvent = {
+    replyToken: "TEST_REPLY_TOKEN",
+    source: { type: "user", userId: userId },
+    message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
+    type: "message",
+    timestamp: new Date().getTime()
+  };
 
-    try {
-        if (typeof handleMessage === 'function') {
-                handleMessage(fakeEvent);
-        } else {
-                throw new Error("找不到 handleMessage 主函式");
-        }
-    } catch (e) {
-        var errStr = e.toString();
-        if (errStr.indexOf("ContentService") === -1) {
-             TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
-        }
+  try {
+    if (typeof handleMessage === 'function') {
+        handleMessage(fakeEvent);
+    } else {
+        throw new Error("找不到 handleMessage 主函式");
     }
-
-    // 2. 收集回覆 (使用內嵌的解析邏輯，防止函式遺失)
-    var botResponses = [];
-    var seenResponses = new Set();
-
-    for (var i = 0; i < TEST_LOGS.length; i++) {
-        var log = TEST_LOGS[i];
-        var content = null;
-
-        if (log.indexOf("[AI Reply]") > -1) {
-                content = log.split("[AI Reply]").pop().trim();
-        } else if (log.indexOf("[Reply]") > -1) {
-                content = log.split("[Reply]").pop().trim();
-        } else if (log.indexOf("[API Short Response]") > -1) {
-                content = log.split("Content:").pop().trim();
-        } else if (log.indexOf("已發送型號選擇反問") > -1) {
-                content = "請選擇型號 (請見 LOG 選項)";
-        } else if (log.indexOf("[Fatal]") > -1) {
-                content = "❌ " + log;
-        }
-
-        // 清洗內容 (去除引號與換行符號)
-        if (content) {
-                if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
-                content = content.replace(/\\n/g, '\n');
-        
-                if (!seenResponses.has(content)) {
-                        botResponses.push(content);
-                        seenResponses.add(content);
-                }
-        }
+  } catch (e) {
+    var errStr = e.toString();
+    if (errStr.indexOf("ContentService") === -1) {
+       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
     }
+  }
 
-    IS_TEST_MODE = false;
+  // 🔥 核心修正：優先級過濾邏輯
+  var botResponses = [];
+  var seenContent = new Set(); // 內容去重
+
+  // 步驟 1: 先找最正式的 [Reply] (通常是 replyMessage 發出的)
+  var replyLogs = TEST_LOGS.filter(l => l.indexOf("[Reply]") > -1);
+  replyLogs.forEach(l => {
+      addUniqueResponse(parseLogContent(l, "[Reply]"));
+  });
+
+  // 步驟 2: 如果沒有 [Reply]，才找 [AI Reply] (避免重複)
+  if (botResponses.length === 0) {
+      var aiLogs = TEST_LOGS.filter(l => l.indexOf("[AI Reply]") > -1);
+      aiLogs.forEach(l => {
+          addUniqueResponse(parseLogContent(l, "[AI Reply]"));
+      });
+  }
+
+  // 步驟 3: 如果還是空的，才勉強用 [API Short Response] (Debug 用)
+  if (botResponses.length === 0) {
+      var apiLogs = TEST_LOGS.filter(l => l.indexOf("[API Short Response]") > -1);
+      apiLogs.forEach(l => {
+          addUniqueResponse(parseLogContent(l, "Content:"));
+      });
+  }
+
+  // 步驟 4: 特殊反問檢查
+  if (botResponses.length === 0 && TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1)) {
+      botResponses.push("請選擇型號 (請見 LOG 選項)");
+  }
   
-    return {
-        success: true,
-        replies: botResponses,
-        logs: TEST_LOGS
-    };
+  // 步驟 5: 錯誤檢查
+  var fatalLog = TEST_LOGS.find(l => l.indexOf("[Fatal]") > -1);
+  if (fatalLog) {
+      botResponses.push("❌ " + fatalLog);
+  }
+
+  // 內部函式：加入並去重
+  function addUniqueResponse(content) {
+      if (content && !seenContent.has(content)) {
+          botResponses.push(content);
+          seenContent.add(content);
+      }
+  }
+
+  IS_TEST_MODE = false;
+  
+  return {
+    success: true,
+    replies: botResponses,
+    logs: TEST_LOGS
+  };
 }
 
-// 清除快取 (保持不變)
+// 輔助: 清洗 Log 內容
+function parseLogContent(logLine, keyword) {
+    if (!logLine || !keyword) return "";
+    var parts = logLine.split(keyword);
+    if (parts.length < 2) return "";
+    var content = parts.pop().trim();
+    if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
+    return content.replace(/\\n/g, '\n');
+}
+
+// 清除快取
 function clearTestSession(userId) {
-    var cache = CacheService.getScriptCache();
-    userId = userId || "TEST_DEV_001";
-    cache.remove(`${userId}:context`);
-    cache.remove(`${userId}:pdf_mode`);
-    cache.remove(`${userId}:direct_search_models`);
-    cache.remove(`${userId}:hit_alias_key`);
-    return { success: true, msg: "✅ 髒資料已清除" };
-}
-
-// ════════════════════════════════════════════════════════════════
+  var cache = CacheService.getScriptCache();
+  userId = userId || "TEST_DEV_001";
+  cache.remove(`${userId}:context`);
+  cache.remove(`${userId}:pdf_mode`);
+  cache.remove(`${userId}:direct_search_models`);
+  cache.remove(`${userId}:hit_alias_key`);
+  return { success: true, msg: "✅ 髒資料已清除" };
+}// ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
