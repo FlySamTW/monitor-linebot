@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.5.0 (多重回覆模擬器 + V3.0 UI)
+ * Version: 27.6.0 (終極多重回覆修復版 + V3.0 UI)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4487,10 +4487,11 @@ function doGet(e) {
 }
 
 /**
- * 測試入口 (V27.5.0 - 多重回覆支援版)
- * 修正重點：不再只抓最後一句，而是收集所有 [Reply] / [AI Reply] 並回傳陣列
+ * 測試入口 (V27.6.0 - 終極修復版)
+ * 修正重點：補上遺失的 parseLogContent 輔助函式，確保回傳邏輯正常運作
  */
 function testMessage(msg, userId) {
+    // 1. 初始化環境
     IS_TEST_MODE = true; 
     TEST_LOGS = []; 
   
@@ -4525,29 +4526,35 @@ function testMessage(msg, userId) {
         }
     }
 
-    // 🔥 核心修正：改為陣列收集模式
+    // 2. 收集回覆 (使用內嵌的解析邏輯，防止函式遺失)
     var botResponses = [];
-    var seenResponses = new Set(); // 去重
+    var seenResponses = new Set();
 
     for (var i = 0; i < TEST_LOGS.length; i++) {
         var log = TEST_LOGS[i];
         var content = null;
 
         if (log.indexOf("[AI Reply]") > -1) {
-                content = parseLogContent(log, "[AI Reply]");
+                content = log.split("[AI Reply]").pop().trim();
         } else if (log.indexOf("[Reply]") > -1) {
-                content = parseLogContent(log, "[Reply]");
+                content = log.split("[Reply]").pop().trim();
         } else if (log.indexOf("[API Short Response]") > -1) {
-                content = parseLogContent(log, "Content:");
+                content = log.split("Content:").pop().trim();
         } else if (log.indexOf("已發送型號選擇反問") > -1) {
                 content = "請選擇型號 (請見 LOG 選項)";
         } else if (log.indexOf("[Fatal]") > -1) {
                 content = "❌ " + log;
         }
 
-        if (content && !seenResponses.has(content)) {
-                botResponses.push(content);
-                seenResponses.add(content);
+        // 清洗內容 (去除引號與換行符號)
+        if (content) {
+                if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
+                content = content.replace(/\\n/g, '\n');
+        
+                if (!seenResponses.has(content)) {
+                        botResponses.push(content);
+                        seenResponses.add(content);
+                }
         }
     }
 
