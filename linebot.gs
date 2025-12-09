@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.3 (型號選擇反問完全修復版 - Cache 還原選項)
+ * Version: 27.7.4 (testMessage 強化版 - API 回覆金額、型號選擇後續、LOG 監控)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4541,6 +4541,34 @@ function testMessage(msg, userId) {
     }
   }
 
+  // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
+  if (!hasOfficialReply) {
+      var hasPdfSelectLog = TEST_LOGS.some(l => l.indexOf("[PDF Select] 用戶選擇") > -1 || l.indexOf("[PDF Select] 用戶輸入完整型號") > -1);
+      if (hasPdfSelectLog) {
+          // 表示已經觸發 PDF 查詢，但結果未被正確記錄
+          // 這是 TEST MODE 的局限，需要從 LOG 中重新提取
+          // 嘗試從日誌中找 [AI Reply] 或其他結果
+          var hasResults = false;
+          for (var i = 0; i < TEST_LOGS.length; i++) {
+              var log = TEST_LOGS[i];
+              if (log.indexOf("[AI Reply]") > -1) {
+                  var content = parseLogContent(log, "[AI Reply]");
+                  if (content && !seenContent.has(content)) {
+                      botResponses.push(content);
+                      seenContent.add(content);
+                      hasOfficialReply = true;
+                      hasResults = true;
+                  }
+              }
+          }
+          // 如果 PDF 選擇後還是沒有回答，表示 API 調用失敗或超時
+          if (!hasResults && hasPdfSelectLog) {
+              botResponses.push("⏳ PDF 查詢中，請稍候...");
+              hasOfficialReply = true;
+          }
+      }
+  }
+
   // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
   if (!hasOfficialReply) {
       var hasPdfQuestion = TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1);
@@ -4576,10 +4604,19 @@ function testMessage(msg, userId) {
       for (var i = 0; i < TEST_LOGS.length; i++) {
         var log = TEST_LOGS[i];
         if (log.indexOf("[API Short Response]") > -1) {
-            var content = parseLogContent(log, "Content:");
-            if (content && !seenContent.has(content)) {
-                botResponses.push(content);
-                seenContent.add(content);
+            // 日誌格式: [API Short Response] Out: X tokens, Content: "..."
+            // 需要提取 Content: 之後的內容
+            var contentStart = log.indexOf('Content: "');
+            if (contentStart > -1) {
+                var contentStr = log.substring(contentStart + 10); // skip 'Content: "'
+                var contentEnd = contentStr.lastIndexOf('"');
+                if (contentEnd > -1) {
+                    var content = contentStr.substring(0, contentEnd);
+                    if (content && !seenContent.has(content)) {
+                        botResponses.push(content);
+                        seenContent.add(content);
+                    }
+                }
             }
         }
       }

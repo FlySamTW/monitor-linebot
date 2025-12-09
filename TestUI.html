@@ -254,6 +254,11 @@
   function doSendMessage(text) {
     isBotProcessing = true;
     addMsg("user", text);
+    
+    // 🔥 先寫入一條「準備發送」的日誌
+    var logBoxId = Math.random().toString(36).substr(2, 9);
+    updateLogs([`[${new Date().toLocaleTimeString()}] [HTML] 發送: "${text}"`]);
+    
     var loadingId = addMsg("bot", "Reading...");
 
     try {
@@ -354,6 +359,10 @@
     addMsg("user", text);
     addToHistory(text);
     currentQuickReplies = [];
+    
+    // 🔥 先寫入一條「準備發送」的日誌
+    updateLogs([`[${new Date().toLocaleTimeString()}] [HTML] 發送 (快速回覆): "${text}"`]);
+    
     var loadingId = addMsg("bot", "Reading...");
     
     isBotProcessing = true;
