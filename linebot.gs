@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.3.5 (修復 testMessage 參數順序與 null-safety，防止 'undefined.toUpperCase' 錯誤)
+ * Version: 27.3.6 (全端同步手術 - 修復「一直思考中」問題，後端統一回傳格式，前端簡化解析)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
