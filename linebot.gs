@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.6.1 (重複回覆優先級過濾版 + V3.0 UI)
+ * Version: 27.7.0 (雲端歷史版 + V3.0 UI)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4487,14 +4487,14 @@ function doGet(e) {
 }
 
 /**
- * 測試入口 (V27.6.1 - 重複回覆修復版)
- * 修正重點：採用「優先級過濾」，防止 API Log 和正式 Reply 重複顯示
+ * 測試入口 (V27.7.0 - 雲端歷史版)
+ * 新增功能：支援測試歷史紀錄的雲端存取 (存於 TEST_HISTORY 分頁)
  */
 function testMessage(msg, userId) {
+  // 1. 環境初始化
   IS_TEST_MODE = true; 
   TEST_LOGS = []; 
   
-  // 防呆：強制轉字串
   if (msg === undefined || msg === null) msg = "";
   if (typeof msg === 'object') {
       try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
@@ -4525,48 +4525,48 @@ function testMessage(msg, userId) {
     }
   }
 
-  // 🔥 核心修正：優先級過濾邏輯
+  // 2. 收集回覆
   var botResponses = [];
-  var seenContent = new Set(); // 內容去重
+  var seenContent = new Set();
+  var hasOfficialReply = false;
 
-  // 步驟 1: 先找最正式的 [Reply] (通常是 replyMessage 發出的)
-  var replyLogs = TEST_LOGS.filter(l => l.indexOf("[Reply]") > -1);
-  replyLogs.forEach(l => {
-      addUniqueResponse(parseLogContent(l, "[Reply]"));
-  });
+  for (var i = 0; i < TEST_LOGS.length; i++) {
+    var log = TEST_LOGS[i];
+    var content = null;
 
-  // 步驟 2: 如果沒有 [Reply]，才找 [AI Reply] (避免重複)
-  if (botResponses.length === 0) {
-      var aiLogs = TEST_LOGS.filter(l => l.indexOf("[AI Reply]") > -1);
-      aiLogs.forEach(l => {
-          addUniqueResponse(parseLogContent(l, "[AI Reply]"));
-      });
+    if (log.indexOf("[AI Reply]") > -1) {
+        content = parseLogContent(log, "[AI Reply]");
+        hasOfficialReply = true;
+    } else if (log.indexOf("[Reply]") > -1) {
+        content = parseLogContent(log, "[Reply]");
+        hasOfficialReply = true;
+    }
+
+    if (content) addUnique(content);
   }
 
-  // 步驟 3: 如果還是空的，才勉強用 [API Short Response] (Debug 用)
-  if (botResponses.length === 0) {
-      var apiLogs = TEST_LOGS.filter(l => l.indexOf("[API Short Response]") > -1);
-      apiLogs.forEach(l => {
-          addUniqueResponse(parseLogContent(l, "Content:"));
-      });
+  if (!hasOfficialReply) {
+      for (var i = 0; i < TEST_LOGS.length; i++) {
+        var log = TEST_LOGS[i];
+        if (log.indexOf("[API Short Response]") > -1) {
+            addUnique(parseLogContent(log, "Content:"));
+        }
+      }
   }
 
-  // 步驟 4: 特殊反問檢查
-  if (botResponses.length === 0 && TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1)) {
-      botResponses.push("請選擇型號 (請見 LOG 選項)");
-  }
-  
-  // 步驟 5: 錯誤檢查
-  var fatalLog = TEST_LOGS.find(l => l.indexOf("[Fatal]") > -1);
-  if (fatalLog) {
-      botResponses.push("❌ " + fatalLog);
+  for (var i = 0; i < TEST_LOGS.length; i++) {
+      var log = TEST_LOGS[i];
+      if (log.indexOf("已發送型號選擇反問") > -1) {
+          addUnique("請選擇型號 (請見 LOG 選項)");
+      } else if (log.indexOf("[Fatal]") > -1) {
+          addUnique("❌ " + log);
+      }
   }
 
-  // 內部函式：加入並去重
-  function addUniqueResponse(content) {
-      if (content && !seenContent.has(content)) {
-          botResponses.push(content);
-          seenContent.add(content);
+  function addUnique(text) {
+      if (text && !seenContent.has(text)) {
+          botResponses.push(text);
+          seenContent.add(text);
       }
   }
 
@@ -4581,10 +4581,7 @@ function testMessage(msg, userId) {
 
 // 輔助: 清洗 Log 內容
 function parseLogContent(logLine, keyword) {
-    if (!logLine || !keyword) return "";
-    var parts = logLine.split(keyword);
-    if (parts.length < 2) return "";
-    var content = parts.pop().trim();
+    var content = logLine.split(keyword).pop().trim();
     if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
     return content.replace(/\\n/g, '\n');
 }
@@ -4598,6 +4595,47 @@ function clearTestSession(userId) {
   cache.remove(`${userId}:direct_search_models`);
   cache.remove(`${userId}:hit_alias_key`);
   return { success: true, msg: "✅ 髒資料已清除" };
+}
+
+// --- 雲端歷史紀錄功能 ---
+
+function getCloudHistory() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("TEST_HISTORY");
+    if (!sheet) return []; // 如果沒有分頁，回傳空陣列 (前端會用預設值)
+    
+    // 讀取 A 欄所有資料
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 1) return [];
+    
+    var data = sheet.getRange(1, 1, lastRow, 1).getValues();
+    // 轉成一維陣列並過濾空值
+    return data.map(r => r[0]).filter(t => t);
+  } catch(e) {
+    return [];
+  }
+}
+
+function saveCloudHistory(historyArray) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("TEST_HISTORY");
+    if (!sheet) {
+      sheet = ss.insertSheet("TEST_HISTORY");
+    }
+    
+    // 清空舊資料
+    sheet.clear();
+    
+    if (historyArray && historyArray.length > 0) {
+      // 轉成二維陣列寫入
+      var rows = historyArray.map(t => [t]);
+      sheet.getRange(1, 1, rows.length, 1).setValues(rows);
+    }
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
 }// ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
