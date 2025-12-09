@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.4.1 (最終修正 - 源頭淨化，移除過度轉型)
+ * Version: 27.5.0 (多重回覆模擬器 + V3.0 UI)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4487,74 +4487,88 @@ function doGet(e) {
 }
 
 /**
- * 測試介面專用 (V27.4.1 最終修正版)
- * 修改重點：不要用 JSON.stringify，確保 msg 絕對是乾淨的字串
+ * 測試入口 (V27.5.0 - 多重回覆支援版)
+ * 修正重點：不再只抓最後一句，而是收集所有 [Reply] / [AI Reply] 並回傳陣列
  */
 function testMessage(msg, userId) {
-  IS_TEST_MODE = true; 
-  TEST_LOGS = []; 
+    IS_TEST_MODE = true; 
+    TEST_LOGS = []; 
   
-  // 🔥【資料源頭淨化】確保 msg 絕對是乾淨的字串
-  // 不要用 JSON.stringify，那會把物件變成字串 "[object Object]"
-  if (msg === undefined || msg === null) {
-      msg = "";
-  } else if (typeof msg !== 'string') {
-      msg = String(msg); // 強制轉字串
-  }
-  
-  // 再次檢查，如果是髒字串，強制清空
-  if (msg === "[object Object]") msg = "";
-  
-  userId = userId || "TEST_DEV_001";
-
-  // 偽造 Event
-  var fakeEvent = {
-    replyToken: "TEST_REPLY_TOKEN",
-    source: { type: "user", userId: userId },
-    message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
-    type: "message",
-    timestamp: new Date().getTime()
-  };
-
-  try {
-    handleMessage(fakeEvent); 
-  } catch (e) {
-    var errStr = e.toString();
-    if (errStr.indexOf("ContentService") === -1) {
-       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
+    // 防呆：強制轉字串
+    if (msg === undefined || msg === null) msg = "";
+    if (typeof msg === 'object') {
+            try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
     }
-  }
-
-  // 提取回應
-  var botResponse = "(無回覆)";
-  for (var i = TEST_LOGS.length - 1; i >= 0; i--) {
-    var log = TEST_LOGS[i];
-    if (botResponse === "(無回覆)") {
-        if (log.indexOf("[AI Reply]") > -1) botResponse = log.split("[AI Reply]").pop().trim();
-        else if (log.indexOf("[Reply]") > -1) botResponse = log.split("[Reply]").pop().trim();
-        else if (log.indexOf("[API Short Response]") > -1) botResponse = log.split("Content:").pop().trim();
-        else if (log.indexOf("已發送型號選擇反問") > -1) botResponse = "請選擇型號 (請見 LOG 選項)";
-    }
-  }
-  if (botResponse.startsWith('"')) botResponse = botResponse.slice(1, -1);
-
-  IS_TEST_MODE = false;
+    msg = String(msg).trim();
   
-  return {
-    success: true,
-    reply: botResponse,
-    logs: TEST_LOGS
-  };
+    userId = userId || "TEST_DEV_001";
+
+    // 偽造 Event
+    var fakeEvent = {
+        replyToken: "TEST_REPLY_TOKEN",
+        source: { type: "user", userId: userId },
+        message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
+        type: "message",
+        timestamp: new Date().getTime()
+    };
+
+    try {
+        if (typeof handleMessage === 'function') {
+                handleMessage(fakeEvent);
+        } else {
+                throw new Error("找不到 handleMessage 主函式");
+        }
+    } catch (e) {
+        var errStr = e.toString();
+        if (errStr.indexOf("ContentService") === -1) {
+             TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
+        }
+    }
+
+    // 🔥 核心修正：改為陣列收集模式
+    var botResponses = [];
+    var seenResponses = new Set(); // 去重
+
+    for (var i = 0; i < TEST_LOGS.length; i++) {
+        var log = TEST_LOGS[i];
+        var content = null;
+
+        if (log.indexOf("[AI Reply]") > -1) {
+                content = parseLogContent(log, "[AI Reply]");
+        } else if (log.indexOf("[Reply]") > -1) {
+                content = parseLogContent(log, "[Reply]");
+        } else if (log.indexOf("[API Short Response]") > -1) {
+                content = parseLogContent(log, "Content:");
+        } else if (log.indexOf("已發送型號選擇反問") > -1) {
+                content = "請選擇型號 (請見 LOG 選項)";
+        } else if (log.indexOf("[Fatal]") > -1) {
+                content = "❌ " + log;
+        }
+
+        if (content && !seenResponses.has(content)) {
+                botResponses.push(content);
+                seenResponses.add(content);
+        }
+    }
+
+    IS_TEST_MODE = false;
+  
+    return {
+        success: true,
+        replies: botResponses,
+        logs: TEST_LOGS
+    };
 }
 
+// 清除快取 (保持不變)
 function clearTestSession(userId) {
-  var cache = CacheService.getScriptCache();
-  userId = userId || "TEST_DEV_001";
-  cache.remove(`${userId}:context`);
-  cache.remove(`${userId}:pdf_mode`);
-  cache.remove(`${userId}:direct_search_models`);
-  cache.remove(`${userId}:hit_alias_key`);
-  return { success: true, msg: "✅ 髒資料已清除" };
+    var cache = CacheService.getScriptCache();
+    userId = userId || "TEST_DEV_001";
+    cache.remove(`${userId}:context`);
+    cache.remove(`${userId}:pdf_mode`);
+    cache.remove(`${userId}:direct_search_models`);
+    cache.remove(`${userId}:hit_alias_key`);
+    return { success: true, msg: "✅ 髒資料已清除" };
 }
 
 // ════════════════════════════════════════════════════════════════
