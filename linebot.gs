@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.0 (雲端歷史版 + V3.0 UI)
+ * Version: 27.7.2 (型號選擇反問修復版 + V3.0 UI)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4487,11 +4487,10 @@ function doGet(e) {
 }
 
 /**
- * 測試入口 (V27.7.0 - 雲端歷史版)
- * 新增功能：支援測試歷史紀錄的雲端存取 (存於 TEST_HISTORY 分頁)
+ * 測試入口 (V27.7.2 - 型號選擇反問修復版)
+ * 修正重點：捕捉型號選擇反問，確保前端能顯示選項
  */
 function testMessage(msg, userId) {
-  // 1. 環境初始化
   IS_TEST_MODE = true; 
   TEST_LOGS = []; 
   
@@ -4503,7 +4502,6 @@ function testMessage(msg, userId) {
   
   userId = userId || "TEST_DEV_001";
 
-  // 偽造 Event
   var fakeEvent = {
     replyToken: "TEST_REPLY_TOKEN",
     source: { type: "user", userId: userId },
@@ -4525,48 +4523,59 @@ function testMessage(msg, userId) {
     }
   }
 
-  // 2. 收集回覆
+  // 收集回覆 (優先級：[Reply] > [AI Reply] > PDF反問 > [API Short Response])
   var botResponses = [];
   var seenContent = new Set();
   var hasOfficialReply = false;
 
+  // 1️⃣ 優先找 [Reply] 和 [AI Reply]
   for (var i = 0; i < TEST_LOGS.length; i++) {
     var log = TEST_LOGS[i];
-    var content = null;
-
-    if (log.indexOf("[AI Reply]") > -1) {
-        content = parseLogContent(log, "[AI Reply]");
-        hasOfficialReply = true;
-    } else if (log.indexOf("[Reply]") > -1) {
-        content = parseLogContent(log, "[Reply]");
-        hasOfficialReply = true;
+    if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
+        var content = parseLogContent(log, log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]");
+        if (content && !seenContent.has(content)) {
+            botResponses.push(content);
+            seenContent.add(content);
+            hasOfficialReply = true;
+        }
     }
-
-    if (content) addUnique(content);
   }
 
+  // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
+  if (!hasOfficialReply) {
+      var hasPdfQuestion = TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1);
+      if (hasPdfQuestion) {
+          // 從 handleMessage 後的 Cache 中還原反問訊息
+          // 因為型號選擇反問是存在 Cache 的 PENDING_PDF_SELECTION 中，
+          // 但我們無法直接從測試環境取回，所以改用通用提示
+          botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
+          hasOfficialReply = true;
+      }
+  }
+
+  // 3️⃣ 如果還是沒有，才用 [API Short Response]
   if (!hasOfficialReply) {
       for (var i = 0; i < TEST_LOGS.length; i++) {
         var log = TEST_LOGS[i];
         if (log.indexOf("[API Short Response]") > -1) {
-            addUnique(parseLogContent(log, "Content:"));
+            var content = parseLogContent(log, "Content:");
+            if (content && !seenContent.has(content)) {
+                botResponses.push(content);
+                seenContent.add(content);
+            }
         }
       }
   }
 
+  // 4️⃣ 最後檢查錯誤
   for (var i = 0; i < TEST_LOGS.length; i++) {
       var log = TEST_LOGS[i];
-      if (log.indexOf("已發送型號選擇反問") > -1) {
-          addUnique("請選擇型號 (請見 LOG 選項)");
-      } else if (log.indexOf("[Fatal]") > -1) {
-          addUnique("❌ " + log);
-      }
-  }
-
-  function addUnique(text) {
-      if (text && !seenContent.has(text)) {
-          botResponses.push(text);
-          seenContent.add(text);
+      if (log.indexOf("[Fatal]") > -1) {
+          var fatalMsg = "❌ " + log;
+          if (!seenContent.has(fatalMsg)) {
+              botResponses.push(fatalMsg);
+              seenContent.add(fatalMsg);
+          }
       }
   }
 
