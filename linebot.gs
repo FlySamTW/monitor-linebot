@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.2 (型號選擇反問修復版 + V3.0 UI)
+ * Version: 27.7.3 (型號選擇反問完全修復版 - Cache 還原選項)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4545,11 +4545,29 @@ function testMessage(msg, userId) {
   if (!hasOfficialReply) {
       var hasPdfQuestion = TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1);
       if (hasPdfQuestion) {
-          // 從 handleMessage 後的 Cache 中還原反問訊息
-          // 因為型號選擇反問是存在 Cache 的 PENDING_PDF_SELECTION 中，
-          // 但我們無法直接從測試環境取回，所以改用通用提示
-          botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
-          hasOfficialReply = true;
+          // 從 Cache 中還原型號選擇訊息（handleMessage 已存入 PENDING_PDF_SELECTION）
+          var cache = CacheService.getScriptCache();
+          var pendingPdfData = cache.get(CACHE_KEYS.PENDING_PDF_SELECTION + userId);
+          
+          if (pendingPdfData) {
+              try {
+                  var pending = JSON.parse(pendingPdfData);
+                  if (pending.options && pending.options.length > 0) {
+                      // 重新生成選項訊息（與 LINE 一致）
+                      var selectionMsg = buildPdfSelectionMessage(pending.aliasKey, pending.options);
+                      botResponses.push(selectionMsg);
+                      hasOfficialReply = true;
+                  }
+              } catch(e) {
+                  // 如果解析失敗，用備用提示
+                  botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
+                  hasOfficialReply = true;
+              }
+          } else {
+              // Cache 已過期或不存在，用備用提示
+              botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
+              hasOfficialReply = true;
+          }
       }
   }
 
