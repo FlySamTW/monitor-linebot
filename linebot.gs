@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.5 (完整修復版 - AI Reply LOG + 型號清潔 + 金額完整顯示)
+* Version: 27.7.6 (直通車強制單一 PDF 模式)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -1880,6 +1880,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     let extendedQuery = combinedQuery;
     let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
     let hasInjectedModels = false; // 標記是否已從 Cache 讀到直通車注入型號
+    let injectedModels = []; // 保存直通車注入的型號，供後續強制只載入單一 PDF
     
     // v24.1.9 新增：讀取直通車注入的型號（命中關鍵字時）
     // v24.3.0 修復：改用 Sheet 歷史而非 Cache，解決跨時間問題
@@ -1901,7 +1902,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
             const cache = CacheService.getScriptCache();
             const injectedModelsJson = cache.get(`${userId}:direct_search_models`);
             if (injectedModelsJson) {
-                const injectedModels = JSON.parse(injectedModelsJson);
+                injectedModels = JSON.parse(injectedModelsJson);
                 if (Array.isArray(injectedModels)) {
                     exactModels = exactModels.concat(injectedModels);
                     hasInjectedModels = true; // ← v25.0.0: 標記已讀到直通車型號
@@ -1980,6 +1981,12 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     }
     
     exactModels = [...new Set(exactModels)]; // 去重
+
+    // v27.7.6: 若已命中直通車注入型號，強制只保留第一個，避免多載 PDF
+    if (hasInjectedModels && injectedModels && injectedModels.length > 0) {
+        exactModels = [injectedModels[0]];
+        writeLog(`[KB Select] 🔒 已鎖定直通車型號: ${exactModels[0]} (僅載入單一本 PDF)`);
+    }
 
     // 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
     // 許多 PDF 檔名不包含最後兩碼後綴 (SC, XC, EC...)
