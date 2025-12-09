@@ -4448,24 +4448,41 @@ function doGet(e) {
 /**
  * 測試訊息處理：模擬 LINE Webhook
  */
-function testMessage(userId, text) {
+function testMessage(msg, userId) {
   IS_TEST_MODE = true;
   TEST_LOGS = [];
   
-  writeLog(`[TEST] 收到測試訊息 - User: ${userId}, Text: ${text}`);
+  // 防呆：確保 msg 是字串且不為空
+  if (!msg) msg = "";
   
-  const mockEvent = {
+  writeLog(userId || 'TEST_DEV_001', 'UserRecord', `[TEST] 收到測試訊息: ${msg}`);
+  
+  // 偽造一個真實的 LINE Event 物件
+  const fakeEvent = {
     replyToken: 'TEST_REPLY_TOKEN',
-    source: { userId: userId },
+    source: { 
+      type: 'user',
+      userId: userId || 'TEST_DEV_001'
+    },
     message: { 
       type: 'text', 
-      text: text 
+      text: msg,
+      id: 'TEST_MSG_' + new Date().getTime()
     },
-    timestamp: Date.now()
+    type: 'message',
+    timestamp: new Date().getTime()
   };
   
   try {
-    const response = handleMessage(text, userId, 'TEST_REPLY_TOKEN', userId, 'TEST_MSG_' + Date.now());
+    // 呼叫原本的 doPost 邏輯（模擬 LINE webhook）
+    // handleMessage 期望參數：(userMessage, userId, replyToken, contextId, messageId)
+    const response = handleMessage(
+      msg,                          // userMessage
+      userId || 'TEST_DEV_001',    // userId
+      'TEST_REPLY_TOKEN',          // replyToken
+      userId || 'TEST_DEV_001',    // contextId（用 userId 替代）
+      fakeEvent.message.id         // messageId
+    );
     
     const logs = TEST_LOGS.slice();
     
@@ -4489,11 +4506,11 @@ function testMessage(userId, text) {
     };
   } catch (e) {
     IS_TEST_MODE = false;
-    TEST_LOGS = [];
+    const errorMsg = `${e.message} (行: ${e.lineNumber || '?'})`;
+    TEST_LOGS.push(`[ERROR] 系統崩潰: ${errorMsg}`);
     
-    writeLog(`[TEST ERROR] ${e.message}`);
     return {
-      text: `錯誤: ${e.message}`,
+      text: `❌ 錯誤: ${errorMsg}`,
       logs: TEST_LOGS,
       tokenInfo: '錯誤'
     };
