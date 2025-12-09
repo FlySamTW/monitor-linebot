@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE Bot 測試介面</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    /* 頂部標題 */
+    .header {
+      background: #06c755;
+      color: white;
+      padding: 12px 16px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .header-title {
+      font-size: 16px;
+    }
+    
+    .header-info {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    
+    /* 主要容器 */
+    .container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    
+    /* 左側：對話區 (60%) */
+    .chat-panel {
+      flex: 0 0 60%;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border-right: 1px solid #ddd;
+    }
+    
+    /* 對話容器 */
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      background: #f0f0f0;
+    }
+    
+    /* 訊息氣泡 */
+    .message {
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .message.user {
+      align-items: flex-end;
+    }
+    
+    .message.bot {
+      align-items: flex-start;
+    }
+    
+    .bubble {
+      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.5;
+      user-select: text;
+      cursor: text;
+    }
+    
+    .message.user .bubble {
+      background: #06c755;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .message.bot .bubble {
+      background: white;
+      color: #333;
+      border: 1px solid #e0e0e0;
+      border-bottom-left-radius: 4px;
+    }
+    
+    .time {
+      font-size: 11px;
+      color: #999;
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+    
+    /* 輸入區 */
+    .input-area {
+      padding: 12px;
+      background: white;
+      border-top: 1px solid #ddd;
+    }
+    
+    .quick-commands {
+      margin-bottom: 8px;
+    }
+    
+    .quick-commands select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .input-row input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
+    }
+    
+    .input-row input:focus {
+      border-color: #06c755;
+    }
+    
+    .input-row button {
+      padding: 10px 20px;
+      background: #06c755;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .input-row button:hover {
+      background: #05b34a;
+    }
+    
+    .input-row button:active {
+      background: #049e40;
+    }
+    
+    .input-row button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    /* 右側：LOG 區 (40%) */
+    .log-panel {
+      flex: 0 0 40%;
+      display: flex;
+      flex-direction: column;
+      background: #2d2d2d;
+    }
+    
+    .log-header {
+      padding: 12px;
+      background: #1e1e1e;
+      color: white;
+      font-size: 13px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #444;
+    }
+    
+    .token-info {
+      font-size: 12px;
+      color: #4ec9b0;
+      font-weight: normal;
+    }
+    
+    .log-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #d4d4d4;
+      user-select: text;
+      cursor: text;
+    }
+    
+    .log-entry {
+      margin-bottom: 4px;
+      word-wrap: break-word;
+    }
+    
+    .log-entry.error {
+      color: #f48771;
+    }
+    
+    .log-entry.warning {
+      color: #dcdcaa;
+    }
+    
+    .log-entry.success {
+      color: #4ec9b0;
+    }
+    
+    /* 按鈕區 */
+    .button-row {
+      padding: 12px;
+      background: #1e1e1e;
+      border-top: 1px solid #444;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .button-row button {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #555;
+      background: #3c3c3c;
+      color: white;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .button-row button:hover {
+      background: #4c4c4c;
+      border-color: #666;
+    }
+    
+    .button-row button:active {
+      background: #2c2c2c;
+    }
+    
+    .button-row button.danger {
+      border-color: #d32f2f;
+      color: #ff6b6b;
+    }
+    
+    .button-row button.danger:hover {
+      background: #5c1f1f;
+    }
+    
+    /* 載入中 */
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #999;
+      font-size: 13px;
+    }
+    
+    /* 滾動條樣式 */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    
+    .log-container::-webkit-scrollbar-track {
+      background: #1e1e1e;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    
+    /* 空狀態提示 */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+      font-size: 14px;
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <!-- 頂部標題 -->
+  <div class="header">
+    <div class="header-title">🧪 LINE Bot 測試介面</div>
+    <div class="header-info" id="userInfo">User: TEST_DEV_001</div>
+  </div>
+  
+  <!-- 主要容器 -->
+  <div class="container">
+    <!-- 左側：對話區 -->
+    <div class="chat-panel">
+      <div class="chat-container" id="chatContainer">
+        <div class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <div>開始測試對話吧！</div>
+          <div style="font-size: 12px; margin-top: 8px; color: #bbb;">
+            輸入訊息或使用快捷指令
+          </div>
+        </div>
+      </div>
+      
+      <div class="input-area">
+        <div class="quick-commands">
+          <select id="quickCommand" onchange="insertCommand()">
+            <option value="">-- 快捷指令 --</option>
+            <option value="/重啟">/重啟 - 重新開始對話</option>
+            <option value="/紀錄 ">/紀錄 [內容] - 進入建檔模式</option>
+            <option value="/取消">/取消 - 退出建檔模式</option>
+            <option value="1">1 - 選擇選項 1</option>
+            <option value="2">2 - 選擇選項 2</option>
+            <option value="3">3 - 選擇選項 3</option>
+            <option value="G8">G8 - 測試型號辨識</option>
+            <option value="M8">M8 - 測試型號辨識</option>
+            <option value="什麼是HDR">什麼是HDR - 測試通用知識</option>
+            <option value="G80SD怎麼調亮度">G80SD怎麼調亮度 - 測試PDF搜尋</option>
+          </select>
+        </div>
+        
+        <div class="input-row">
+          <input 
+            type="text" 
+            id="messageInput" 
+            placeholder="輸入訊息..." 
+            onkeypress="handleKeyPress(event)"
+            autocomplete="off"
+          />
+          <button onclick="sendMessage()" id="sendBtn">送出</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 右側：LOG 區 -->
+    <div class="log-panel">
+      <div class="log-header">
+        <span>📊 執行日誌</span>
+        <span class="token-info" id="tokenInfo">Token: -</span>
+      </div>
+      
+      <div class="log-container" id="logContainer">
+        <div class="log-entry" style="color: #4ec9b0;">
+          [系統] 測試介面已就緒
+        </div>
+        <div class="log-entry" style="color: #888;">
+          [提示] 此介面不會影響正式 LINE Bot 運作
+        </div>
+        <div class="log-entry" style="color: #888;">
+          [提示] 測試資料不會寫入「所有紀錄」Sheet
+        </div>
+      </div>
+      
+      <div class="button-row">
+        <button onclick="copyLogs()">📋 複製 LOG</button>
+        <button onclick="copyChat()">📋 複製對話</button>
+        <button onclick="clearAll()" class="danger">🗑️ 清除全部</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const TEST_USER_ID = 'TEST_DEV_001';
+    let messageCount = 0;
+    
+    // 插入快捷指令
+    function insertCommand() {
+      const select = document.getElementById('quickCommand');
+      const input = document.getElementById('messageInput');
+      const cmd = select.value;
+      
+      if (cmd) {
+        input.value = cmd;
+        input.focus();
+        select.selectedIndex = 0;
+      }
+    }
+    
+    // Enter 鍵送出
+    function handleKeyPress(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+    
+    // 送出訊息
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      
+      if (!text) return;
+      
+      // 禁用按鈕
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = true;
+      sendBtn.textContent = '處理中...';
+      
+      // 清空輸入框
+      input.value = '';
+      
+      // 顯示使用者訊息
+      addMessage('user', text);
+      
+      // 清空之前的 LOG（如果需要保留歷史 LOG，移除這行）
+      document.getElementById('logContainer').innerHTML = '';
+      
+      // 呼叫後端
+      google.script.run
+        .withSuccessHandler(handleResponse)
+        .withFailureHandler(handleError)
+        .testMessage(TEST_USER_ID, text);
+    }
+    
+    // 處理回應
+    function handleResponse(data) {
+      // 顯示 Bot 回應
+      addMessage('bot', data.text);
+      
+      // 顯示 LOG
+      if (data.logs && data.logs.length > 0) {
+        const logContainer = document.getElementById('logContainer');
+        data.logs.forEach(log => {
+          const div = document.createElement('div');
+          div.className = 'log-entry';
+          
+          // 根據內容設定顏色
+          if (log.includes('ERROR') || log.includes('Error')) {
+            div.className += ' error';
+          } else if (log.includes('WARNING') || log.includes('Warning')) {
+            div.className += ' warning';
+          } else if (log.includes('SUCCESS') || log.includes('完成')) {
+            div.className += ' success';
+          }
+          
+          div.textContent = log;
+          logContainer.appendChild(div);
+        });
+        
+        // 滾動到底部
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+      
+      // 顯示 Token 資訊
+      document.getElementById('tokenInfo').textContent = data.tokenInfo || 'Token: -';
+      
+      // 恢復按鈕
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = false;
+      sendBtn.textContent = '送出';
+      
+      // 聚焦輸入框
+      document.getElementById('messageInput').focus();
+    }
+    
+    // 處理錯誤
+    function handleError(error) {
+      addMessage('bot', '❌ 系統錯誤: ' + error.message);
+      
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = false;
+      sendBtn.textContent = '送出';
+      
+      // LOG 區顯示錯誤
+      const logContainer = document.getElementById('logContainer');
+      const div = document.createElement('div');
+      div.className = 'log-entry error';
+      div.textContent = '[ERROR] ' + error.message;
+      logContainer.appendChild(div);
+    }
+    
+    // 新增訊息到對話區
+    function addMessage(role, text) {
+      const container = document.getElementById('chatContainer');
+      
+      // 移除空狀態提示
+      const emptyState = container.querySelector('.empty-state');
+      if (emptyState) {
+        emptyState.remove();
+      }
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message ' + role;
+      
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      
+      const time = document.createElement('div');
+      time.className = 'time';
+      const now = new Date();
+      time.textContent = now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      
+      messageDiv.appendChild(bubble);
+      messageDiv.appendChild(time);
+      container.appendChild(messageDiv);
+      
+      // 滾動到底部
+      container.scrollTop = container.scrollHeight;
+      
+      messageCount++;
+    }
+    
+    // 複製 LOG
+    function copyLogs() {
+      const logContainer = document.getElementById('logContainer');
+      const logs = logContainer.innerText;
+      
+      if (!logs.trim()) {
+        alert('沒有 LOG 可複製');
+        return;
+      }
+      
+      navigator.clipboard.writeText(logs).then(() => {
+        alert('✅ LOG 已複製到剪貼簿！');
+      }).catch(err => {
+        alert('❌ 複製失敗: ' + err);
+      });
+    }
+    
+    // 複製對話
+    function copyChat() {
+      const container = document.getElementById('chatContainer');
+      const messages = container.querySelectorAll('.message');
+      
+      if (messages.length === 0) {
+        alert('沒有對話可複製');
+        return;
+      }
+      
+      let text = '';
+      messages.forEach(msg => {
+        const role = msg.classList.contains('user') ? '我' : 'Bot';
+        const content = msg.querySelector('.bubble').textContent;
+        const time = msg.querySelector('.time').textContent;
+        text += `[${time}] ${role}: ${content}\n\n`;
+      });
+      
+      navigator.clipboard.writeText(text).then(() => {
+        alert('✅ 對話已複製到剪貼簿！');
+      }).catch(err => {
+        alert('❌ 複製失敗: ' + err);
+      });
+    }
+    
+    // 清除全部
+    function clearAll() {
+      if (!confirm('確定要清除所有對話記錄和 LOG 嗎？\n\n這會清除快取中的對話歷史（不影響 LINE 正式資料）')) {
+        return;
+      }
+      
+      // 顯示載入中
+      const chatContainer = document.getElementById('chatContainer');
+      chatContainer.innerHTML = '<div class="loading">清除中...</div>';
+      
+      // 呼叫後端清除
+      google.script.run
+        .withSuccessHandler(() => {
+          // 清空對話區
+          chatContainer.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">💬</div>
+              <div>已清除！開始新的測試對話吧！</div>
+            </div>
+          `;
+          
+          // 清空 LOG 區
+          document.getElementById('logContainer').innerHTML = `
+            <div class="log-entry" style="color: #4ec9b0;">
+              [系統] 測試記錄已清除
+            </div>
+          `;
+          
+          // 重置 Token 資訊
+          document.getElementById('tokenInfo').textContent = 'Token: -';
+          
+          // 重置計數
+          messageCount = 0;
+          
+          alert('✅ 清除完成！');
+        })
+        .withFailureHandler((error) => {
+          alert('❌ 清除失敗: ' + error.message);
+          chatContainer.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <div>清除失敗，請重新整理頁面</div>
+            </div>
+          `;
+        })
+        .clearTestSession(TEST_USER_ID);
+    }
+    
+    // 頁面載入完成
+    window.onload = function() {
+      document.getElementById('messageInput').focus();
+      console.log('LINE Bot 測試介面已載入');
+    };
+  </script>
+</body>
+</html>

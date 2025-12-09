@@ -1,3 +1,11 @@
+// ════════════════════════════════════════════════════════════════
+// 🧪 TEST MODE GLOBALS (測試模式全域變數)
+// ════════════════════════════════════════════════════════════════
+// ⚠️ 清除測試介面時請刪除此區塊 + 區塊 9 (TEST UI) + TestUI.html
+var IS_TEST_MODE = false;
+var TEST_LOGS = [];
+// ════════════════════════════════════════════════════════════════
+
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
  * Version: 27.3.3 (加強 PDF 回答指令 - 強制詳細教學無視字數限制)
@@ -2382,6 +2390,12 @@ function formatForLineMobile(text) {
 }
 
 function writeRecordDirectly(u,t,c,r,f) {
+  // 🧪 TEST MODE: 不寫入「所有紀錄」Sheet (清除測試介面時請移除此判斷)
+  if (IS_TEST_MODE) {
+    writeLog('[TEST MODE] 跳過寫入所有紀錄 Sheet');
+    return;
+  }
+  
   try { 
     ss.getSheetByName(SHEET_NAMES.RECORDS).appendRow([new Date(), c, u, formatForLineMobile(t), r, f]); 
     SpreadsheetApp.flush(); 
@@ -3914,6 +3928,14 @@ function writeRule(k,d,u,desc) {
 }
 
 function writeLog(msg) {
+  // 🧪 TEST MODE: 只存記憶體，不寫 Sheet (清除測試介面時請移除此判斷)
+  if (IS_TEST_MODE) {
+    const timestamp = Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm:ss.SSS');
+    TEST_LOGS.push(`[${timestamp}] ${msg}`);
+    console.log(msg);
+    return;
+  }
+  
   if(ss) {
       try { 
           // 移除換行，確保 Log 單行
@@ -4257,6 +4279,12 @@ function doPost(e) {
 // ========== 8. 輔助工具 (Utils) ==========
 
 function replyMessage(tk, txt) {
+  // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
+  if (IS_TEST_MODE || tk === 'TEST_REPLY_TOKEN') {
+    writeLog('[TEST MODE] 跳過 LINE API 呼叫');
+    return;
+  }
+  
   try {
     UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
       method: "post",
@@ -4375,3 +4403,116 @@ function testDraftFunction(inputText) {
         return { error: e.message };
     }
 }
+
+// ════════════════════════════════════════════════════════════════
+// 9. TEST UI - 測試介面 (Web App)
+// ════════════════════════════════════════════════════════════════
+// ⚠️ 清除測試介面時請刪除此整個區塊 + 頂部的 TEST MODE GLOBALS + TestUI.html
+
+/**
+ * Web App 入口：提供測試介面
+ * URL: https://script.google.com/macros/s/SCRIPT_ID/exec (GET)
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('TestUI')
+    .setTitle('LINE Bot 測試介面')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * 測試訊息處理：模擬 LINE Webhook
+ */
+function testMessage(userId, text) {
+  IS_TEST_MODE = true;
+  TEST_LOGS = [];
+  
+  writeLog(`[TEST] 收到測試訊息 - User: ${userId}, Text: ${text}`);
+  
+  const mockEvent = {
+    replyToken: 'TEST_REPLY_TOKEN',
+    source: { userId: userId },
+    message: { 
+      type: 'text', 
+      text: text 
+    },
+    timestamp: Date.now()
+  };
+  
+  try {
+    const response = handleMessage(text, userId, 'TEST_REPLY_TOKEN', userId, 'TEST_MSG_' + Date.now());
+    
+    const logs = TEST_LOGS.slice();
+    
+    // 解析 Token 使用量
+    let tokenInfo = '無 Token 資訊';
+    const tokenLog = logs.find(log => log.includes('[Token]'));
+    if (tokenLog) {
+      const match = tokenLog.match(/Input:\s*(\d+),\s*Output:\s*(\d+)/);
+      if (match) {
+        tokenInfo = `輸入: ${match[1]} tokens | 輸出: ${match[2]} tokens`;
+      }
+    }
+    
+    IS_TEST_MODE = false;
+    TEST_LOGS = [];
+    
+    return {
+      text: response || '(Bot 無回應)',
+      logs: logs,
+      tokenInfo: tokenInfo
+    };
+  } catch (e) {
+    IS_TEST_MODE = false;
+    TEST_LOGS = [];
+    
+    writeLog(`[TEST ERROR] ${e.message}`);
+    return {
+      text: `錯誤: ${e.message}`,
+      logs: TEST_LOGS,
+      tokenInfo: '錯誤'
+    };
+  }
+}
+
+/**
+ * 清除測試對話記錄
+ */
+function clearTestSession(userId) {
+  try {
+    const cache = CacheService.getScriptCache();
+    
+    // 清除對話歷史快取
+    cache.remove(`HISTORY_${userId}`);
+    
+    // 清除其他可能的測試快取
+    const keys = [
+      `PENDING_PDF_${userId}`,
+      `DIRECT_SEARCH_${userId}`,
+      `KB_URI_LIST`,
+      `KEYWORD_MAP`
+    ];
+    
+    keys.forEach(key => {
+      try {
+        cache.remove(key);
+      } catch (e) {}
+    });
+    
+    TEST_LOGS = [];
+    
+    writeLog(`[TEST] 清除測試用戶 ${userId} 的所有快取`);
+    
+    return { 
+      success: true,
+      message: '測試記錄已清除！'
+    };
+  } catch (e) {
+    writeLog(`[TEST ERROR] 清除失敗: ${e.message}`);
+    return { 
+      success: false,
+      message: `清除失敗: ${e.message}`
+    };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
