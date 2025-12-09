@@ -4,7 +4,7 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-  <title>LINE Bot 模擬器 v2.2</title>
+  <title>LINE Bot 模擬器 v2.3</title>
   <style>
     :root {
       --bg-color: #8C9DAF;
@@ -397,7 +397,7 @@
   var TEST_USER_ID = "TEST_DEV_001";
   
   window.onload = function() {
-    addMsg("bot", "模擬器已連線！<br>自動執行重啟中...");
+    addMsg("bot", "模擬器連線成功！<br>自動執行重啟中...");
     defaultHistory.forEach(addHistoryItem);
     addToQueue("/重啟");
   };
@@ -501,7 +501,8 @@
     messageQueue = [];
     renderQueue();
     isBotProcessing = false;
-    google.script.run.clearTestSession(TEST_USER_ID);
+    google.script.run.clearTestSession("TEST_DEV_001");
+    showToast("⚡️ 已重置");
   }
 
   function addMsg(role, text) {
@@ -535,11 +536,18 @@
   function copyLogs() {
     var text = document.getElementById("log-box").innerText;
     navigator.clipboard.writeText(text);
-    alert("Logs 已複製");
+    showToast("✅ Logs 已複製");
   }
 
   function clearLogUI() {
     document.getElementById("log-box").innerHTML = "";
+  }
+
+  function showToast(text) {
+    var toast = document.getElementById("toast");
+    toast.innerText = text;
+    toast.style.opacity = 1;
+    setTimeout(() => toast.style.opacity = 0, 2000);
   }
 
   function checkEnter(e) {

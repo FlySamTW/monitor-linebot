@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.3.6 (全端同步手術 - 修復「一直思考中」問題，後端統一回傳格式，前端簡化解析)
+ * Version: 27.3.7 (終極防呆 - 強制轉字串根治 trim 錯誤，絕對回傳格式防卡死)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -4436,26 +4436,30 @@ function testDraftFunction(inputText) {
 // ⚠️ 清除測試介面時請刪除此整個區塊 + 頂部的 TEST MODE GLOBALS + TestUI.html
 
 // ==========================================
-// 9. TEST UI (測試介面專用 - V27.3.6 終極版)
+// 9. TEST UI (測試介面專用 - V27.3.7)
 // ==========================================
 
 // 1. 網頁入口
 function doGet(e) {
   return HtmlService.createTemplateFromFile('TestUI')
       .evaluate()
-      .setTitle('LINE Bot 測試模擬器 v2.2')
+      .setTitle('LINE Bot 測試模擬器 v2.3')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
 }
 
-// 2. 接收測試訊息 (核心邏輯 - V27.3.6)
+// 2. 接收測試訊息 (核心防呆邏輯)
 function testMessage(msg, userId) {
-  // 1. 初始化環境
+  // --- 初始化環境 ---
   IS_TEST_MODE = true; 
-  TEST_LOGS = []; // 重置 Log
-  if (!msg) msg = ""; // 防呆
+  TEST_LOGS = []; 
+  
+  // 🔥【絕對防呆】強制轉型為字串，根治 "trim is not a function" 錯誤
+  if (msg === undefined || msg === null) msg = "";
+  msg = String(msg); 
+  
   userId = userId || "TEST_DEV_001";
 
-  // 2. 偽造 LINE Event
+  // --- 偽造 LINE Event ---
   var fakeEvent = {
     replyToken: "TEST_REPLY_TOKEN",
     source: { type: "user", userId: userId },
@@ -4464,48 +4468,41 @@ function testMessage(msg, userId) {
     timestamp: new Date().getTime()
   };
 
-  // 3. 執行主邏輯 (攔截錯誤)
+  // --- 執行主邏輯 (攔截所有錯誤) ---
   try {
     handleMessage(fakeEvent); 
   } catch (e) {
     var errStr = e.toString();
-    // 忽略一些 GAS 特有的非致命錯誤 (例如 ContentService)
+    // 忽略 GAS 系統造成的 ContentService 錯誤 (這是正常的，因為網頁不能回傳 XML)
     if (errStr.indexOf("ContentService") === -1) {
        writeLog(userId, "Error", "Test Crash: " + errStr);
-       TEST_LOGS.push(`[Error] 系統崩潰: ${errStr}`);
+       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr} (請檢查 linebot.gs)`);
     }
   }
 
-  // 4. 智慧提取回覆 (從 Logs 裡挖出最後一句 AI 說的話)
+  // --- 智慧提取回覆 (從 Logs 裡挖出最後一句 AI 說的話) ---
   var botResponse = "(無回覆)";
   var tokenInfo = "-";
   
-  // 反向搜尋 Log
+  // 反向搜尋 Log，找出 AI 的回答
   for (var i = TEST_LOGS.length - 1; i >= 0; i--) {
     var log = TEST_LOGS[i];
     
     // 抓 Token 統計
-    if (log.indexOf("[Tokens]") > -1) {
-       tokenInfo = log.split("Total:")[1] || "-";
-    }
+    if (log.indexOf("[Tokens]") > -1) tokenInfo = log.split("Total:")[1] || "-";
 
     // 抓回覆內容 (優先級: AI Reply > Reply > API Short Response)
     if (botResponse === "(無回覆)") {
-        if (log.indexOf("[AI Reply]") > -1) {
-            botResponse = parseLogContent(log, "[AI Reply]");
-        } else if (log.indexOf("[Reply]") > -1) {
-            botResponse = parseLogContent(log, "[Reply]");
-        } else if (log.indexOf("[API Short Response]") > -1) {
-            botResponse = parseLogContent(log, "Content:");
-        } else if (log.indexOf("已發送型號選擇反問") > -1) {
-            botResponse = "請選擇型號 (請見 LOG 選項)";
-        }
+        if (log.indexOf("[AI Reply]") > -1) botResponse = parseLogContent(log, "[AI Reply]");
+        else if (log.indexOf("[Reply]") > -1) botResponse = parseLogContent(log, "[Reply]");
+        else if (log.indexOf("[API Short Response]") > -1) botResponse = parseLogContent(log, "Content:");
+        else if (log.indexOf("已發送型號選擇反問") > -1) botResponse = "請選擇型號 (請見 LOG 選項)";
     }
   }
 
-  // 5. 關閉測試模式並回傳
   IS_TEST_MODE = false;
   
+  // 🔥【絕對回傳】確保前端一定能收到這個物件，不會卡在 Loading
   return {
     success: true,
     reply: botResponse,
@@ -4517,10 +4514,7 @@ function testMessage(msg, userId) {
 // 輔助: 清洗 Log 內容
 function parseLogContent(logLine, keyword) {
     var content = logLine.split(keyword).pop().trim();
-    // 去除前後引號
-    if (content.startsWith('"') && content.endsWith('"')) {
-        content = content.slice(1, -1);
-    }
+    if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
     return content.replace(/\\n/g, '\n');
 }
 
@@ -4528,12 +4522,10 @@ function parseLogContent(logLine, keyword) {
 function clearTestSession(userId) {
   var cache = CacheService.getScriptCache();
   userId = userId || "TEST_DEV_001";
-  
   cache.remove(`${userId}:context`);
   cache.remove(`${userId}:pdf_mode`);
   cache.remove(`${userId}:direct_search_models`);
   cache.remove(`${userId}:hit_alias_key`);
-  
   return { success: true, msg: "✅ 快取已清除" };
 }
 
