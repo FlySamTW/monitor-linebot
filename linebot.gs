@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.3.3 (加強 PDF 回答指令 - 強制詳細教學無視字數限制)
+ * Version: 27.3.4 (TestUI：允許 /紀錄 日誌與存檔在測試模式寫入 Sheet)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2980,22 +2980,22 @@ function handleCommand(c, u, cid) {
 
 function startNewEntryDraft(content, userId) {
     try {
-        writeLog(`[NewDraft] 開始建檔: ${content.substring(0, 150)}`);
+        writeLog(userId, 'UserRecord', `[NewDraft] 開始建檔: ${content.substring(0, 150)}`);
         
         // Step 1: AI 產生初版 QA
         const polishedText = callGeminiToPolish(content);
-        writeLog(`[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`);
+        writeLog(userId, 'UserRecord', `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`);
         
         // Step 2: 搜尋現有 QA 是否有相似的
         const similarResult = findSimilarQA(content, polishedText);
         
         if (similarResult && similarResult.found) {
             // 找到相似 QA，讓用戶選擇
-            writeLog(`[NewDraft] 找到相似 QA: 行 ${similarResult.matchedRows.join(',')}`);
+            writeLog(userId, 'UserRecord', `[NewDraft] 找到相似 QA: 行 ${similarResult.matchedRows.join(',')}`);
             
             // Step 3: LLM 合併產出合併版
             const mergedQA = callGeminiToMergeQA(similarResult.matchedQAs, polishedText);
-            writeLog(`[NewDraft] 合併版 QA: ${mergedQA.substring(0, 150)}`);
+            writeLog(userId, 'UserRecord', `[NewDraft] 合併版 QA: ${mergedQA.substring(0, 150)}`);
             
             // 建立等待選擇的 draft
             var draft = {
@@ -3023,7 +3023,7 @@ function startNewEntryDraft(content, userId) {
             replyMsg += '1️⃣ 採用合併版（會刪除舊 QA）\n';
             replyMsg += '2️⃣ 另開新條（保留舊 QA）';
             
-            writeLog(`[NewDraft Reply] 等待用戶選擇 1/2`);
+            writeLog(userId, 'UserRecord', `[NewDraft Reply] 等待用戶選擇 1/2`);
             return replyMsg;
         }
         
@@ -3040,10 +3040,10 @@ function startNewEntryDraft(content, userId) {
         var alertMsg = '⚠️ 已進入建檔模式。接下來的對話將視為修改指令，直到輸入 /紀錄 存檔為止。';
         var preview = '\n\n【預覽】將寫入 QA：\n' + polishedText + '\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消';
         
-        writeLog(`[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`);
+        writeLog(userId, 'UserRecord', `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`);
         return alertMsg + preview;
     } catch (e) { 
-        writeLog(`[NewDraft Error] ${e.message}`);
+        writeLog(userId, 'Error', `[NewDraft Error] ${e.message}`);
         return '❌ 分析失敗：' + e.message; 
     }
 }
@@ -3740,11 +3740,11 @@ function saveDraftToSheet(draft) {
         CacheService.getScriptCache().remove(CACHE_KEYS.ENTRY_DRAFT_PREFIX + draft.userId);
         syncGeminiKnowledgeBase();
         
-        writeLog(`[Draft Saved to QA] ${qaText.substring(0, 50)}...`);
+        writeLog(draft.userId || 'UNKNOWN', 'UserRecord', `[Draft Saved to QA] ${qaText.substring(0, 50)}...`);
         return `✅ 已寫入 QA 並更新知識庫！\n\n寫入內容：${qaText}`;
         
     } catch (e) {
-        writeLog(`[SaveDraft Error] ${e.message}`);
+        writeLog(draft.userId || 'UNKNOWN', 'Error', `[SaveDraft Error] ${e.message}`);
         return `❌ 寫入失敗：${e.message}`;
     } finally {
         if (hasLock) {
@@ -3927,33 +3927,59 @@ function writeRule(k,d,u,desc) {
   }
 }
 
-function writeLog(msg) {
-  // 🧪 TEST MODE: 只存記憶體，不寫 Sheet (清除測試介面時請移除此判斷)
-  if (IS_TEST_MODE) {
-    const timestamp = Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm:ss.SSS');
-    TEST_LOGS.push(`[${timestamp}] ${msg}`);
-    console.log(msg);
-    return;
-  }
-  
-  if(ss) {
-      try { 
-          // 移除換行，確保 Log 單行
-          const cleanMsg = msg.replace(/[\r\n]+/g, " ");
-          const logSheet = ss.getSheetByName(SHEET_NAMES.LOG);
-          logSheet.appendRow([new Date(), cleanMsg]); 
-          SpreadsheetApp.flush(); 
+function writeLog(a, b, c) {
+    // 參數相容：
+    // - 舊用法：writeLog("文字")
+    // - 新用法：writeLog(userId, type, content)
+    var userId = null;
+    var type = "General";
+    var content = "";
+
+    if (typeof b !== "undefined" && typeof c !== "undefined") {
+        userId = a;
+        type = b || "General";
+        content = c || "";
+    } else {
+        content = a || "";
+    }
+
+    var timestamp = Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm:ss.SSS');
+    var msgForLog = `[${type}] ${content}`;
+
+    // 🧪 TEST MODE: 預設只在頁面顯示，不寫 Sheet；但 UserRecord/Error 允許寫入
+    if (typeof IS_TEST_MODE !== 'undefined' && IS_TEST_MODE) {
+        if (typeof TEST_LOGS !== 'undefined') {
+            TEST_LOGS.push(`[${timestamp}] ${msgForLog}`);
+        }
+        console.log(msgForLog);
+
+        if (type !== 'UserRecord' && type !== 'Error') {
+            return; // 攔截一般 Log，保持 Sheet 乾淨
+        }
+
+        // 標記測試模式寫入
+        content = `[測試模式] ${content}`;
+        msgForLog = `[${type}] ${content}`;
+    }
+
+    if(ss) {
+            try { 
+                    // 移除換行，確保 Log 單行
+                    const cleanMsg = msgForLog.replace(/[\r\n]+/g, " ");
+                    const logSheet = ss.getSheetByName(SHEET_NAMES.LOG);
+                    logSheet.appendRow([new Date(), cleanMsg]); 
+                    SpreadsheetApp.flush(); 
           
-          // 自動清理：保留最新 500 筆
-          const lastRow = logSheet.getLastRow();
-          if (lastRow > 600) {
-              const deleteCount = lastRow - 500;
-              logSheet.deleteRows(1, deleteCount);
-              SpreadsheetApp.flush();
-          }
-      } catch(e){} 
-  }
-  console.log(msg);
+                    // 自動清理：保留最新 500 筆
+                    const lastRow = logSheet.getLastRow();
+                    if (lastRow > 600) {
+                            const deleteCount = lastRow - 500;
+                            logSheet.deleteRows(1, deleteCount);
+                            SpreadsheetApp.flush();
+                    }
+            } catch(e){} 
+    }
+    console.log(msgForLog);
 }
 
 /**
