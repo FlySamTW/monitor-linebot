@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.3.9 (Cache 髒資料防護 - Array.isArray 檢查 + 深層清潔機制)
+ * Version: 27.4.0 (核彈級防禦 - 暴力轉型 + Cache 消毒 + 異常吞噬)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2404,13 +2404,31 @@ function writeRecordDirectly(u,t,c,r,f) {
   }
 }
 
-function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
+/**
+ * 處理 LINE 訊息的核心函式 (核彈防禦版 v27.4.0)
+ * 修改重點：對所有輸入與快取進行暴力消毒，確保絕不報錯
+ */
+function handleMessage(event) {
+  var userId = "UNKNOWN";
+  var replyToken = "UNKNOWN";
+  
   try {
-    // 🔥 強制轉型：不管傳來什麼（數字、物件、null），先轉成字串再說！
-    userMessage = String(userMessage || "");
+    // --- 1. 輸入資料消毒 (Input Sanitization) ---
+    // 防止 event 結構不完整導致崩潰
+    if (!event || !event.source || !event.message) return;
     
-    if (!userMessage || !userMessage.trim()) return;
-    const msg = userMessage.trim();
+    userId = event.source.userId;
+    replyToken = event.replyToken;
+    const contextId = userId;  // 對話 ID 就是 userId
+    const messageId = event.message.id || null;
+    
+    // 🔥 暴力轉型：不管 userMessage 是 null, undefined, 數字還是物件，強制轉字串
+    // 這是解決 "trim is not a function" 的終極手段
+    const userMessage = String(event.message.text || "").trim();
+
+    // 空訊息直接跳過
+    if (userMessage.length === 0) return;
+    const msg = userMessage;
     
     // v24.3.0: 實時資訊快速回答（日期、時間）
     // 不需要問 AI，直接回答準確資訊
@@ -4289,7 +4307,9 @@ function doPost(e) {
                     }
                 });
                 if (!cleanedText) { replyMessage(replyToken, "有事嗎？"); return; }
-                handleMessage(cleanedText, userId, replyToken, contextId, event.message.id);
+                // v27.4.0: 修改 event.message.text 為清理後的文字，再傳遞整個 event
+                event.message.text = cleanedText;
+                handleMessage(event);
             } else if (event.message.type === 'image') {
                 if (userId === CONFIG.VIP_IMAGE_USER) {
                     handleImageMessage(event.message.id, userId, replyToken, contextId);
@@ -4297,7 +4317,7 @@ function doPost(e) {
             }
         } else {
             if (event.message.type === 'text') {
-                handleMessage(event.message.text, userId, replyToken, contextId, event.message.id);
+                handleMessage(event);
             } else if (event.message.type === 'image') {
                 handleImageMessage(event.message.id, userId, replyToken, contextId);
             }
@@ -4454,6 +4474,10 @@ function doGet(e) {
 }
 
 // 2. 接收測試訊息 (終極防呆版 - V27.3.9)
+/**
+ * 測試介面專用 (核彈防禦版 v27.4.0)
+ * 修改重點：對所有輸入進行暴力消毒，處理物件、null、數字等異常情況
+ */
 function testMessage(msg, userId) {
   // --- 初始化環境 ---
   IS_TEST_MODE = true; 
@@ -4463,10 +4487,7 @@ function testMessage(msg, userId) {
   if (typeof msg === 'object') {
       try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
   }
-  msg = String(msg || "").trim();
-  
-  // 避免空訊息導致後續邏輯誤判
-  if (msg === "") msg = "測試空訊息";
+  msg = String(msg || "");  // 就算傳 null 進來也會變 "null" 或 ""
   
   userId = userId || "TEST_DEV_001";
 
@@ -4529,24 +4550,42 @@ function parseLogContent(logLine, keyword) {
     return content.replace(/\\n/g, '\n');
 }
 
-// 3. 清除測試快取（深層清潔版 - V27.3.9）
+/**
+ * 清除測試快取（核彈級深層清潔版 - V27.4.0）
+ * 修改重點：暴力清除所有可能的髒資料，確保下次測試從乾淨狀態開始
+ */
 function clearTestSession(userId) {
   var cache = CacheService.getScriptCache();
   userId = userId || "TEST_DEV_001";
   
-  // 清除所有測試用戶的快取鍵
-  cache.remove(`${userId}:context`);
-  cache.remove(`${userId}:pdf_mode`);
-  cache.remove(`${userId}:direct_search_models`);
-  cache.remove(`${userId}:hit_alias_key`);
+  // 🔥 核彈級清除：所有可能的快取鍵（包括舊格式和新格式）
+  var keysToRemove = [
+    `${userId}:context`,
+    `${userId}:pdf_mode`,
+    `${userId}:direct_search_models`,
+    `${userId}:hit_alias_key`,
+    `HISTORY_${userId}`,
+    `PENDING_PDF_${userId}`,
+    `PENDING_PDF_SELECTION_${userId}`,
+    `msg_dedup_${userId}`,
+    `animation_${userId}`,
+    // v27.4.0: 加入所有可能的舊格式鍵
+    `context_${userId}`,
+    `pdf_${userId}`,
+    `models_${userId}`
+  ];
   
-  // 🔥 v27.3.9: 額外清除可能的髒資料
-  cache.remove(`HISTORY_${userId}`);
-  cache.remove(`PENDING_PDF_${userId}`);
+  keysToRemove.forEach(function(key) {
+    try {
+      cache.remove(key);
+    } catch(e) {
+      // 忽略錯誤，繼續清除
+    }
+  });
   
-  writeLog(`[TEST] 深層清除測試用戶 ${userId} 的所有快取`);
+  writeLog(`[TEST] 核彈級清除完成，已清除 ${keysToRemove.length} 個可能的快取鍵`);
   
-  return { success: true, msg: "✅ 快取已清除（深層清潔）" };
+  return { success: true, msg: "✅ 髒資料已清除，請重新開始" };
 }
 
 // ════════════════════════════════════════════════════════════════
