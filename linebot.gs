@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
-* Version: 27.7.6 (直通車強制單一 PDF 模式)
+ * Version: 27.7.7 (LOG 先寫入 + AI Reply 帶費用)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -751,6 +751,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     content: `(我已選擇: ${selected.matchedModel}) 請閱讀這份手冊，**無視任何字數限制**，詳細回答我原本的問題：${pending.originalQuery}\n\n請注意：\n1. 若有操作步驟，請逐一列出，不要省略。\n2. 若有圖片說明，請用文字清晰描述。\n3. 請扮演專業技術人員，提供最完整的教學，絕對不要簡短。` 
                 };
                 
+                writeLog(`[PDF Mode] 開始查詢手冊，可能需要 60 秒 (選擇: ${selected.matchedModel})`);
                 const response = callChatGPTWithRetry([...cleanedHistory, forceAskMsg], null, true, false, userId);
                 
                 if (response) {
@@ -769,8 +770,9 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     
                     replyMessage(replyToken, replyText);
                     
-                    // v27.7.4 新增：寫入 [AI Reply] LOG 讓 testMessage 能夠收集回覆 + 費用
-                    writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`);
+                    // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
+                    writeLog(`[AI Reply] ${replyText.substring(0, 2000)}${replyText.length > 2000 ? '...' : ''}`);
+                    writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$'+lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
                     
                     // v25.0.3: 用戶選擇「3」後，新增該選擇和回答到歷史
                     const selectMsgObj = { role: "user", content: msg };  // "3"
@@ -817,6 +819,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             
             const userMsgObj = { role: "user", content: pending.originalQuery };
             
+            writeLog(`[PDF Mode] 開始查詢手冊，可能需要 60 秒 (完整型號: ${inputModel})`);
             const response = callChatGPTWithRetry([...cleanedHistory, userMsgObj], null, true, false, userId);
             
             if (response) {
@@ -833,8 +836,9 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 
                 replyMessage(replyToken, replyText);
                 
-                // v27.7.4 新增：寫入 [AI Reply] LOG 讓 testMessage 能夠收集回覆 + 費用
-                writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`);
+                // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
+                writeLog(`[AI Reply] ${replyText.substring(0, 2000)}${replyText.length > 2000 ? '...' : ''}`);
+                writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$'+lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
                 
                 // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
                 const asstMsgObj = { role: "assistant", content: finalText };
@@ -2914,7 +2918,9 @@ function handleMessage(event) {
           writeRecordDirectly(userId, msg, contextId, 'user', '');
           writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
           // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
-          writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`); 
+          // v27.7.6: Log 回覆時包含費用資訊，方便 testMessage 顯示成本
+          var replyForLog = replyText || finalText;
+          writeLog(`[AI Reply] ${replyForLog.substring(0, 2000)}${replyForLog.length > 2000 ? '...' : ''}`); 
           
           updateHistorySheetAndCache(contextId, history, userMsgObj, { role: 'assistant', content: finalText });
 
