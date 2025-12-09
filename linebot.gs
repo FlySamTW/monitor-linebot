@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.3.8 (handleMessage 源頭防彈 - 雙層強制轉型徹底根治 trim 錯誤)
+ * Version: 27.3.9 (Cache 髒資料防護 - Array.isArray 檢查 + 深層清潔機制)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2595,17 +2595,20 @@ function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
     
     // v24.5.0: 檢查是否有已選過的 PDF 型號（避免重複反問）
     // v27.3.1: 修正 JSON 轉換錯誤 - cache.get() 返回字串，需要 JSON.parse 還原成陣列
+    // v27.3.9: 加強防呆 - 防止 Cache 髒資料（null/非陣列）導致 length 錯誤
     const cachedDirectModelsJson = cache.get(`${userId}:direct_search_models`);
     let cachedDirectModels = [];  // 先預設為空陣列
     try {
         if (cachedDirectModelsJson) {
-            cachedDirectModels = JSON.parse(cachedDirectModelsJson);  // 🔥 把字串轉回陣列
+            const parsed = JSON.parse(cachedDirectModelsJson);
+            // 🔥 絕對防呆：如果 parse 出來是 null 或非陣列，強制變成 []
+            cachedDirectModels = Array.isArray(parsed) ? parsed : [];
         }
     } catch(e) {
         writeLog(`[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`);
     }
     
-    const hasSelectedPdf = cachedDirectModels.length > 0;
+    const hasSelectedPdf = cachedDirectModels.length > 0;  // 現在絕對安全
 
     try {
         // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
@@ -4450,15 +4453,20 @@ function doGet(e) {
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
 }
 
-// 2. 接收測試訊息 (核心防呆邏輯)
+// 2. 接收測試訊息 (終極防呆版 - V27.3.9)
 function testMessage(msg, userId) {
   // --- 初始化環境 ---
   IS_TEST_MODE = true; 
   TEST_LOGS = []; 
   
-  // 🔥【絕對防呆】強制轉型為字串，根治 "trim is not a function" 錯誤
-  if (msg === undefined || msg === null) msg = "";
-  msg = String(msg); 
+  // 🔥【終極防呆】強制清洗輸入資料：處理物件、null、undefined、數字等所有異常情況
+  if (typeof msg === 'object') {
+      try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
+  }
+  msg = String(msg || "").trim();
+  
+  // 避免空訊息導致後續邏輯誤判
+  if (msg === "") msg = "測試空訊息";
   
   userId = userId || "TEST_DEV_001";
 
@@ -4521,15 +4529,24 @@ function parseLogContent(logLine, keyword) {
     return content.replace(/\\n/g, '\n');
 }
 
-// 3. 清除測試快取
+// 3. 清除測試快取（深層清潔版 - V27.3.9）
 function clearTestSession(userId) {
   var cache = CacheService.getScriptCache();
   userId = userId || "TEST_DEV_001";
+  
+  // 清除所有測試用戶的快取鍵
   cache.remove(`${userId}:context`);
   cache.remove(`${userId}:pdf_mode`);
   cache.remove(`${userId}:direct_search_models`);
   cache.remove(`${userId}:hit_alias_key`);
-  return { success: true, msg: "✅ 快取已清除" };
+  
+  // 🔥 v27.3.9: 額外清除可能的髒資料
+  cache.remove(`HISTORY_${userId}`);
+  cache.remove(`PENDING_PDF_${userId}`);
+  
+  writeLog(`[TEST] 深層清除測試用戶 ${userId} 的所有快取`);
+  
+  return { success: true, msg: "✅ 快取已清除（深層清潔）" };
 }
 
 // ════════════════════════════════════════════════════════════════
