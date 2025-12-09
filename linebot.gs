@@ -2406,6 +2406,9 @@ function writeRecordDirectly(u,t,c,r,f) {
 
 function handleMessage(userMessage, userId, replyToken, contextId, messageId) {
   try {
+    // 🔥 強制轉型：不管傳來什麼（數字、物件、null），先轉成字串再說！
+    userMessage = String(userMessage || "");
+    
     if (!userMessage || !userMessage.trim()) return;
     const msg = userMessage.trim();
     
