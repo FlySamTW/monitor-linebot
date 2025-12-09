@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.4.0 (核彈級防禦 - 暴力轉型 + Cache 消毒 + 異常吞噬)
+ * Version: 27.4.1 (最終修正 - 源頭淨化，移除過度轉型)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -2408,26 +2408,39 @@ function writeRecordDirectly(u,t,c,r,f) {
  * 處理 LINE 訊息的核心函式 (核彈防禦版 v27.4.0)
  * 修改重點：對所有輸入與快取進行暴力消毒，確保絕不報錯
  */
+/**
+ * 處理 LINE 訊息的核心函式 (V27.4.1 最終修正版)
+ * 修正重點：移除過度轉型，確保 userMessage 純淨，防止 [object Object] 污染
+ */
 function handleMessage(event) {
   var userId = "UNKNOWN";
   var replyToken = "UNKNOWN";
   
   try {
-    // --- 1. 輸入資料消毒 (Input Sanitization) ---
-    // 防止 event 結構不完整導致崩潰
+    // 1. 基礎防呆
     if (!event || !event.source || !event.message) return;
     
     userId = event.source.userId;
     replyToken = event.replyToken;
-    const contextId = userId;  // 對話 ID 就是 userId
-    const messageId = event.message.id || null;
     
-    // 🔥 暴力轉型：不管 userMessage 是 null, undefined, 數字還是物件，強制轉字串
-    // 這是解決 "trim is not a function" 的終極手段
-    const userMessage = String(event.message.text || "").trim();
+    // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
+    let userMessage = event.message.text;
+    if (typeof userMessage !== 'string') {
+        userMessage = "";
+    }
+    userMessage = userMessage.trim();
+
+    // 若收到 "[object Object]" 這種髒資料，視為測試錯誤，強制替換
+    if (userMessage === "[object Object]") {
+        userMessage = "測試"; 
+        writeLog(userId, "Warning", "偵測到 [object Object] 髒輸入，已自動修正");
+    }
 
     // 空訊息直接跳過
     if (userMessage.length === 0) return;
+
+    const contextId = userId;  // 對話 ID 就是 userId
+    const messageId = event.message.id || null;
     const msg = userMessage;
     
     // v24.3.0: 實時資訊快速回答（日期、時間）
@@ -4473,119 +4486,75 @@ function doGet(e) {
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
 }
 
-// 2. 接收測試訊息 (終極防呆版 - V27.3.9)
 /**
- * 測試介面專用 (核彈防禦版 v27.4.0)
- * 修改重點：對所有輸入進行暴力消毒，處理物件、null、數字等異常情況
+ * 測試介面專用 (V27.4.1 最終修正版)
+ * 修改重點：不要用 JSON.stringify，確保 msg 絕對是乾淨的字串
  */
 function testMessage(msg, userId) {
-  // --- 初始化環境 ---
   IS_TEST_MODE = true; 
   TEST_LOGS = []; 
   
-  // 🔥【終極防呆】強制清洗輸入資料：處理物件、null、undefined、數字等所有異常情況
-  if (typeof msg === 'object') {
-      try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
+  // 🔥【資料源頭淨化】確保 msg 絕對是乾淨的字串
+  // 不要用 JSON.stringify，那會把物件變成字串 "[object Object]"
+  if (msg === undefined || msg === null) {
+      msg = "";
+  } else if (typeof msg !== 'string') {
+      msg = String(msg); // 強制轉字串
   }
-  msg = String(msg || "");  // 就算傳 null 進來也會變 "null" 或 ""
+  
+  // 再次檢查，如果是髒字串，強制清空
+  if (msg === "[object Object]") msg = "";
   
   userId = userId || "TEST_DEV_001";
 
-  // --- 偽造 LINE Event ---
+  // 偽造 Event
   var fakeEvent = {
     replyToken: "TEST_REPLY_TOKEN",
     source: { type: "user", userId: userId },
-    message: { type: "text", text: msg, id: "TEST_MSG_" + new Date().getTime() },
+    message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
     type: "message",
     timestamp: new Date().getTime()
   };
 
-  // --- 執行主邏輯 (攔截所有錯誤) ---
   try {
     handleMessage(fakeEvent); 
   } catch (e) {
     var errStr = e.toString();
-    // 忽略 GAS 系統造成的 ContentService 錯誤 (這是正常的，因為網頁不能回傳 XML)
     if (errStr.indexOf("ContentService") === -1) {
-       writeLog(userId, "Error", "Test Crash: " + errStr);
-       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr} (請檢查 linebot.gs)`);
+       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
     }
   }
 
-  // --- 智慧提取回覆 (從 Logs 裡挖出最後一句 AI 說的話) ---
+  // 提取回應
   var botResponse = "(無回覆)";
-  var tokenInfo = "-";
-  
-  // 反向搜尋 Log，找出 AI 的回答
   for (var i = TEST_LOGS.length - 1; i >= 0; i--) {
     var log = TEST_LOGS[i];
-    
-    // 抓 Token 統計
-    if (log.indexOf("[Tokens]") > -1) tokenInfo = log.split("Total:")[1] || "-";
-
-    // 抓回覆內容 (優先級: AI Reply > Reply > API Short Response)
     if (botResponse === "(無回覆)") {
-        if (log.indexOf("[AI Reply]") > -1) botResponse = parseLogContent(log, "[AI Reply]");
-        else if (log.indexOf("[Reply]") > -1) botResponse = parseLogContent(log, "[Reply]");
-        else if (log.indexOf("[API Short Response]") > -1) botResponse = parseLogContent(log, "Content:");
+        if (log.indexOf("[AI Reply]") > -1) botResponse = log.split("[AI Reply]").pop().trim();
+        else if (log.indexOf("[Reply]") > -1) botResponse = log.split("[Reply]").pop().trim();
+        else if (log.indexOf("[API Short Response]") > -1) botResponse = log.split("Content:").pop().trim();
         else if (log.indexOf("已發送型號選擇反問") > -1) botResponse = "請選擇型號 (請見 LOG 選項)";
     }
   }
+  if (botResponse.startsWith('"')) botResponse = botResponse.slice(1, -1);
 
   IS_TEST_MODE = false;
   
-  // 🔥【絕對回傳】確保前端一定能收到這個物件，不會卡在 Loading
   return {
     success: true,
     reply: botResponse,
-    logs: TEST_LOGS,
-    tokens: tokenInfo
+    logs: TEST_LOGS
   };
 }
 
-// 輔助: 清洗 Log 內容
-function parseLogContent(logLine, keyword) {
-    var content = logLine.split(keyword).pop().trim();
-    if (content.startsWith('"') && content.endsWith('"')) content = content.slice(1, -1);
-    return content.replace(/\\n/g, '\n');
-}
-
-/**
- * 清除測試快取（核彈級深層清潔版 - V27.4.0）
- * 修改重點：暴力清除所有可能的髒資料，確保下次測試從乾淨狀態開始
- */
 function clearTestSession(userId) {
   var cache = CacheService.getScriptCache();
   userId = userId || "TEST_DEV_001";
-  
-  // 🔥 核彈級清除：所有可能的快取鍵（包括舊格式和新格式）
-  var keysToRemove = [
-    `${userId}:context`,
-    `${userId}:pdf_mode`,
-    `${userId}:direct_search_models`,
-    `${userId}:hit_alias_key`,
-    `HISTORY_${userId}`,
-    `PENDING_PDF_${userId}`,
-    `PENDING_PDF_SELECTION_${userId}`,
-    `msg_dedup_${userId}`,
-    `animation_${userId}`,
-    // v27.4.0: 加入所有可能的舊格式鍵
-    `context_${userId}`,
-    `pdf_${userId}`,
-    `models_${userId}`
-  ];
-  
-  keysToRemove.forEach(function(key) {
-    try {
-      cache.remove(key);
-    } catch(e) {
-      // 忽略錯誤，繼續清除
-    }
-  });
-  
-  writeLog(`[TEST] 核彈級清除完成，已清除 ${keysToRemove.length} 個可能的快取鍵`);
-  
-  return { success: true, msg: "✅ 髒資料已清除，請重新開始" };
+  cache.remove(`${userId}:context`);
+  cache.remove(`${userId}:pdf_mode`);
+  cache.remove(`${userId}:direct_search_models`);
+  cache.remove(`${userId}:hit_alias_key`);
+  return { success: true, msg: "✅ 髒資料已清除" };
 }
 
 // ════════════════════════════════════════════════════════════════
