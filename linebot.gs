@@ -8,7 +8,7 @@ var TEST_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.4 (testMessage 強化版 - API 回覆金額、型號選擇後續、LOG 監控)
+ * Version: 27.7.5 (完整修復版 - AI Reply LOG + 型號清潔 + 金額完整顯示)
  * 
  * ════════════════════════════════════════════════════════════════
  * 🔧 模型設定 (未來升級請只改這裡)
@@ -723,19 +723,27 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
                 cache.put(pdfModeKey, 'true', 300);
                 
-                // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
-                const history = getHistoryFromCacheOrSheet(contextId);
+        // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
+        const history = getHistoryFromCacheOrSheet(contextId);
 
-                // v27.2.6: 重啟後歷史可能為 0，補上原始提問與本次選擇，避免 Deep Mode 無上下文
-                if (history.length === 0 && pending.originalQuery) {
-                    history.push({ role: 'user', content: pending.originalQuery });
-                    history.push({ role: 'assistant', content: buildPdfSelectionMessage(pending.aliasKey, pending.options) });
-                    history.push({ role: 'user', content: msg });
-                }
+        // v27.7.5 新增：清除歷史中的舊型號，避免型號汙染（多載不相關的 PDF）
+        // 當用戶選擇了特定型號後，舊的推薦型號（如 M8, M9）不應再被考慮
+        const cleanedHistory = history.map(msg => {
+            if (msg.role === 'assistant' && msg.content && msg.content.includes('有幾個版本')) {
+                // 這是型號選擇提問，刪除以避免汙染型號推薦
+                return null;
+            }
+            return msg;
+        }).filter(m => m !== null);
 
-                writeLog(`[PDF Select] 完整歷史長度: ${history.length} 則`);
+        // v27.2.6: 重啟後歷史可能為 0，補上原始提問與本次選擇，避免 Deep Mode 無上下文
+        if (cleanedHistory.length === 0 && pending.originalQuery) {
+            cleanedHistory.push({ role: 'user', content: pending.originalQuery });
+            cleanedHistory.push({ role: 'assistant', content: buildPdfSelectionMessage(pending.aliasKey, pending.options) });
+            cleanedHistory.push({ role: 'user', content: msg });
+        }
 
-                // v27.2.7: 🔥 強制重新提問，不然 AI 看到 "3" 會覺得沒事做
+        writeLog(`[PDF Select] 完整歷史長度: ${cleanedHistory.length} 則`);                // v27.2.7: 🔥 強制重新提問，不然 AI 看到 "3" 會覺得沒事做
                 // 原因：history 中只有 user:"3"，AI 會以為對話已結束，只回傳 emoji
                 // v27.3.3: 加強強力指令，避免 AI 因為看到上一輪 Fast Mode 回答而偷懶
                 const forceAskMsg = { 
@@ -743,7 +751,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     content: `(我已選擇: ${selected.matchedModel}) 請閱讀這份手冊，**無視任何字數限制**，詳細回答我原本的問題：${pending.originalQuery}\n\n請注意：\n1. 若有操作步驟，請逐一列出，不要省略。\n2. 若有圖片說明，請用文字清晰描述。\n3. 請扮演專業技術人員，提供最完整的教學，絕對不要簡短。` 
                 };
                 
-                const response = callChatGPTWithRetry([...history, forceAskMsg], null, true, false, userId);
+                const response = callChatGPTWithRetry([...cleanedHistory, forceAskMsg], null, true, false, userId);
                 
                 if (response) {
                     let finalText = formatForLineMobile(response);
@@ -761,10 +769,13 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                     
                     replyMessage(replyToken, replyText);
                     
+                    // v27.7.4 新增：寫入 [AI Reply] LOG 讓 testMessage 能夠收集回覆 + 費用
+                    writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`);
+                    
                     // v25.0.3: 用戶選擇「3」後，新增該選擇和回答到歷史
                     const selectMsgObj = { role: "user", content: msg };  // "3"
                     const asstMsgObj = { role: "assistant", content: finalText };
-                    updateHistorySheetAndCache(contextId, history, selectMsgObj, asstMsgObj);
+                    updateHistorySheetAndCache(contextId, cleanedHistory, selectMsgObj, asstMsgObj);
                     // v25.0.1 修復：記錄用戶選擇的「3」而非原始問題
                     writeRecordDirectly(userId, msg, contextId, 'user', '');
                     writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
@@ -795,11 +806,18 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
             cache.put(pdfModeKey, 'true', 300);
             
-            // 用原始問題重新處理
+            // 用原始問題重新處理（使用清潔的歷史避免型號汙染）
             const history = getHistoryFromCacheOrSheet(contextId);
+            const cleanedHistory = history.map(msg => {
+                if (msg.role === 'assistant' && msg.content && msg.content.includes('有幾個版本')) {
+                    return null;
+                }
+                return msg;
+            }).filter(m => m !== null);
+            
             const userMsgObj = { role: "user", content: pending.originalQuery };
             
-            const response = callChatGPTWithRetry([...history, userMsgObj], null, true, false, userId);
+            const response = callChatGPTWithRetry([...cleanedHistory, userMsgObj], null, true, false, userId);
             
             if (response) {
                 let finalText = formatForLineMobile(response);
@@ -815,9 +833,12 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 
                 replyMessage(replyToken, replyText);
                 
+                // v27.7.4 新增：寫入 [AI Reply] LOG 讓 testMessage 能夠收集回覆 + 費用
+                writeLog(`[AI Reply] ${finalText.substring(0, 2000)}${finalText.length > 2000 ? '...' : ''}`);
+                
                 // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
                 const asstMsgObj = { role: "assistant", content: finalText };
-                updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+                updateHistorySheetAndCache(contextId, cleanedHistory, userMsgObj, asstMsgObj);
                 writeRecordDirectly(userId, pending.originalQuery, contextId, 'user', '');
                 writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
             } else {
