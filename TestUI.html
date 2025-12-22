@@ -271,9 +271,7 @@
           if (res.replies && res.replies.length > 0) {
             res.replies.forEach((reply, idx) => {
               setTimeout(() => {
-                // 檢查是否包含快速回覆按鈕標記
-                var quickReplies = extractQuickReplies(reply);
-                addMsgWithQuickReplies("bot", reply, quickReplies);
+                addMsg("bot", reply);
               }, idx * 300);
             });
           } else {
@@ -375,8 +373,7 @@
         if (res.replies && res.replies.length > 0) {
           res.replies.forEach((reply, idx) => {
             setTimeout(() => {
-              var quickReplies = extractQuickReplies(reply);
-              addMsgWithQuickReplies("bot", reply, quickReplies);
+              addMsg("bot", reply);
             }, idx * 300);
           });
         } else {

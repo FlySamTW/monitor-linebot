@@ -5,6 +5,158 @@
 
 ---
 
+## Version 27.9.3 - Token 優化與比較邏輯修正
+**日期**: 2025/12/18  
+**類型**: Performance Optimization / Cost Reduction / Logic Fix
+
+### 問題背景
+
+#### 1. 多型號比較時 Token 暴增至 5 萬+
+用戶問「M8和M9有什麼不同」時：
+1. `buildDynamicContext` 使用全域 `MAX_RULES_MATCHES = 10`
+2. M8 的規則先被匹配，佔滿 10 行配額
+3. M9 的規則被丟棄（配額已滿）
+4. AI 認為資料不足，觸發「完整注入」後備機制
+5. Token 從預期的 3K 暴增至 50K+，成本從 NT$0.01 飆升至 NT$0.17
+
+#### 2. 比較類問題被過度攔截
+v27.9.2 在 `nonPdfPatterns` 中加入「比較|差異|不同」：
+- 導致所有比較題都被攔截，無法進入 PDF Mode
+- 即使 Fast Mode 無法完整回答，也不會觸發 `[AUTO_SEARCH_PDF]`
+- 用戶無法獲得詳細的型號對比資訊
+
+#### 3. 單一型號鎖定破壞多型號查詢
+`getRelevantKBFiles` 中的邏輯：
+```javascript
+if (hasInjectedModels && injectedModels.length > 0) {
+    exactModels = [injectedModels[0]];  // 強制鎖定第一個
+}
+```
+- 問「M8和M9」時，系統只載入 M8 的 PDF
+- M9 的手冊被完全忽略
+- 比較題無法獲得完整資料
+
+### 解決方案
+
+#### 1. buildDynamicContext - 每個關鍵字獨立配額
+
+**修改位置**: `linebot.gs` Line 1427-1461
+
+**舊邏輯**：
+```javascript
+let rulesMatches = 0;
+const MAX_RULES_MATCHES = 10;  // 全域上限
+
+for (const line of ruleLines) {
+    if (rulesMatches >= MAX_RULES_MATCHES) break;
+    if (allKeywords.some(k => line.includes(k))) {
+        relevantContext += line;
+        rulesMatches++;
+    }
+}
+```
+
+**新邏輯**：
+```javascript
+const MAX_PER_KEYWORD = 6;   // 每個關鍵字獨立配額
+const MAX_TOTAL_RULES = 50;  // 總上限防止爆炸
+const keywordCounts = {};    // 記錄每個關鍵字已匹配的行數
+
+for (const line of ruleLines) {
+    for (const keyword of allKeywords) {
+        if (line.includes(keyword) && keywordCounts[keyword] < MAX_PER_KEYWORD) {
+            relevantContext += line;
+            keywordCounts[keyword]++;
+        }
+    }
+}
+```
+
+**效益**：
+- M8 和 M9 各自保證 6 行配額
+- Token 從 50K+ 降至 3-5K
+- 成本從 NT$0.17 降至 NT$0.01（節省 94%）
+
+#### 2. nonPdfPatterns - 移除比較關鍵字
+
+**修改位置**: `linebot.gs` Line 3031
+
+**修改前**：
+```javascript
+/什麼是|什么是|定義|定义|優點|缺點|比較|对比|差異|差异|不同/i
+```
+
+**修改後**：
+```javascript
+/什麼是|什么是|定義|定义|優點|缺點/i
+```
+
+**效益**：
+- 比較題不再被強制攔截
+- 允許在 Fast Mode 無解時進入 PDF Mode
+- 保留其他通識知識攔截（如「什麼是」、「耳機孔」等）
+
+#### 3. getRelevantKBFiles - 智慧型號鎖定
+
+**修改位置**: `linebot.gs` Line 2223-2238
+
+**新邏輯**：
+```javascript
+if (hasInjectedModels && injectedModels.length > 0) {
+    const isComparison = /比較|差異|不同|vs/i.test(combinedQuery);
+    
+    if (isComparison && injectedModels.length > 1) {
+        // 比較題：保留所有型號
+        exactModels = injectedModels;
+    } else {
+        // 一般問題：鎖定第一個型號（節省成本）
+        exactModels = [injectedModels[0]];
+    }
+}
+```
+
+**效益**：
+- 比較題可載入多本 PDF（如 M8 和 M9）
+- 一般問題維持單一型號鎖定（成本控制）
+- 智慧偵測比較意圖
+
+### 完整流程圖（v27.9.3）
+
+```
+用戶問「M8和M9有什麼不同」
+  ↓
+【直通車偵測】命中 M8 和 M9 → 注入到 Cache
+  ↓
+【Fast Mode】buildDynamicContext 載入規則
+  ├─ M8 關鍵字：匹配 6 行規則
+  └─ M9 關鍵字：匹配 6 行規則（獨立配額，不被 M8 擠掉）
+  ↓
+AI 判斷：CLASS_RULES 資料完整 → 直接回答
+  ↓
+回答：「M8 和 M9 主要差異在...」
+  ↓
+Token: 3-5K（而非 50K+）
+成本: NT$0.01（而非 NT$0.17）
+```
+
+### 效益總結
+
+| 指標 | 修改前 | 修改後 | 改善幅度 |
+|------|--------|--------|----------|
+| Token 使用（比較題） | 50K+ | 3-5K | **-90%** |
+| 成本（比較題） | NT$0.17 | NT$0.01 | **-94%** |
+| M9 規則載入率 | 0%（被 M8 擠掉） | 100% | **+100%** |
+| 比較題準確性 | 低（資料不全） | 高（完整資料） | **大幅提升** |
+
+### 新增日誌
+
+```
+[DynamicContext] Rules 匹配: 12 行 (配額: {"M8":6,"M9":6})
+[KB Select] 🔍 偵測到比較意圖，保留多型號: M8, M9
+```
+
+---
+
 ## Version 24.5.8 - 來源標註標準化 + 成本控制強化
 **日期**: 2025/12/08  
 **類型**: Cost Control / Source Tagging Standardization

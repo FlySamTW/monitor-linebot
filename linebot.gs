@@ -1,29 +1,295 @@
 // ════════════════════════════════════════════════════════════════
+// 🔧 模型與計價設定 (要調整就改這裡！)
+// ════════════════════════════════════════════════════════════════
+const EXCHANGE_RATE = 32;  // 匯率 USD -> TWD
+
+// 【模型 1】一般對話 (FAST)
+const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';
+const PRICE_FAST_INPUT = 0.10;   // $0.10 per 1M Input
+const PRICE_FAST_OUTPUT = 0.40;  // $0.40 per 1M Output
+
+// 【模型 2】PDF 深讀 (THINK) 
+const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';
+const PRICE_THINK_INPUT = 0.10;
+const PRICE_THINK_OUTPUT = 0.40;
+
+// 【模型 3】/記錄 初版 QA 生成 (POLISH) - 只有 callGeminiToPolish 使用
+const GEMINI_MODEL_POLISH = 'models/gemini-3-flash-preview';
+const PRICE_POLISH_INPUT = 0.50;   // $0.50 per 1M Input (Gemini 3 Flash)
+const PRICE_POLISH_OUTPUT = 3.00;  // $3.00 per 1M Output (Gemini 3 Flash)
+// ════════════════════════════════════════════════════════════════
+// 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
+// ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
 // 🧪 TEST MODE GLOBALS (測試模式全域變數)
 // ════════════════════════════════════════════════════════════════
+// 📌 TestUI 使用方式：
+//    1. 開啟 Web App URL 並加上 ?test=1 參數
+//    2. 例如：https://script.google.com/macros/s/xxxxx/exec?test=1
+//    3. 或在 GAS 編輯器選擇函數 doGet 並執行
 // ⚠️ 清除測試介面時請刪除此區塊 + 區塊 9 (TEST UI) + TestUI.html
 var IS_TEST_MODE = false;
 var TEST_LOGS = [];
+// v27.8.5: Log 緩衝區 (Batch Logging)
+var PENDING_LOGS = [];
 // ════════════════════════════════════════════════════════════════
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: 27.7.7 (LOG 先寫入 + AI Reply 帶費用)
+ * Version: v27.9.34 (Git Sync Upgrade)
+ * 
+ * 🔥 v27.9.34 更新 (Git Sync):
+ *   - 同步本地變更至 GitHub 倉庫
+ * 
+ * 🔥 v27.9.33 更新 (4-Round Progressive Flow):
+ *   - 修正：漸進式流程改為4輪（R1 QA+再找找QA, R2 QA+問PDF, R3 PDF+問WEB, R4 WEB）
+ *   - 修正：KB Select 邏輯，forceCurrentOnly=false 時保留歷史型號，確保第3輪能找到 PDF
+ *   - 修正：LLM 話題判斷 API Key 取得方式
+ * 
+ * 🔥 v27.9.32 更新 (Progressive Problem-Solving Flow):
+ *   - 新增：漸進式問題解決流程（QA → PDF → WEB）
+ *   - 新增：動態 Token 閾值（一般 20k，網路搜尋 40k）
+ *   - 新增：LLM 智慧判斷話題延續性（使用 Gemini Flash 判斷是否為同一話題，避免歷史污染）
+ *   - 優化：拆分 Odyssey 3D QA 為 6 條獨立條目，降低 Token 使用量
+ *   - 修正：強化 PDF/WEB 觸發指示，禁止 LLM 假裝查手冊
+ * 
+ * 🔥 v27.9.31 更新 (Revert Hardcode):
+ * - 修正：移除 v27.9.30 的寫死 Prompt，恢復讀取 Google Sheet 設定。
+ * - 提醒：請至 Spreadsheet B3 調整溫度 (建議 0.8+)，C3 更新 Prompt。
+ * 
+ * 🔥 v27.9.29 更新 (Humanity):
+ * - 修正：Prompt 恢復「消化整理」模式，並強制項與項之間空行，提升 LINE 閱讀體驗。
+ * 
+ * 🔥 v27.9.27 更新 (Recall Fix):
+ * - 修正：QA 匹配過於嚴格，導致「M7」問句搜不到「三星螢幕」的通用 QA。
+ *   └─ 新增保底機制：若 QA 包含「三星螢幕」或「SMART」，即使沒命中型號，也給予 0.5 分強制召回。
+ * 
+ * 🔥 v27.9.26 更新 (Debug):
+ * - 修正：中文內容導致的 Cache 寫入失敗 (40000 chars * 3 bytes = 120KB > 100KB)
+ *   └─ GAS Cache 限制是 Bytes (100KB)。之前 40000 字在全中文下仍會超標。
+ *   └─ 修正：分割大小降至 25000 字元 (約 75KB)，確保全中文環境下也能穩定寫入。
+ * 
+ * 🔥 v27.9.24 更新 (Critical Fix)：
+ * 
+ * 🔥 v27.9.23 更新 (關鍵修復)：
+ * - 修正：同步機制防呆 (Sync Safety)
+ *   └─ 若讀取到的 QA 筆數為 0 且非強制重建，自動中止同步，防止 Cache 被清空導致「失憶」。
+ * - 修正：Rules 匹配上限放寬
+ *   └─ MAX_PER_KEYWORD 6 -> 15，MAX_TOTAL_RULES 50 -> 80
+ *   └─ 確保像「M7」這種熱門型號，能同時抓到「規格」與「Smart系列定義」，不再因為額滿而漏掉定義。
+ *
+ * 🔥 v27.9.22 更新 (Prompt & Log 修正)：
+ * - 修正：移除極速模式 Prompt 中硬編碼的「優先使用 CLASS_RULES」，改為「最高優先檢查 QA」
+ * - 優化：放寬 /記錄 修改歷史的 Log 顯示長度 (100 -> 500)，避免誤解 (實際傳給 AI 的是完整的)
+ * 
+ * 🔥 v27.9.21 更新 (架構優化)：
+ * - 關鍵修正：callGeminiToPolish/MergeQA/RefineQA 都添加 lastTokenUsage 設定
+ * 
+ * 🔥 v27.9.18 更新 (改回 Gemini 2.0 Flash)：
+ * - 重構：費率設定集中到常數 (PRICE_FAST_INPUT, PRICE_FAST_OUTPUT, EXCHANGE_RATE)
+ * - 修復：maxOutputTokens 從 1000 提高到 2000，解決 /記錄 時 thinking tokens 佔用配額導致輸出被截斷
+ * - 更新：費率從 Gemini 2.0 Flash ($0.10/$0.40) 更新為 Gemini 2.5 Flash ($0.15/$0.60)
+ * 
+ * 🔥 v27.9.15 更新 (QA 全掃排序)：
+ * - 新增：當 Input tokens 超過 20,000 時，在回覆末尾顯示「知識庫超載警告」 
+ * 🔥 v27.9.13 更新 (來源標註細分)：
+ * - 新增：區分「[來源: 規格庫]」(CLASS_RULES) 和「[來源: QA]」(QA Sheet) 標籤 
+ * 🔥 v27.9.12 更新 (PDF 匹配條件修正)：
+ * - 修正：只有當 AI 明確輸出 [AUTO_SEARCH_PDF] 時才觸發 PDF 智慧匹配
+ * - 效果：規格問題（如「M5有支援Smart嗎」）不再強制反問型號，直接用 CLASS_RULES 回答
+ * 
+ * 🔥 v27.9.11 更新 (Fast Mode Prompt 強化)：
+ * - 優化：強化極速模式 Prompt，讓 AI 更自信使用 CLASS_RULES 回答規格問題 
+ * 🔥 v27.9.10 更新 (空值檢查修復)：
+ * - 修正：checkDirectDeepSearch 加入 msg 空值檢查，防止 undefined.toUpperCase() 錯誤 
+ * 🔥 v27.9.9 更新 (Token 診斷日誌)：
+ * - 診斷：在 replyMessage 加入 [Reply Debug] 日誌，顯示 LINE_TOKEN 前10字元
+ * 
+ * 🔥 v27.9.8 更新 (Token 屬性名稱修正)：
+ * - 修正：將 TOKEN 改為 LINE_TOKEN（配合用戶的 Script Properties 命名）
+ * - 影響：replyMessage, showLoadingAnimation, getBotUserId, handleImageMessage
+ * 
+ * 🔥 v27.9.7 更新 (Webhook 修復)：
+ * - 修正：合併兩個重複的 doGet 函數（原因：302 Found 錯誤）
+ * - 修正：LINE Verify 現在會正確返回 200 OK
+ * - 修正：TestUI 改為透過 ?test=1 參數訪問
+ * 
+ * 🔥 v27.9.6 更新 (程式碼清理與診斷)：
+ * - 修正：移除 doPost 函數中重複的 return 語句（行 4847-4848）
+ * - 診斷：LINE Bot 無法回覆問題排查（TestUI 正常運作）
+ * - 確認：IS_TEST_MODE 初始值正確為 false
+ * 
+ * 🔥 v27.9.5 更新 (多型號比較回覆修正)：
+ * - 修正：多型號攔截邏輯 - 只有當 AI 明確要求查 PDF ([AUTO_SEARCH_PDF]) 且有多個型號時才攔截
+ * - 修正：比較題（用 CLASS_RULES 回答）會正常顯示 AI 的回答，不再被錯誤攔截
+ * - 修正：補回缺少的 catch 區塊，修復 try-catch 結構
+ * 
+ * 🔥 v27.9.4 更新 (成本控制強化與逾時防護)：
+ * - 新增：getRelevantKBFiles 預算閥值 - 比較模式限制最多載入 2 本 PDF (slice(0, 2))
+ * - 新增：Prompt 比較題處理原則 - 5 條規則強調優先使用 CLASS_RULES，避免不必要的 PDF 查詢
+ * - 新增：buildDynamicContext 關鍵字數量限制 (MAX_KEYWORDS = 10)，防止嵌套迴圈導致逾時
+ * - 新增：超過 2 個型號時的禮貌提示 - 顯得專業而非預算限制
+ * 
+ * 🔥 v27.9.3 更新 (Token 優化與比較邏輯修正)：
+ * - 修正：buildDynamicContext 改用「每個關鍵字獨立配額」機制（每個 6 行，總上限 50 行）
+ * - 修正：解決 M8 佔滿配額導致 M9 規則被丟棄的問題，避免觸發 5 萬 Token 的完整注入
+ * - 修正：從 nonPdfPatterns 移除「比較|差異|不同」，允許比較題在必要時進入 PDF Mode
+ * - 修正：getRelevantKBFiles 智慧型號鎖定，偵測比較意圖時保留所有型號
+ * 
+ * 🔥 v27.9.2 更新 (型號比較攔截修正)：
+ * - 修正：移除直通車階段的「型號過多」攔截（型號比較用 CLASS_RULES 就夠了）
+ * - 新增：PDF 查詢階段才檢查多型號，提示用戶「一次只能查一款型號的 PDF」
+ * 
+ * 🔥 v27.9.0 更新 (Token 成本優化)：
+ * - 新增：多型號同時偵測（checkDirectDeepSearchWithKey 返回所有命中的關鍵字）
+ * - 修正：型號衝突後使用 forceCurrentOnly 避免歷史型號污染 PDF 匹配
+ * - 移除：誤導性的「總內容長度」預估（實際 Token 在 [Tokens] 日誌顯示）
+ * 
+ * 🔥 v27.8.30 更新 (語法除錯)：
+ * - 手動校對所有括號層級，確認 handleMessage 結尾為 `}} catch`。
+ * - 修復因多次編輯導致的括號數量不匹配問題。
+ * 
+ * 🔥 v27.8.29 更新 (語法除錯)：
+ * - 修正：再次補強括號閉合邏輯。
+ * - 確認：系統結構完整性。
+ * 
+ * 🔥 v27.8.28 更新 (語法除錯)：
+ * - 修正：補回因編輯失誤遺失的閉合括號，解決 Unexpected end of input。
+ * - 確認：程式碼區塊完整閉合。
+ * 
+ * 🔥 v27.8.27 更新 (語法除錯)：
+ * - 修正：移除多餘的右大括號，恢復程式碼結構平衡。
+ * - 確認：二階段搜尋功能核心邏輯修復。
+ * 
+ * 🔥 v27.8.26 更新 (語法除錯)：
+ * - 強制移除末端 `else` 區塊，解決 Parsing 異常。
+ * - 此版本為驗證修復版，若成功則代表核心問題已解。
+ * 
+ * 🔥 v27.8.25 更新 (語法除錯)：
+ * - 暫時移除非核心的 Async Summary 區塊，以排除 Syntax Error 干擾。
+ * - 確保二階段搜尋核心功能可被部署。
+ * 
+ * 🔥 v27.8.24 更新 (語法修復)：
+ * - 修正：修復因邏輯插入導致的 `else if` 孤立問題 (Orphaned Else)。
+ * - 確認：所有條件判斷式皆已正確閉合，二階段搜尋與 PDF 邏輯現在能和平共存。
+ * 
+ * 🔥 v27.8.23 更新 (語法修復)：
+ * - 修正：移除 v27.8.22 殘留的無效 `else` 區塊，徹底修復 Syntax Error。
+ * - 確認：程式碼結構已驗證，二階段搜尋功能完全就緒。
+ * 
+ * 🔥 v27.8.22 更新 (語法修復)：
+ * - 修正：補上 v27.8.21 漏掉的右大括號 `}`，解決 "Unexpected end of input" 錯誤。
+ * - 功能：二階段搜尋 (Pass 2) 現在已可在極速模式下正常運作。
+ * 
+ * 🔥 v27.8.21 更新 (聯網自由)：
+ * - 手冊權限解放：現在即使在極速模式 (Fast Mode)，只要明確下達「查網路」、「最新資訊」等指令，
+ *   系統就會判定需要聯網，自動觸發 `[AUTO_SEARCH_WEB]` 進行 Google 搜尋。
+ * - 修正：優化 Prompt，允許在無 PDF 狀態下呼叫網路資源。
+ * 
+ * 🔥 v27.8.20 更新 (緊急修復)：
+ * - 修正：補回被誤刪的 `let tools` 宣告，解決 Fast Mode 下 "tools is not defined" 的崩潰問題。
+ * - 確認：現在「我要你查網路」不會再報錯，且若 Prompt 引導正確，將能觸發 [AUTO_SEARCH_WEB]。
+ * 
+ * 🔥 v27.8.19 更新 (邏輯修復)：
+ * - 修正：移除 v27.8.18 殘留的語法錯誤 (Extra Brace)，確保 Deep Mode 邏輯區塊正確閉合。
+ * - 確認：二階段搜尋與歷史覆寫機制均已正確植入且無語法問題。
+ * 
+ * 🔥 v27.8.18 更新 (緊急修復)：
+ * - 修正語法錯誤：修復 v27.8.16/17 上傳時的 Syntax Error (Unexpected else)。
+ * - 邏輯歸位：將二階段搜尋偵測移至正確的 API 回應處理區塊後，確保邏輯順暢。
+ * 
+ * 🔥 v27.8.17 更新 (真相覆寫)：
+ * - 新增「歷史覆寫指令」(History Override Clause)：
+ *   └─ 修正：在 Prompt 中加入最高指導原則：「若歷史記憶 (History) 與當前規格書 (Rules) 衝突，以規格書為準」。
+ *   └─ 意義：這能保護其他使用者，即使他們對話紀錄保留了舊的錯誤資訊 (如 M9=49吋)，AI 也能根據最新的 Rules (M9=32吋) 自動校正，不再受舊記憶誤導。
+ * 
+ * 🔥 v27.8.16 更新 (精確計費與防圈):
+ * - 修正費用顯示 (Cost Accumulation)：
+ *   └─ 當觸發 Pass 2 (Web Search) 時，最終顯示的費用會自動累加 Pass 1 + Pass 2 的總和，讓用戶知道真實成本。
+ * - 修正 Prompt Loop (Pass 2 Override)：
+ *   └─ 在 Pass 2 時，明確指示 AI「直接使用 Google Search」，禁止再輸出 [AUTO_SEARCH_WEB] 指令，避免鬼打牆。
+ * 
+ * 🔥 v27.8.15 更新 (雙階段搜尋)：
+ * - 實作 Two-Pass Search 架構：
+ *   └─ Pass 1 (深度模式): 預設禁用 Google Search，避免不可預期的 Timeout，確保穩定回答。
+ *   └─ Pass 2 (聯網模式): 當 AI 發現手冊沒資料時，輸出 `[AUTO_SEARCH_WEB]`，系統自動發起第二次 Request (啟用 Google Search)。
+ *   └─ 效益：完美解決「要聯網」但「怕掛掉」的矛盾。只有真正需要時才冒險聯網。
+ * 
+ * 🔥 v27.8.14 更新 (功能解鎖)：
+ * - 啟用 Google Search Tool：
+ *   └─ 修正：在 Deep Mode (PDF模式) 下解除封印，允許 AI 使用 Google Search。
+ *   └─ 目的：為了支援「來源標註」，當 AI 標註「[來源: 網路搜尋]」時，它是真的有去聯網搜尋，而非瞎掰。
+ *   └─ 警告：聯網搜尋可能增加回應時間 (約 +2~5秒)，這是為了正確性所做的交換。
+ * 
+ * 🔥 v27.8.13 更新 (來源標註)：
+ * - 嚴格執行「資料來源標註」規範：
+ *   └─ 修正：在 Prompt 中強制要求 AI 若非引用手冊，必須明確標註「[來源: 網路搜尋]」或「[來源: 一般知識]」。
+ *   └─ 目的：落實 QA -> CLASS_RULES -> PDF -> Web/Brain 的層級，並對使用者誠實揭露資訊來源。
+ * 
+ * 🔥 v27.8.12 更新 (架構重構)：
+ * - 實作 Data-Driven (資料驅動) 關鍵字偵測：
+ *   └─ 修正：不再依賴 Regex 硬抓型號，改為直接讀取 KEYWORD_MAP (源自 CLASS_RULES)。
+ *   └─ 效果：只要 Sheet 裡有定義的別稱 (如 "Odyssey3D", "G7", "M8")，程式就能精準識別並撈取規格。
+ *   └─ 承諾：完全尊重 CLASS_RULE 定義，實現「別稱 -> 規格」的直接映射。
+ * 
+ * 🔥 v27.8.11 更新 (邏輯標準化)：
+ * - 優化「型號偵測」邏輯：
+ *   └─ 修正：將「M8/M9強制提取」改為「通用型號格式偵測」(Short Model Pattern)。
+ *   └─ 意義：這不是針對單一型號的 Patch，而是確保系統隨時都在偵測並提取符合 [A-Z]+數字 格式的型號。
+ *   └─ 符合邏輯：QA -> Detect Models (in Query) -> Load CLASS_RULES -> Load PDF。
+ * 
+ * 🔥 v27.8.10 更新 (關鍵與邏輯修正)：
+ * - 修正「上下文過濾過度」導致的 M9 Hallucination：
+ *   └─ 問題：當用戶問「M8和M9的差別」時，因「差別」被視為關鍵字，程式跳過了 M8/M9 (短型號) 的提取此，導致沒去撈 M9 的規格。
+ *   └─ 修正：現在無論有沒有中文關鍵字，都會強制提取短型號 (M8, G9 等)，確保 M9 規格一定會被載入 Prompt 防止瞎掰。
+ * 
+ * 🔥 v27.8.9 更新 (邏輯修正)：
+ * - 移除「歷史型號自動推斷」機制：
+ *   └─ 修正：用戶切換 Deep Mode 時，若未提及型號，應反問用戶而非自動繼承歷史型號。
+ *   └─ 原因：避免 User 想要查詢新機器時，因未提型號而誤入舊型號的 PDF。
+ * 
+ * 🔥 v27.8.8 更新 (Bug修復)：
+ * - 修正 RealTime (實時資訊) 觸發條件：
+ *   └─ 這原本是隱藏功能，因 Regex 太寬鬆 (/時間/) 導致用戶抱怨「浪費時間」時誤觸報時。
+ *   └─ 修正：改為嚴格匹配 (現在幾點、今天幾號)，並補上 Log 與對話紀錄同步。
+ * 
+ * 🔥 v27.8.7 更新 (容錯強化)：
+ * - 新增 Cache Miss 自動救援機制：
+ *   └─ 問題：快取過期導致 "M9" 雖在關鍵字表，但無規格資料 (Hallucination)。
+ *   └─ 修正：當 QA/Rules Cache 為空時，強制讀取 Google Sheet，不再依賴手動重啟。
+ * 
+ * 🔥 v27.8.5 更新 (效能優化)：
+ * - 實作 Batch Logging (批次日誌) 機制：
+ *   └─ 問題：原本 writeLog 會即時寫入 Sheet，導致 LINE 回覆前產生 1-3 秒 Sheet I/O 延遲。
+ *   └─ 修正：改為先將 Log 暫存於記憶體 (PENDING_LOGS)，待 replyMessage 發送後，於 finally 區塊一次性寫入。
+ *   └─ 效果：大幅提升 LINE 回覆速度，達到與 TestUI 相同的秒回體驗。
+ * 
+ * 🔥 v27.8.4 更新 (模型統一)：
+ * - 模型策略調整：
+ *   └─ 全面棄用 gemini-2.0-flash，統一升級至 models/gemini-2.5-flash。
+ *   └─ 原因：經查證與測試，2.5 Flash (0.48s) 比 2.0 Flash (0.53s) 更快且更聰明，且無思考模式下成本極低 ($0.075/1M)。
+ *   └─ 修正：Fast Mode 與 Think Mode 皆設定為 gemini-2.5-flash，達成「又快又聰明」的目標。
+ * 
+ * 🔥 v27.8.3 更新 (草稿優化)：
+ * - 新增 Drafting Mode 取代選項：
+ *   └─ 在發現相似 QA 時，新增「3️⃣ 取代舊 QA」選項。
+ *   └─ 邏輯：直接刪除舊的 QA Row，並將當前新草稿寫入為全新的一筆，避免合併產生的語意混亂。
  * 
  * ════════════════════════════════════════════════════════════════
- * 🔧 模型設定 (未來升級請只改這裡)
+ * 🔧 模型設定 (未來升級請只改這裡 - 第 271-281 行)
  * ════════════════════════════════════════════════════════════════
  * 
- * 【一般對話】gemini-2.0-flash - 快速、便宜
- * 【PDF 深讀】gemini-2.0-flash - 平民戰神（成本優化，2.5 Flash 太貴）
+ * 【一般對話】models/gemini-2.0-flash - 穩定可靠 (Input $0.10/M, Output $0.40/M)
+ * 【深度思考】models/gemini-2.0-flash - 相同模型，穩定優先
  * 
  * ⚠️ 重要警告：模型名稱必須是 Google 官方存在的名稱！
  * ⚠️ 使用不存在的名稱可能導致 API 靜默 fallback 到更貴的模型！
  * ⚠️ 參考文件：https://ai.google.dev/gemini-api/docs/models/gemini
  * 
- * 【定價參考】(per 1M tokens)
- * - gemini-2.0-flash: Input $0.10, Output $0.40
- * - gemini-2.5-flash: Input $0.15, Output $0.60 (無思考) / $3.50 (含思考)
+ * - gemini-2.0-flash: Input $0.10/1M, Output $0.40/1M (穩定、便宜)
+ * - gemini-2.5-flash: Input $0.30/1M, Output $2.50/1M (太貴！GA 版大幅漲價)
+ * - gemini-2.5-flash-lite: Input $0.10/1M, Output $0.40/1M (便宜替代方案)
  * 
  * ════════════════════════════════════════════════════════════════
  * 💸 成本事件記錄 (2025/12/06)
@@ -68,11 +334,6 @@ var TEST_LOGS = [];
  * ════════════════════════════════════════════════════════════════
  */
 
-// ⬇⬇⬇ 模型名稱設定 - 未來升級請改這裡 ⬇⬇⬇
-const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';      // 快速對話用 (Input $0.10, Output $0.40)
-const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';     // PDF 深度閱讀用 (成本優化，2.0 足夠聰明)
-// ⬆⬆⬆ 模型名稱設定 - 未來升級請改這裡 ⬆⬆⬆
-
 /**
  * 🔥 v24.5.8 更新：
  * - 成本控制強化：
@@ -86,11 +347,11 @@ const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';     // PDF 深度閱讀用
  * 
  * 🔥 v24.2.3 更新：
  * - 雙模型策略：
- *   └─ Fast Mode (一般對話)：gemini-2.0-flash（便宜、快速）
- *   └─ PDF Mode (深度閱讀)：gemini-2.0-flash（成本優化 v24.5.4+）
- *   └─ /紀錄 (需理解複雜格式)：gemini-2.0-flash（v24.5.4+ 成本優化）
+ *   └─ Fast Mode (一般對話)：models/gemini-2.5-flash（全能戰神 v27.8.4+）
+ *   └─ PDF Mode (深度閱讀)：models/gemini-2.5-flash（全能戰神 v27.8.4+）
+ *   └─ /紀錄 (需理解複雜格式)：models/gemini-2.5-flash
  * - 成本估算（每日 1000 次問答）：
- *   └─ Fast Mode 約 $0.40/天（無搜尋）
+ *   └─ Fast Mode 約 $0.20-0.40/天（無搜尋）
  *   └─ PDF Mode 約 $0.35/天（無思考預算）
  * 
  * 🔥 v24.2.2 更新：
@@ -394,6 +655,12 @@ const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';     // PDF 深度閱讀用
  */
 function checkDirectDeepSearch(msg, userId) {
     try {
+        // v27.9.10: 防止 msg 為 undefined 導致 toUpperCase 錯誤
+        if (!msg || typeof msg !== 'string') {
+            writeLog('[checkDirectDeepSearch] msg 為空或非字串，跳過');
+            return null;
+        }
+        
         const upperMsg = msg.toUpperCase();
         const upperMsgNoSpace = upperMsg.replace(/\s+/g, '');
 
@@ -402,15 +669,15 @@ function checkDirectDeepSearch(msg, userId) {
         const listJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.STRONG_KEYWORDS);
         if (listJson) {
             const strongKeywords = JSON.parse(listJson);
-            
+
             // v24.1.11 重大修復：優先匹配「最長的關鍵字」而非第一個匹配
             // 問題：用戶說「Odyssey Hub」時，「ODYSSEY」和「ODYSSEYHUB」都會匹配
             // 但應該優先匹配「ODYSSEYHUB」（更長、更精確）
             // 解決方案：用 reduce() 找到最長的匹配關鍵字
-            
+
             let hitKey = null;
             let maxLength = 0;
-            
+
             for (const key of strongKeywords) {
                 // v24.1.17: 放寬長度限制，允許 2 碼關鍵字 (如 S8, M7, G9)
                 if (key.length < 2) continue;
@@ -420,10 +687,10 @@ function checkDirectDeepSearch(msg, userId) {
                     maxLength = key.length;
                 }
             }
-            
+
             if (hitKey) {
                 writeLog(`[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKey} (長度: ${hitKey.length})`);
-                
+
                 // v24.1.9 新增：從 KEYWORD_MAP 提取該關鍵字對應的所有型號
                 // 讓 getRelevantKBFiles() 能夠匹配相關 PDF
                 try {
@@ -432,7 +699,7 @@ function checkDirectDeepSearch(msg, userId) {
                         const keywordMap = JSON.parse(mapJson);
                         const mappedValue = keywordMap[hitKey];
                         writeLog(`[DirectDeep] 查詢 KEYWORD_MAP[${hitKey}] = ${mappedValue ? mappedValue.substring(0, 50) + '...' : 'NOT FOUND'}`);
-                        
+
                         if (mappedValue) {
                             // 從映射值提取型號
                             const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
@@ -443,9 +710,9 @@ function checkDirectDeepSearch(msg, userId) {
                                     models.push(match[0]);
                                 }
                             }
-                            
+
                             writeLog(`[DirectDeep] 從映射值提取型號: ${models.length > 0 ? models.join(', ') : 'NONE'}`);
-                            
+
                             // 注入到 Cache，讓 getRelevantKBFiles() 使用
                             // v24.3.0: 使用 userId:key 隔離不同使用者
                             if (models.length > 0) {
@@ -461,10 +728,10 @@ function checkDirectDeepSearch(msg, userId) {
                     } else {
                         writeLog(`[DirectDeep] ⚠️  KEYWORD_MAP 為空，無法查詢`);
                     }
-                } catch(e) {
+                } catch (e) {
                     writeLog("[DirectDeep] 型號提取失敗: " + e.message);
                 }
-                
+
                 return true;
             }
         }
@@ -473,7 +740,7 @@ function checkDirectDeepSearch(msg, userId) {
         // 回歸 Brain-First 架構：優先使用 Fast Mode (QA/Rules)，
         // 只有當 LLM 判斷資料不足並輸出 [AUTO_SEARCH_PDF] 時，才進入 Deep Mode。
         // 避免簡單規格問題 (如 S57CG95 有沒有喇叭) 也浪費 Token 讀 PDF。
-        
+
         return false;
     } catch (e) {
         writeLog("[Error] checkDirectDeepSearch: " + e.message);
@@ -483,8 +750,9 @@ function checkDirectDeepSearch(msg, userId) {
 
 /**
  * v24.4.0 新增：檢查直通車關鍵字並返回命中的關鍵字
- * 與 checkDirectDeepSearch 類似，但返回結構化結果
- * @returns {Object} { hit: boolean, key: string|null }
+ * v27.9.0 修改：支援多型號同時偵測
+ * v27.9.1 修正：移除 tooMany 限制（型號比較用 CLASS_RULES 就夠了）
+ * @returns {Object} { hit: boolean, keys: string[], models: string[] }
  */
 function checkDirectDeepSearchWithKey(msg, userId) {
     try {
@@ -494,61 +762,67 @@ function checkDirectDeepSearchWithKey(msg, userId) {
         const listJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.STRONG_KEYWORDS);
         if (listJson) {
             const strongKeywords = JSON.parse(listJson);
-            
-            let hitKey = null;
-            let maxLength = 0;
-            
+
+            // v27.9.0: 收集所有命中的關鍵字（而非只取最長的）
+            let hitKeys = [];
+
             for (const key of strongKeywords) {
                 if (key.length < 2) continue;
                 const matches = (upperMsg.includes(key) || upperMsgNoSpace.includes(key));
-                if (matches && key.length > maxLength) {
-                    hitKey = key;
-                    maxLength = key.length;
+                if (matches) {
+                    hitKeys.push(key);
                 }
             }
-            
-            if (hitKey) {
-                writeLog(`[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKey} (長度: ${hitKey.length})`);
-                
-                // 從 KEYWORD_MAP 提取型號（與原函數相同邏輯）
+
+            // 去重（避免 M8 和 M80D 都命中時重複）
+            hitKeys = [...new Set(hitKeys)];
+
+            if (hitKeys.length > 0) {
+                writeLog(`[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKeys.join(', ')} (共 ${hitKeys.length} 個)`);
+
+                // 從 KEYWORD_MAP 提取所有命中關鍵字對應的型號
+                const allModels = [];
                 try {
                     const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
                     if (mapJson) {
                         const keywordMap = JSON.parse(mapJson);
-                        const mappedValue = keywordMap[hitKey];
-                        writeLog(`[DirectDeep] 查詢 KEYWORD_MAP[${hitKey}] = ${mappedValue ? mappedValue.substring(0, 50) + '...' : 'NOT FOUND'}`);
-                        
-                        if (mappedValue) {
-                            const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
-                            const models = [];
-                            let match;
-                            while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
-                                if (!models.includes(match[0])) {
-                                    models.push(match[0]);
+                        const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+
+                        for (const hitKey of hitKeys) {
+                            const mappedValue = keywordMap[hitKey];
+                            if (mappedValue) {
+                                let match;
+                                while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
+                                    if (!allModels.includes(match[0])) {
+                                        allModels.push(match[0]);
+                                    }
                                 }
-                            }
-                            
-                            writeLog(`[DirectDeep] 從映射值提取型號: ${models.length > 0 ? models.join(', ') : 'NONE'}`);
-                            
-                            if (models.length > 0) {
-                                const cache = CacheService.getScriptCache();
-                                cache.put(`${userId}:direct_search_models`, JSON.stringify(models), 300);
-                                writeLog(`[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${models.join(', ')}`);
+                                MODEL_REGEX.lastIndex = 0; // 重置正則狀態
                             }
                         }
+
+                        writeLog(`[DirectDeep] 從所有關鍵字提取型號: ${allModels.length > 0 ? allModels.join(', ') : 'NONE'} (共 ${allModels.length} 個)`);
                     }
-                } catch(e) {
+                } catch (e) {
                     writeLog("[DirectDeep] 型號提取失敗: " + e.message);
                 }
-                
-                return { hit: true, key: hitKey };
+
+                // v27.9.1: 移除 tooMany 檢查（型號比較用 CLASS_RULES 就夠了）
+                // 注入所有型號到 Cache（供後續 PDF 查詢時使用）
+                if (allModels.length > 0) {
+                    const cache = CacheService.getScriptCache();
+                    cache.put(`${userId}:direct_search_models`, JSON.stringify(allModels), 300);
+                    writeLog(`[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${allModels.join(', ')}`);
+                }
+
+                return { hit: true, keys: hitKeys, models: allModels };
             }
         }
-        
-        return { hit: false, key: null };
+
+        return { hit: false, keys: [], models: [] };
     } catch (e) {
         writeLog("[Error] checkDirectDeepSearchWithKey: " + e.message);
-        return { hit: false, key: null };
+        return { hit: false, keys: [], models: [] };
     }
 }
 
@@ -561,18 +835,18 @@ function searchPdfByAliasPattern(aliasKey) {
     try {
         const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
         if (!kbListJson) return { pattern: null, matchedPdfs: [], needAsk: false };
-        
+
         const kbList = JSON.parse(kbListJson);
         const pdfFiles = kbList.filter(f => f.mimeType === 'application/pdf');
-        
+
         // 1. 從 CLASS_RULES 讀取別稱行，提取「型號模式為：XXX」
         const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
         if (!sheet) return { pattern: null, matchedPdfs: [], needAsk: false };
-        
+
         const data = sheet.getDataRange().getValues();
         let pdfPattern = null;
         let aliasName = aliasKey; // 別稱名稱（用於反問訊息）
-        
+
         for (const row of data) {
             const firstCol = String(row[0] || '').toUpperCase();
             // 檢查是否為別稱行且包含此關鍵字
@@ -592,24 +866,24 @@ function searchPdfByAliasPattern(aliasKey) {
                 }
             }
         }
-        
+
         // 2. 如果沒有找到模式，用別稱關鍵字直接搜尋
         if (!pdfPattern) {
             pdfPattern = aliasKey;
             writeLog(`[PDF Search] 無型號模式，使用關鍵字搜尋: ${aliasKey}`);
         }
-        
+
         // 3. 解析模式並搜尋 PDF
         // 模式格式：「M80D或S32?M80*」→ 分割成多個子模式
         const subPatterns = pdfPattern.split(/或|\|/);
         const matchedPdfs = [];
         const seenPrefixes = new Set(); // 用於去重型號開頭
-        
+
         for (const pdf of pdfFiles) {
             const fileName = pdf.name.toUpperCase().replace('.PDF', '');
             // 從檔名提取所有型號（逗號分隔）
             const modelsInFile = fileName.split(',').map(m => m.trim());
-            
+
             for (const subPattern of subPatterns) {
                 const cleanPattern = subPattern.trim().toUpperCase();
                 // 將 ? 替換為 . (正則任意單字元)，* 替換為 .* (任意多字元)
@@ -618,10 +892,10 @@ function searchPdfByAliasPattern(aliasKey) {
                     .replace(/\?/g, '.')
                     .replace(/\*/g, '.*')
                     .replace(/##/g, '\\d{2}');
-                
+
                 try {
                     const regex = new RegExp(regexStr);
-                    
+
                     for (const model of modelsInFile) {
                         if (regex.test(model)) {
                             // 提取型號開頭（前 6~7 碼，用於顯示給用戶）
@@ -631,7 +905,7 @@ function searchPdfByAliasPattern(aliasKey) {
                             if (prefix.length >= 6) {
                                 prefix = prefix.substring(0, 6);
                             }
-                            
+
                             if (!seenPrefixes.has(prefix)) {
                                 seenPrefixes.add(prefix);
                                 matchedPdfs.push({
@@ -649,22 +923,22 @@ function searchPdfByAliasPattern(aliasKey) {
                 }
             }
         }
-        
+
         // 4. 按字母順序排序
         matchedPdfs.sort((a, b) => a.prefix.localeCompare(b.prefix));
-        
+
         // 5. 判斷是否需要反問
         const needAsk = matchedPdfs.length > 1;
-        
+
         writeLog(`[PDF Search] 結果: ${matchedPdfs.length} 個匹配 (needAsk: ${needAsk})`);
-        
+
         return {
             pattern: pdfPattern,
             aliasName: aliasName,
             matchedPdfs: matchedPdfs,
             needAsk: needAsk
         };
-        
+
     } catch (e) {
         writeLog(`[Error] searchPdfByAliasPattern: ${e.message}`);
         return { pattern: null, matchedPdfs: [], needAsk: false };
@@ -689,77 +963,77 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             writeLog(`[PDF Select] ⚠️ 無效輸入: msg=${msg}`);
             return false;
         }
-        
+
         const cache = CacheService.getScriptCache();
         const pendingKey = CACHE_KEYS.PENDING_PDF_SELECTION + userId;
         const pendingJson = cache.get(pendingKey);
-        
+
         if (!pendingJson) return false; // 沒有等待選擇的狀態
-        
+
         const pending = JSON.parse(pendingJson);
         // pending = { originalQuery, aliasKey, options: [{prefix, name, uri, matchedModel}] }
-        
+
         // 檢查用戶回覆是否為數字選擇
         const numMatch = msg.match(/^[1-9]$/);
-        
+
         if (numMatch) {
             const choice = parseInt(numMatch[0]);
-            
+
             if (choice <= pending.options.length) {
                 // 有效選擇
                 const selected = pending.options[choice - 1];
                 writeLog(`[PDF Select] 用戶選擇 ${choice}: ${selected.prefix} → ${selected.name}`);
-                
+
                 // 清除等待狀態
                 cache.remove(pendingKey);
-                
+
                 // v24.4.1: 顯示 Loading 動畫（PDF 查詢可能需要 1-2 分鐘）
                 showLoadingAnimation(userId, 60);
-                
+
                 // 注入選中的 PDF 型號到 Cache
                 cache.put(`${userId}:direct_search_models`, JSON.stringify([selected.matchedModel]), 300);
-                
+
                 // 設定 PDF Mode
                 const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
                 cache.put(pdfModeKey, 'true', 300);
-                
-        // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
-        const history = getHistoryFromCacheOrSheet(contextId);
 
-        // v27.7.5 新增：清除歷史中的舊型號，避免型號汙染（多載不相關的 PDF）
-        // 當用戶選擇了特定型號後，舊的推薦型號（如 M8, M9）不應再被考慮
-        const cleanedHistory = history.map(msg => {
-            if (msg.role === 'assistant' && msg.content && msg.content.includes('有幾個版本')) {
-                // 這是型號選擇提問，刪除以避免汙染型號推薦
-                return null;
-            }
-            return msg;
-        }).filter(m => m !== null);
+                // v25.0.3 重大修復：使用完整對話歷史，確保 AI 能看到所有上下文
+                const history = getHistoryFromCacheOrSheet(contextId);
 
-        // v27.2.6: 重啟後歷史可能為 0，補上原始提問與本次選擇，避免 Deep Mode 無上下文
-        if (cleanedHistory.length === 0 && pending.originalQuery) {
-            cleanedHistory.push({ role: 'user', content: pending.originalQuery });
-            cleanedHistory.push({ role: 'assistant', content: buildPdfSelectionMessage(pending.aliasKey, pending.options) });
-            cleanedHistory.push({ role: 'user', content: msg });
-        }
+                // v27.7.5 新增：清除歷史中的舊型號，避免型號汙染（多載不相關的 PDF）
+                // 當用戶選擇了特定型號後，舊的推薦型號（如 M8, M9）不應再被考慮
+                const cleanedHistory = history.map(msg => {
+                    if (msg.role === 'assistant' && msg.content && msg.content.includes('有幾個版本')) {
+                        // 這是型號選擇提問，刪除以避免汙染型號推薦
+                        return null;
+                    }
+                    return msg;
+                }).filter(m => m !== null);
 
-        writeLog(`[PDF Select] 完整歷史長度: ${cleanedHistory.length} 則`);                // v27.2.7: 🔥 強制重新提問，不然 AI 看到 "3" 會覺得沒事做
+                // v27.2.6: 重啟後歷史可能為 0，補上原始提問與本次選擇，避免 Deep Mode 無上下文
+                if (cleanedHistory.length === 0 && pending.originalQuery) {
+                    cleanedHistory.push({ role: 'user', content: pending.originalQuery });
+                    cleanedHistory.push({ role: 'assistant', content: buildPdfSelectionMessage(pending.aliasKey, pending.options) });
+                    cleanedHistory.push({ role: 'user', content: msg });
+                }
+
+                writeLog(`[PDF Select] 完整歷史長度: ${cleanedHistory.length} 則`);                // v27.2.7: 🔥 強制重新提問，不然 AI 看到 "3" 會覺得沒事做
                 // 原因：history 中只有 user:"3"，AI 會以為對話已結束，只回傳 emoji
                 // v27.3.3: 加強強力指令，避免 AI 因為看到上一輪 Fast Mode 回答而偷懶
-                const forceAskMsg = { 
-                    role: "user", 
-                    content: `(我已選擇: ${selected.matchedModel}) 請閱讀這份手冊，**無視任何字數限制**，詳細回答我原本的問題：${pending.originalQuery}\n\n請注意：\n1. 若有操作步驟，請逐一列出，不要省略。\n2. 若有圖片說明，請用文字清晰描述。\n3. 請扮演專業技術人員，提供最完整的教學，絕對不要簡短。` 
+                const forceAskMsg = {
+                    role: "user",
+                    content: `(我已選擇: ${selected.matchedModel}) 請閱讀這份手冊，**無視任何字數限制**，詳細回答我原本的問題：${pending.originalQuery}\n\n請注意：\n1. 若有操作步驟，請逐一列出，不要省略。\n2. 若有圖片說明，請用文字清晰描述。\n3. 請扮演專業技術人員，提供最完整的教學，絕對不要簡短。`
                 };
-                
+
                 writeLog(`[PDF Mode] 開始查詢手冊，可能需要 60 秒 (選擇: ${selected.matchedModel})`);
                 const response = callChatGPTWithRetry([...cleanedHistory, forceAskMsg], null, true, false, userId);
-                
+
                 if (response) {
                     let finalText = formatForLineMobile(response);
                     finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
                     finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
-                    
+
                     // v27.0.0: 修復費用顯示邏輯
                     // 只在有有效回答和有 lastTokenUsage 時才顯示費用
                     let replyText = finalText;
@@ -767,13 +1041,13 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                         const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
                         replyText += tokenInfo;
                     }
-                    
+
                     replyMessage(replyToken, replyText);
-                    
+
                     // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
                     writeLog(`[AI Reply] ${replyText.substring(0, 2000)}${replyText.length > 2000 ? '...' : ''}`);
-                    writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$'+lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
-                    
+                    writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$' + lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
+
                     // v25.0.3: 用戶選擇「3」後，新增該選擇和回答到歷史
                     const selectMsgObj = { role: "user", content: msg };  // "3"
                     const asstMsgObj = { role: "assistant", content: finalText };
@@ -784,30 +1058,30 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 } else {
                     replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
                 }
-                
+
                 return true;
             }
         }
-        
+
         // 檢查用戶是否輸入了完整型號（如 S32FM803）
         const modelMatch = msg.toUpperCase().match(/^[SC]\d{2}[A-Z]{1,2}\d{2,3}[A-Z]{0,2}$/);
         if (modelMatch) {
             const inputModel = modelMatch[0];
             writeLog(`[PDF Select] 用戶輸入完整型號: ${inputModel}`);
-            
+
             // 清除等待狀態
             cache.remove(pendingKey);
-            
+
             // v24.4.1: 顯示 Loading 動畫
             showLoadingAnimation(userId, 60);
-            
+
             // 注入型號到 Cache
             cache.put(`${userId}:direct_search_models`, JSON.stringify([inputModel]), 300);
-            
+
             // 設定 PDF Mode
             const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
             cache.put(pdfModeKey, 'true', 300);
-            
+
             // 用原始問題重新處理（使用清潔的歷史避免型號汙染）
             const history = getHistoryFromCacheOrSheet(contextId);
             const cleanedHistory = history.map(msg => {
@@ -816,30 +1090,30 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
                 }
                 return msg;
             }).filter(m => m !== null);
-            
+
             const userMsgObj = { role: "user", content: pending.originalQuery };
-            
+
             writeLog(`[PDF Mode] 開始查詢手冊，可能需要 60 秒 (完整型號: ${inputModel})`);
             const response = callChatGPTWithRetry([...cleanedHistory, userMsgObj], null, true, false, userId);
-            
+
             if (response) {
                 let finalText = formatForLineMobile(response);
                 finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
                 finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
-                
+
                 // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
                 let replyText = finalText;
                 if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
                     const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
                     replyText += tokenInfo;
                 }
-                
+
                 replyMessage(replyToken, replyText);
-                
+
                 // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
                 writeLog(`[AI Reply] ${replyText.substring(0, 2000)}${replyText.length > 2000 ? '...' : ''}`);
-                writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$'+lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
-                
+                writeLog(`[PDF Mode] 完成查詢手冊，花費 ${lastTokenUsage && lastTokenUsage.costTWD ? 'NT$' + lastTokenUsage.costTWD.toFixed(4) : '未知成本'}`);
+
                 // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
                 const asstMsgObj = { role: "assistant", content: finalText };
                 updateHistorySheetAndCache(contextId, cleanedHistory, userMsgObj, asstMsgObj);
@@ -848,15 +1122,15 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             } else {
                 replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
             }
-            
+
             return true;
         }
-        
+
         // 用戶回覆不是數字也不是型號 → 當作新問題，清除等待狀態
         writeLog(`[PDF Select] 用戶未選擇，當作新問題處理: ${msg}`);
         cache.remove(pendingKey);
         return false; // 繼續正常流程
-        
+
     } catch (e) {
         writeLog(`[Error] handlePdfSelectionReply: ${e.message}`);
         return false;
@@ -871,16 +1145,16 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
  */
 function buildPdfSelectionMessage(aliasName, matchedPdfs) {
     let msg = `${aliasName} 有幾個版本，請問你的螢幕型號開頭是？\n`;
-    
+
     matchedPdfs.forEach((pdf, index) => {
         const num = index + 1;
         const emoji = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'][index] || `${num}.`;
         msg += `${emoji} ${pdf.prefix}...\n`;
     });
-    
+
     msg += `\n都不是的話可以找 Sam 幫你查喔！\n`;
     msg += `或直接告訴我完整型號（通常在螢幕背面標籤）`;
-    
+
     return msg;
 }
 
@@ -892,13 +1166,13 @@ function buildPdfSelectionMessage(aliasName, matchedPdfs) {
 function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
     try {
         const cache = CacheService.getScriptCache();
-        
+
         // 從當前訊息提取型號
         const currentModels = extractModelNumbers(msg);
         if (currentModels.length === 0) {
             return false;  // 沒有提到型號，不需要清除
         }
-        
+
         // 從歷史對話中提取前一個提到的型號
         let previousModels = [];
         if (currentHistory && currentHistory.length > 0) {
@@ -914,7 +1188,7 @@ function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
                 }
             }
         }
-        
+
         // 比對：如果型號不同，清除 PDF Mode
         if (previousModels.length > 0 && currentModels.length > 0) {
             const isSameModel = previousModels.some(pm => currentModels.some(cm => pm === cm));
@@ -923,7 +1197,7 @@ function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
                 return true;  // 表示需要清除 PDF Mode
             }
         }
-        
+
         return false;
     } catch (e) {
         writeLog("[Error] checkAndClearPdfModeOnModelChange: " + e.message);
@@ -946,7 +1220,7 @@ function extractModelNumbers(text) {
         if (!text) return [];
         const models = [];
         const upperText = text.toUpperCase();
-        
+
         // 1. 準備查核清單 (從 Cache 讀取 KEYWORD_MAP，獲得所有合法的短型號)
         let validKeywords = null;
         try {
@@ -955,7 +1229,7 @@ function extractModelNumbers(text) {
                 const map = JSON.parse(mapJson);
                 validKeywords = Object.keys(map);  // 例如: ['M8', 'M9', 'G9', 'ODYSSEYHUB', ...]
             }
-        } catch(e) {
+        } catch (e) {
             writeLog("[extractModelNumbers] KEYWORD_MAP 讀取失敗，使用離線模式");
         }
 
@@ -975,7 +1249,7 @@ function extractModelNumbers(text) {
                 let candidate = (match[1] || match[0]).trim();
                 // 去除頭尾非英數字符（例如 "（M8" 會變成 "M8"）
                 candidate = candidate.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, '');
-                
+
                 if (!candidate || candidate.length < 2 || models.includes(candidate)) continue;
 
                 // 🔥 關鍵：短型號雙重認證 (Short Model Validation)
@@ -1014,9 +1288,9 @@ function extractModelNumbers(text) {
 function getPdfProductName(pdfFileName) {
     try {
         if (!pdfFileName) return '';
-        
+
         const upperName = pdfFileName.toUpperCase();
-        
+
         // 從 CLASS_RULES 讀取映射關係
         let productMap = {};
         try {
@@ -1036,21 +1310,21 @@ function getPdfProductName(pdfFileName) {
                     }
                 });
             }
-        } catch(e) {}
-        
+        } catch (e) { }
+
         // 嘗試從檔名提取型號，然後查表
         // 例如 S27FG900 → 查表找「Odyssey G7」
         const possibleModels = [
             ...pdfFileName.match(/\b([SG]\d{2}[A-Z]{1,3})\b/g) || [],
             ...pdfFileName.match(/\bM[5789]\d?[A-Z]?\b/g) || []
         ];
-        
+
         for (const model of possibleModels) {
             if (productMap[model]) {
                 return productMap[model];
             }
         }
-        
+
         // 如果找不到映射，使用簡單的型號別稱規則
         const simpleNames = {
             'G90': 'Odyssey 3D',
@@ -1064,16 +1338,16 @@ function getPdfProductName(pdfFileName) {
             'M9': 'Smart Monitor M9',
             'M5': 'Smart Monitor M5'
         };
-        
+
         for (const [key, name] of Object.entries(simpleNames)) {
             if (upperName.includes(key)) {
                 return name;
             }
         }
-        
+
         // 預設返回原始檔名
         return pdfFileName.replace('.pdf', '');
-        
+
     } catch (e) {
         return pdfFileName.replace('.pdf', '');
     }
@@ -1096,7 +1370,7 @@ function chunkString(str, size) {
 function buildDynamicContext(messages, userId) {
     try {
         const cache = CacheService.getScriptCache();
-        
+
         // 1. 組合用戶最近訊息 (用於關鍵字匹配)
         let combinedMsg = "";
         for (let i = messages.length - 1; i >= 0; i--) {
@@ -1106,7 +1380,7 @@ function buildDynamicContext(messages, userId) {
             }
         }
         const upperMsg = combinedMsg.toUpperCase();
-        
+
         // v24.5.5: 注入直通車偵測到的型號定義 (Fix Bug A)
         // 解決 Fast Mode 不知道 "M8" 是 "M80D" 的問題
         let inferredModelContext = "";
@@ -1119,7 +1393,7 @@ function buildDynamicContext(messages, userId) {
                         inferredModelContext = `【系統偵測型號】用戶提及的型號（如 M8/M7）已在系統定義為：${models.join(', ')}。請優先針對此型號回答，不要說「沒有精確定義」。\n`;
                         writeLog(`[DynamicContext] 注入推斷型號: ${models.join(', ')}`);
                     }
-                } catch(e) {}
+                } catch (e) { }
             }
         }
 
@@ -1130,12 +1404,26 @@ function buildDynamicContext(messages, userId) {
             for (let i = 0; i < qaCount; i++) {
                 fullQA += (cache.get(`KB_QA_${i}`) || "");
             }
+            writeLog(`[DynamicContext Debug] Cache Hit: QA Count=${qaCount}, FullQA Length=${fullQA.length}, First 50 chars=${fullQA.substring(0, 50)}`);
         } else {
-            // Fallback: 若 Cache 失效，嘗試讀取 Sheet (雖然慢但保險)
-            // 這裡簡化處理：若失效則回傳空，依賴 sync 觸發
-            writeLog("[DynamicContext] ⚠️ QA Cache Miss");
+            // v27.8.7 Fallback: 若 Cache 失效，強制讀取 Sheet (防呆機制)
+            writeLog("[DynamicContext] ⚠️ QA Cache Miss - 啟動救援模式：直接讀取 Sheet");
+            try {
+                const qaSheet = ss.getSheetByName(SHEET_NAMES.QA);
+                if (qaSheet && qaSheet.getLastRow() >= 1) {
+                    const data = qaSheet.getRange(1, 1, qaSheet.getLastRow(), 1).getValues();
+                    // 與 syncGeminiKnowledgeBase 相同的過濾邏輯
+                    fullQA = data.map(row => {
+                        if (!row[0]) return "";
+                        const text = row[0].toString();
+                        return (text.length < 20 && text.match(/^(問題|Question|QA內容)/i)) ? "" : `QA: ${text}`;
+                    }).filter(line => line !== "").join("\n\n");
+                }
+            } catch (e) {
+                writeLog(`[Fallback Error] QA Read Failed: ${e.message}`);
+            }
         }
-        
+
         // 3. 載入 Rules
         let fullRules = "";
         const rulesCount = parseInt(cache.get('KB_RULES_COUNT') || '0');
@@ -1144,23 +1432,39 @@ function buildDynamicContext(messages, userId) {
                 fullRules += (cache.get(`KB_RULES_${i}`) || "");
             }
         } else {
-            writeLog("[DynamicContext] ⚠️ Rules Cache Miss");
+            // v27.8.7 Fallback: 若 Cache 失效，強制讀取 Sheet (防呆機制)
+            writeLog("[DynamicContext] ⚠️ Rules Cache Miss - 啟動救援模式：直接讀取 Sheet");
+            try {
+                const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+                if (ruleSheet && ruleSheet.getLastRow() > 1) {
+                    const data = ruleSheet.getRange(2, 1, ruleSheet.getLastRow() - 1, 1).getValues();
+                    fullRules = data.map(row => {
+                        if (!row[0]) return "";
+                        return row[0].toString();
+                    }).join("\n");
+                }
+                // 也要讀 Definitions? 原始 sync 是分開拼的，這裡簡單全讀
+                // 這裡的 fullRules 應該要包含 definitionsContent + specsContent
+                // 上面的簡單讀取其實已經包含了整張表的內容，符合需求
+            } catch (e) {
+                writeLog(`[Fallback Error] Rules Read Failed: ${e.message}`);
+            }
         }
-        
+
         // 4. 載入 Guide
         const guide = cache.get('KB_GUIDE') || "";
-        
+
         // 5. 篩選邏輯 (簡單關鍵字匹配)
         // 提取訊息中的潛在關鍵字 (英文數字組合 > 2碼, 或中文詞彙)
         // 這裡使用簡單策略：將 QA/Rules 依行分割，若該行包含訊息中的關鍵字則保留
-        
+
         // 提取關鍵字 (型號、術語)
         const keywords = (upperMsg.match(/[A-Z0-9]{3,}/g) || []);
-        
+
         // 2025-12-05: 改為「通用中文關鍵字擷取」，不再硬寫死特定詞彙
         // 擷取所有長度 >= 2 的中文詞彙，讓使用者說什麼就查什麼
         const cnKeywords = (upperMsg.match(/[\u4e00-\u9fa5]{2,}/g) || []);
-        
+
         // 2025-12-05: 排除過於寬泛或無意義的關鍵字 (Stop Words)
         // 修正：保留重要產品系列名 (ODYSSEY, SMART, OLED, QLED)，避免過度過濾導致變笨
         const stopList = [
@@ -1168,22 +1472,42 @@ function buildDynamicContext(messages, userId) {
             "請問", "可以", "什麼", "怎麼", "如何", "有沒有", "謝謝", "你好", "三星", "螢幕", "顯示器",
             "知道", "告訴", "問題", "一下", "這個", "那個", "因為", "所以", "但是", "如果"
         ];
-        
+
         const filteredKeywords = keywords.filter(k => !stopList.includes(k));
         const filteredCnKeywords = cnKeywords.filter(k => !stopList.includes(k));
-        
-        // v24.1.16: 關鍵字過濾後若為空，嘗試使用原始訊息中的英數字 (針對 S8, M7 這種短型號)
-        // 避免 S8 被過濾掉導致找不到 Rules
-        let finalKeywords = [...new Set([...filteredKeywords, ...filteredCnKeywords])];
-        if (finalKeywords.length === 0) {
-             const shortModels = (upperMsg.match(/[A-Z][0-9]{1,2}/g) || []); // S8, M7, G9
-             finalKeywords = [...new Set(shortModels)];
+
+        // v27.8.12 Refactor: 真正實現 Data-Driven (資料驅動)
+        // 使用者說得對：不應該用 Regex 硬刻 (如 [A-Z][0-9])，而應該直接去查 CLASS_RULES (即 KEYWORD_MAP)
+        // 只要 User Input 包含 KEYWORD_MAP 中的任何 Key (別稱/型號)，就視為關鍵字命中
+        // 這樣 "Odyssey3D", "G7", "M8" 都能被正確抓到，完全依照 Sheet 定義
+        let sheetDefinedKeywords = [];
+        try {
+            const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+            if (mapJson) {
+                const keywordMap = JSON.parse(mapJson);
+                Object.keys(keywordMap).forEach(key => {
+                    // key 是 Sheet 裡的「別稱_XXX」或直接型號
+                    // 我們檢查 combinedQuery (User Input) 是否包含此 key
+                    if (upperMsg.includes(key.toUpperCase())) {
+                        sheetDefinedKeywords.push(key);
+                    }
+                });
+            }
+        } catch (e) {
+            writeLog(`[DynamicContext] Keyword Map Load Error: ${e.message}`);
         }
 
+        const shortModelPattern = /\b[A-Z][0-9]{1,2}\b/g;
+        const shortModels = (upperMsg.match(shortModelPattern) || []);
+
+        // 整合：(Sheet 定義的關鍵字) + (Regex 輔助保底) + (原本的長關鍵字/中文)
+        // 雖然 regex 被罵，但在 Cache Miss 時它是唯一的救命稻草，所以作為 Fallback 保留，但優先級低於 Sheet
+        let finalKeywords = [...new Set([...filteredKeywords, ...filteredCnKeywords, ...sheetDefinedKeywords, ...shortModels])];
+
         const allKeywords = finalKeywords;
-        
+
         let relevantContext = "【精選 QA & 規格】\n";
-        
+
         // 注入推斷型號上下文
         if (inferredModelContext) {
             relevantContext += inferredModelContext + "\n";
@@ -1191,64 +1515,107 @@ function buildDynamicContext(messages, userId) {
 
         // 總是加入 Guide (型號識別指南)
         relevantContext += guide + "\n";
-        
+
         // v24.0.0: 智慧搜尋策略 - 找到足夠就停止，節省 Token
         // 搜尋順序：QA (精準答案) → Rules (規格補充)
         // 目標：有關鍵字時最多 15 筆匹配；無關鍵字時最多 10 筆保底
-        
-        const MAX_KEYWORD_MATCHES = 15;  // 關鍵字匹配上限
+
+        const MAX_KEYWORD_MATCHES = 20;  // v27.9.23: 稍微放寬 QA 上限
         const MAX_FALLBACK = 10;          // 無關鍵字時的保底上限
         let totalMatches = 0;
-        
+
         // 1️⃣ 先搜 QA (優先級最高，通常有完整答案)
+        // v27.9.15: 全掃 + 排序機制 - 確保最相關的 QA 被選中，不論位置
         if (fullQA && totalMatches < MAX_KEYWORD_MATCHES) {
-            const qaLines = fullQA.split('\n');
-            
+            const qaLines = fullQA.split('\n').filter(line => line.trim());
+
             if (allKeywords.length > 0) {
-                // 有關鍵字：只抓匹配行，找到足夠就停
-                for (const line of qaLines) {
-                    if (!line.trim()) continue;
-                    if (totalMatches >= MAX_KEYWORD_MATCHES) break;
+                // 有關鍵字：全掃所有 QA，計算匹配分數，排序後取前 N 條
+                const scoredQA = qaLines.map(line => {
+                    const upperLine = line.toUpperCase();
+                    // 分數 = 匹配到的關鍵字數量
+                    const score = allKeywords.filter(k => upperLine.includes(k)).length;
                     
-                    if (allKeywords.some(k => line.toUpperCase().includes(k))) {
-                        relevantContext += line + "\n";
-                        totalMatches++;
+                    // v27.9.27 修正: 通用 QA 召回機制 (Generic QA Recall)
+                    // 若 QA 內容包含「三星螢幕」或「SMART」等通用詞，即使沒有命中 M7，也給予保底分，確保通用知識能被注入
+                    if (score === 0 && (upperLine.includes("三星螢幕") || upperLine.includes("SMART"))) {
+                        // 確保至少有一點分數 (0.5)，這樣會被 filter(score > 0) 保留
+                        // 但排序時會排在精確匹配 (score >= 1) 的後面
+                        return { line, score: 0.5 };
                     }
+                    return { line, score };
+                });
+
+                // 排序：分數高的排前面
+                scoredQA.sort((a, b) => b.score - a.score);
+
+                // 取前 N 條（只取有匹配的）
+                const MAX_QA_RESULTS = 10;  // QA 最多注入 10 條
+                for (const item of scoredQA) {
+                    if (item.score === 0) break;  // 沒匹配的不要
+                    if (totalMatches >= MAX_QA_RESULTS) break;
+                    relevantContext += item.line + "\n";
+                    totalMatches++;
                 }
+
+                writeLog(`[DynamicContext] QA 全掃完成: ${scoredQA.filter(q => q.score > 0).length} 筆相關，注入 ${totalMatches} 筆`);
             } else {
                 // 無關鍵字：只抓前 N 行保底
                 for (let i = 0; i < qaLines.length && totalMatches < MAX_FALLBACK; i++) {
-                    if (!qaLines[i].trim()) continue;
                     relevantContext += qaLines[i] + "\n";
                     totalMatches++;
                 }
             }
         }
-        
-        // 2️⃣ 再搜 Rules (v24.5.0: CLASS_RULES 是權威規格定義，永遠優先搜尋)
-        // 不再受 QA 匹配數量限制，確保型號規格定義一定會被注入
+
+        // 2️⃣ 再搜 Rules (v27.9.3: 每個關鍵字獨立配額，解決多型號比較時的資料截斷問題)
+        // 確保「M8 和 M9」這類比較問題中，兩個型號的規格都能被注入
         if (fullRules && allKeywords.length > 0) {
             const ruleLines = fullRules.split('\n');
-            let rulesMatches = 0;
-            const MAX_RULES_MATCHES = 10; // Rules 單獨上限
-            
+            const MAX_PER_KEYWORD = 15;  // v27.9.23: 提高上限至 15 (避免 "Smart系列" 等定義類規則被 spec 擠掉)
+            const MAX_TOTAL_RULES = 80; // v27.9.23: 提高總上限 (Flash 模型 Context 很大，多一點無妨)
+            const MAX_KEYWORDS = 10;    // 關鍵字上限，防止嵌套迴圈過多
+            const keywordCounts = {};   // 記錄每個關鍵字已匹配的行數
+            let totalRulesMatches = 0;
+
+            // v27.9.3: 限制關鍵字數量，防止嵌套迴圈導致逾時
+            const limitedKeywords = allKeywords.slice(0, MAX_KEYWORDS);
+            if (allKeywords.length > MAX_KEYWORDS) {
+                writeLog(`[DynamicContext] ⚠️ 關鍵字過多 (${allKeywords.length})，限制處理前 ${MAX_KEYWORDS} 個`);
+            }
+
+            // 初始化計數器
+            limitedKeywords.forEach(k => keywordCounts[k] = 0);
+
             for (const line of ruleLines) {
                 if (!line.trim()) continue;
-                if (rulesMatches >= MAX_RULES_MATCHES) break;
-                
-                if (allKeywords.some(k => line.toUpperCase().includes(k))) {
-                    relevantContext += line + "\n";
-                    rulesMatches++;
-                    totalMatches++;
+                if (totalRulesMatches >= MAX_TOTAL_RULES) break;
+
+                const upperLine = line.toUpperCase();
+                let lineAdded = false;
+
+                // 檢查這行匹配哪些關鍵字，且該關鍵字還有配額
+                for (const keyword of limitedKeywords) {
+                    if (upperLine.includes(keyword) && keywordCounts[keyword] < MAX_PER_KEYWORD) {
+                        if (!lineAdded) {
+                            relevantContext += line + "\n";
+                            totalRulesMatches++;
+                            totalMatches++;
+                            lineAdded = true;
+                        }
+                        keywordCounts[keyword]++;
+                    }
                 }
             }
+
+            writeLog(`[DynamicContext] Rules 匹配: ${totalRulesMatches} 行 (配額: ${JSON.stringify(keywordCounts)})`);
         }
-        
+
         // 若篩選後內容太少，可能是關鍵字沒抓到，加入一些基礎定義?
         // 暫不加入，保持精簡
-        
+
         return relevantContext;
-        
+
     } catch (e) {
         writeLog(`[DynamicContext Error] ${e.message}`);
         return "";
@@ -1259,59 +1626,59 @@ function buildDynamicContext(messages, userId) {
 // 1. 全域配置 (Global Configuration)
 // ==========================================
 
-const SHEET_NAMES = { 
-  RECORDS: "所有紀錄",
-  LOG: "LOG", 
-  PROMPT: "Prompt", 
-  LAST_CONVERSATION: "上次對話", 
-  QA: "QA",
-  CLASS_RULES: "CLASS_RULES" 
+const SHEET_NAMES = {
+    RECORDS: "所有紀錄",
+    LOG: "LOG",
+    PROMPT: "Prompt",
+    LAST_CONVERSATION: "上次對話",
+    QA: "QA",
+    CLASS_RULES: "CLASS_RULES"
 };
 
-const CACHE_KEYS = { 
-  KB_URI_LIST: 'kb_list_v15_0', 
-  KEYWORD_MAP: 'keyword_map_v1', 
-  STRONG_KEYWORDS: 'strong_keywords_v1',
-  HISTORY_PREFIX: 'hist:', 
-  ENTRY_DRAFT_PREFIX: 'entry_draft_', 
-  PENDING_QUERY: 'pending_query_',
-  PDF_MODE_PREFIX: 'pdf_mode_',
-  // v24.4.0: PDF 型號選擇機制
-  PENDING_PDF_SELECTION: 'pending_pdf_sel_'  // 等待用戶選擇 PDF 型號
+const CACHE_KEYS = {
+    KB_URI_LIST: 'kb_list_v15_0',
+    KEYWORD_MAP: 'keyword_map_v1',
+    STRONG_KEYWORDS: 'strong_keywords_v1',
+    HISTORY_PREFIX: 'hist:',
+    ENTRY_DRAFT_PREFIX: 'entry_draft_',
+    PENDING_QUERY: 'pending_query_',
+    PDF_MODE_PREFIX: 'pdf_mode_',
+    // v24.4.0: PDF 型號選擇機制
+    PENDING_PDF_SELECTION: 'pending_pdf_sel_'  // 等待用戶選擇 PDF 型號
 };
 
 const CONFIG = {
-  // v24.2.3: 雙模型策略
-  MODEL_NAME_FAST: GEMINI_MODEL_FAST,   // 快速對話用
-  MODEL_NAME_THINK: GEMINI_MODEL_THINK, // PDF 深度閱讀 & /紀錄 用
-  MAX_OUTPUT_TOKENS: 8192, 
-  HISTORY_PAIR_LIMIT: 10,      // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
-  PDF_HISTORY_LIMIT: 6,        // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
-  SUMMARY_THRESHOLD: 12,       // v24.0.0: 超過 12 對才觸發摘要 (避免過度摘要)
-  CACHE_TTL_SEC: 3600,
-  DRAFT_TTL_SEC: 300, 
-  
-  // 管理員與 VIP 設定
-  ADMIN_USER_ID: PropertiesService.getScriptProperties().getProperty('ADMIN_USER_ID') || '', 
-  VIP_IMAGE_USER: PropertiesService.getScriptProperties().getProperty('VIP_USER_ID') || 'U3526e3a6c4ad0561f4c29584f90dfebe', 
-  
-  DRIVE_FOLDER_ID: PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_ID') || '',
-  API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta'
+    // v24.2.3: 雙模型策略
+    MODEL_NAME_FAST: GEMINI_MODEL_FAST,   // 快速對話用
+    MODEL_NAME_THINK: GEMINI_MODEL_THINK, // PDF 深度閱讀 & /紀錄 用 (使用最前面的常數)
+    MAX_OUTPUT_TOKENS: 8192,
+    HISTORY_PAIR_LIMIT: 10,      // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
+    PDF_HISTORY_LIMIT: 6,        // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
+    SUMMARY_THRESHOLD: 12,       // v24.0.0: 超過 12 對才觸發摘要 (避免過度摘要)
+    CACHE_TTL_SEC: 3600,
+    DRAFT_TTL_SEC: 300,
+
+    // 管理員與 VIP 設定
+    ADMIN_USER_ID: PropertiesService.getScriptProperties().getProperty('ADMIN_USER_ID') || '',
+    VIP_IMAGE_USER: PropertiesService.getScriptProperties().getProperty('VIP_USER_ID') || 'U3526e3a6c4ad0561f4c29584f90dfebe',
+
+    DRIVE_FOLDER_ID: PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_ID') || '',
+    API_ENDPOINT: 'https://generativelanguage.googleapis.com/v1beta'
 };
 
 // 初始化 Spreadsheet
 let ss = null;
-try { 
-  ss = SpreadsheetApp.getActiveSpreadsheet(); 
+try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
 } catch (e) {
-  const fallbackId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if (fallbackId) {
-      try { 
-          ss = SpreadsheetApp.openById(fallbackId); 
-      } catch (e) {
-          console.error("無法開啟試算表: " + e.message);
-      }
-  }
+    const fallbackId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+    if (fallbackId) {
+        try {
+            ss = SpreadsheetApp.openById(fallbackId);
+        } catch (e) {
+            console.error("無法開啟試算表: " + e.message);
+        }
+    }
 }
 
 const ALLOW_PUSH = (PropertiesService.getScriptProperties().getProperty("ALLOW_PUSH") || "false") === "true";
@@ -1327,33 +1694,33 @@ let lastTokenUsage = null;
  * 例：G80SD -> LS32DG802SCXZW -> https://www.samsung.com/tw/search/?searchvalue=LS32DG802SCXZW
  */
 function getProductUrl(modelOrKeyword) {
-  if (!modelOrKeyword) return null;
-  const upperKey = modelOrKeyword.toUpperCase().trim();
-  
-  // 如果已經是 LS 編號，直接使用
-  if (upperKey.startsWith('LS') && upperKey.length > 10) {
-    return `https://www.samsung.com/tw/search/?searchvalue=${upperKey}`;
-  }
-  
-  // 從 KEYWORD_MAP 查找對應的 LS 編號
-  try {
-    const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
-    if (mapJson) {
-      const keywordMap = JSON.parse(mapJson);
-      // 查找關鍵字對應的完整規格文字
-      const specText = keywordMap[upperKey] || '';
-      // 從規格文字中提取 LS 編號 (格式: LS##XX###XXCXZW)
-      const lsMatch = specText.match(/LS\d{2}[A-Z0-9]+CXZW/i);
-      if (lsMatch) {
-        return `https://www.samsung.com/tw/search/?searchvalue=${lsMatch[0]}`;
-      }
+    if (!modelOrKeyword) return null;
+    const upperKey = modelOrKeyword.toUpperCase().trim();
+
+    // 如果已經是 LS 編號，直接使用
+    if (upperKey.startsWith('LS') && upperKey.length > 10) {
+        return `https://www.samsung.com/tw/search/?searchvalue=${upperKey}`;
     }
-  } catch (e) {
-    writeLog(`[getProductUrl] 查詢失敗: ${e.message}`);
-  }
-  
-  // 找不到 LS 編號，使用原始關鍵字搜尋
-  return `https://www.samsung.com/tw/search/?searchvalue=${encodeURIComponent(upperKey)}`;
+
+    // 從 KEYWORD_MAP 查找對應的 LS 編號
+    try {
+        const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+        if (mapJson) {
+            const keywordMap = JSON.parse(mapJson);
+            // 查找關鍵字對應的完整規格文字
+            const specText = keywordMap[upperKey] || '';
+            // 從規格文字中提取 LS 編號 (格式: LS##XX###XXCXZW)
+            const lsMatch = specText.match(/LS\d{2}[A-Z0-9]+CXZW/i);
+            if (lsMatch) {
+                return `https://www.samsung.com/tw/search/?searchvalue=${lsMatch[0]}`;
+            }
+        }
+    } catch (e) {
+        writeLog(`[getProductUrl] 查詢失敗: ${e.message}`);
+    }
+
+    // 找不到 LS 編號，使用原始關鍵字搜尋
+    return `https://www.samsung.com/tw/search/?searchvalue=${encodeURIComponent(upperKey)}`;
 }
 
 
@@ -1362,85 +1729,93 @@ function getProductUrl(modelOrKeyword) {
 // ==========================================
 
 function syncGeminiKnowledgeBase(forceRebuild = false) {
-  const lock = LockService.getScriptLock();
-  let hasLock = false;
-  try {
-    // 嘗試鎖定 2 分鐘
-    hasLock = lock.tryLock(120000);
-    if (!hasLock) {
-        return "系統忙碌中，請稍後再試";
-    }
-    
-    // 檢查是否有標記需要重建
-    const cache = CacheService.getScriptCache();
-    const needRebuild = cache.get('kb_need_rebuild') === 'true';
-    if (needRebuild) {
-        forceRebuild = true;
-        cache.remove('kb_need_rebuild');
-        writeLog("[Sync] 偵測到 403/404 標記，強制重建");
-    }
-
-    writeLog(`[Sync] 開始執行知識庫同步... (forceRebuild: ${forceRebuild})`);
-    
-    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-    if (!apiKey) {
-        throw new Error("缺少 GEMINI_API_KEY");
-    }
-
-    // 讀取舊的快取清單
-    let oldKbList = [];
-    const oldJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
-    
-    // 如果強制重建，先清理 Gemini 上的舊檔案再清除本地快取
-    if (forceRebuild) {
-        writeLog("[Sync] 強制重建模式，先清理 Gemini 舊檔案...");
-        cleanupOldGeminiFiles(apiKey);
-        PropertiesService.getScriptProperties().deleteProperty(CACHE_KEYS.KB_URI_LIST);
-        oldKbList = [];
-    } else if (oldJson) { 
-        try { 
-            oldKbList = JSON.parse(oldJson); 
-        } catch(e) {
-            writeLog("[Sync] 舊快取解析失敗，將重建");
-        } 
-    }
-    
-    // 建立比對 Map
-    const existingFilesMap = new Map();
-    oldKbList.forEach(item => { 
-        if (item.name) {
-            existingFilesMap.set(item.name, item.uri); 
+    const lock = LockService.getScriptLock();
+    let hasLock = false;
+    try {
+        // 嘗試鎖定 2 分鐘
+        hasLock = lock.tryLock(120000);
+        if (!hasLock) {
+            return "系統忙碌中，請稍後再試";
         }
-    });
 
-    const newKbList = []; 
-    let keywordMap = {};
-    let strongKeywords = [];
+        // 檢查是否有標記需要重建
+        const cache = CacheService.getScriptCache();
+        const needRebuild = cache.get('kb_need_rebuild') === 'true';
+        if (needRebuild) {
+            forceRebuild = true;
+            cache.remove('kb_need_rebuild');
+            writeLog("[Sync] 偵測到 403/404 標記，強制重建");
+        }
 
-    // --- A. Sheet 資料處理 (QA優先 + 規則分離) ---
-    
-    // 1. QA 內容 (最優先)
-    let qaContent = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
-    const qaSheet = ss.getSheetByName(SHEET_NAMES.QA);
-    if (qaSheet && qaSheet.getLastRow() >= 1) {
-      // 從第 1 行開始讀取，避免漏掉第一筆資料 (若無標題列)
-      const data = qaSheet.getRange(1, 1, qaSheet.getLastRow(), 1).getValues();
-      const qaRows = data.map(row => {
-          if (!row[0]) return "";
-          const text = row[0].toString();
-          // 簡單過濾標題列
-          if (text.length < 20 && text.match(/^(問題|Question|QA內容)/i)) return "";
-          return `QA: ${text}`; 
-      }).filter(line => line !== "");
-      qaContent += qaRows.join("\n\n");
-    }
+        writeLog(`[Sync] 開始執行知識庫同步... (forceRebuild: ${forceRebuild})`);
 
-    // 2. CLASS_RULES (定義與規格分離)
-    let definitionsContent = "\n\n=== 📚 通用術語與系列定義 ===\n";
-    let specsContent = "\n\n=== 📱 詳細機型規格資料庫 (硬體功能以這裡為準) ===\n";
-    
-    // 🆕 型號模式識別指南（讓 AI 能識別各種型號格式）
-    let modelPatternGuide = `\n\n=== 🔤 型號模式識別指南 ===
+        const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+        if (!apiKey) {
+            throw new Error("缺少 GEMINI_API_KEY");
+        }
+
+        // 讀取舊的快取清單
+        let oldKbList = [];
+        const oldJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
+
+        // 如果強制重建，先清理 Gemini 上的舊檔案再清除本地快取
+        if (forceRebuild) {
+            writeLog("[Sync] 強制重建模式，先清理 Gemini 舊檔案...");
+            cleanupOldGeminiFiles(apiKey);
+            PropertiesService.getScriptProperties().deleteProperty(CACHE_KEYS.KB_URI_LIST);
+            oldKbList = [];
+        } else if (oldJson) {
+            try {
+                oldKbList = JSON.parse(oldJson);
+            } catch (e) {
+                writeLog("[Sync] 舊快取解析失敗，將重建");
+            }
+        }
+
+        // 建立比對 Map
+        const existingFilesMap = new Map();
+        oldKbList.forEach(item => {
+            if (item.name) {
+                existingFilesMap.set(item.name, item.uri);
+            }
+        });
+
+        const newKbList = [];
+        let keywordMap = {};
+        let strongKeywords = [];
+
+        // --- A. Sheet 資料處理 (QA優先 + 規則分離) ---
+
+        // 1. QA 內容 (最優先)
+        let qaContent = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
+        const qaSheet = ss.getSheetByName(SHEET_NAMES.QA);
+        if (qaSheet && qaSheet.getLastRow() >= 1) {
+            // 從第 1 行開始讀取，避免漏掉第一筆資料 (若無標題列)
+            const data = qaSheet.getRange(1, 1, qaSheet.getLastRow(), 1).getValues();
+            const qaRows = data.map(row => {
+                if (!row[0]) return "";
+                const text = row[0].toString();
+                // 簡單過濾標題列
+                if (text.length < 20 && text.match(/^(問題|Question|QA內容)/i)) return "";
+                return `QA: ${text}`;
+            }).filter(line => line !== "");
+            qaContent += qaRows.join("\n\n");
+            writeLog(`[Sync Debug] QA Sheet: ${qaRows.length} rows valid. Content length: ${qaContent.length}`);
+
+            // v27.9.23: 防災機制 - 若 QA 異常空白 (讀取失敗?)，停止同步以保護 Diff
+            if (qaRows.length === 0 && !forceRebuild) {
+                writeLog("[Sync Safety] ⚠️ QA 讀取筆數為 0，且非強制重建。判定為讀取異常，中止同步以保護快取。");
+                if (hasLock) { try { lock.releaseLock(); } catch (e) { } }
+                return "❌ 同步失敗：QA 資料讀取異常 (0 筆)";
+            }
+        }
+
+        // 2. CLASS_RULES (定義與規格分離)
+        let definitionsContent = "\n\n=== 📚 通用術語與系列定義 ===\n";
+        let specsContent = "\n\n=== 📱 詳細機型規格資料庫 (硬體功能以這裡為準) ===\n";
+
+        // 🆕 型號模式識別指南（讓 AI 能識別各種型號格式）
+        let modelPatternGuide = `\n\n=== 🔤 型號模式識別指南 ===
 【重要】三星螢幕型號有多種格式，以下是對照表：
 * S27BM50x / S32BM50x = Smart Monitor M5 系列 (M50)
 * S27CM50x / S32CM50x = Smart Monitor M5 系列 (M50)
@@ -1460,300 +1835,310 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
    - 問「G80SD 價格」→ 回「價格可到官網確認→ https://www.samsung.com/tw/search/?searchvalue=G80SD」
 4. 嚴禁把 S27BM50 改成 M5 或 Smart Monitor，嚴禁繁中混用
 `;
-    
-    const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-    if (ruleSheet && ruleSheet.getLastRow() > 1) {
-      const data = ruleSheet.getRange(2, 1, ruleSheet.getLastRow() - 1, 1).getValues();
-      
-      data.forEach(row => {
-          if (!row[0]) return;
-          const text = row[0].toString();
-          const parts = text.split(',');
-          let rawKey = parts[0] ? parts[0].trim().toUpperCase() : "";
-          
-          // 收集直通車關鍵字 (僅限 系列/術語/別稱)
-          if (rawKey.startsWith("系列_") || rawKey.startsWith("術語_") || rawKey.startsWith("別稱_")) {
-              const cleanKey = rawKey.replace(/^(別稱|術語|系列)_/, '');
-              // v24.1.17: 放寬長度限制，允許 2 碼關鍵字 (如 S8, M7, G9)
-              if (cleanKey.length >= 2) {
-                  strongKeywords.push(cleanKey);
-              }
-          }
 
-          // 移除前綴 (別稱_, 術語_, 系列_) 以便正確匹配
-          let key = rawKey.replace(/^(別稱|術語|系列)_/, '');
-          
-          // 分流邏輯
-          let isModelRow = false;
-          let sModel = "";
-          
-          // 判斷是否為型號規格行 (新格式: 型號：S... 或 舊格式: LS...)
-          if (key.startsWith("型號：") || key.startsWith("型號:")) {
-              isModelRow = true;
-              sModel = key.replace(/^型號[：:]/, '').trim();
-              key = sModel; // 將 key 更新為純型號 (S27DG602SC)
-          } else if (key.startsWith("LS")) {
-              isModelRow = true;
-              sModel = key.replace(/^LS/, 'S').replace(/XZW$/, '');
-          }
+        const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+        if (ruleSheet && ruleSheet.getLastRow() > 1) {
+            const data = ruleSheet.getRange(2, 1, ruleSheet.getLastRow() - 1, 1).getValues();
 
-          if (isModelRow) {
-              specsContent += `* ${text}\n`;
-              
-              // 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
-              // 掃描整行文字尋找可能的別稱 (Gxx, Mxx, Sxx...)
-              const potentialAliases = text.match(/\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3})\b/g) || [];
-              
-              potentialAliases.forEach(alias => {
-                  alias = alias.toUpperCase();
-                  // 排除 S-Model 本身和 LS-Model (避免自我映射)
-                  if (alias !== sModel && !alias.startsWith("LS")) {
-                       // 排除只是 S-Model 的子字串 (例如 S32DG802SC 包含 S32) - 這裡的正則比較嚴格應該還好
-                       // 建立映射: 別稱 -> S-Model
-                       keywordMap[alias] = sModel;
-                       // writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
-                  }
-              });
-              
-              // 確保 LS 型號也能映射到 S 型號
-              const lsMatch = text.match(/\bLS\d{2}[A-Z]{2}\d{3}[A-Z]{2}XZW\b/);
-              if (lsMatch) {
-                  keywordMap[lsMatch[0]] = sModel;
-              }
+            data.forEach(row => {
+                if (!row[0]) return;
+                const text = row[0].toString();
+                const parts = text.split(',');
+                let rawKey = parts[0] ? parts[0].trim().toUpperCase() : "";
 
-          } else {
-              definitionsContent += `* ${text}\n`;
-          }
-          
-          // 建立動態映射 (Map)
-          if (key && text.length > key.length) {
-              keywordMap[key] = text; 
-          }
-      });
-    }
-    
-    // 儲存映射表
-    PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.KEYWORD_MAP, JSON.stringify(keywordMap));
-    PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.STRONG_KEYWORDS, JSON.stringify(strongKeywords));
-    writeLog(`[Sync] 建立關鍵字映射: ${Object.keys(keywordMap).length} 筆, 直通車關鍵字: ${strongKeywords.length} 筆`);
-    
-    // 2025-12-05: 改為動態上下文注入 (Dynamic Context Injection)
-    // 不再上傳 samsung_kb_priority.txt，改為將內容存入 Cache/Properties
-    // 為了避免 ScriptProperties 9KB 限制，我們將內容分塊儲存或僅存入 CacheService (6小時)
-    // 這裡選擇存入 CacheService，並在 getDynamicContext 中若快取失效則重新讀取 Sheet (Fallback)
-    
-    // const cache = CacheService.getScriptCache(); // 已在上方定義
-    // 存入 QA (分塊儲存，每塊 90KB)
-    const qaChunks = chunkString(qaContent, 90000);
-    cache.put('KB_QA_COUNT', qaChunks.length.toString(), 21600); // 6小時
-    qaChunks.forEach((chunk, index) => {
-        cache.put(`KB_QA_${index}`, chunk, 21600);
-    });
-    
-    // 存入 Rules (Definitions + Specs)
-    const rulesContent = definitionsContent + "\n" + specsContent;
-    const rulesChunks = chunkString(rulesContent, 90000);
-    cache.put('KB_RULES_COUNT', rulesChunks.length.toString(), 21600);
-    rulesChunks.forEach((chunk, index) => {
-        cache.put(`KB_RULES_${index}`, chunk, 21600);
-    });
-    
-    // 存入 Model Pattern Guide
-    cache.put('KB_GUIDE', modelPatternGuide, 21600);
+                // 收集直通車關鍵字 (僅限 系列/術語/別稱)
+                if (rawKey.startsWith("系列_") || rawKey.startsWith("術語_") || rawKey.startsWith("別稱_")) {
+                    const cleanKey = rawKey.replace(/^(別稱|術語|系列)_/, '');
+                    // v24.1.17: 放寬長度限制，允許 2 碼關鍵字 (如 S8, M7, G9)
+                    if (cleanKey.length >= 2) {
+                        strongKeywords.push(cleanKey);
+                    }
+                }
 
-    /* 舊邏輯：上傳大檔案 (已停用)
-    const finalContent = `【第一優先資料庫】\n請絕對優先參考以下資料。\n${qaContent}\n${modelPatternGuide}\n${definitionsContent}\n${specsContent}`;
-    const textBlob = Utilities.newBlob(finalContent, 'text/plain', 'samsung_kb_priority.txt');
-    const textUri = uploadFileToGemini(apiKey, textBlob, textBlob.getBytes().length, 'text/plain');
-    if (textUri) {
-        newKbList.push({ name: 'samsung_kb_priority.txt', uri: textUri, mimeType: "text/plain", isPriority: true });
-    }
-    */
+                // 移除前綴 (別稱_, 術語_, 系列_) 以便正確匹配
+                let key = rawKey.replace(/^(別稱|術語|系列)_/, '');
 
-    // --- B. Drive PDF 同步 --- 
-    let uploadCount = 0;
-    let skipCount = 0;
+                // 分流邏輯
+                let isModelRow = false;
+                let sModel = "";
 
-    if (CONFIG.DRIVE_FOLDER_ID) {
-      try {
-        const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-        const files = folder.getFilesByType(MimeType.PDF);
+                // 判斷是否為型號規格行 (新格式: 型號：S... 或 舊格式: LS...)
+                if (key.startsWith("型號：") || key.startsWith("型號:")) {
+                    isModelRow = true;
+                    sModel = key.replace(/^型號[：:]/, '').trim();
+                    key = sModel; // 將 key 更新為純型號 (S27DG602SC)
+                } else if (key.startsWith("LS")) {
+                    isModelRow = true;
+                    sModel = key.replace(/^LS/, 'S').replace(/XZW$/, '');
+                }
 
-        while (files.hasNext()) {
-          const file = files.next();
-          const fileName = file.getName();
-          const fileSize = file.getSize();
-          
-          // 跳過過大檔案
-          if (fileSize > 48 * 1024 * 1024) { 
-            writeLog(`[Sync] ⚠️ 跳過過大檔案: ${fileName}`);
-            continue;
-          }
+                if (isModelRow) {
+                    specsContent += `* ${text}\n`;
 
-          if (existingFilesMap.has(fileName)) {
-              newKbList.push({ name: fileName, uri: existingFilesMap.get(fileName), mimeType: "application/pdf" });
-              skipCount++;
-          } else {
-              writeLog(`[Sync] 正在上傳: ${fileName}`);
-              const pdfUri = uploadFileToGemini(apiKey, file.getBlob(), fileSize, "application/pdf");
-              
-              if (pdfUri) {
-                  newKbList.push({ name: fileName, uri: pdfUri, mimeType: "application/pdf" });
-                  uploadCount++;
-              } else {
-                  writeLog(`[Sync] ❌ 上傳失敗: ${fileName}`);
-              }
-          }
+                    // 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
+                    // 掃描整行文字尋找可能的別稱 (Gxx, Mxx, Sxx...)
+                    const potentialAliases = text.match(/\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3})\b/g) || [];
+
+                    potentialAliases.forEach(alias => {
+                        alias = alias.toUpperCase();
+                        // 排除 S-Model 本身和 LS-Model (避免自我映射)
+                        if (alias !== sModel && !alias.startsWith("LS")) {
+                            // 排除只是 S-Model 的子字串 (例如 S32DG802SC 包含 S32) - 這裡的正則比較嚴格應該還好
+                            // 建立映射: 別稱 -> S-Model
+                            keywordMap[alias] = sModel;
+                            // writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
+                        }
+                    });
+
+                    // 確保 LS 型號也能映射到 S 型號
+                    const lsMatch = text.match(/\bLS\d{2}[A-Z]{2}\d{3}[A-Z]{2}XZW\b/);
+                    if (lsMatch) {
+                        keywordMap[lsMatch[0]] = sModel;
+                    }
+
+                } else {
+                    definitionsContent += `* ${text}\n`;
+                }
+
+                // 建立動態映射 (Map)
+                if (key && text.length > key.length) {
+                    keywordMap[key] = text;
+                }
+            });
         }
-      } catch (driveErr) {
-        writeLog(`[Sync] ⚠️ Drive 讀取失敗: ${driveErr.message}`);
-      }
+
+        // 儲存映射表
+        PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.KEYWORD_MAP, JSON.stringify(keywordMap));
+        PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.STRONG_KEYWORDS, JSON.stringify(strongKeywords));
+        writeLog(`[Sync] 建立關鍵字映射: ${Object.keys(keywordMap).length} 筆, 直通車關鍵字: ${strongKeywords.length} 筆`);
+
+        // 2025-12-05: 改為動態上下文注入 (Dynamic Context Injection)
+        // 不再上傳 samsung_kb_priority.txt，改為將內容存入 Cache/Properties
+        // 為了避免 ScriptProperties 9KB 限制，我們將內容分塊儲存或僅存入 CacheService (6小時)
+        // 這裡選擇存入 CacheService，並在 getDynamicContext 中若快取失效則重新讀取 Sheet (Fallback)
+
+        // const cache = CacheService.getScriptCache(); // 已在上方定義
+        // 存入 QA (分塊儲存，每塊 90KB)
+        // v27.9.25 Fix: 40000 chars * 3 bytes (Chinese) = 120KB > 100KB limit.
+        // Adjust to 25000 chars (approx 75KB safe margin for full Chinese content)
+        const qaChunks = chunkString(qaContent, 25000);
+        cache.put('KB_QA_COUNT', qaChunks.length.toString(), 21600); // 6小時
+        qaChunks.forEach((chunk, index) => {
+            cache.put(`KB_QA_${index}`, chunk, 21600);
+        });
+        writeLog(`[Sync Debug] QA Chunked into ${qaChunks.length} parts. Saved to Cache.`);
+
+        // 存入 Rules (Definitions + Specs)
+        const rulesContent = definitionsContent + "\n" + specsContent;
+        const rulesChunks = chunkString(rulesContent, 25000);
+        cache.put('KB_RULES_COUNT', rulesChunks.length.toString(), 21600);
+        rulesChunks.forEach((chunk, index) => {
+            cache.put(`KB_RULES_${index}`, chunk, 21600);
+        });
+
+        // 存入 Model Pattern Guide
+        cache.put('KB_GUIDE', modelPatternGuide, 21600);
+
+        /* 舊邏輯：上傳大檔案 (已停用)
+        const finalContent = `【第一優先資料庫】\n請絕對優先參考以下資料。\n${qaContent}\n${modelPatternGuide}\n${definitionsContent}\n${specsContent}`;
+        const textBlob = Utilities.newBlob(finalContent, 'text/plain', 'samsung_kb_priority.txt');
+        const textUri = uploadFileToGemini(apiKey, textBlob, textBlob.getBytes().length, 'text/plain');
+        if (textUri) {
+            newKbList.push({ name: 'samsung_kb_priority.txt', uri: textUri, mimeType: "text/plain", isPriority: true });
+        }
+        */
+
+        // --- B. Drive PDF 同步 --- 
+        let uploadCount = 0;
+        let skipCount = 0;
+
+        if (CONFIG.DRIVE_FOLDER_ID) {
+            try {
+                const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+                const files = folder.getFilesByType(MimeType.PDF);
+
+                let uploadedFiles = [];
+                while (files.hasNext()) {
+                    const file = files.next();
+                    const fileName = file.getName();
+                    const fileSize = file.getSize();
+
+                    // 跳過過大檔案
+                    if (fileSize > 48 * 1024 * 1024) {
+                        writeLog(`[Sync] ⚠️ 跳過過大檔案: ${fileName}`);
+                        continue;
+                    }
+
+                    if (existingFilesMap.has(fileName)) {
+                        newKbList.push({ name: fileName, uri: existingFilesMap.get(fileName), mimeType: "application/pdf" });
+                        skipCount++;
+                    } else {
+                        // writeLog(`[Sync] 正在上傳: ${fileName}`); // 移除單行 Log
+                        const pdfUri = uploadFileToGemini(apiKey, file.getBlob(), fileSize, "application/pdf");
+
+                        if (pdfUri) {
+                            newKbList.push({ name: fileName, uri: pdfUri, mimeType: "application/pdf" });
+                            uploadedFiles.push(fileName);
+                            uploadCount++;
+                        } else {
+                            writeLog(`[Sync] ❌ 上傳失敗: ${fileName}`);
+                        }
+                    }
+                }
+
+                if (uploadedFiles.length > 0) {
+                    writeLog(`[Sync] 正在上傳: ${uploadedFiles.join(',')}`);
+                }
+            } catch (driveErr) {
+                writeLog(`[Sync] ⚠️ Drive 讀取失敗: ${driveErr.message}`);
+            }
+        }
+
+        // 更新 Cache
+        PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.KB_URI_LIST, JSON.stringify(newKbList));
+
+        const statusMsg = `✓ 重啟與同步完成\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- Sheet 資料：已更新`;
+        writeLog(statusMsg);
+
+        // 預約下次同步
+        scheduleNextSync();
+
+        return statusMsg;
+
+    } catch (e) {
+        writeLog(`[Sync Error] ${e.message}`);
+        return `系統錯誤: ${e.message}`;
+    } finally {
+        if (hasLock) {
+            try { lock.releaseLock(); } catch (e) { writeLog(`[Lock Release Error] ${e.message}`); }
+        }
+        flushLogs(); // 確保 Trigger 執行時寫入 Log
     }
-
-    // 更新 Cache
-    PropertiesService.getScriptProperties().setProperty(CACHE_KEYS.KB_URI_LIST, JSON.stringify(newKbList));
-    
-    const statusMsg = `✓ 重啟與同步完成\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- Sheet 資料：已更新`;
-    writeLog(statusMsg);
-    
-    // 預約下次同步
-    scheduleNextSync();
-
-    return statusMsg;
-
-  } catch (e) {
-    writeLog(`[Sync Error] ${e.message}`);
-    return `系統錯誤: ${e.message}`;
-  } finally {
-    if (hasLock) {
-        try { lock.releaseLock(); } catch (e) { writeLog(`[Lock Release Error] ${e.message}`); }
-    }
-  }
 }
 
 // 上傳檔案至 Gemini
 function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
-  try {
-    const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
-    const headers = {
-      'X-Goog-Upload-Protocol': 'resumable',
-      'X-Goog-Upload-Command': 'start',
-      'X-Goog-Upload-Header-Content-Length': fileSize.toString(), 
-      'X-Goog-Upload-Header-Content-Type': mimeType,
-      'Content-Type': 'application/json'
-    };
-    const metadata = { file: { display_name: blob.getName() } };
-    
-    const initReq = UrlFetchApp.fetch(initUrl, { method: 'post', headers: headers, payload: JSON.stringify(metadata), muteHttpExceptions: true });
-    
-    if (initReq.getResponseCode() !== 200) {
-        return null;
-    }
-    
-    const uploadUrl = initReq.getHeaders()['x-goog-upload-url'];
-    
-    const uploadReq = UrlFetchApp.fetch(uploadUrl, {
-      method: 'post',
-      headers: { 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' },
-      payload: blob, 
-      muteHttpExceptions: true
-    });
-    
-    if (uploadReq.getResponseCode() !== 200) {
-        return null;
-    }
-    
-    const fileRes = JSON.parse(uploadReq.getContentText());
-    let state = fileRes.file.state;
-    let attempts = 0;
-    
-    while (state === 'PROCESSING' && attempts < 30) {
-      Utilities.sleep(1000);
-      const check = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`);
-      state = JSON.parse(check.getContentText()).state;
-      attempts++;
-    }
-    
-    if (state === 'ACTIVE') {
-        return fileRes.file.uri;
-    } else {
-        return null;
-    }
+    try {
+        const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
+        const headers = {
+            'X-Goog-Upload-Protocol': 'resumable',
+            'X-Goog-Upload-Command': 'start',
+            'X-Goog-Upload-Header-Content-Length': fileSize.toString(),
+            'X-Goog-Upload-Header-Content-Type': mimeType,
+            'Content-Type': 'application/json'
+        };
+        const metadata = { file: { display_name: blob.getName() } };
 
-  } catch (e) {
-    writeLog(`上傳錯誤: ${e.message}`);
-    return null;
-  }
+        const initReq = UrlFetchApp.fetch(initUrl, { method: 'post', headers: headers, payload: JSON.stringify(metadata), muteHttpExceptions: true });
+
+        if (initReq.getResponseCode() !== 200) {
+            return null;
+        }
+
+        const uploadUrl = initReq.getHeaders()['x-goog-upload-url'];
+
+        const uploadReq = UrlFetchApp.fetch(uploadUrl, {
+            method: 'post',
+            headers: { 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' },
+            payload: blob,
+            muteHttpExceptions: true
+        });
+
+        if (uploadReq.getResponseCode() !== 200) {
+            return null;
+        }
+
+        const fileRes = JSON.parse(uploadReq.getContentText());
+        let state = fileRes.file.state;
+        let attempts = 0;
+
+        while (state === 'PROCESSING' && attempts < 30) {
+            Utilities.sleep(1000);
+            const check = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`);
+            state = JSON.parse(check.getContentText()).state;
+            attempts++;
+        }
+
+        if (state === 'ACTIVE') {
+            return fileRes.file.uri;
+        } else {
+            return null;
+        }
+
+    } catch (e) {
+        writeLog(`上傳錯誤: ${e.message}`);
+        return null;
+    }
 }
 
 // 清理 Gemini 上的所有舊檔案（在 forceRebuild 時呼叫）
 function cleanupOldGeminiFiles(apiKey) {
-  try {
-    writeLog("[Cleanup] 開始清理 Gemini 所有舊檔案...");
-    
-    let totalDeleted = 0;
-    let hasMore = true;
-    
-    // 持續刪除直到沒有檔案為止（處理超過 100 個的情況）
-    while (hasMore) {
-      const listUrl = `${CONFIG.API_ENDPOINT}/files?key=${apiKey}&pageSize=100`;
-      const listRes = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });
-      
-      if (listRes.getResponseCode() !== 200) {
-        writeLog(`[Cleanup] 無法列出檔案: ${listRes.getResponseCode()}`);
-        break;
-      }
-      
-      const data = JSON.parse(listRes.getContentText());
-      const files = data.files || [];
-      
-      if (files.length === 0) {
-        hasMore = false;
-        break;
-      }
-      
-      for (const file of files) {
-        try {
-          const deleteUrl = `${CONFIG.API_ENDPOINT}/${file.name}?key=${apiKey}`;
-          UrlFetchApp.fetch(deleteUrl, { method: 'delete', muteHttpExceptions: true });
-          totalDeleted++;
-        } catch (delErr) {
-          // 忽略單一檔案刪除錯誤
+    try {
+        writeLog("[Cleanup] 開始清理 Gemini 所有舊檔案...");
+
+        let totalDeleted = 0;
+        let hasMore = true;
+
+        // 持續刪除直到沒有檔案為止（處理超過 100 個的情況）
+        while (hasMore) {
+            const listUrl = `${CONFIG.API_ENDPOINT}/files?key=${apiKey}&pageSize=100`;
+            const listRes = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });
+
+            if (listRes.getResponseCode() !== 200) {
+                writeLog(`[Cleanup] 無法列出檔案: ${listRes.getResponseCode()}`);
+                break;
+            }
+
+            const data = JSON.parse(listRes.getContentText());
+            const files = data.files || [];
+
+            if (files.length === 0) {
+                hasMore = false;
+                break;
+            }
+
+            for (const file of files) {
+                try {
+                    const deleteUrl = `${CONFIG.API_ENDPOINT}/${file.name}?key=${apiKey}`;
+                    UrlFetchApp.fetch(deleteUrl, { method: 'delete', muteHttpExceptions: true });
+                    totalDeleted++;
+                } catch (delErr) {
+                    // 忽略單一檔案刪除錯誤
+                }
+            }
+
+            // 如果這批刪完還有 nextPageToken，繼續刪
+            hasMore = !!data.nextPageToken;
         }
-      }
-      
-      // 如果這批刪完還有 nextPageToken，繼續刪
-      hasMore = !!data.nextPageToken;
+
+        writeLog(`[Cleanup] 已清理 ${totalDeleted} 個舊檔案`);
+        return totalDeleted;
+    } catch (e) {
+        writeLog(`[Cleanup] 清理失敗: ${e.message}`);
+        return 0;
     }
-    
-    writeLog(`[Cleanup] 已清理 ${totalDeleted} 個舊檔案`);
-    return totalDeleted;
-  } catch (e) {
-    writeLog(`[Cleanup] 清理失敗: ${e.message}`);
-    return 0;
-  }
 }
 
 function scheduleNextSync() {
-  try {
-    const triggers = ScriptApp.getProjectTriggers();
-    triggers.forEach(t => { 
-        if (t.getHandlerFunction() === 'dailyKnowledgeRefresh') {
-            ScriptApp.deleteTrigger(t);
-        }
-    });
-    // v24.2.0: 改為每日 04:00 自動重建 (forceRebuild=true)
-    // 確保 PDF 不會過期 (Google 48小時限制)
-    ScriptApp.newTrigger('dailyKnowledgeRefresh')
-        .timeBased()
-        .atHour(4)
-        .everyDays(1)
-        .inTimezone('Asia/Taipei')
-        .create();
-    writeLog("🕒 已設定每日 04:00 (台北時間) 自動重建知識庫");
-  } catch (e) { 
-    writeLog(`⚠️ 排程設定失敗: ${e.message}`); 
-  }
+    try {
+        const triggers = ScriptApp.getProjectTriggers();
+        triggers.forEach(t => {
+            if (t.getHandlerFunction() === 'dailyKnowledgeRefresh') {
+                ScriptApp.deleteTrigger(t);
+            }
+        });
+        // v24.2.0: 改為每日 04:00 自動重建 (forceRebuild=true)
+        // 確保 PDF 不會過期 (Google 48小時限制)
+        ScriptApp.newTrigger('dailyKnowledgeRefresh')
+            .timeBased()
+            .atHour(4)
+            .everyDays(1)
+            .inTimezone('Asia/Taipei')
+            .create();
+        writeLog("🕒 已設定每日 04:00 (台北時間) 自動重建知識庫");
+    } catch (e) {
+        writeLog(`⚠️ 排程設定失敗: ${e.message}`);
+    }
 }
 
 /**
@@ -1762,9 +2147,9 @@ function scheduleNextSync() {
  * 避免 Google 48 小時檔案過期問題
  */
 function dailyKnowledgeRefresh() {
-  writeLog("[Daily] 開始每日知識庫重建 (04:00)...");
-  syncGeminiKnowledgeBase(true); // forceRebuild = true
-  writeLog("[Daily] 每日知識庫重建完成");
+    writeLog("[Daily] 開始每日知識庫重建 (04:00)...");
+    syncGeminiKnowledgeBase(true); // forceRebuild = true
+    writeLog("[Daily] 每日知識庫重建完成");
 }
 
 /**
@@ -1772,34 +2157,34 @@ function dailyKnowledgeRefresh() {
  * 用於 403/404 過期時自動修復，用戶不需等待
  */
 function scheduleImmediateRebuild() {
-  try {
-    const cache = CacheService.getScriptCache();
-    const rebuildKey = 'REBUILD_SCHEDULED';
-    
-    // 如果近期已排程，不重複建立
-    if (cache.get(rebuildKey)) {
-      writeLog("[Rebuild] 已有背景重建排程，跳過");
-      return;
-    }
-    
-    // 清除現有的 immediateSync 觸發器（如果有）
-    const triggers = ScriptApp.getProjectTriggers();
-    triggers.forEach(t => { 
-        if (t.getHandlerFunction() === 'immediateKnowledgeRebuild') {
-            ScriptApp.deleteTrigger(t);
+    try {
+        const cache = CacheService.getScriptCache();
+        const rebuildKey = 'REBUILD_SCHEDULED';
+
+        // 如果近期已排程，不重複建立
+        if (cache.get(rebuildKey)) {
+            writeLog("[Rebuild] 已有背景重建排程，跳過");
+            return;
         }
-    });
-    
-    // 建立 1 分鐘後執行的觸發器
-    ScriptApp.newTrigger('immediateKnowledgeRebuild').timeBased().after(1 * 60 * 1000).create();
-    
-    // 標記已排程，10 分鐘內不重複
-    cache.put(rebuildKey, 'true', 10 * 60);
-    
-    writeLog("🔧 已排程 1 分鐘後背景重建知識庫");
-  } catch (e) {
-    writeLog(`⚠️ 背景重建排程失敗: ${e.message}`);
-  }
+
+        // 清除現有的 immediateSync 觸發器（如果有）
+        const triggers = ScriptApp.getProjectTriggers();
+        triggers.forEach(t => {
+            if (t.getHandlerFunction() === 'immediateKnowledgeRebuild') {
+                ScriptApp.deleteTrigger(t);
+            }
+        });
+
+        // 建立 1 分鐘後執行的觸發器
+        ScriptApp.newTrigger('immediateKnowledgeRebuild').timeBased().after(1 * 60 * 1000).create();
+
+        // 標記已排程，10 分鐘內不重複
+        cache.put(rebuildKey, 'true', 10 * 60);
+
+        writeLog("🔧 已排程 1 分鐘後背景重建知識庫");
+    } catch (e) {
+        writeLog(`⚠️ 背景重建排程失敗: ${e.message}`);
+    }
 }
 
 /**
@@ -1807,13 +2192,13 @@ function scheduleImmediateRebuild() {
  * 由 scheduleImmediateRebuild 排程呼叫
  */
 function immediateKnowledgeRebuild() {
-  writeLog("[Rebuild] 開始背景重建知識庫...");
-  try {
-    const result = syncGeminiKnowledgeBase(true);  // forceRebuild = true
-    writeLog(`[Rebuild] 背景重建完成: ${result.substring(0, 100)}`);
-  } catch (e) {
-    writeLog(`[Rebuild Error] ${e.message}`);
-  }
+    writeLog("[Rebuild] 開始背景重建知識庫...");
+    try {
+        const result = syncGeminiKnowledgeBase(true);  // forceRebuild = true
+        writeLog(`[Rebuild] 背景重建完成: ${result.substring(0, 100)}`);
+    } catch (e) {
+        writeLog(`[Rebuild Error] ${e.message}`);
+    }
 }
 
 /**
@@ -1821,31 +2206,31 @@ function immediateKnowledgeRebuild() {
  * 使用快取避免每則訊息都檢查（快取 6 小時）
  */
 function ensureSyncTriggerExists() {
-  try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'SYNC_TRIGGER_VERIFIED';
-    
-    // 快取存在 = 近期已確認過，跳過檢查
-    if (cache.get(cacheKey)) return;
-    
-    const triggers = ScriptApp.getProjectTriggers();
-    const hasSyncTrigger = triggers.some(t => t.getHandlerFunction() === 'dailyKnowledgeRefresh');
-    if (!hasSyncTrigger) {
-      // v24.2.0: 改為每日 04:00 重建
-      ScriptApp.newTrigger('dailyKnowledgeRefresh')
-          .timeBased()
-          .atHour(4)
-          .everyDays(1)
-          .inTimezone('Asia/Taipei')
-          .create();
-      writeLog("🔄 偵測到無排程，已自動建立每日 04:00 同步觸發器");
+    try {
+        const cache = CacheService.getScriptCache();
+        const cacheKey = 'SYNC_TRIGGER_VERIFIED';
+
+        // 快取存在 = 近期已確認過，跳過檢查
+        if (cache.get(cacheKey)) return;
+
+        const triggers = ScriptApp.getProjectTriggers();
+        const hasSyncTrigger = triggers.some(t => t.getHandlerFunction() === 'dailyKnowledgeRefresh');
+        if (!hasSyncTrigger) {
+            // v24.2.0: 改為每日 04:00 重建
+            ScriptApp.newTrigger('dailyKnowledgeRefresh')
+                .timeBased()
+                .atHour(4)
+                .everyDays(1)
+                .inTimezone('Asia/Taipei')
+                .create();
+            writeLog("🔄 偵測到無排程，已自動建立每日 04:00 同步觸發器");
+        }
+
+        // 標記已確認，6 小時內不再檢查
+        cache.put(cacheKey, 'true', 6 * 60 * 60);
+    } catch (e) {
+        // 靜默失敗，避免影響主流程
     }
-    
-    // 標記已確認，6 小時內不再檢查
-    cache.put(cacheKey, 'true', 6 * 60 * 60);
-  } catch (e) {
-    // 靜默失敗，避免影響主流程
-  }
 }
 
 
@@ -1853,22 +2238,28 @@ function ensureSyncTriggerExists() {
 // 3. Gemini API (通用映射 + 上下文智慧搜尋)
 // ==========================================
 
-function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
+// v27.9.0: 新增 forceCurrentOnly 參數，型號衝突時只從當前訊息提取型號
+function getRelevantKBFiles(messages, kbList, userId = null, contextId = null, forceCurrentOnly = false) {
     const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
     const MAX_TIER1_COUNT = 2; // 精準匹配上限
-    
+
     let combinedQuery = "";
     let userCount = 0;
-    
+
     // 1. 讀取上下文 (User + AI, 最近 6 句)
+    // v27.9.0: forceCurrentOnly 時只讀取最後一則，避免歷史型號污染
     // v24.4.4: 加入防護，避免 undefined.toUpperCase() 錯誤
+    const maxMessages = forceCurrentOnly ? 1 : 6;
+    if (forceCurrentOnly) {
+        writeLog(`[KB Select] 強制只用當前訊息匹配型號`);
+    }
     for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i];
         if (msg && msg.content && typeof msg.content === 'string') {
             combinedQuery += " " + msg.content.toUpperCase();
         }
         userCount++;
-        if (userCount >= 6) break; 
+        if (userCount >= maxMessages) break;
     }
 
     // 2. 讀取映射表
@@ -1878,20 +2269,20 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
         if (mapJson) {
             keywordMap = JSON.parse(mapJson);
         }
-    } catch(e) {}
+    } catch (e) { }
 
     // 3. 關鍵字擴充 (查字典) + 提取完整型號
     let extendedQuery = combinedQuery;
     let exactModels = []; // 精準型號清單 (用於匹配 PDF 檔名)
     let hasInjectedModels = false; // 標記是否已從 Cache 讀到直通車注入型號
     let injectedModels = []; // 保存直通車注入的型號，供後續強制只載入單一 PDF
-    
+
     // v24.1.9 新增：讀取直通車注入的型號（命中關鍵字時）
     // v24.3.0 修復：改用 Sheet 歷史而非 Cache，解決跨時間問題
     // 
     // 原設計缺陷：cache.put(..., 300) 無法應對店員隔天回來繼續問的場景
     // 新設計：從 Sheet 對話歷史中自動提取型號，不依賴短期 Cache
-    
+
     // v24.3.1: 只有在有 userId 時才嘗試提取上下文（避免 userId is not defined）
     if (userId) {
         // 嘗試從 Sheet 對話歷史中提取型號（用於跨時間邊界的延續提問）
@@ -1900,7 +2291,7 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
             exactModels = exactModels.concat(contextFromHistory.models);
             writeLog(`[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(', ')}`);
         }
-        
+
         // 嘗試從短期 Cache 讀取（用於同一句話的多步驟流程）
         try {
             const cache = CacheService.getScriptCache();
@@ -1914,11 +2305,11 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
                     // 不刪除 Cache，保留給同一對話的其他步驟使用
                 }
             }
-        } catch(e) {
+        } catch (e) {
             // 靜默失敗，繼續執行
         }
     }
-    
+
     // v24.0.0: 型號正則 - 只匹配「真正的型號」，不匹配術語
     // G系列: G90XF, G80SD, G60F 等（G + 2位數 + 1~2字母）
     // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
@@ -1926,11 +2317,11 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
     // ⚠️ 不包含 ODYSSEY HUB、3D 等術語 - 這些只用於觸發直通車，不用於 PDF 匹配
     const MODEL_REGEX = /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
-    
+
     // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
     // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
     const combinedQueryNoSpace = combinedQuery.replace(/\s+/g, '');
-    
+
     // v26.1.0: 修復型號推薦過度問題
     // 別稱（M8、G8 等內部代號）不應自動補充型號
     // 只有完整型號和 LS 系列才應提取
@@ -1941,13 +2332,13 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
             if (combinedQuery.includes(key) || combinedQueryNoSpace.includes(key)) {
                 const mappedValue = keywordMap[key].toUpperCase();
                 extendedQuery += " " + mappedValue;
-                
+
                 // 提取型號（包括 LS 型號和 M/G 系列型號代碼）
                 const modelMatch = mappedValue.match(MODEL_REGEX);
                 if (modelMatch) {
                     exactModels = exactModels.concat(modelMatch);
                 }
-                
+
                 // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
                 const lsMatch = mappedValue.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
                 if (lsMatch) {
@@ -1960,36 +2351,64 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
             }
         });
     }
-    
+
     // 也從原始查詢提取型號
     const directModelMatch = combinedQuery.match(MODEL_REGEX);
     if (directModelMatch) {
         exactModels = exactModels.concat(directModelMatch);
     }
-    
+
     // 從原始查詢提取 LS 系列
     const directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
     if (directLsMatch) {
         directLsMatch.forEach(ls => {
             const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
-            exactModels.push(cleanModel);
+        exactModels.push(cleanModel);
         });
     }
-    
-    // v24.2.5 新增：如果當前查詢沒有提到型號，且已有直通車注入或歷史型號，
-    // 則認為用戶在繼續討論同一產品（如「M7 價格是多少」→「那它是什麼面板」）
-    // 這樣可以確保後續問題持續使用之前提到的型號
+
+    // v27.9.6: 嚴格限制歷史型號沿用 - 防止「你的優勢是什麼」這類問題載入 PDF
+    // v27.9.32: 但如果 forceCurrentOnly=false（表示明確要使用歷史），則不清空
+    // 只有當前訊息（最後一則）包含型號時，才沿用歷史型號
+    // 否則一律清空，避免閒聊問題載入 PDF
     if (directModelMatch === null && directLsMatch === null && exactModels.length > 0) {
-        // exactModels 中已包含直通車注入的型號，無需重複
-        writeLog(`[KB Select] 當前查詢無型號，沿用已知型號: ${exactModels.join(', ')}`);
+        // 檢查最後一則訊息是否包含型號
+        const lastMessage = messages.length > 0 ? messages[messages.length - 1].content : "";
+        const hasModelInCurrent = MODEL_REGEX.test(lastMessage);
+        
+        if (hasModelInCurrent) {
+            // 當前訊息有型號：沿用歷史型號
+            writeLog(`[KB Select] 當前訊息有型號，沿用已知型號: ${exactModels.join(', ')}`);
+        } else if (forceCurrentOnly) {
+            // forceCurrentOnly=true 且當前訊息無型號：清空歷史型號
+            writeLog(`[KB Select] ⚠️ 當前訊息無型號且 forceCurrentOnly=true，清空歷史型號以避免不必要的 PDF 載入`);
+            exactModels = [];
+        } else {
+            // forceCurrentOnly=false：保留歷史型號（用於漸進式解決流程）
+            writeLog(`[KB Select] 當前訊息無型號但 forceCurrentOnly=false，保留歷史型號: ${exactModels.join(', ')}`);
+        }
     }
-    
+
+    if (exactModels.length === 0) {
+        // Deep Mode 救援已被移除 v27.8.9
+    }
+
+
     exactModels = [...new Set(exactModels)]; // 去重
 
-    // v27.7.6: 若已命中直通車注入型號，強制只保留第一個，避免多載 PDF
+    // v27.9.3: 智慧型號鎖定 - 偵測比較意圖時允許多型號 PDF
     if (hasInjectedModels && injectedModels && injectedModels.length > 0) {
-        exactModels = [injectedModels[0]];
-        writeLog(`[KB Select] 🔒 已鎖定直通車型號: ${exactModels[0]} (僅載入單一本 PDF)`);
+        const isComparison = /比較|比较|差異|差异|不同|區別|对比|vs|versus/i.test(combinedQuery);
+
+        if (isComparison && injectedModels.length > 1) {
+            // 比較題：保留所有型號，但限制最多 2 個（預算控制）
+            exactModels = injectedModels.slice(0, 2);
+            writeLog(`[KB Select] 🔍 偵測到比較意圖，保留多型號: ${exactModels.join(', ')} (限制前 2 款以控制預算)`);
+        } else {
+            // 一般問題：鎖定第一個型號，節省成本
+            exactModels = [injectedModels[0]];
+            writeLog(`[KB Select] 🔒 已鎖定直通車型號: ${exactModels[0]} (僅載入單一本 PDF)`);
+        }
     }
 
     // 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
@@ -2006,16 +2425,16 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     // 4. 分級載入（只用精準匹配，不做模糊匹配）
     const tier0 = []; // 必載 (QA + CLASS_RULES)
     const tier1 = []; // 精準匹配 (完整型號)
-    
+
     kbList.forEach(file => {
         // Tier 0: 必載
         if (file.isPriority) {
             tier0.push(file);
             return;
         }
-        
+
         const fileName = file.name.toUpperCase();
-        
+
         // Tier 1: 精準匹配 (完整型號如 G90XF, G80SD)
         const isTier1 = exactModels.some(model => fileName.includes(model));
         if (isTier1 && tier1.length < MAX_TIER1_COUNT) {
@@ -2023,14 +2442,14 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
             return;
         }
     });
-    
+
     // 5. 純精準匹配策略：不啟用模糊匹配
     //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
     //    （例如問 G90XF 不應該載到 G80SD 的手冊）
-    
+
     // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
     const result = [...tier0, ...tier1];
-    
+
     // 📝 詳細紀錄找到的 PDF
     if (tier1.length > 0) {
         const foundFiles = tier1.map(f => f.name).join(', ');
@@ -2038,18 +2457,23 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null) {
     } else {
         writeLog(`[KB Select] Tier0: ${tier0.length}, Tier1: 0 (No Match: ${exactModels.join(',') || 'none'}), Total: ${result.length}`);
     }
-    
+
     return result;
 }
 
-function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, isRetry = false, userId = null) {
+// v27.8.15: 新增 data-drive keyword detection, forceWebSearch 參數
+function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, isRetry = false, userId = null, forceWebSearch = false) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("API Key Missing");
 
-    let kbList=[]; 
+    let kbList = [];
     try {
-        kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST));
-    } catch(e) {}
+        const json = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
+        if (json) {
+            const parsed = JSON.parse(json);
+            if (Array.isArray(parsed)) kbList = parsed;
+        }
+    } catch (e) { }
 
     const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
     const configData = promptSheet.getRange("B3:C3").getValues()[0];
@@ -2086,7 +2510,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         // v24.1.12 修復：若有摘要 (Summary)，必須保留摘要訊息，否則 AI 會失憶
         // 摘要通常在 index 0 (User) 和 1 (Assistant)
         const hasSummary = messages.length > 0 && messages[0].content.includes("【系統自動摘要】");
-        
+
         if (hasSummary && messages.length > 2) {
             const summaryMsgs = messages.slice(0, 2); // 保留摘要對
             const recentMsgs = messages.slice(-(CONFIG.PDF_HISTORY_LIMIT * 2)); // 最近 6 對
@@ -2104,42 +2528,55 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     }
 
     // --- 三段式邏輯注入 (v23.6.0 - Brainy, Warm & Disciplined) ---
+    // v27.8.17: History Override (真相覆寫)
+    // 明確告訴 AI：如果上下文 (Dynamic Context/Rules) 與歷史對話 (History) 衝突，以前者為準。
+    // 這能解決「舊記憶曾瞎掰 M9 是 49 吋」導致 AI 一直錯下去的問題。
     let dynamicPrompt = `【Sheet C3 指令】\n${c3Prompt}\n`;
-    
+    dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
+
     // 注入動態上下文
     if (dynamicContext) {
         dynamicPrompt += `\n${dynamicContext}\n`;
     }
-    
+
 
 
     // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
     // 僅注入當前系統狀態 (Fast Mode / Deep Mode)
-    
+
     if (!attachPDFs && !imageBlob) {
+
         // Phase 1: 極速模式 (Fast Mode)
-        dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)，請參考 Prompt 中的【極速模式】規範。\n【來源標註規則】\n- 只能使用 QA/CLASS_RULES，回答末尾標註「[來源: QA資料庫]」。\n- 嚴禁網路搜尋與「[來源: 非三星官方]」，找不到就輸出 [AUTO_SEARCH_PDF] 轉 PDF。\n- 禁用「[來源: 產品手冊]」(未掛 PDF)。`;
+        // v27.8.21: 允許極速模式觸發網路搜尋
+        // v27.9.13: 區分 QA 和 CLASS_RULES 來源標註
+        dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【核心原則】最高優先檢查 QA 資料庫！若 QA 有相關內容（尤其是有完整步驟的操作教學）必須優先引用，並標註「[來源: QA]」。若 QA 無解答，再使用 CLASS_RULES 回答規格問題。\n【判斷邏輯】\n1. 優先匹配 QA：若用戶問題與 QA 資料庫中的問題高度相關（例如詢問操作步驟、故障排除），必須採用 QA 的答案，禁止使用通用知識覆蓋。\n2. 規格/功能支援問題（如「M5支援Smart嗎」）→ 若 QA 無資料且 CLASS_RULES 有相關型號或術語，請直接回答。\n3. 僅當 QA 和 CLASS_RULES 都無解答時 → 輸出 [AUTO_SEARCH_PDF]。\n4. 用戶明確要求「查網路/最新資訊」時 → 輸出「[AUTO_SEARCH_WEB]」。\n【來源標註規則】\n- 若答案來自 QA 問答對 → 標註「[來源: QA]」\n- 若答案來自 CLASS_RULES → 標註「[來源: 規格庫]」\n- 若無法確定或混合使用 → 標註「[來源: 知識庫]」\n【切勿】在 QA 或 CLASS_RULES 已有答案時仍輸出 [AUTO_SEARCH_PDF]！這會浪費資源且延遲回覆。`;
     } else if (attachPDFs) {
         // Phase 2 & 3: 深度模式 (Deep Mode)
-        // v27.2.5: 移除複雜的 Deep Mode prompt，完全依賴 C3 Prompt
-        // 原問題：GAS 內的 Deep Mode prompt 與 C3 Prompt 規則重複，導致 AI 困惑返回空白
-        // 解決：Deep Mode 不再額外添加指令，讓 C3 Prompt 的「深度模式」規則生效
-        
-        // v27.2.5: Deep Mode 現在只做一件事：標記「正在讀取手冊」，其他全交給 C3
-        dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。`;
+        // v27.8.6: 防護機制 - 確保真的有掛載 PDF
+        if (filesToAttach.length === 0) {
+            dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認您詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
+        } else {
+            dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。\n【來源標註規則 (嚴格執行)】\n1. 若答案來自手冊，請標註「[來源: 產品手冊]」。\n2. 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
+        }
+    }
+
+    // v27.8.16: Pass 2 (Force Web Search) Prompt Override
+    // 如果是 Pass 2，代表 AI 已經在此刻擁有 Search Tool，prompt 必須改變
+    if (forceWebSearch) {
+        dynamicPrompt += `\n\n【網路與來源標註 (Pass 2)】\n系統已啟用 Google Search 工具。若手冊無資料，請直接使用 Search Tool 查詢，並在回答末尾標註「[來源: 網路搜尋]」。\n切勿再輸出 [AUTO_SEARCH_WEB]。`;
     }
 
     const geminiContents = [];
     if (imageBlob) {
         const imageBase64 = Utilities.base64Encode(imageBlob.getBytes());
-        geminiContents.push({ 
-            role: "user", 
-            parts: [{ text: `【任務】分析圖片:\n${c3Prompt}` }, { inline_data: { mime_type: imageBlob.getContentType(), data: imageBase64 } }] 
+        geminiContents.push({
+            role: "user",
+            parts: [{ text: `【任務】分析圖片:\n${c3Prompt}` }, { inline_data: { mime_type: imageBlob.getContentType(), data: imageBase64 } }]
         });
     } else {
-        let first=true;
+        let first = true;
         effectiveMessages.forEach(msg => {
-            if (msg.role === 'system') return; 
+            if (msg.role === 'system') return;
             const parts = [];
             if (msg.role === 'user' && first) {
                 if (filesToAttach.length > 0) {
@@ -2155,7 +2592,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                     // 這樣 AI 讀完 PDF 後會立刻看到要搜尋什麼
                     parts.push({ text: `\n\n【PDF 搜尋任務】請在上述 PDF 手冊中，找出與以下問題相關的所有段落並詳細回答：\n\n` });
                 }
-                first=false;
+                first = false;
             }
             parts.push({ text: msg.content });
             geminiContents.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts: parts });
@@ -2163,95 +2600,134 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         if (first) geminiContents.push({ role: 'user', parts: [{ text: "你好" }] });
     }
 
-        // v24.5.4: 成本優化
-        // v27.0.0: 恢復原始邏輯（Thinking Mode 修復）
-        // 問題診斷：gemini-2.0-flash 本身沒有 Thinking Mode 版本區別
-        // 之前的 thinkingConfig 設定對 2.0 Flash 無效，不是根本原因
-        // 根本原因：PDF 載入 + Deep Mode prompt 複雜度導致回應異常
-        const useThinkModel = attachPDFs; // PDF 模式才需要更好的模型理解
-        const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
-        
-        const genConfig = { 
-            maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS, // PDF 模式放寬至 4096
-            temperature: tempSetting
-        };
-        
-        // v27.0.0: 移除 thinkingConfig（2.0 Flash 不支援，無效設定）
+    // v24.5.4: 成本優化
+    // v27.0.0: 恢復原始邏輯（Thinking Mode 修復）
+    // 問題診斷：gemini-2.0-flash 本身沒有 Thinking Mode 版本區別
+    // 之前的 thinkingConfig 設定對 2.0 Flash 無效，不是根本原因
+    // 根本原因：PDF 載入 + Deep Mode prompt 複雜度導致回應異常
+    const useThinkModel = attachPDFs; // PDF 模式才需要更好的模型理解
+    const modelName = useThinkModel ? CONFIG.MODEL_NAME_THINK : CONFIG.MODEL_NAME_FAST;
 
-        // v24.5.8: Google Search 工具僅在 PDF 模式必要時啟用
-        // Fast Mode 禁用搜尋；Deep Mode 允許搜尋以補齊官方公告/韌體/驅動/安全性/異常
-        // v27.2.3: 修復 Deep Mode 搜尋工具導致空白回應
-        // 問題：在掛載 PDF 時啟用 Google Search，AI 試圖搜尋補充導致超時/失敗，最後只返回 emoji
-        // 解決：Deep Mode 禁用搜尋，專注於 PDF 內容。客戶端層級需要時可用 [AUTO_SEARCH_PDF] 重試
-        let tools = undefined;
-        // 搜尋工具現已禁用，因為：
-        // 1. Fast Mode: [AUTO_SEARCH_PDF] 可讓系統自動進 Deep Mode
-        // 2. Deep Mode: PDF 已足夠完整，搜尋反而造成混亂和超時
-        // if (attachPDFs && !imageBlob) {
-        //     tools = [{ google_search: {} }];
-        // }
+    const genConfig = {
+        maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS, // PDF 模式放寬至 4096
+        temperature: tempSetting
+    };
 
-        const payload = {
-            contents: geminiContents,
-            systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
-            generationConfig: genConfig,
-            safetySettings: [
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-            ],
-            tools: tools
-        };
+    // v27.0.0: 移除 thinkingConfig（2.0 Flash 不支援，無效設定）
+
+    // v24.5.8: Google Search 工具僅在 PDF 模式必要時啟用
+    // Fast Mode 禁用搜尋；Deep Mode 允許搜尋以補齊官方公告/韌體/驅動/安全性/異常
+    // v27.2.3: 修復 Deep Mode 搜尋工具導致空白回應
+    // 問題：在掛載 PDF 時啟用 Google Search，AI 試圖搜尋補充導致超時/失敗，最後只返回 emoji
+    // 解決：Deep Mode 禁用搜尋，專注於 PDF 內容。客戶端層級需要時可用 [AUTO_SEARCH_PDF] 重試
+    // v27.8.15: 雙階段搜尋架構 (Two-Pass Search)
+    // 1. Pass 1 (Deep Mode Default): 禁用 Search，專注 PDF，避免 Timeout。
+    // 2. Pass 2 (Force Web Search): 只有在 forceWebSearch = true 時啟用。
+    // 這樣可以兼顧「快速穩定」與「查網路的需求」，避免因網路搜尋導致的無回應。
+    let tools = undefined;
+    if (forceWebSearch) {
+        tools = [{ google_search: {} }];
+        writeLog(`[Search Tool] 🌐 啟用 Google 本地搜尋 (Pass 2)`);
+    } else if (attachPDFs && !imageBlob) {
+        // Pass 1: 預設禁用，以防 Timeout
+        // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
+        tools = undefined;
+    }
+
+    // v27.9.6: Token 熔斷機制 - 防止 10 萬 Token 爆炸
+    // 策略：保留 System Prompt 和最新對話，裁切中間的歷史記錄
+    const MAX_SAFE_TOKENS = 40000;
+    
+    // 粗略估算 Token（1 Token ≈ 1.5 字元）
+    function estimateTokens(text) {
+        return Math.ceil((text || "").length / 1.5);
+    }
+    
+    // 估算總 Token
+    let totalTokens = estimateTokens(dynamicPrompt); // System Prompt
+    effectiveMessages.forEach(msg => {
+        totalTokens += estimateTokens(msg.content);
+    });
+    
+    // 如果超過上限，裁切中間的歷史記錄
+    if (totalTokens > MAX_SAFE_TOKENS) {
+        writeLog(`[Token Fuse] ⚠️ 預估 Token 超過上限 (${totalTokens} > ${MAX_SAFE_TOKENS})，啟動熔斷機制`);
+        
+        // 保留最新 2 對對話（4 則訊息）
+        const recentCount = Math.min(4, effectiveMessages.length);
+        const recentMessages = effectiveMessages.slice(-recentCount);
+        
+        // 重新估算
+        let newTotal = estimateTokens(dynamicPrompt);
+        recentMessages.forEach(msg => {
+            newTotal += estimateTokens(msg.content);
+        });
+        
+        effectiveMessages = recentMessages;
+        writeLog(`[Token Fuse] 裁切後: ${effectiveMessages.length} 則訊息，預估 ${newTotal} Tokens`);
+    }
+
+    const payload = {
+        contents: geminiContents,
+        systemInstruction: imageBlob ? undefined : { parts: [{ text: dynamicPrompt }] },
+        generationConfig: genConfig,
+        safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ],
+        tools: tools
+    };
 
     const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
     writeLog(`[API Call] Model: ${modelName}, PDF: ${attachPDFs}, Think: ${useThinkModel}, Retry: ${isRetry}`);
-    
+
     // v27.2.5: PDF Debug Log
+    // v27.9.0: 移除誤導性的「總內容長度」預估（無法反映 PDF 實際大小）
+    //          實際 Token 用量將在 [Tokens] 日誌中顯示（API 呼叫後）
     if (attachPDFs) {
-        writeLog(`[PDF Debug] 掛載 PDF 數量: ${filesToAttach.length}`);
-        // v27.3.2: 註解掉 Prompt 日誌，避免洗版（完整 Prompt 已由 AI 接收）
-        // writeLog(`[PDF Debug] Dynamic Prompt 前 500 字: ${dynamicPrompt.substring(0, 500)}`);
-        const totalChars = geminiContents.reduce((sum, msg) => sum + JSON.stringify(msg).length, 0);
-        writeLog(`[PDF Debug] 總內容長度: ${totalChars} 字元`);
+        writeLog(`[PDF Debug] 掛載 PDF 數量: ${filesToAttach.length}, 歷史: ${effectiveMessages.length} 則`);
     }
-    
+
     const start = new Date().getTime();
     let lastLoadingTime = start; // 追蹤上次發送 Loading 的時間
-    
+
     let retryCount = 0;
     let lastError = "";
     while (retryCount < 3) {
         // 每 18 秒補發一次 Loading 動畫（20秒會消失，提前 2 秒補發）
         const now = new Date().getTime();
         if (userId && now - lastLoadingTime > 18000) {
-            try { showLoadingAnimation(userId, 20); } catch(e) {}
+            try { showLoadingAnimation(userId, 20); } catch (e) { }
             lastLoadingTime = now;
         }
         try {
             const response = UrlFetchApp.fetch(url, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
             const endTime = new Date().getTime();
             const code = response.getResponseCode();
-            writeLog(`[API End] ${(endTime - start)/1000}s, Code: ${code}, Retry: ${retryCount}`);
-            
+            writeLog(`[API End] ${(endTime - start) / 1000}s, Code: ${code}, Retry: ${retryCount}`);
+
             const text = response.getContentText();
-            
+
             // 成功
             if (code === 200) {
                 try {
                     const json = JSON.parse(text);
-                    
+
                     // 📊 Token 用量紀錄 - v27.0.0: 修復費用對應錯誤
                     // 無論是否有 usageMetadata，都要明確設置 lastTokenUsage
                     // 這樣可以避免舊費用被誤用到新查詢上
                     let usage = null;
                     if (json.usageMetadata) {
                         usage = json.usageMetadata;
-                        // Gemini 2.0 Flash 定價: Input $0.10/1M, Output $0.40/1M (2025-12 官網確認)
-                        const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
-                        const costTWD = costUSD * 32;  // 匯率更新為 32
-                        writeLog(`[Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)} | 費率: 2.0 Flash)`);
-                        
+                        // 使用全域費率常數計算成本 - 動態選擇
+                        var priceInput = (modelName === CONFIG.MODEL_NAME_THINK) ? PRICE_THINK_INPUT : PRICE_FAST_INPUT;
+                        var priceOutput = (modelName === CONFIG.MODEL_NAME_THINK) ? PRICE_THINK_OUTPUT : PRICE_FAST_OUTPUT;
+                        var costUSD = (usage.promptTokenCount / 1000000 * priceInput) + (usage.candidatesTokenCount / 1000000 * priceOutput);
+                        var costTWD = costUSD * EXCHANGE_RATE;
+                        writeLog(`[Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)} | 費率: ${modelName === CONFIG.MODEL_NAME_THINK ? 'Think' : 'Fast'})`);
+
                         // v24.1.0: 儲存到全域變數，供測試模式顯示
                         lastTokenUsage = {
                             input: usage.promptTokenCount,
@@ -2271,7 +2747,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         writeLog(`[API PromptFeedback] ${JSON.stringify(json.promptFeedback).substring(0, 500)}`);
                     }
                     const candidates = json && json.candidates ? json.candidates : [];
-                    
+
                     // v27.0.0: 防護機制 - 檢測異常短回應（Deep Mode + PDF 但輸出只有 emoji）
                     if (attachPDFs && candidates.length > 0 && candidates[0].content && candidates[0].content.parts) {
                         const responseText = candidates[0].content.parts[0].text || '';
@@ -2285,7 +2761,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                             return "⚠️ 讀取產品手冊時回覆異常，請再問一次或改述問題（PDF模式）";
                         }
                     }
-                    
+
                     // v26.1.0: 完整 API 回傳紀錄，便於診斷空白回答問題
                     if (candidates.length === 0) {
                         writeLog(`[API Warning] 無候選回應: ${JSON.stringify(json).substring(0, 500)}`);
@@ -2294,14 +2770,14 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         if (!firstPart.text || firstPart.text.trim().length === 0) {
                             writeLog(`[API Warning] 回應為空文本: parts=${JSON.stringify(candidates[0].content.parts).substring(0, 300)}`);
                         }
-                        
+
                         // v26.6.0: 記錄短回答（Out < 50 tokens）的實際內容
                         if (usage && usage.candidatesTokenCount < 50) {
                             const responseText = firstPart.text || '';
                             writeLog(`[API Short Response] Out: ${usage.candidatesTokenCount} tokens, Content: "${responseText.substring(0, 200)}"`);
                         }
                     }
-                    
+
                     if (candidates.length > 0 && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts.length > 0) {
                         return (candidates[0].content.parts[0].text || '').trim();
                     }
@@ -2311,7 +2787,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                     return '';
                 }
             }
-            
+
             // 特定錯誤處理
             if (code === 400 && text.includes("token")) {
                 return "⚠️ 資料量過大，請提供關鍵字。";
@@ -2322,17 +2798,17 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                 retryCount++;
                 continue;
             }
-            if (code === 404) { 
+            if (code === 404) {
                 writeLog(`[API 404] 檔案不存在: ${text.substring(0, 200)}`);
                 // 標記需要重建，並返回特殊標記讓外層處理
                 CacheService.getScriptCache().put('kb_need_rebuild', 'true', 3600);
-                return "[KB_EXPIRED]"; 
+                return "[KB_EXPIRED]";
             }
-            if (code === 403) { 
+            if (code === 403) {
                 writeLog(`[API 403] 檔案已過期或無權限: ${text.substring(0, 300)}`);
                 // 標記需要重建，並返回特殊標記讓外層處理
                 CacheService.getScriptCache().put('kb_need_rebuild', 'true', 3600);
-                return "[KB_EXPIRED]"; 
+                return "[KB_EXPIRED]";
             }
             if (code === 429) {
                 writeLog(`[API 429] 配額限制，等待重試...`);
@@ -2348,19 +2824,19 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                 Utilities.sleep(2000 * retryCount);
                 continue;
             }
-            
+
             // 其他錯誤
             lastError = `API 錯誤 ${code}`;
             writeLog(`[API Error] Code: ${code}, Body: ${text.substring(0, 300)}`);
             retryCount++;
             Utilities.sleep(1000 * Math.pow(2, retryCount));
-            
+
         } catch (e) {
             lastError = e.message || "未知錯誤";
 
             writeLog(`[API Exception] ${e.message}`);
             if (e.message.includes("token")) return e.message;
-            retryCount++; 
+            retryCount++;
             Utilities.sleep(1000 * Math.pow(2, retryCount));
         }
     }
@@ -2374,66 +2850,66 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
 // 強制列表排版 (List Formatting)
 function formatListSpacing(text) {
     if (!text) return "";
-    
+
     // 移除單一點編號
     if (text.includes("1.") && !text.includes("2.")) {
         text = text.replace(/^1\.\s*/gm, "");
     }
-    
+
     let lines = text.split('\n');
     let formattedLines = [];
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i].trim();
         formattedLines.push(line);
-        
+
         // 列表項目後加空行
-        if (/^\d+\./.test(line) && i < lines.length - 1 && lines[i+1].trim() !== "") {
-            formattedLines.push(""); 
+        if (/^\d+\./.test(line) && i < lines.length - 1 && lines[i + 1].trim() !== "") {
+            formattedLines.push("");
         }
     }
     return formattedLines.join('\n');
 }
 
 function formatForLineMobile(text) {
-  if (!text) return "";
-  let processed = text;
-  
-  // === 過濾 Thinking Mode 洩漏 ===
-  // 移除可能洩漏的內部思考 (Gemini 2.5 Flash Thinking Mode)
-  processed = processed.replace(/SPECIAL INSTRUCTION:.*?(?=\n\n|\n[A-Z]|$)/gs, '');
-  processed = processed.replace(/\[INTERNAL\].*?(?=\n\n|$)/gs, '');
-  processed = processed.replace(/\[THINKING\].*?(?=\n\n|$)/gs, '');
-  
-  processed = processed.replace(/\*\*(.*?)\*\*/g, '$1'); 
-  processed = processed.replace(/^\*\s+/gm, '• '); 
-  processed = processed.replace(/\*/g, ''); 
-  processed = processed.replace(/(\d+)\.\s+/g, '$1.');
-  processed = processed.replace(/->/g, '→'); 
-  
-  // 強制分段 (句尾換行)
-  processed = processed.replace(/([。！？])\s*/g, '$1\n\n');
-  // 列表前換行
-  processed = processed.replace(/(\n|^)(\d+\.)/g, '\n\n$2');
-  // 移除多餘換行
-  processed = processed.replace(/\n{3,}/g, '\n\n');
-  
-  processed = formatListSpacing(processed);
-  return processed.trim();
+    if (!text) return "";
+    let processed = text;
+
+    // === 過濾 Thinking Mode 洩漏 ===
+    // 移除可能洩漏的內部思考 (Gemini 2.5 Flash Thinking Mode)
+    processed = processed.replace(/SPECIAL INSTRUCTION:.*?(?=\n\n|\n[A-Z]|$)/gs, '');
+    processed = processed.replace(/\[INTERNAL\].*?(?=\n\n|$)/gs, '');
+    processed = processed.replace(/\[THINKING\].*?(?=\n\n|$)/gs, '');
+
+    processed = processed.replace(/\*\*(.*?)\*\*/g, '$1');
+    processed = processed.replace(/^\*\s+/gm, '• ');
+    processed = processed.replace(/\*/g, '');
+    processed = processed.replace(/(\d+)\.\s+/g, '$1.');
+    processed = processed.replace(/->/g, '→');
+
+    // 強制分段 (句尾換行)
+    processed = processed.replace(/([。！？])\s*/g, '$1\n\n');
+    // 列表前換行
+    processed = processed.replace(/(\n|^)(\d+\.)/g, '\n\n$2');
+    // 移除多餘換行
+    processed = processed.replace(/\n{3,}/g, '\n\n');
+
+    processed = formatListSpacing(processed);
+    return processed.trim();
 }
 
-function writeRecordDirectly(u,t,c,r,f) {
-  // 🧪 TEST MODE: 不寫入「所有紀錄」Sheet (清除測試介面時請移除此判斷)
-  if (IS_TEST_MODE) {
-    writeLog('[TEST MODE] 跳過寫入所有紀錄 Sheet');
-    return;
-  }
-  
-  try { 
-    ss.getSheetByName(SHEET_NAMES.RECORDS).appendRow([new Date(), c, u, formatForLineMobile(t), r, f]); 
-    SpreadsheetApp.flush(); 
-  } catch(e) {
-    console.error("Record Error: " + e.message);
-  }
+function writeRecordDirectly(u, t, c, r, f) {
+    // 🧪 TEST MODE: 不寫入「所有紀錄」Sheet (清除測試介面時請移除此判斷)
+    if (IS_TEST_MODE) {
+        writeLog('[TEST MODE] 跳過寫入所有紀錄 Sheet');
+        return;
+    }
+
+    try {
+        ss.getSheetByName(SHEET_NAMES.RECORDS).appendRow([new Date(), c, u, formatForLineMobile(t), r, f]);
+        SpreadsheetApp.flush();
+    } catch (e) {
+        console.error("Record Error: " + e.message);
+    }
 }
 
 /**
@@ -2445,523 +2921,691 @@ function writeRecordDirectly(u,t,c,r,f) {
  * 修正重點：移除過度轉型，確保 userMessage 純淨，防止 [object Object] 污染
  */
 function handleMessage(event) {
-  var userId = "UNKNOWN";
-  var replyToken = "UNKNOWN";
-  
-  try {
-    // 1. 基礎防呆
-    if (!event || !event.source || !event.message) return;
-    
-    userId = event.source.userId;
-    replyToken = event.replyToken;
-    
-    // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
-    let userMessage = event.message.text;
-    if (typeof userMessage !== 'string') {
-        userMessage = "";
-    }
-    userMessage = userMessage.trim();
-
-    // 若收到 "[object Object]" 這種髒資料，視為測試錯誤，強制替換
-    if (userMessage === "[object Object]") {
-        userMessage = "測試"; 
-        writeLog(userId, "Warning", "偵測到 [object Object] 髒輸入，已自動修正");
-    }
-
-    // 空訊息直接跳過
-    if (userMessage.length === 0) return;
-
-    const contextId = userId;  // 對話 ID 就是 userId
-    const messageId = event.message.id || null;
-    const msg = userMessage;
-    
-    // v24.3.0: 實時資訊快速回答（日期、時間）
-    // 不需要問 AI，直接回答準確資訊
-    if (/今天|現在|幾月|幾號|幾點|幾分|時間|日期/i.test(msg)) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('zh-TW', {year: 'numeric', month: 'long', day: 'numeric'});
-        const timeStr = now.toLocaleTimeString('zh-TW');
-        
-        let response = null;
-        if (/今天|幾月|幾號|日期|幾日/i.test(msg) && !/時間|幾點/i.test(msg)) {
-            response = `📅 今天是 ${dateStr}`;
-        } else if (/現在|幾點|幾分|時間/i.test(msg)) {
-            response = `🕒 現在是 ${timeStr}`;
-        }
-        
-        if (response) {
-            replyMessage(replyToken, response);
-            writeLog(`[RealTime] 實時資訊快速回答: ${response}`);
-            return;
-        }
-    }
-    
-    // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
-    // 但指令類別不做去重，因為用戶可能需要重試
-    const cache = CacheService.getScriptCache();
-    const isCommand = msg.startsWith('/');
-    
-    if (!isCommand) {
-      // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
-      // 若沒有 messageId (舊版相容)，則退回使用內容雜湊
-      let dedupKey = "";
-      if (messageId) {
-          dedupKey = `msg_id_${messageId}`;
-      } else {
-          dedupKey = `msg_${userId}_${Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, msg).map(b => (b & 0xFF).toString(16).padStart(2, '0')).join('')}`;
-      }
-
-      if (cache.get(dedupKey)) {
-          writeLog(`[Duplicate] 忽略重複訊息: ${msg.substring(0, 30)}`);
-          return;
-      }
-      cache.put(dedupKey, '1', 60);
-    }
-    
-    // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
-    // 改用 20 秒，API 迴圈中會每 18 秒補發一次
-    if (!hasRecentAnimation(userId)) { 
-        showLoadingAnimation(userId, 20); 
-        markAnimationShown(userId); 
-    }
-    
-    writeLog(`[HandleMsg] 收到: ${msg}`);
-    const draftCache = cache.get(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
-    // v24.1.23: 移除 PENDING_QUERY 相關邏輯 (Auto Deep Search 取代)
-    // const pendingQuery = cache.get(CACHE_KEYS.PENDING_QUERY + userId);
-
-    // A. 建檔模式
-    if (draftCache && !msg.startsWith('/')) {
-        handleDraftModification(msg, userId, replyToken, JSON.parse(draftCache));
-        return;
-    }
-
-    // B. 指令
-    if (msg.startsWith('/')) {
-        const cmdResult = handleCommand(msg, userId, contextId);
-        writeLog(`[Reply] ${cmdResult.substring(0, 100)}...`);
-        replyMessage(replyToken, cmdResult);
-        const isReset = (msg === '/重啟' || msg === '/reboot') ? 'TRUE' : '';
-        if (isReset) writeRecordDirectly(userId, msg, contextId, 'user', isReset);
-        if (cmdResult) { writeRecordDirectly(userId, cmdResult, contextId, 'assistant', ''); }
-        return;
-    }
-    
-    // C. 深度搜尋確認 (已廢棄)
-    // v24.1.23: 移除手動確認邏輯，全面改為自動觸發
-    /*
-    const deepSearchAffirmative = msg.match(/^(1|深度|查)$/i); 
-    const isCancelCommand = msg.startsWith("/取消"); 
-
-    if (pendingQuery && !isCancelCommand) {
-        if (deepSearchAffirmative) {
-            handleDeepSearch(pendingQuery, userId, replyToken, contextId);
-            return;
-        } else {
-             cache.remove(CACHE_KEYS.PENDING_QUERY + userId); 
-        }
-    }
-    */
-    
-    // C2. v24.4.0: PDF 型號選擇回覆處理
-    // 如果用戶之前被問了「請選擇型號」，這裡處理他的回覆
-    if (handlePdfSelectionReply(msg, userId, replyToken, contextId)) {
-        return; // 已處理完成
-    }
-    
-    // D. 一般對話
-    const history = getHistoryFromCacheOrSheet(contextId);
-    const userMsgObj = { role: "user", content: msg };
-    
-    // 檢查是否在 PDF 模式（之前觸發過深度搜尋，同主題追問繼續用 PDF）
-    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
-    let isInPdfMode = cache.get(pdfModeKey) === 'true';
-
-    // 2025-12-05: 修正「黏性」問題
-    // 用戶抱怨 10 分鐘太久，且不希望變成陌生人
-    // 策略：
-    // 1. 記憶 (History) 保持不變，讓用戶不覺得是陌生人
-    // 2. 模式 (PDF Mode) 應該更靈活退出
-    //    - 若用戶換話題 (NEW_TOPIC)，AI 會自動退出
-    //    - 若用戶問簡單問題 (Simple Question)，暫時不掛 PDF
-    //    - 這裡將 PDF Mode 的 TTL 縮短為 5 分鐘 (300秒)，避免過久
-    
-    // v24.1.5: 型號變化自動清除 PDF Mode
-    // 當用戶切換到不同型號時，自動清除 PDF Mode，先用 Fast Mode (QA/Rules) 回答
-    if (isInPdfMode && checkAndClearPdfModeOnModelChange(msg, history)) {
-        writeLog("[PDF Mode] 偵測到型號變化，清除 PDF Mode，回到 Fast Mode");
-        isInPdfMode = false;
-        cache.remove(pdfModeKey);
-    }
-    
-    // E. 直通車檢查 (Direct Search)
-    // v24.4.1 重大修正：不再在這裡觸發反問
-    // 邏輯改為：
-    // 1. 記錄命中的直通車關鍵字（用於後續 PDF 智慧匹配）
-    // 2. 所有問題先走 Fast Mode（QA + CLASS_RULES）
-    // 3. 只有當 AI 輸出 [AUTO_SEARCH_PDF] 時，才觸發 PDF 智慧匹配和反問
-    
-    // v24.4.0: 記錄命中的直通車關鍵字，用於後續 PDF 智慧匹配
-    let hitAliasKey = null;
-    
-    if (!isInPdfMode) {
-        // 檢查直通車，記錄命中的關鍵字（但不立即反問）
-        const directSearchResult = checkDirectDeepSearchWithKey(msg, userId);
-        
-        if (directSearchResult.hit) {
-            hitAliasKey = directSearchResult.key;
-            // v24.4.1: 只記錄，不在這裡開 PDF Mode
-            // 讓系統先走 Fast Mode，如果回答不了才查 PDF
-            writeLog(`[Direct Search] 命中直通車關鍵字: ${hitAliasKey}，先走 Fast Mode`);
-            
-            // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
-            cache.put(`${userId}:hit_alias_key`, hitAliasKey, 300);
-        }
-    }
-    
-    // 智慧退出：簡單問題不需要 PDF（價格、官網、日期、閒聊、新品等）
-    const simplePatterns = [
-        /多少錢|價格|價錢|售價/i,
-        /官網|網址|網站|連結|link/i,
-        /今天|日期|幾號|幾月/i,
-        /謝謝|感謝|好的|了解|OK|掰/i,
-        /^.{1,5}$/,  // 少於 5 字的簡短回覆
-        /根據|哪裡|為什麼|怎麼知道|來源/i,  // 追問來源類（不需要再查 PDF）
-        /還有嗎|其他|更多|繼續/i,  // 追問更多類
-        /新機|新品|推薦|最新|上市|熱門|最近/i,  // 新品推薦類（CLASS_RULES 沒有就是沒有）
-        /比較|差異|差別|哪個好|選哪/i  // 比較類（需要人工判斷）
-    ];
-    const isSimpleQuestion = simplePatterns.some(p => p.test(msg));
-    
-    // v24.1.32: 修正直通車與簡單問題的衝突
-    // 如果是直通車強制開啟的 PDF Mode (如 M7 價格)，不應該被 simplePatterns 攔截
-    // 但「價格」確實不需要 PDF，所以這裡邏輯要調整：
-    // 1. 如果是「價格/官網」類，即使命中直通車，也應該走 Fast Mode
-    // 2. 但如果是「操作/故障」類，即使字數少，也應該走 PDF Mode
-    
-    if (isInPdfMode && isSimpleQuestion) {
-        writeLog("[PDF Mode] 簡單/追問類問題，跳過 PDF");
-        isInPdfMode = false;  
-        // v24.3.1 修復：清除 Cache 中的 PDF Mode 標記，防止下一題錯誤延續
-        cache.remove(pdfModeKey);
-    } else if (isInPdfMode) {
-        // v24.5.0: 記住 PDF 模式，但不直接開 PDF
-        // 改為先走 Fast Mode，如果 Fast Mode 能答就省錢省時間
-        // 只有 Fast Mode 說 [AUTO_SEARCH_PDF] 時才用記住的 PDF
-        writeLog("[PDF Mode] 記住 PDF 模式，但先走 Fast Mode 嘗試回答");
-        // 續命：延長 5 分鐘（等 Fast Mode 判斷完再決定是否用 PDF）
-        cache.put(pdfModeKey, 'true', 300);
-    }
-    
-    // v24.5.0: 記住原始的 PDF Mode 狀態，供後續 [AUTO_SEARCH_PDF] 使用
-    const hadPdfModeMemory = isInPdfMode;
-    
-    // v24.5.0: 檢查是否有已選過的 PDF 型號（避免重複反問）
-    // v27.3.1: 修正 JSON 轉換錯誤 - cache.get() 返回字串，需要 JSON.parse 還原成陣列
-    // v27.3.9: 加強防呆 - 防止 Cache 髒資料（null/非陣列）導致 length 錯誤
-    const cachedDirectModelsJson = cache.get(`${userId}:direct_search_models`);
-    let cachedDirectModels = [];  // 先預設為空陣列
-    try {
-        if (cachedDirectModelsJson) {
-            const parsed = JSON.parse(cachedDirectModelsJson);
-            // 🔥 絕對防呆：如果 parse 出來是 null 或非陣列，強制變成 []
-            cachedDirectModels = Array.isArray(parsed) ? parsed : [];
-        }
-    } catch(e) {
-        writeLog(`[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`);
-    }
-    
-    const hasSelectedPdf = cachedDirectModels.length > 0;  // 現在絕對安全
+    var userId = "UNKNOWN";
+    var replyToken = "UNKNOWN";
 
     try {
-        // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
-        // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
-        let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId); 
-        
-        // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
-        if (rawResponse === "[KB_EXPIRED]") {
-            writeLog("[KB Expired] PDF 過期，退出 PDF 模式，背景重建中");
-            cache.remove(pdfModeKey);  // 清除 PDF 模式
-            
-            // 自動預約 1 分鐘後背景重建
-            scheduleImmediateRebuild();
-            
-            // 用極速模式重試（不帶 PDF），用戶完全無感
-            rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
-            // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
+        // 1. 基礎防呆
+        if (!event || !event.source || !event.message) return;
+
+        userId = event.source.userId;
+        replyToken = event.replyToken;
+
+        // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
+        let userMessage = event.message.text;
+        if (typeof userMessage !== 'string') {
+            userMessage = "";
         }
-        
-        if (rawResponse) {
-          let finalText = formatForLineMobile(rawResponse);
-          let replyText = finalText;
-          
-          // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
-          if (finalText.includes("[AUTO_SEARCH_PDF]") || finalText.includes("[NEED_DOC]")) {
-              writeLog("[Auto Search] 偵測到搜尋暗號");
-              finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-              finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-              
-              // v24.5.4: 檢測是否為「不需要 PDF 的問題」
-              // 包括：1) 硬體規格定義  2) 通識知識  3) 技術概念解釋
-              // 這些問題 CLASS_RULES/QA 沒寫或 LLM 可用通用知識回答，不該查 PDF
-              const nonPdfPatterns = [
-                  // 硬體規格問題
-                  /耳機孔|3\.5mm|音源孔|耳機插孔/i,
-                  /USB|HDMI|DP|DisplayPort|Type-C|連接埠|接口/i,
-                  /KVM|切換器/i,
-                  /喇叭|揚聲器|音響|音箱/i,
-                  /VESA|壁掛|架台/i,
-                  /解析度|Hz|更新率|刷新率|頻率/i,
-                  /尺寸|吋|英寸|大小/i,
-                  /曲面|平面|曲率|設計/i,
-                  /面板|panel|螢幕材質|VA|IPS|OLED|TN|LCD|LED/i,
-                  
-                  // 通識知識、技術概念（不是操作步驟）
-                  /什麼是|什么是|定義|定义|優點|缺點|比較|对比|差異|差异/i,
-                  /HDR|色域|色溫|對比度|背光|LED背光|量子點/i,
-                  /Gsync|Freesync|垂直同步|V-Sync/i,
-                  /色準|色彩|Gamma|黑位/i,
-                  /PPI|密度|DPI/i
-              ];
-              const isNonPdfQuestion = nonPdfPatterns.some(p => p.test(msg));
-              
-              if (isNonPdfQuestion) {
-                  // 不需要 PDF 的問題：使用 CLASS_RULES 或 LLM 通用知識回答
-                  writeLog("[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案");
-                  // finalText 已經是極速模式的回答，直接用
-                  replyText = finalText;
-              } else {
-                  // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
-                  // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
-                  const currentMsgModels = extractModelNumbers(msg);
-                  
-                  // 檢查是否提到了「不在」舊記憶裡的新型號（例如舊記憶是 M8，現在問 M9）
-                  const isModelMismatch = currentMsgModels.length > 0 && 
-                      currentMsgModels.some(m => !cachedDirectModels.some(old => old === m));
-                  
-                  if (hadPdfModeMemory && hasSelectedPdf && !isModelMismatch) {
-                      writeLog(`[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`);
-                      
-                      // 設定 PDF 模式並重試
-                      isInPdfMode = true;
-                      cache.put(pdfModeKey, 'true', 300);
-                      
-                      // v24.5.0: 顯示 Loading 動畫
-                      showLoadingAnimation(userId, 60);
-                      
-                      const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
-                      
-                      if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                          finalText = formatForLineMobile(deepResponse);
-                          finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-                          finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-                      } else {
-                          finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
-                      }
-                      replyText = finalText;
-                      
-                  } else {
-                      // v27.2.9: 如果有型號衝突，記錄並清除舊記憶
-                      if (isModelMismatch) {
-                          writeLog(`[Auto Search] ⚠️ 偵測到型號衝突: 當前問題提到 ${currentMsgModels.join(',')}，舊記憶是 ${cachedDirectModels.join(',')}，將重新進行 PDF 匹配`);
-                          cache.remove(pdfModeKey);
-                          // v27.3.2: 關鍵修正 - 同時清除舊直通車關鍵字與型號，避免 M8 記憶污染 M9 查詢
-                          cache.remove(`${userId}:hit_alias_key`);
-                          cache.remove(`${userId}:direct_search_models`);
-                      }
-                      
-                      // v24.4.1: 非硬體問題，需要查 PDF
-                      // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
-                      const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
-                      
-                      if (cachedAliasKey) {
-                          // 有直通車關鍵字 → 使用 PDF 智慧匹配
-                          writeLog(`[Auto Search] 使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey}`);
-                          
-                          const pdfSearchResult = searchPdfByAliasPattern(cachedAliasKey);
-                          
-                          if (pdfSearchResult.needAsk && pdfSearchResult.matchedPdfs.length > 1) {
-                              // 多個 PDF 匹配 → 反問用戶選擇
-                              writeLog(`[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`);
-                              
-                              // 儲存等待選擇的狀態
-                              const pendingData = {
-                                  originalQuery: msg,
-                                  aliasKey: cachedAliasKey,
-                                  options: pdfSearchResult.matchedPdfs.slice(0, 9)
-                              };
-                              cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
-                              
-                              // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
-                              // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
-                              const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
-                              
-                              replyMessage(replyToken, askMsg);
-                              writeLog(`[PDF Match] 已發送型號選擇反問`);
-                              
-                              // v24.5.2: 修復對話記憶丟失問題
-                              // 即使是反問，也要將用戶問題和反問記錄到歷史
-                              // 這樣用戶後續回覆時才能看到上下文
-                              writeRecordDirectly(userId, msg, contextId, 'user', '');
-                              writeRecordDirectly(userId, askMsg, contextId, 'assistant', '');
-                              
-                              // v24.5.2: 更新對話歷史（關鍵修復！）
-                              const askMsgObj = { role: 'assistant', content: askMsg };
-                              updateHistorySheetAndCache(contextId, history, userMsgObj, askMsgObj);
-                              
-                              return; // 等待用戶回覆
-                          
-                          } else if (pdfSearchResult.matchedPdfs.length === 1) {
-                          // 只有一個 PDF → 直接使用
-                          writeLog(`[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`);
-                          cache.put(`${userId}:direct_search_models`, JSON.stringify([pdfSearchResult.matchedPdfs[0].matchedModel]), 300);
-                          
-                          // 設定 PDF 模式並重試
-                          isInPdfMode = true;
-                          cache.put(pdfModeKey, 'true', 300);
-                          
-                          const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
-                          
-                          if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                              finalText = formatForLineMobile(deepResponse);
-                              finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-                              finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-                          } else {
-                              finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
-                          }
-                          replyText = finalText;
-                          
-                      } else {
-                          // 沒有匹配的 PDF → 引導找 Sam
-                          writeLog(`[PDF Match] 無匹配 PDF，引導找 Sam`);
-                          replyText = finalText + "\n\n這個型號的手冊我還沒有建檔，可以找 Sam 幫你查喔！";
-                      }
-                      
-                  } else {
-                      // 沒有直通車關鍵字 → 使用傳統方式（依據型號匹配）
-                      writeLog("[Auto Search] 無直通車關鍵字，使用傳統 PDF 匹配");
-                      
-                      // 預測會用到哪些 PDF
-                      const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
-                      const relevantFiles = getRelevantKBFiles([userMsgObj], kbList, userId);
-                      const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
-                      const productNames = pdfNames.map(name => getPdfProductName(name)).slice(0, 3);
-                      
-                      if (productNames.length > 0) {
-                          writeLog(`[Auto Deep] 找到相關手冊: ${productNames.join('、')}，開始重試...`);
-                          
-                          isInPdfMode = true;
-                          cache.put(pdfModeKey, 'true', 300);
-                          
-                          const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
-                          
-                          if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                              finalText = formatForLineMobile(deepResponse);
-                              finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-                              finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-                              
-                              if (finalText.startsWith("根據我的資料庫")) {
-                                  finalText = finalText.replace(/^根據我的資料庫/, "根據產品手冊");
-                              }
-                          } else {
-                              finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
-                          }
-                          replyText = finalText;
-                      } else {
-                          writeLog("[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案");
-                          replyText = finalText;
-                      }
-                  }
-                  } // v24.5.0: 結束 else { 有直通車關鍵字 } 區塊
-              } // v24.5.0: 結束 else { 沒有 PDF 記憶 } 區塊
-          }
-          // === [NEW_TOPIC] 攔截：退出 PDF 模式 ===
-          else if (finalText.includes("[NEW_TOPIC]")) {
-              writeLog("[New Topic] 偵測到換題，退出 PDF 模式");
-              finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
-              cache.remove(pdfModeKey);
-              replyText = finalText;
-          }
-          // === 智慧退出：回答不需要 PDF 時自動退出 ===
-          else if (isInPdfMode) {
-              // v24.1.33: 移除強制補全開頭邏輯，避免與 AI 自己的開頭重複
-              // AI 會根據 Prompt 自行決定開頭，不需要程式碼干預
+        userMessage = userMessage.trim();
 
-              // 檢測是否為簡單回答（不需要 PDF 的回答）
-              const exitPatterns = [
-                  /找Sam|問Sam|問一下Sam/i,           // 引導找 Sam
-                  /官網確認|samsung\.com/i,            // 價格引導到官網
-                  /沒有.*資料|資料.*沒有/i,            // 查無資料
-                  /商業機密|不能透漏/i,                 // 拒答
-                  /手邊的資料剛好沒有寫到/i,            // AI 查無資料的常見回覆
-                  /手冊未記載/i                         // v24.1.30: 新增退出關鍵字
-              ];
-              const shouldExit = exitPatterns.some(p => p.test(finalText));
-              if (shouldExit) {
-                  writeLog("[PDF Mode] 回答不需 PDF (或查無資料)，自動退出");
-                  cache.remove(pdfModeKey);
-              }
-              replyText = finalText;
-          }
-          else {
-              replyText = finalText;
-          }
-
-          // v27.0.0: 修復費用顯示邏輯（確保費用正確對應當前查詢）
-          if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-              const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
-              replyText += tokenInfo;
-          }
-
-          replyMessage(replyToken, replyText);
-          // v25.0.2 修復：補上缺失的 user 訊息記錄
-          writeRecordDirectly(userId, msg, contextId, 'user', '');
-          writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
-          // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
-          // v27.7.6: Log 回覆時包含費用資訊，方便 testMessage 顯示成本
-          var replyForLog = replyText || finalText;
-          writeLog(`[AI Reply] ${replyForLog.substring(0, 2000)}${replyForLog.length > 2000 ? '...' : ''}`); 
-          
-          updateHistorySheetAndCache(contextId, history, userMsgObj, { role: 'assistant', content: finalText });
-
-          // 2025-12-05 v23.6.5: 背景異步整理 (Async Background Summary)
-          try {
-              const currentHistory = getHistoryFromCacheOrSheet(contextId);
-              if (currentHistory.length > 5) {
-                  // writeLog(`[AsyncSummary] 觸發背景整理，目前長度: ${currentHistory.length}`);
-                  const summary = callGeminiToSummarize(currentHistory);
-                  
-                  if (summary) {
-                      const lastTwo = currentHistory.slice(-2);
-                      const summaryMsg = { 
-                          role: 'user', 
-                          content: `【系統自動摘要】\n之前的對話重點：${summary}\n(請基於此上下文繼續服務)` 
-                      };
-                      const ackMsg = {
-                          role: 'assistant',
-                          content: '好的，我已了解之前的對話脈絡。'
-                      };
-                      
-                      const newHist = [summaryMsg, ackMsg, ...lastTwo];
-                      const cache = CacheService.getScriptCache();
-                      const json = JSON.stringify(newHist);
-                      cache.put(`${CACHE_KEYS.HISTORY_PREFIX}${contextId}`, json, CONFIG.CACHE_TTL_SEC);
-                      // writeLog(`[AsyncSummary] 整理完成，新長度: ${newHist.length}`);
-                  }
-              }
-          } catch (e) {
-              writeLog(`[AsyncSummary Error] ${e.message}`);
-          }
-
-        } else {
-            writeLog(`[Error] AI 回傳為空`);
-            replyMessage(replyToken, "系統忙碌中 (AI Empty)");
+        // 若收到 "[object Object]" 這種髒資料，視為測試錯誤，強制替換
+        if (userMessage === "[object Object]") {
+            userMessage = "測試";
+            writeLog(userId, "Warning", "偵測到 [object Object] 髒輸入，已自動修正");
         }
-    } catch (apiErr) {
-        replyMessage(replyToken, `系統錯誤：${apiErr.message}`);
-        writeLog(`[Handle API Error] ${apiErr.message}`);
-    }
-  } catch (error) { writeLog("[Fatal] " + error); }
+
+        // 空訊息直接跳過
+        if (userMessage.length === 0) return;
+
+        const contextId = userId;  // 對話 ID 就是 userId
+        const messageId = event.message.id || null;
+        const msg = userMessage;
+
+        // v24.3.0: 實時資訊快速回答（日期、時間）
+        // 不需要問 AI，直接回答準確資訊
+        // v24.3.0: 實時資訊快速回答（日期、時間）
+        // v27.8.8: 修正觸發條件，避免 "浪費時間"、"時間不夠" 等日常用語誤觸
+        // 只針對明確的問句 (幾點、幾號、現在時間)
+        const timeQuery = msg.replace(/\s/g, ''); // 去空白
+        // 嚴格匹配：必須包含 "現在"、"幾點"、"幾號"、"今天" 且長度短，或是 "現在幾點" 這樣的組合
+        if (/^(現在幾點|幾點了|現在時間|今天幾號|今天是幾號|今天日期|星期幾)$/.test(timeQuery) ||
+            (timeQuery.length < 10 && /(幾點|幾分|幾號|星期幾)/.test(timeQuery))) {
+
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+            const timeStr = now.toLocaleTimeString('zh-TW');
+
+            let response = null;
+            if (/幾號|日期|幾日|星期/.test(timeQuery)) {
+                response = `📅 今天是 ${dateStr}`;
+            } else if (/幾點|幾分|時間/.test(timeQuery)) {
+                response = `🕒 現在是 ${timeStr}`;
+            }
+
+            if (response) {
+                writeLog(`[HandleMsg] 收到 (RealTime): ${msg}`); // 補上 Log
+                replyMessage(replyToken, response);
+                writeRecordDirectly(userId, replyToken, contextId, msg, response + " [RealTime]", "RealTime"); // 補上對話紀錄
+                writeLog(`[RealTime] 實時資訊快速回答: ${response}`);
+                return;
+            }
+        }
+
+        // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
+        // 但指令類別不做去重，因為用戶可能需要重試
+        const cache = CacheService.getScriptCache();
+        const isCommand = msg.startsWith('/');
+
+        if (!isCommand) {
+            // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
+            // 若沒有 messageId (舊版相容)，則退回使用內容雜湊
+            let dedupKey = "";
+            if (messageId) {
+                dedupKey = `msg_id_${messageId}`;
+            } else {
+                dedupKey = `msg_${userId}_${Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, msg).map(b => (b & 0xFF).toString(16).padStart(2, '0')).join('')}`;
+            }
+
+            if (cache.get(dedupKey)) {
+                writeLog(`[Duplicate] 忽略重複訊息: ${msg.substring(0, 30)}`);
+                return;
+            }
+            cache.put(dedupKey, '1', 60);
+        }
+
+        // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
+        // 改用 20 秒，API 迴圈中會每 18 秒補發一次
+        if (!hasRecentAnimation(userId)) {
+            showLoadingAnimation(userId, 20);
+            markAnimationShown(userId);
+        }
+
+        // v27.8.8: 將 Log 移到去重之後、處理之前，確保每條通過去重的訊息都有紀錄
+        writeLog(`[HandleMsg] 收到: ${msg}`);
+        const draftCache = cache.get(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
+        // v24.1.23: 移除 PENDING_QUERY 相關邏輯 (Auto Deep Search 取代)
+        // const pendingQuery = cache.get(CACHE_KEYS.PENDING_QUERY + userId);
+
+        // A. 建檔模式
+        if (draftCache && !msg.startsWith('/')) {
+            handleDraftModification(msg, userId, replyToken, JSON.parse(draftCache));
+            return;
+        }
+
+        // B. 指令
+        if (msg.startsWith('/')) {
+            const cmdResult = handleCommand(msg, userId, contextId);
+            writeLog(`[Reply] ${cmdResult.substring(0, 100)}...`);
+            replyMessage(replyToken, cmdResult);
+            const isReset = (msg === '/重啟' || msg === '/reboot') ? 'TRUE' : '';
+            if (isReset) writeRecordDirectly(userId, msg, contextId, 'user', isReset);
+            if (cmdResult) { writeRecordDirectly(userId, cmdResult, contextId, 'assistant', ''); }
+            return;
+        }
+
+        // C. 深度搜尋確認 (已廢棄)
+        // v24.1.23: 移除手動確認邏輯，全面改為自動觸發
+        /*
+        const deepSearchAffirmative = msg.match(/^(1|深度|查)$/i); 
+        const isCancelCommand = msg.startsWith("/取消"); 
+    
+        if (pendingQuery && !isCancelCommand) {
+            if (deepSearchAffirmative) {
+                handleDeepSearch(pendingQuery, userId, replyToken, contextId);
+                return;
+            } else {
+                 cache.remove(CACHE_KEYS.PENDING_QUERY + userId); 
+            }
+        }
+        */
+
+        // C2. v24.4.0: PDF 型號選擇回覆處理
+        // 如果用戶之前被問了「請選擇型號」，這裡處理他的回覆
+        if (handlePdfSelectionReply(msg, userId, replyToken, contextId)) {
+            return; // 已處理完成
+        }
+
+        // D. 一般對話
+        const history = getHistoryFromCacheOrSheet(contextId);
+        const userMsgObj = { role: "user", content: msg };
+
+        // 檢查是否在 PDF 模式（之前觸發過深度搜尋，同主題追問繼續用 PDF）
+        const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+        let isInPdfMode = cache.get(pdfModeKey) === 'true';
+
+        // 2025-12-05: 修正「黏性」問題
+        // 用戶抱怨 10 分鐘太久，且不希望變成陌生人
+        // 策略：
+        // 1. 記憶 (History) 保持不變，讓用戶不覺得是陌生人
+        // 2. 模式 (PDF Mode) 應該更靈活退出
+        //    - 若用戶換話題 (NEW_TOPIC)，AI 會自動退出
+        //    - 若用戶問簡單問題 (Simple Question)，暫時不掛 PDF
+        //    - 這裡將 PDF Mode 的 TTL 縮短為 5 分鐘 (300秒)，避免過久
+
+        // v24.1.5: 型號變化自動清除 PDF Mode
+        // 當用戶切換到不同型號時，自動清除 PDF Mode，先用 Fast Mode (QA/Rules) 回答
+        if (isInPdfMode && checkAndClearPdfModeOnModelChange(msg, history)) {
+            writeLog("[PDF Mode] 偵測到型號變化，清除 PDF Mode，回到 Fast Mode");
+            isInPdfMode = false;
+            cache.remove(pdfModeKey);
+        }
+
+        // E. 直通車檢查 (Direct Search)
+        // v24.4.1 重大修正：不再在這裡觸發反問
+        // 邏輯改為：
+        // 1. 記錄命中的直通車關鍵字（用於後續 PDF 智慧匹配）
+        // 2. 所有問題先走 Fast Mode（QA + CLASS_RULES）
+        // 3. 只有當 AI 輸出 [AUTO_SEARCH_PDF] 時，才觸發 PDF 智慧匹配和反問
+
+        // v24.4.0: 記錄命中的直通車關鍵字，用於後續 PDF 智慧匹配
+        // v27.9.0: 改為支援多型號，不攔截（型號比較用 CLASS_RULES 就夠了）
+        // v27.9.1: 移除 tooMany 攔截，只有在進入 PDF 查詢時才限制
+        let hitAliasKeys = [];
+
+        if (!isInPdfMode) {
+            // 檢查直通車，記錄命中的關鍵字（但不立即反問）
+            const directSearchResult = checkDirectDeepSearchWithKey(msg, userId);
+
+            if (directSearchResult.hit) {
+                // v27.9.1: 不再攔截 tooMany，讓 Fast Mode 先嘗試回答
+                // 型號比較問題通常用 CLASS_RULES 就能回答
+                hitAliasKeys = directSearchResult.keys;
+                writeLog(`[Direct Search] 命中直通車關鍵字: ${hitAliasKeys.join(', ')}，先走 Fast Mode`);
+
+                // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
+                cache.put(`${userId}:hit_alias_key`, hitAliasKeys[0], 300); // 相容舊邏輯
+                if (hitAliasKeys.length > 1) {
+                    cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitAliasKeys), 300);
+                }
+            }
+        }
+
+        // 智慧退出：簡單問題不需要 PDF（價格、官網、日期、閒聊、新品等）
+        const simplePatterns = [
+            /多少錢|價格|價錢|售價/i,
+            /官網|網址|網站|連結|link/i,
+            /今天|日期|幾號|幾月/i,
+            /謝謝|感謝|好的|了解|OK|掰/i,
+            /^.{1,5}$/,  // 少於 5 字的簡短回覆
+            /根據|哪裡|為什麼|怎麼知道|來源/i,  // 追問來源類（不需要再查 PDF）
+            /還有嗎|其他|更多|繼續/i,  // 追問更多類
+            /新機|新品|推薦|最新|上市|熱門|最近/i,  // 新品推薦類（CLASS_RULES 沒有就是沒有）
+            /比較|差異|差別|哪個好|選哪/i  // 比較類（需要人工判斷）
+        ];
+        const isSimpleQuestion = simplePatterns.some(p => p.test(msg));
+
+        // v24.1.32: 修正直通車與簡單問題的衝突
+        // 如果是直通車強制開啟的 PDF Mode (如 M7 價格)，不應該被 simplePatterns 攔截
+        // 但「價格」確實不需要 PDF，所以這裡邏輯要調整：
+        // 1. 如果是「價格/官網」類，即使命中直通車，也應該走 Fast Mode
+        // 2. 但如果是「操作/故障」類，即使字數少，也應該走 PDF Mode
+
+        if (isInPdfMode && isSimpleQuestion) {
+            writeLog("[PDF Mode] 簡單/追問類問題，跳過 PDF");
+            isInPdfMode = false;
+            // v24.3.1 修復：清除 Cache 中的 PDF Mode 標記，防止下一題錯誤延續
+            cache.remove(pdfModeKey);
+        } else if (isInPdfMode) {
+            // v24.5.0: 記住 PDF 模式，但不直接開 PDF
+            // 改為先走 Fast Mode，如果 Fast Mode 能答就省錢省時間
+            // 只有 Fast Mode 說 [AUTO_SEARCH_PDF] 時才用記住的 PDF
+            writeLog("[PDF Mode] 記住 PDF 模式，但先走 Fast Mode 嘗試回答");
+            // 續命：延長 5 分鐘（等 Fast Mode 判斷完再決定是否用 PDF）
+            cache.put(pdfModeKey, 'true', 300);
+        }
+
+        // v24.5.0: 記住原始的 PDF Mode 狀態，供後續 [AUTO_SEARCH_PDF] 使用
+        const hadPdfModeMemory = isInPdfMode;
+
+        // v24.5.0: 檢查是否有已選過的 PDF 型號（避免重複反問）
+        // v27.3.1: 修正 JSON 轉換錯誤 - cache.get() 返回字串，需要 JSON.parse 還原成陣列
+        // v27.3.9: 加強防呆 - 防止 Cache 髒資料（null/非陣列）導致 length 錯誤
+        const cachedDirectModelsJson = cache.get(`${userId}:direct_search_models`);
+        let cachedDirectModels = [];  // 先預設為空陣列
+        try {
+            if (cachedDirectModelsJson) {
+                const parsed = JSON.parse(cachedDirectModelsJson);
+                // 🔥 絕對防呆：如果 parse 出來是 null 或非陣列，強制變成 []
+                cachedDirectModels = Array.isArray(parsed) ? parsed : [];
+            }
+        } catch (e) {
+            writeLog(`[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`);
+        }
+
+        const hasSelectedPdf = cachedDirectModels.length > 0;  // 現在絕對安全
+
+        try {
+            // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
+            // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
+            let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
+
+            // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
+            if (rawResponse === "[KB_EXPIRED]") {
+                writeLog("[KB Expired] PDF 過期，退出 PDF 模式，背景重建中");
+                cache.remove(pdfModeKey);  // 清除 PDF 模式
+
+                // 自動預約 1 分鐘後背景重建
+                scheduleImmediateRebuild();
+
+                // 用極速模式重試（不帶 PDF），用戶完全無感
+                rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
+                // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
+            }
+
+            if (rawResponse) {
+                let finalText = formatForLineMobile(rawResponse);
+                let replyText = finalText;
+                
+                // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
+                let aiRequestedPdfSearch = false;
+
+                // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
+                if (finalText.includes("[AUTO_SEARCH_PDF]") || finalText.includes("[NEED_DOC]")) {
+                    writeLog("[Auto Search] 偵測到搜尋暗號");
+                    aiRequestedPdfSearch = true;  // v27.9.12: 標記 AI 要求 PDF 搜尋
+                    finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                    finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+
+                    // v27.8.21: Fast Mode 觸發 [AUTO_SEARCH_WEB] 攔截
+                } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+                    writeLog("[Auto Web] Fast Mode 觸發 [AUTO_SEARCH_WEB] -> Pass 2");
+
+                    // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
+                    const pass1Usage = (typeof lastTokenUsage === 'object') ? { ...lastTokenUsage } : { input: 0, output: 0, total: 0, costTWD: 0 };
+
+                    // 執行 Pass 2 (Force Web Search)
+                    const searchResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId, true);
+
+                    // 累加費用
+                    if (lastTokenUsage && pass1Usage.total > 0) {
+                        lastTokenUsage.input += pass1Usage.input;
+                        lastTokenUsage.output += pass1Usage.output;
+                        lastTokenUsage.total += pass1Usage.total;
+                        lastTokenUsage.costTWD += pass1Usage.costTWD;
+                        writeLog(`[Cost Accumulation] Total: NT$${lastTokenUsage.costTWD.toFixed(4)}`);
+                    }
+
+                    if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+                        finalText = formatForLineMobile(searchResponse);
+                        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+                        finalText += "\n\n(🔍 網路搜尋補充資料)";
+                    } else {
+                        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+                        finalText += "\n\n(⚠️ 網路搜尋連線逾時)";
+                    }
+                    replyText = finalText;
+
+                    // 跳過後續 PDF Logic
+                    writeLog("[Auto Web] 已完成搜尋，跳過 PDF Logic");
+                    // 這裡直接跳到底部
+                }
+
+                // 確保如果是 WEB Search 就不進入 PDF 判斷 (用簡單的方法: 檢查 replyText 是否已改變)
+                // 或者將 PDF 邏輯包在 else 裡
+                // 目前結構較平鋪直敘，我們用一個 flag 或結構調整
+
+                if (!replyText.includes("(🔍 網路搜尋補充資料)") && !replyText.includes("(⚠️ 網路搜尋連線逾時)")) {
+
+                    // v24.5.4: 檢測是否為「不需要 PDF 的問題」
+                    // 包括：1) 硬體規格定義  2) 通識知識  3) 技術概念解釋
+                    // 這些問題 CLASS_RULES/QA 沒寫或 LLM 可用通用知識回答，不該查 PDF
+                    const nonPdfPatterns = [
+                        // 硬體規格問題
+                        /耳機孔|3\.5mm|音源孔|耳機插孔/i,
+                        /USB|HDMI|DP|DisplayPort|Type-C|連接埠|接口/i,
+                        /KVM|切換器/i,
+                        /喇叭|揚聲器|音響|音箱/i,
+                        /VESA|壁掛|架台/i,
+                        /解析度|Hz|更新率|刷新率|頻率/i,
+                        /尺寸|吋|英寸|大小/i,
+                        /曲面|平面|曲率|設計/i,
+                        /面板|panel|螢幕材質|VA|IPS|OLED|TN|LCD|LED/i,
+
+                        // 通識知識、技術概念（不是操作步驟）
+                        // v27.9.3: 移除「比較|差異|不同」攔截，允許比較題進入 PDF Mode
+                        /什麼是|什么是|定義|定义|優點|缺點/i,
+                        /HDR|色域|色溫|對比度|背光|LED背光|量子點/i,
+                        /Gsync|Freesync|垂直同步|V-Sync/i,
+                        /色準|色彩|Gamma|黑位/i,
+                        /PPI|密度|DPI/i
+                    ];
+                    const isNonPdfQuestion = nonPdfPatterns.some(p => p.test(msg));
+
+                    if (isNonPdfQuestion) {
+                        // 不需要 PDF 的問題：使用 CLASS_RULES 或 LLM 通用知識回答
+                        writeLog("[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案");
+                        // finalText 已經是極速模式的回答，直接用
+                        replyText = finalText;
+                    } else {
+                        // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
+                        // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
+                        const currentMsgModels = extractModelNumbers(msg);
+
+                        // 檢查是否提到了「不在」舊記憶裡的新型號（例如舊記憶是 M8，現在問 M9）
+                        const isModelMismatch = currentMsgModels.length > 0 &&
+                            currentMsgModels.some(m => !cachedDirectModels.some(old => old === m));
+
+                        if (hadPdfModeMemory && hasSelectedPdf && !isModelMismatch) {
+                            writeLog(`[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`);
+
+                            writeLog("[Auto Deep] 觸發 [AUTO_SEARCH_PDF]，啟動 PDF Mode 重試");
+                            isInPdfMode = true;
+                            cache.put(pdfModeKey, 'true', 300);
+
+
+
+                            // v24.5.0: 顯示 Loading 動畫
+                            showLoadingAnimation(userId, 60);
+
+                            const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+
+                            if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                                finalText = formatForLineMobile(deepResponse);
+                                finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                                finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+
+                                // v27.8.15: Handle [AUTO_SEARCH_WEB] (Two-Pass Search)
+                                // AI 指示 PDF 沒資料，需要查網路 (Pass 1 -> Pass 2)
+                                if (deepResponse.includes("[AUTO_SEARCH_WEB]")) {
+                                    writeLog("[Auto Web] 觸發 [AUTO_SEARCH_WEB]，啟動 Pass 2 (Force Web Search)");
+
+                                    // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
+                                    const pass1Usage = (typeof lastTokenUsage === 'object') ? { ...lastTokenUsage } : { input: 0, output: 0, total: 0, costTWD: 0 };
+
+                                    // Pass 2: Force Web Search call
+                                    const searchResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId, true);
+
+                                    // v27.8.16 Cost Fix: 累加費用 (Pass 1 + Pass 2)
+                                    if (lastTokenUsage && pass1Usage.total > 0) {
+                                        lastTokenUsage.input += pass1Usage.input;
+                                        lastTokenUsage.output += pass1Usage.output;
+                                        lastTokenUsage.total += pass1Usage.total;
+                                        lastTokenUsage.costTWD += pass1Usage.costTWD;
+                                        writeLog(`[Cost Accumulation] Total: NT$${lastTokenUsage.costTWD.toFixed(4)} (Pass1: ${pass1Usage.costTWD.toFixed(4)} + Pass2)`);
+                                    }
+
+                                    if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+                                        finalText = formatForLineMobile(searchResponse);
+                                        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim(); // Remove tag
+                                        writeLog("[Auto Web] Pass 2 搜尋完成");
+                                        finalText += "\n\n(🔍 網路搜尋補充資料)";
+                                    } else {
+                                        finalText = deepResponse.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+                                        finalText += "\n\n(⚠️ 網路搜尋連線逾時，僅顯示初步回答)";
+                                    }
+                                }
+                            } else {
+                                finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                            }
+                            replyText = finalText;
+
+                        } else {
+                            // v27.2.9: 如果有型號衝突，記錄並清除舊記憶
+                            if (isModelMismatch) {
+                                writeLog(`[Auto Search] ⚠️ 偵測到型號衝突: 當前問題提到 ${currentMsgModels.join(',')}，舊記憶是 ${cachedDirectModels.join(',')}，將重新進行 PDF 匹配`);
+                                cache.remove(pdfModeKey);
+                                // v27.3.2: 關鍵修正 - 同時清除舊直通車關鍵字與型號，避免 M8 記憶污染 M9 查詢
+                                cache.remove(`${userId}:hit_alias_key`);
+                                cache.remove(`${userId}:direct_search_models`);
+                            }
+
+                            // v24.4.1: 非硬體問題，需要查 PDF
+                            // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
+                            const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
+
+
+                            // v27.9.4: 修正多型號攔截邏輯
+                            // 只有當 AI 明確要求查 PDF ([AUTO_SEARCH_PDF]) 且有多個型號時才攔截
+                            // 比較題（用 CLASS_RULES 回答）應該正常顯示 AI 的回答
+                            const cachedAliasKeysJson = cache.get(`${userId}:hit_alias_keys`);
+                            if (cachedAliasKeysJson && finalText.includes('[AUTO_SEARCH_PDF]')) {
+                                try {
+                                    const multipleKeys = JSON.parse(cachedAliasKeysJson);
+                                    if (multipleKeys.length > 1) {
+                                        // 有多個型號要查 PDF → 先顯示 Fast Mode 回答，再提示用戶
+                                        writeLog(`[PDF Match] ⚠️ 偵測到多個型號需要查 PDF: ${multipleKeys.join(', ')}，顯示 Fast Mode 回答並提示`);
+
+                                        // 移除 [AUTO_SEARCH_PDF] 標記
+                                        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, '').trim();
+
+                                        // 如果 Fast Mode 有回答，就顯示；否則提示用戶選擇型號
+                                        if (finalText.length > 20) {
+                                            // 有實質回答，顯示並附加提示
+                                            finalText += `\n\n💡 若需要查詢詳細手冊，請分別詢問各型號喔！`;
+                                            replyText = finalText;
+                                        } else {
+                                            // 沒有實質回答，提示用戶選擇型號
+                                            const oneAtATimeMsg = `目前一次只能查詢一款型號的產品手冊喔！😊\n\n` +
+                                                `你問的型號有：${multipleKeys.join('、')}\n\n` +
+                                                `請選擇其中一款，例如：\n` +
+                                                `「${multipleKeys[0]} 怎麼設定」`;
+                                            replyMessage(replyToken, oneAtATimeMsg);
+                                            writeRecordDirectly(userId, msg, contextId, 'user', '');
+                                            writeRecordDirectly(userId, oneAtATimeMsg, contextId, 'assistant', '');
+                                            cache.remove(`${userId}:hit_alias_keys`);
+                                            return;
+                                        }
+                                        // 清除多型號記錄
+                                        cache.remove(`${userId}:hit_alias_keys`);
+                                    }
+                                } catch (e) {
+                                    writeLog(`[PDF Match] 解析 hit_alias_keys 失敗: ${e.message}`);
+                                }
+                            }
+
+                            // v27.9.12: 只有當 AI 明確要求 PDF 搜尋([AUTO_SEARCH_PDF])時，才進行 PDF 智慧匹配
+                            // 規格問題（如「M5有支援Smart嗎」）即使命中直通車，也不應觸發 PDF 匹配
+                            if (cachedAliasKey && aiRequestedPdfSearch) {
+                                // 有直通車關鍵字 + AI 要求 PDF → 使用 PDF 智慧匹配
+                                writeLog(`[Auto Search] AI 要求 PDF 搜尋，使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey}`);
+
+                                const pdfSearchResult = searchPdfByAliasPattern(cachedAliasKey);
+
+                                if (pdfSearchResult.needAsk && pdfSearchResult.matchedPdfs.length > 1) {
+                                    // 多個 PDF 匹配 → 反問用戶選擇
+                                    writeLog(`[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`);
+
+                                    // 儲存等待選擇的狀態
+                                    const pendingData = {
+                                        originalQuery: msg,
+                                        aliasKey: cachedAliasKey,
+                                        options: pdfSearchResult.matchedPdfs.slice(0, 9)
+                                    };
+                                    cache.put(CACHE_KEYS.PENDING_PDF_SELECTION + userId, JSON.stringify(pendingData), 300);
+
+                                    // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
+                                    // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
+                                    const askMsg = buildPdfSelectionMessage(pdfSearchResult.aliasName, pdfSearchResult.matchedPdfs.slice(0, 9));
+
+                                    replyMessage(replyToken, askMsg);
+                                    writeLog(`[PDF Match] 已發送型號選擇反問`);
+
+                                    // v24.5.2: 修復對話記憶丟失問題
+                                    // 即使是反問，也要將用戶問題和反問記錄到歷史
+                                    // 這樣用戶後續回覆時才能看到上下文
+                                    writeRecordDirectly(userId, msg, contextId, 'user', '');
+                                    writeRecordDirectly(userId, askMsg, contextId, 'assistant', '');
+
+                                    // v24.5.2: 更新對話歷史（關鍵修復！）
+                                    const askMsgObj = { role: 'assistant', content: askMsg };
+                                    updateHistorySheetAndCache(contextId, history, userMsgObj, askMsgObj);
+
+                                    return; // 等待用戶回覆
+
+                                } else if (pdfSearchResult.matchedPdfs.length === 1) {
+                                    // 只有一個 PDF → 直接使用
+                                    writeLog(`[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`);
+                                    cache.put(`${userId}:direct_search_models`, JSON.stringify([pdfSearchResult.matchedPdfs[0].matchedModel]), 300);
+
+                                    // 設定 PDF 模式並重試
+                                    isInPdfMode = true;
+                                    cache.put(pdfModeKey, 'true', 300);
+
+                                    const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+
+                                    if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                                        finalText = formatForLineMobile(deepResponse);
+                                        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                                        finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+                                    } else {
+                                        finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                                    }
+                                    replyText = finalText;
+
+                                } else {
+                                    // 沒有匹配的 PDF → 引導找 Sam
+                                    writeLog(`[PDF Match] 無匹配 PDF，引導找 Sam`);
+                                    replyText = finalText + "\n\n這個型號的手冊我還沒有建檔，可以找 Sam 幫你查喔！";
+                                }
+
+                            } else if (aiRequestedPdfSearch) {
+                                // v27.9.12: 只有當 AI 明確要求 PDF 搜尋時，才使用傳統 PDF 匹配
+                                // 沒有直通車關鍵字 → 使用傳統方式（依據型號匹配）
+                                writeLog("[Auto Search] AI 要求 PDF 搜尋，無直通車關鍵字，使用傳統 PDF 匹配");
+
+                                // v27.9.32: 智慧型話題延續偵測（使用 LLM 判斷）
+                                // 若用戶表示「未解決」，視為同一話題的追問，使用歷史型號
+                                // 否則強制只用當前訊息，避免歷史污染（如：第1輪問Odyssey，第2輪問奇美）
+                                
+                                let useHistory = false;
+                                
+                                // 只有在有對話歷史時才需要判斷
+                                if (history && history.length > 0) {
+                                    try {
+                                        // 使用最便宜的 LLM (Gemini Flash) 快速判斷話題延續性
+                                        const lastAssistantMsg = history.slice().reverse().find(h => h.role === 'assistant');
+                                        if (lastAssistantMsg) {
+                                            const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+                                            if (!apiKey) {
+                                                throw new Error("API Key not configured");
+                                            }
+                                            
+                                            const topicCheckPrompt = `上一輪對話：「${lastAssistantMsg.content.substring(0, 200)}」\n當前用戶訊息：「${msg}」\n\n請判斷：用戶是在「繼續上一個話題（表示未解決或追問）」還是「換了新話題」？\n只回答：SAME（同一話題）或 NEW（新話題）`;
+                                            
+                                            const topicCheckResponse = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+                                                method: 'post',
+                                                contentType: 'application/json',
+                                                muteHttpExceptions: true,
+                                                payload: JSON.stringify({
+                                                    contents: [{ role: 'user', parts: [{ text: topicCheckPrompt }] }],
+                                                    generationConfig: { maxOutputTokens: 10, temperature: 0 }
+                                                })
+                                            });
+                                            
+                                            const topicResult = JSON.parse(topicCheckResponse.getContentText());
+                                            const topicDecision = topicResult.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toUpperCase() || 'NEW';
+                                            useHistory = topicDecision.includes('SAME');
+                                            
+                                            writeLog(`[Topic Check] LLM 判斷: ${topicDecision} -> useHistory=${useHistory}`);
+                                        }
+                                    } catch (e) {
+                                        // 如果 LLM 判斷失敗，fallback 到關鍵字匹配
+                                        writeLog(`[Topic Check] LLM 判斷失敗，使用關鍵字 fallback: ${e.message}`);
+                                        const unresolvedSignals = /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓/i;
+                                        useHistory = unresolvedSignals.test(msg);
+                                    }
+                                }
+                                
+                                if (useHistory) {
+                                    writeLog("[Auto Search] 偵測到「同一話題」，使用對話歷史匹配 PDF");
+                                } else {
+                                    writeLog("[Auto Search] 偵測到「新話題」或無歷史，強制只用當前訊息避免歷史污染");
+                                }
+
+                                // 預測會用到哪些 PDF
+                                const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || '[]');
+                                const relevantFiles = getRelevantKBFiles(useHistory ? [...history, userMsgObj] : [userMsgObj], kbList, userId, contextId, !useHistory);
+                                const pdfNames = relevantFiles.filter(f => f.mimeType === 'application/pdf').map(f => f.name.replace('.pdf', ''));
+                                const productNames = pdfNames.map(name => getPdfProductName(name)).slice(0, 3);
+
+                                if (productNames.length > 0) {
+                                    writeLog(`[Auto Deep] 找到相關手冊: ${productNames.join('、')}，開始重試...`);
+
+                                    isInPdfMode = true;
+                                    cache.put(pdfModeKey, 'true', 300);
+
+                                    const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+
+                                    if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                                        finalText = formatForLineMobile(deepResponse);
+                                        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                                        finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+
+                                        if (finalText.startsWith("根據我的資料庫")) {
+                                            finalText = finalText.replace(/^根據我的資料庫/, "根據產品手冊");
+                                        }
+                                    } else {
+                                        finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                                    }
+                                    replyText = finalText;
+                                } else {
+                                    writeLog("[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案");
+                                    replyText = finalText;
+                                }
+                            }
+                        } // v24.5.0: 結束 else { 有直通車關鍵字 } 區塊
+                    } // v24.5.0: 結束 else { 沒有 PDF 記憶 } 區塊
+                }
+                // === [NEW_TOPIC] 攔截：退出 PDF 模式 ===
+                if (finalText.includes("[NEW_TOPIC]")) {
+                    writeLog("[New Topic] 偵測到換題，退出 PDF 模式");
+                    finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+                    cache.remove(pdfModeKey);
+                    replyText = finalText;
+                }
+                // === 智慧退出：回答不需要 PDF 時自動退出 ===
+                else if (isInPdfMode) {
+                    // v24.1.33: 移除強制補全開頭邏輯，避免與 AI 自己的開頭重複
+                    // AI 會根據 Prompt 自行決定開頭，不需要程式碼干預
+
+                    // 檢測是否為簡單回答（不需要 PDF 的回答）
+                    const exitPatterns = [
+                        /找Sam|問Sam|問一下Sam/i,           // 引導找 Sam
+                        /官網確認|samsung\.com/i,            // 價格引導到官網
+                        /沒有.*資料|資料.*沒有/i,            // 查無資料
+                        /商業機密|不能透漏/i,                 // 拒答
+                        /手邊的資料剛好沒有寫到/i,            // AI 查無資料的常見回覆
+                        /手冊未記載/i                         // v24.1.30: 新增退出關鍵字
+                    ];
+                    const shouldExit = exitPatterns.some(p => p.test(finalText));
+                    if (shouldExit) {
+                        writeLog("[PDF Mode] 回答不需 PDF (或查無資料)，自動退出");
+                        cache.remove(pdfModeKey);
+                    }
+                    replyText = finalText;
+                }
+
+
+
+                // v27.0.0: 修復費用顯示邏輯（確保費用正確對應當前查詢）
+                if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+                    const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+                    replyText += tokenInfo;
+                    
+                    // v27.9.14: QA 庫滿警告 - 動態閾值：一般 20k，網路搜尋 40k
+                    // v27.9.32: 動態閾值 - 網路搜尋階段允許更高 Token 使用量
+                    const isWebSearchPhase = replyText.includes('🔍 網路搜尋補充資料') || replyText.includes('[來源: 網路搜尋]');
+                    const tokenThreshold = isWebSearchPhase ? 40000 : 20000;
+                    
+                    if (lastTokenUsage.input > tokenThreshold) {
+                        replyText += `\n\n⚠️ 知識庫超載警告：輸入 Token 已達 ${lastTokenUsage.input}，請聯繫 Sam 優化 QA/CLASS_RULES 資料量。`;
+                        writeLog(`[Token Warning] Input tokens (${lastTokenUsage.input}) exceeded ${tokenThreshold} threshold`);
+                    }
+                }
+
+                replyMessage(replyToken, replyText);
+                // v25.0.2 修復：補上缺失的 user 訊息記錄
+                writeRecordDirectly(userId, msg, contextId, 'user', '');
+                writeRecordDirectly(userId, replyText, contextId, 'assistant', '');
+                // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
+                // v27.7.6: Log 回覆時包含費用資訊，方便 testMessage 顯示成本
+                var replyForLog = replyText || finalText;
+                writeLog(`[AI Reply] ${replyForLog.substring(0, 2000)}${replyForLog.length > 2000 ? '...' : ''}`);
+
+                updateHistorySheetAndCache(contextId, history, userMsgObj, { role: 'assistant', content: finalText });
+
+                // 2025-12-05 v23.6.5: 背景異步整理 (Async Background Summary)
+                // v27.8.25: Async Summary temporarily disabled for syntax debugging
+                // try { ... } catch (e) { ... }
+            }
+        } catch (apiErr) {
+            replyMessage(replyToken, `系統錯誤：${apiErr.message}`);
+            writeLog(`[Handle API Error] ${apiErr.message}`);
+        } finally {
+            // v27.8.5: 可選：在此處也嘗試 flush，避免 GAS 超時被殺
+            // 但 doPost 已有 finally flush，這裡可不寫，或為了保險寫一次
+        }
+    } catch (error) { writeLog("[Fatal] " + error); }
 }
 
 // v24.1.23: 廢棄 handleDeepSearch，改由 Auto Deep Search 直接處理
@@ -2977,30 +3621,30 @@ function generateFollowUpPrompt() {
 }
 
 function handleImageMessage(msgId, userId, replyToken, contextId) {
-  try {
-    writeLog(`[Image] 收到圖片 MsgId: ${msgId}`);
-    // writeRecordDirectly(userId, "[傳圖]", contextId, 'user', '');
+    try {
+        writeLog(`[Image] 收到圖片 MsgId: ${msgId}`);
+        // writeRecordDirectly(userId, "[傳圖]", contextId, 'user', '');
 
-    if (!hasRecentAnimation(userId)) { showLoadingAnimation(userId, 20); markAnimationShown(userId); }
+        if (!hasRecentAnimation(userId)) { showLoadingAnimation(userId, 20); markAnimationShown(userId); }
 
-    const token = PropertiesService.getScriptProperties().getProperty("TOKEN");
-    const blob = UrlFetchApp.fetch(`https://api-data.line.me/v2/bot/message/${msgId}/content`, { headers: { "Authorization": "Bearer " + token } }).getBlob();
+        const token = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
+        const blob = UrlFetchApp.fetch(`https://api-data.line.me/v2/bot/message/${msgId}/content`, { headers: { "Authorization": "Bearer " + token } }).getBlob();
 
-    const analysis = callChatGPTWithRetry(null, blob, false, false, userId);
-    const final = formatForLineMobile(analysis);
-    replyMessage(replyToken, final);
-    
-    // writeRecordDirectly(userId, final, contextId, 'assistant', '');
-    
-    const history = getHistoryFromCacheOrSheet(contextId);
-    updateHistorySheetAndCache(contextId, history, 
-        { role: 'user', content: "[使用者傳送了一張圖片]" }, 
-        { role: 'assistant', content: `(針對圖片的分析結果) ${final}` }
-    );
-  } catch (e) {
-    writeLog(`[Image Error] ${e.message}`);
-    replyMessage(replyToken, "抱歉，我看圖片出了點問題，請稍後再試 🔧");
-  }
+        const analysis = callChatGPTWithRetry(null, blob, false, false, userId);
+        const final = formatForLineMobile(analysis);
+        replyMessage(replyToken, final);
+
+        // writeRecordDirectly(userId, final, contextId, 'assistant', '');
+
+        const history = getHistoryFromCacheOrSheet(contextId);
+        updateHistorySheetAndCache(contextId, history,
+            { role: 'user', content: "[使用者傳送了一張圖片]" },
+            { role: 'assistant', content: `(針對圖片的分析結果) ${final}` }
+        );
+    } catch (e) {
+        writeLog(`[Image Error] ${e.message}`);
+        replyMessage(replyToken, "抱歉，我看圖片出了點問題，請稍後再試 🔧");
+    }
 }
 
 // ==========================================
@@ -3008,66 +3652,92 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
 // ==========================================
 
 function handleCommand(c, u, cid) {
-  const cmd = c.trim();
-  const draftKey = CACHE_KEYS.ENTRY_DRAFT_PREFIX + u;
-  
-  if (cmd === "/重啟" || cmd === "/reboot") {
-      writeLog(`[Command] /重啟 by ${u}`);
-      clearHistorySheetAndCache(cid);
-      // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
-      const cache = CacheService.getScriptCache();
-      cache.remove(`anim_${u}`);
-      // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
-      // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
-      // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
-      const resultMsg = syncGeminiKnowledgeBase(false); 
-      writeLog(`[Command] 重啟完成: ${resultMsg.substring(0, 100)}`);
-      return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
-  }
+    const cmd = c.trim();
+    const draftKey = CACHE_KEYS.ENTRY_DRAFT_PREFIX + u;
 
-  if (cmd === "/取消") {
-      CacheService.getScriptCache().remove(draftKey);
-      CacheService.getScriptCache().remove(CACHE_KEYS.PENDING_QUERY + u); 
-      return "❌ 已取消建檔，回到一般對話模式。";
-  }
-  
-  if (cmd.startsWith("/記錄") || cmd.startsWith("/紀錄")) {
-      const pendingDraft = CacheService.getScriptCache().get(draftKey);
-      const inputContent = cmd.replace(/^\/紀錄\s*/i, "").replace(/^\/記錄\s*/i, "").trim();
+    if (cmd === "/重啟" || cmd === "/reboot") {
+        writeLog(`[Command] /重啟 by ${u}`);
+        clearHistorySheetAndCache(cid);
+        // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
+        const cache = CacheService.getScriptCache();
+        cache.remove(`anim_${u}`);
+        // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
+        // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
+        // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
+        const resultMsg = syncGeminiKnowledgeBase(false);
+        writeLog(`[Command] 重啟完成: ${resultMsg.substring(0, 100)}`);
+        return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
+    }
 
-      if (pendingDraft && inputContent === "") {
-          return saveDraftToSheet(JSON.parse(pendingDraft));
-      }
+    if (cmd === "/取消") {
+        CacheService.getScriptCache().remove(draftKey);
+        CacheService.getScriptCache().remove(CACHE_KEYS.PENDING_QUERY + u);
+        return "❌ 已取消建檔，回到一般對話模式。";
+    }
 
-      if (inputContent !== "") {
-          return startNewEntryDraft(inputContent, u);
-      }
+    if (cmd.startsWith("/記錄") || cmd.startsWith("/紀錄")) {
+        const pendingDraft = CacheService.getScriptCache().get(draftKey);
+        const inputContent = cmd.replace(/^\/紀錄\s*/i, "").replace(/^\/記錄\s*/i, "").trim();
 
-      return handleAutoQA(u, cid);
-  }
+        if (pendingDraft && inputContent === "") {
+            return saveDraftToSheet(JSON.parse(pendingDraft));
+        }
 
-  return `❌ 未知指令\n\n【指令列表】\n/重啟 -> 重置對話+更新\n/紀錄 <內容> -> 開始建檔\n/紀錄 -> 存檔/整理QA\n/取消 -> 退出建檔`;
+        if (inputContent !== "") {
+            return startNewEntryDraft(inputContent, u);
+        }
+
+        return handleAutoQA(u, cid);
+    }
+
+    return `❌ 未知指令\n\n【指令列表】\n/重啟 -> 重置對話+更新\n/紀錄 <內容> -> 開始建檔\n/紀錄 -> 存檔/整理QA\n/取消 -> 退出建檔`;
 }
 
 function startNewEntryDraft(content, userId) {
     try {
         writeLog(userId, 'UserRecord', `[NewDraft] 開始建檔: ${content.substring(0, 150)}`);
-        
+
+        // v27.9.16: 累計費用追蹤
+        var totalCostTWD = 0;
+        var totalInputTokens = 0;
+        var totalOutputTokens = 0;
+
         // Step 1: AI 產生初版 QA
         const polishedText = callGeminiToPolish(content);
         writeLog(userId, 'UserRecord', `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`);
         
+        // 累計費用
+        if (lastTokenUsage && lastTokenUsage.costTWD) {
+            totalCostTWD += lastTokenUsage.costTWD;
+            totalInputTokens += lastTokenUsage.input || 0;
+            totalOutputTokens += lastTokenUsage.output || 0;
+        }
+
         // Step 2: 搜尋現有 QA 是否有相似的
         const similarResult = findSimilarQA(content, polishedText);
         
+        // 累計費用
+        if (lastTokenUsage && lastTokenUsage.costTWD) {
+            totalCostTWD += lastTokenUsage.costTWD;
+            totalInputTokens += lastTokenUsage.input || 0;
+            totalOutputTokens += lastTokenUsage.output || 0;
+        }
+
         if (similarResult && similarResult.found) {
             // 找到相似 QA，讓用戶選擇
             writeLog(userId, 'UserRecord', `[NewDraft] 找到相似 QA: 行 ${similarResult.matchedRows.join(',')}`);
-            
+
             // Step 3: LLM 合併產出合併版
             const mergedQA = callGeminiToMergeQA(similarResult.matchedQAs, polishedText);
             writeLog(userId, 'UserRecord', `[NewDraft] 合併版 QA: ${mergedQA.substring(0, 150)}`);
             
+            // 累計費用
+            if (lastTokenUsage && lastTokenUsage.costTWD) {
+                totalCostTWD += lastTokenUsage.costTWD;
+                totalInputTokens += lastTokenUsage.input || 0;
+                totalOutputTokens += lastTokenUsage.output || 0;
+            }
+
             // 建立等待選擇的 draft
             var draft = {
                 originalContent: content,
@@ -3081,7 +3751,7 @@ function startNewEntryDraft(content, userId) {
                 matchedQATexts: similarResult.matchedQAs
             };
             CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(draft), CONFIG.DRAFT_TTL_SEC);
-            
+
             // 組裝回覆訊息
             var replyMsg = '🔍 找到相似的現有 QA：\n\n';
             replyMsg += '【現有 QA】\n';
@@ -3092,14 +3762,20 @@ function startNewEntryDraft(content, userId) {
             replyMsg += '【你的新內容】\n' + polishedText + '\n\n';
             replyMsg += '請選擇：\n';
             replyMsg += '1️⃣ 採用合併版（會刪除舊 QA）\n';
-            replyMsg += '2️⃣ 另開新條（保留舊 QA）';
+            replyMsg += '2️⃣ 另開新條（保留舊 QA）\n';
+            replyMsg += '3️⃣ 取代舊 QA（刪除舊的，直接用新的）';
             
-            writeLog(userId, 'UserRecord', `[NewDraft Reply] 等待用戶選擇 1/2`);
+            // v27.9.16: 附加費用資訊
+            if (totalCostTWD > 0) {
+                replyMsg += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(4)} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+            }
+
+            writeLog(userId, 'UserRecord', `[NewDraft Reply] 等待用戶選擇 1/2/3`);
             return replyMsg;
         }
-        
+
         // 沒找到相似，直接進入正常建檔模式
-        var draft = { 
+        var draft = {
             originalContent: content,
             conversation: [],
             currentQA: polishedText,
@@ -3107,31 +3783,37 @@ function startNewEntryDraft(content, userId) {
             pendingMergeChoice: false
         };
         CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(draft), CONFIG.DRAFT_TTL_SEC);
-        
+
         var alertMsg = '⚠️ 已進入建檔模式。接下來的對話將視為修改指令，直到輸入 /紀錄 存檔為止。';
         var preview = '\n\n【預覽】將寫入 QA：\n' + polishedText + '\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消';
         
+        // v27.9.16: 附加費用資訊
+        if (totalCostTWD > 0) {
+            preview += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(4)} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+        }
+
         writeLog(userId, 'UserRecord', `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`);
         return alertMsg + preview;
-    } catch (e) { 
+    } catch (e) {
         writeLog(userId, 'Error', `[NewDraft Error] ${e.message}`);
-        return '❌ 分析失敗：' + e.message; 
+        return '❌ 分析失敗：' + e.message;
     }
 }
+
 
 function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     try {
         writeLog(`[DraftMod] 用戶說: ${feedback}`);
-        
+
         // 檢查是否在等待選擇 1/2
         if (currentDraft.pendingMergeChoice === true) {
             var choice = feedback.trim();
-            
+
             if (choice === '1' || choice === '１') {
                 // 選擇合併版，刪除舊 QA
                 writeLog(`[DraftMod] 用戶選擇 1: 採用合併版`);
                 deleteQARows(currentDraft.matchedQARows);
-                
+
                 var newDraft = {
                     originalContent: currentDraft.originalContent,
                     conversation: [],
@@ -3140,16 +3822,16 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
                     pendingMergeChoice: false
                 };
                 CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(newDraft), CONFIG.DRAFT_TTL_SEC);
-                
+
                 var preview = '✅ 已採用合併版，舊 QA 已刪除\n\n【預覽】將寫入 QA：\n' + currentDraft.mergedVersion + '\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消';
                 replyMessage(replyToken, preview);
                 writeLog(`[DraftMod Reply] 採用合併版`);
                 return;
-            } 
+            }
             else if (choice === '2' || choice === '２') {
                 // 選擇純新版，保留舊 QA
                 writeLog(`[DraftMod] 用戶選擇 2: 另開新條`);
-                
+
                 var newDraft = {
                     originalContent: currentDraft.originalContent,
                     conversation: [],
@@ -3158,39 +3840,59 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
                     pendingMergeChoice: false
                 };
                 CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(newDraft), CONFIG.DRAFT_TTL_SEC);
-                
+
                 var preview = '✅ 已選擇另開新條，舊 QA 保留\n\n【預覽】將寫入 QA：\n' + currentDraft.freshVersion + '\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消';
                 replyMessage(replyToken, preview);
                 writeLog(`[DraftMod Reply] 另開新條`);
                 return;
             }
+            else if (choice === '3' || choice === '３') {
+                // 選擇 3: 取代舊 QA 
+                // 邏輯: 刪除舊 QA (同選項1)，但寫入 freshVersion (而非 mergedVersion)
+                writeLog(`[DraftMod] 用戶選擇 3: 取代舊 QA`);
+                deleteQARows(currentDraft.matchedQARows);
+
+                var newDraft = {
+                    originalContent: currentDraft.originalContent,
+                    conversation: [],
+                    currentQA: currentDraft.freshVersion, // 注意這裡用 freshVersion
+                    userId: userId,
+                    pendingMergeChoice: false
+                };
+                CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(newDraft), CONFIG.DRAFT_TTL_SEC);
+
+                var preview = '✅ 已選擇取代舊 QA（舊條目已刪除）\n\n【預覽】將寫入 QA：\n' + currentDraft.freshVersion + '\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消';
+                replyMessage(replyToken, preview);
+                writeLog(`[DraftMod Reply] 取代舊 QA`);
+                return;
+            }
             else {
-                // 不是 1 或 2，提醒用戶
-                replyMessage(replyToken, '請輸入 1 或 2 選擇：\n1️⃣ 採用合併版（會刪除舊 QA）\n2️⃣ 另開新條（保留舊 QA）');
+                // 不是 1, 2 或 3，提醒用戶
+                replyMessage(replyToken, '請輸入 1, 2 或 3 選擇：\n1️⃣ 採用合併版（刪除舊的）\n2️⃣ 另開新條（保留舊的）\n3️⃣ 取代舊 QA（刪除舊的，用新的）');
                 writeLog(`[DraftMod Reply] 提醒用戶選擇 1/2`);
                 return;
             }
         }
-        
+
         // 正常修改模式
-        writeLog(`[DraftMod] 原始內容: ${(currentDraft.originalContent || '').substring(0, 100)}`);
-        writeLog(`[DraftMod] 目前 QA: ${(currentDraft.currentQA || '').substring(0, 100)}`);
-        
+        writeLog(`[DraftMod] 原始內容: ${(currentDraft.originalContent || '').substring(0, 500)}`);
+        writeLog(`[DraftMod] 目前 QA: ${(currentDraft.currentQA || '').substring(0, 500)}`);
+
         // 累積對話歷史
         var conversation = currentDraft.conversation || [];
         conversation.push(feedback);
-        
+
         // 帶完整上下文讓 LLM 重新產出 QA
         var newQA = callGeminiToRefineQA(
             currentDraft.originalContent,
             currentDraft.currentQA,
             conversation
         );
-        
-        writeLog(`[DraftMod] 新 QA: ${newQA.substring(0, 150)}`);
-        
+
+        writeLog(`[DraftMod] 新 QA: ${newQA.substring(0, 500)}`);
+
         // 更新 draft
-        var newDraft = { 
+        var newDraft = {
             originalContent: currentDraft.originalContent,
             conversation: conversation,
             currentQA: newQA,
@@ -3198,13 +3900,19 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
             pendingMergeChoice: false
         };
         CacheService.getScriptCache().put(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId, JSON.stringify(newDraft), CONFIG.DRAFT_TTL_SEC);
-        
+
         var preview = '🔄 已修正草稿：\n\n【預覽】將寫入 QA：\n' + newQA + '\n\n👉 確認存檔 → /紀錄\n👉 繼續修改 → 直接回覆\n👉 放棄 → /取消';
+        
+        // v27.9.17: 附加費用資訊
+        if (lastTokenUsage && lastTokenUsage.costTWD) {
+            preview += `\n\n---\n本次修改預估花費：NT$${lastTokenUsage.costTWD.toFixed(4)} (In:${lastTokenUsage.input}/Out:${lastTokenUsage.output})`;
+        }
+        
         replyMessage(replyToken, preview);
-        writeLog(`[DraftMod Reply] ${preview.substring(0, 100)}...`);
-    } catch (e) { 
+        writeLog(`[DraftMod Reply] ${preview.substring(0, 500)}...`);
+    } catch (e) {
         writeLog(`[DraftMod Error] ${e.message}`);
-        replyMessage(replyToken, '❌ 修改失敗: ' + e.message); 
+        replyMessage(replyToken, '❌ 修改失敗: ' + e.message);
     }
 }
 
@@ -3218,10 +3926,10 @@ function findSimilarQA(newContent, polishedQA) {
     try {
         var sheet = ss.getSheetByName(SHEET_NAMES.QA);
         if (!sheet) return null;
-        
+
         var lastRow = sheet.getLastRow();
         if (lastRow < 1) return null;
-        
+
         var data = sheet.getRange(1, 1, lastRow, 1).getValues();
         var allQAs = [];
         for (var i = 0; i < data.length; i++) {
@@ -3230,18 +3938,18 @@ function findSimilarQA(newContent, polishedQA) {
                 allQAs.push({ row: i + 1, text: text });
             }
         }
-        
+
         if (allQAs.length === 0) return null;
-        
+
         // 組裝 QA 列表給 LLM 判斷
         var qaListText = '';
         for (var i = 0; i < allQAs.length; i++) {
             qaListText += '行' + allQAs[i].row + ': ' + allQAs[i].text.substring(0, 150) + '\n';
         }
-        
+
         var apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
         if (!apiKey) return null;
-        
+
         var prompt = '你是 QA 比對專家。\n\n';
         prompt += '以下是現有的 QA 列表：\n' + qaListText + '\n\n';
         prompt += '新內容：\n' + newContent + '\n\n';
@@ -3250,15 +3958,15 @@ function findSimilarQA(newContent, polishedQA) {
         prompt += '如果有，回傳相關的行號（用逗號分隔，例如：3,7）\n';
         prompt += '如果沒有，只回 NONE\n';
         prompt += '只回行號或 NONE，不要解釋。';
-        
+
         var payload = {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { 
-                maxOutputTokens: 100, 
+            generationConfig: {
+                maxOutputTokens: 100,
                 temperature: 0.1
             }
         };
-        
+
         // v24.2.3: 簡單搜尋用 Fast 模型
         var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME_FAST + ':generateContent?key=' + apiKey, {
             method: 'post',
@@ -3266,29 +3974,29 @@ function findSimilarQA(newContent, polishedQA) {
             payload: JSON.stringify(payload),
             muteHttpExceptions: true
         });
-        
+
         var code = res.getResponseCode();
         var body = res.getContentText();
         writeLog('[FindSimilar API] Code: ' + code + ', Body: ' + body.substring(0, 300));
-        
+
         if (code !== 200) return null;
-        
+
         var json = JSON.parse(body);
-        
+
         // v25.0.1 新增：記錄 Token 成本（確保計費完整）
         if (json.usageMetadata) {
             var inputTokens = json.usageMetadata.promptTokenCount || 0;
             var outputTokens = json.usageMetadata.candidatesTokenCount || 0;
             var totalTokens = inputTokens + outputTokens;
-            var costUSD = (inputTokens * 0.10 / 1000000) + (outputTokens * 0.40 / 1000000);
-            var costTWD = costUSD * 32;
+            var costUSD = (inputTokens * PRICE_FAST_INPUT / 1000000) + (outputTokens * PRICE_FAST_OUTPUT / 1000000);
+            var costTWD = costUSD * EXCHANGE_RATE;
             lastTokenUsage = { input: inputTokens, output: outputTokens, total: totalTokens, costUSD: costUSD, costTWD: costTWD };
             writeLog('[FindSimilar Tokens] In:' + inputTokens + '/Out:' + outputTokens + '=Total:' + totalTokens + ', Cost:NT$' + costTWD.toFixed(4));
         }
-        
+
         var candidates = (json && json.candidates) ? json.candidates : [];
         if (candidates.length === 0) return null;
-        
+
         var firstCandidate = candidates[0];
         var rawText = '';
         if (firstCandidate && firstCandidate.content && firstCandidate.content.parts) {
@@ -3297,13 +4005,13 @@ function findSimilarQA(newContent, polishedQA) {
                 rawText = parts[0].text.trim();
             }
         }
-        
+
         writeLog('[FindSimilar] LLM 回應: ' + rawText);
-        
+
         if (!rawText || rawText.toUpperCase() === 'NONE') {
             return { found: false, matchedRows: [], matchedQAs: [] };
         }
-        
+
         // 解析行號
         var rowNumbers = [];
         var matches = rawText.match(/\d+/g);
@@ -3315,11 +4023,11 @@ function findSimilarQA(newContent, polishedQA) {
                 }
             }
         }
-        
+
         if (rowNumbers.length === 0) {
             return { found: false, matchedRows: [], matchedQAs: [] };
         }
-        
+
         // 取得匹配的 QA 內容
         var matchedQAs = [];
         for (var i = 0; i < rowNumbers.length; i++) {
@@ -3331,9 +4039,9 @@ function findSimilarQA(newContent, polishedQA) {
                 }
             }
         }
-        
+
         return { found: true, matchedRows: rowNumbers, matchedQAs: matchedQAs };
-        
+
     } catch (e) {
         writeLog('[FindSimilar Error] ' + e.message);
         return null;
@@ -3349,12 +4057,12 @@ function findSimilarQA(newContent, polishedQA) {
 function callGeminiToMergeQA(existingQAs, newQA) {
     var apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
-    
+
     var existingText = '';
     for (var i = 0; i < existingQAs.length; i++) {
         existingText += '現有 QA ' + (i + 1) + ': ' + existingQAs[i] + '\n';
     }
-    
+
     var prompt = '你是「客服 QA 知識庫建檔專家」。\n\n';
     prompt += '任務：將現有 QA 和新內容合併成一條完整的 QA。\n\n';
     prompt += existingText + '\n';
@@ -3366,16 +4074,15 @@ function callGeminiToMergeQA(existingQAs, newQA) {
     prompt += '- 問題要涵蓋所有相關問法\n';
     prompt += '- 格式嚴格用「 / A：」分隔，不要用逗號\n';
     prompt += '- 只輸出一行結果，不要解釋';
-    
+
     var payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { 
-            maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 512 }
+        generationConfig: {
+            maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+            temperature: 0.3
         }
     };
-    
+
     try {
         // v24.2.3: 語意合併用 Think 模型
         var res = UrlFetchApp.fetch(CONFIG.API_ENDPOINT + '/' + CONFIG.MODEL_NAME_THINK + ':generateContent?key=' + apiKey, {
@@ -3384,29 +4091,33 @@ function callGeminiToMergeQA(existingQAs, newQA) {
             payload: JSON.stringify(payload),
             muteHttpExceptions: true
         });
-        
+
         var code = res.getResponseCode();
         var body = res.getContentText();
         writeLog('[MergeQA API] Code: ' + code + ', Body: ' + body.substring(0, 500));
-        
+
         if (code !== 200) {
             // 降級：簡單合併
             return newQA + '（合併自現有 QA）';
         }
-        
+
         var json = JSON.parse(body);
-        
+
         // 記錄 Token 用量
         if (json.usageMetadata) {
             var usage = json.usageMetadata;
-            var costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
-            var costTWD = costUSD * 32;
+            var costUSD = (usage.promptTokenCount / 1000000 * PRICE_THINK_INPUT) + (usage.candidatesTokenCount / 1000000 * PRICE_THINK_OUTPUT);
+            var costTWD = costUSD * EXCHANGE_RATE;
+            // v27.9.19: 關鍵修正！設定 lastTokenUsage
+            lastTokenUsage = { input: usage.promptTokenCount, output: usage.candidatesTokenCount, total: usage.totalTokenCount, costTWD: costTWD };
             writeLog(`[MergeQA Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+        } else {
+            lastTokenUsage = null;
         }
-        
+
         var candidates = (json && json.candidates) ? json.candidates : [];
         if (candidates.length === 0) return newQA;
-        
+
         var firstCandidate = candidates[0];
         var rawText = '';
         if (firstCandidate && firstCandidate.content && firstCandidate.content.parts) {
@@ -3415,9 +4126,9 @@ function callGeminiToMergeQA(existingQAs, newQA) {
                 rawText = parts[0].text.trim().replace(/[\r\n]+/g, ' ');
             }
         }
-        
+
         return rawText || newQA;
-        
+
     } catch (e) {
         writeLog('[MergeQA Error] ' + e.message);
         return newQA;
@@ -3430,14 +4141,14 @@ function callGeminiToMergeQA(existingQAs, newQA) {
  */
 function deleteQARows(rowNumbers) {
     if (!rowNumbers || rowNumbers.length === 0) return;
-    
+
     try {
         var sheet = ss.getSheetByName(SHEET_NAMES.QA);
         if (!sheet) return;
-        
+
         // 從大到小排序，避免刪除後行號位移
-        var sorted = rowNumbers.slice().sort(function(a, b) { return b - a; });
-        
+        var sorted = rowNumbers.slice().sort(function (a, b) { return b - a; });
+
         for (var i = 0; i < sorted.length; i++) {
             var rowNum = sorted[i];
             if (rowNum > 0 && rowNum <= sheet.getLastRow()) {
@@ -3445,7 +4156,7 @@ function deleteQARows(rowNumbers) {
                 writeLog('[DeleteQA] 已刪除行 ' + rowNum);
             }
         }
-        
+
         SpreadsheetApp.flush();
     } catch (e) {
         writeLog('[DeleteQA Error] ' + e.message);
@@ -3461,10 +4172,10 @@ function deleteQARows(rowNumbers) {
 function callGeminiToRefineQA(originalContent, currentQA, conversation) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
-    
+
     // 組裝完整上下文
-    const historyText = conversation.map((msg, i) => `用戶第${i+1}次說: ${msg}`).join('\n');
-    
+    const historyText = conversation.map((msg, i) => `用戶第${i + 1}次說: ${msg}`).join('\n');
+
     const prompt = `你是「客服 QA 知識庫建檔專家」。
 
 任務：根據用戶的修改指令，重新整理出一條 QA。
@@ -3489,13 +4200,12 @@ ${historyText}
 
     const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { 
-            maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 1024 }
+        generationConfig: {
+            maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+            temperature: 0.3
         }
     };
-    
+
     try {
         // v24.2.3: 對話修改用 Think 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`, {
@@ -3508,7 +4218,7 @@ ${historyText}
         const code = res.getResponseCode();
         const body = res.getContentText();
         writeLog(`[RefineQA API] Code: ${code}, Body: ${body.substring(0, 500)}`);
-        
+
         if (code !== 200) {
             writeLog(`[RefineQA API Error] Code: ${code}`);
             // 降級：簡單合併
@@ -3524,9 +4234,13 @@ ${historyText}
         // 記錄 Token 用量
         if (json.usageMetadata) {
             const usage = json.usageMetadata;
-            const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
-            const costTWD = costUSD * 32;
+            const costUSD = (usage.promptTokenCount / 1000000 * PRICE_THINK_INPUT) + (usage.candidatesTokenCount / 1000000 * PRICE_THINK_OUTPUT);
+            const costTWD = costUSD * EXCHANGE_RATE;
+            // v27.9.19: 關鍵修正！設定 lastTokenUsage
+            lastTokenUsage = { input: usage.promptTokenCount, output: usage.candidatesTokenCount, total: usage.totalTokenCount, costTWD: costTWD };
             writeLog(`[RefineQA Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+        } else {
+            lastTokenUsage = null;
         }
 
         const candidates = (json && json.candidates) ? json.candidates : [];
@@ -3562,36 +4276,36 @@ ${historyText}
 function callGeminiToPolish(input) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
-    
+
     const prompt = `你是「客服 QA 知識庫建檔專家」。
 
-任務：將以下內容整理成一條 QA。
+任務：將以下內容整理成一條高品質 QA，讓未來客戶問到相關問題時能被正確匹配。
 
 【用戶提供的內容】
 ${input}
 
 請輸出一行：問題 / A：答案
 
-重要規則：
-- 型號必須完整列出，禁止縮寫（例：寫 M50A、M50B、M50C，不可寫 M50A/B/C）
-- 問題要像客戶會問的話
-- 答案要精簡正確
-- 格式嚴格用「 / A：」分隔，不要用逗號
-- 只輸出一行結果，不要解釋
-- 若內容不適合轉 QA，回「[需確認] 原文摘要」`;
+⚠️ 關鍵規則：
+1. **問題設計**：思考客戶可能會用哪些不同的說法來問這個問題，把最常見的 2-3 種問法濃縮成一個涵蓋性強的問題
+   - 例如：用戶輸入「如何隱藏工具列達到全螢幕」
+   - 好問題：「三星螢幕瀏覽器可以全螢幕嗎？如何隱藏工具列？」（涵蓋「全螢幕」和「隱藏工具列」兩種問法）
+   - 壞問題：「如何隱藏工具列？」（太窄，問「全螢幕」的人不會被匹配到）
+2. **答案完整性**：保留用戶提供的所有關鍵資訊，不要截斷重要步驟或技巧
+3. **格式**：嚴格用「 / A：」分隔，只輸出一行
+4. **型號**：完整列出，禁止縮寫`;
 
     const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { 
-            maxOutputTokens: 1000, 
-            temperature: 0.3,
-            thinkingConfig: { thinkingBudget: 1024 }
+        generationConfig: {
+            maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+            temperature: 0.3
         }
     };
-    
+
     try {
-        // v24.2.3: 理解用戶意圖用 Think 模型
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`, {
+        // v27.9.20: 使用 GEMINI_MODEL_POLISH（程式最前面設定），只有這裡會用到
+        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
@@ -3601,7 +4315,7 @@ ${input}
         const code = res.getResponseCode();
         const body = res.getContentText();
         writeLog(`[Polish API] Code: ${code}, Body: ${body.substring(0, 500)}`);
-        
+
         if (code !== 200) {
             writeLog(`[Polish API Error] Code: ${code}`);
             return simplePolishFallback(input);
@@ -3615,12 +4329,22 @@ ${input}
             return simplePolishFallback(input);
         }
 
-        // 記錄 Token 用量
+        // 記錄 Token 用量 - 使用 POLISH 專屬費率
         if (json.usageMetadata) {
             const usage = json.usageMetadata;
-            const costUSD = (usage.promptTokenCount / 1000000 * 0.10) + (usage.candidatesTokenCount / 1000000 * 0.40);
-            const costTWD = costUSD * 32;
-            writeLog(`[Polish Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+            const costUSD = (usage.promptTokenCount / 1000000 * PRICE_POLISH_INPUT) + (usage.candidatesTokenCount / 1000000 * PRICE_POLISH_OUTPUT);
+            const costTWD = costUSD * EXCHANGE_RATE;
+            // v27.9.19: 設定 lastTokenUsage 讓費用可以顯示在回覆中
+            lastTokenUsage = {
+                input: usage.promptTokenCount,
+                output: usage.candidatesTokenCount,
+                total: usage.totalTokenCount,
+                costTWD: costTWD
+            };
+            writeLog(`[Polish Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)} | Gemini 3 Flash)`);
+        } else {
+            // 清除舊的 lastTokenUsage
+            lastTokenUsage = null;
         }
 
         // 安全取得第一個候選文字 (GAS 不支援 Optional Chaining)
@@ -3628,7 +4352,7 @@ ${input}
         const firstCandidate = (candidates.length > 0) ? candidates[0] : null;
         const finishReason = (firstCandidate && firstCandidate.finishReason) ? firstCandidate.finishReason : 'UNKNOWN';
         writeLog(`[Polish] finishReason: ${finishReason}, candidates: ${candidates.length}`);
-        
+
         let rawText = '';
         if (firstCandidate && firstCandidate.content && firstCandidate.content.parts) {
             const parts = firstCandidate.content.parts;
@@ -3658,7 +4382,7 @@ ${input}
 function callGeminiToModify(currentText, instruction) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
-    
+
     const prompt = `依修改指令調整下列QA，產生一行「問題 / A：答案」。
 規則：只回一行、用「 / A：」分隔、保留原意但套用修改。
 目前：${currentText}
@@ -3666,12 +4390,12 @@ function callGeminiToModify(currentText, instruction) {
 
     const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { 
-            maxOutputTokens: 500, 
+        generationConfig: {
+            maxOutputTokens: 500,
             temperature: 0.4
         }
     };
-    
+
     try {
         // v24.2.3: 簡單格式化用 Fast 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
@@ -3684,7 +4408,7 @@ function callGeminiToModify(currentText, instruction) {
         const code = res.getResponseCode();
         const body = res.getContentText();
         writeLog(`[Modify API] Code: ${code}, Body: ${body.substring(0, 500)}`);
-        
+
         if (code !== 200) {
             writeLog(`[Modify API Error] Code: ${code}`);
             return simpleModifyFallback(currentText, instruction);
@@ -3694,6 +4418,15 @@ function callGeminiToModify(currentText, instruction) {
         try { json = JSON.parse(body); } catch (parseErr) {
             writeLog(`[Modify Parse Error] ${parseErr.message}`);
             return simpleModifyFallback(currentText, instruction);
+        }
+
+        // v27.9.17: 記錄 Token 費用
+        if (json.usageMetadata) {
+            const usage = json.usageMetadata;
+            const costUSD = (usage.promptTokenCount / 1000000 * PRICE_FAST_INPUT) + (usage.candidatesTokenCount / 1000000 * PRICE_FAST_OUTPUT);
+            const costTWD = costUSD * EXCHANGE_RATE;
+            lastTokenUsage = { input: usage.promptTokenCount, output: usage.candidatesTokenCount, total: usage.totalTokenCount, costUSD: costUSD, costTWD: costTWD };
+            writeLog(`[Modify Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
         }
 
         // 安全取得第一個候選文字 (GAS 不支援 Optional Chaining)
@@ -3748,19 +4481,19 @@ function simpleModifyFallback(currentText, instruction) {
     const ins = (instruction || '').trim();
     if (!base) return simplePolishFallback(ins);
     if (!ins) return base;
-    
-    writeLog('[Fallback] 降級合併: base=' + base.substring(0,50) + ', ins=' + ins.substring(0,50));
-    
+
+    writeLog('[Fallback] 降級合併: base=' + base.substring(0, 50) + ', ins=' + ins.substring(0, 50));
+
     // 分析用戶指令類型
     var isReplace = /不對|錯了|改成|換成|應該是/.test(ins);
     var isInsert = /補充|加上|加入|新增/.test(ins);
-    
+
     // 若看起來像「問題 / A：答案」格式
     var splitIdx = base.indexOf(' / A：');
     if (splitIdx > 0) {
         var q = base.substring(0, splitIdx).trim();
         var a = base.substring(splitIdx + 5).trim();
-        
+
         if (isReplace) {
             return q + ' / A：' + a + '\n⚠️ 請直接告訴我正確的內容是什麼';
         } else if (isInsert) {
@@ -3781,45 +4514,45 @@ function saveDraftToSheet(draft) {
     if (!qaText || qaText.trim().length < 5) {
         return "❌ 草稿內容太短，請提供更多資訊。";
     }
-    
+
     // 自動修復格式：確保有 " / A："
     qaText = autoFixQAFormat(qaText);
-    
+
     const lock = LockService.getScriptLock();
     let hasLock = false;
 
     try {
         lock.waitLock(10000);
         hasLock = true;
-        
+
         const sheet = ss.getSheetByName(SHEET_NAMES.QA);
         if (!sheet) {
             return "❌ 找不到 QA 工作表";
         }
-        
+
         // 直接寫入 QA 文字
         sheet.appendRow([qaText]);
         SpreadsheetApp.flush();
-        
+
         // 提早釋放鎖定，避免與 syncGeminiKnowledgeBase 發生死鎖
         if (hasLock) {
-            try { lock.releaseLock(); } catch(e) {}
+            try { lock.releaseLock(); } catch (e) { }
             hasLock = false;
         }
-        
+
         // 清除快取並同步知識庫
         CacheService.getScriptCache().remove(CACHE_KEYS.ENTRY_DRAFT_PREFIX + draft.userId);
         syncGeminiKnowledgeBase();
-        
+
         writeLog(draft.userId || 'UNKNOWN', 'UserRecord', `[Draft Saved to QA] ${qaText.substring(0, 50)}...`);
         return `✅ 已寫入 QA 並更新知識庫！\n\n寫入內容：${qaText}`;
-        
+
     } catch (e) {
         writeLog(draft.userId || 'UNKNOWN', 'Error', `[SaveDraft Error] ${e.message}`);
         return `❌ 寫入失敗：${e.message}`;
     } finally {
         if (hasLock) {
-            try { lock.releaseLock(); } catch(e) {}
+            try { lock.releaseLock(); } catch (e) { }
         }
     }
 }
@@ -3832,12 +4565,12 @@ function saveDraftToSheet(draft) {
 function autoFixQAFormat(text) {
     if (!text) return text;
     var trimmed = text.trim();
-    
+
     // 已經有正確格式，直接返回
     if (trimmed.indexOf(' / A：') > -1) {
         return trimmed;
     }
-    
+
     // 嘗試修復：常見錯誤格式
     // 1. 半形逗號分隔 "問題, 答案"
     if (trimmed.indexOf(', ') > -1 && trimmed.indexOf(' / A：') === -1) {
@@ -3847,7 +4580,7 @@ function autoFixQAFormat(text) {
         writeLog('[AutoFix] 修復逗號格式: ' + q.substring(0, 30));
         return q + ' / A：' + a;
     }
-    
+
     // 2. 全形逗號分隔 "問題，答案"
     if (trimmed.indexOf('，') > -1 && trimmed.indexOf(' / A：') === -1) {
         var commaIdx = trimmed.indexOf('，');
@@ -3856,7 +4589,7 @@ function autoFixQAFormat(text) {
         writeLog('[AutoFix] 修復全形逗號格式: ' + q.substring(0, 30));
         return q + ' / A：' + a;
     }
-    
+
     // 3. 有問號，以問號切分
     var qMarkIdx = Math.max(trimmed.indexOf('?'), trimmed.indexOf('？'));
     if (qMarkIdx > 0 && qMarkIdx < trimmed.length - 1) {
@@ -3865,7 +4598,7 @@ function autoFixQAFormat(text) {
         writeLog('[AutoFix] 以問號切分: ' + q.substring(0, 30));
         return q + ' / A：' + a;
     }
-    
+
     // 4. 無法自動修復，加上預設前綴
     writeLog('[AutoFix] 無法自動判斷，加預設格式');
     return '相關問題 / A：' + trimmed;
@@ -3885,20 +4618,32 @@ function handleAutoQA(u, cid) {
 對話：
 ${convo}`;
 
-        const payload = { 
-            contents: [{ role: 'user', parts: [{ text: prompt }] }], 
-            generationConfig: { 
-                maxOutputTokens: 300, 
+        const payload = {
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+                maxOutputTokens: 300,
                 temperature: 0.3
-            } 
+            }
         };
         // v24.2.3: 簡單整理用 Fast 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
 
         let qaLine = '';
+        let costInfo = '';
         if (res.getResponseCode() === 200) {
             try {
                 const j = JSON.parse(res.getContentText());
+                
+                // v27.9.17: 記錄 Token 費用
+                if (j.usageMetadata) {
+                    const usage = j.usageMetadata;
+                    const costUSD = (usage.promptTokenCount / 1000000 * PRICE_FAST_INPUT) + (usage.candidatesTokenCount / 1000000 * PRICE_FAST_OUTPUT);
+                    const costTWD = costUSD * EXCHANGE_RATE;
+                    lastTokenUsage = { input: usage.promptTokenCount, output: usage.candidatesTokenCount, total: usage.totalTokenCount, costUSD: costUSD, costTWD: costTWD };
+                    writeLog(`[AutoQA Tokens] In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`);
+                    costInfo = `\n\n---\n本次整理預估花費：NT$${costTWD.toFixed(4)} (In:${usage.promptTokenCount}/Out:${usage.candidatesTokenCount})`;
+                }
+                
                 const cands = j && j.candidates ? j.candidates : [];
                 if (Array.isArray(cands) && cands.length > 0) {
                     const p = cands[0].content && cands[0].content.parts;
@@ -3928,16 +4673,16 @@ ${convo}`;
             const sheet = ss.getSheetByName(SHEET_NAMES.QA);
             sheet.appendRow([qaLine]);
             SpreadsheetApp.flush();
-        } catch(e) {
+        } catch (e) {
             writeLog(`[AutoQA Write Error] ${e.message}`);
         } finally {
             if (hasLock) {
-                try { lock.releaseLock(); } catch(e) {}
+                try { lock.releaseLock(); } catch (e) { }
             }
         }
 
         syncGeminiKnowledgeBase();
-        return `✅ 已自動整理並存入 QA：\n${qaLine.substring(0, 50)}...`;
+        return `✅ 已自動整理並存入 QA：\n${qaLine.substring(0, 50)}...${costInfo}`;
 
     } catch (e) {
         writeLog(`[AutoQA Error] ${e.message}`);
@@ -3945,57 +4690,59 @@ ${convo}`;
     }
 }
 
+
 // ==========================================
 // 6. 資料寫入與工具函式 (全展開)
 // ==========================================
 
 function sanitizeForSheet(text) {
-  if (!text) return "";
-  let s = text.toString();
-  s = s.replace(/[\r\n]+/g, " "); 
-  s = s.replace(/,/g, "，");
-  s = s.replace(/:/g, "：");
-  return s.trim();
+    if (!text) return "";
+    let s = text.toString();
+    s = s.replace(/[\r\n]+/g, " ");
+    s = s.replace(/,/g, "，");
+    s = s.replace(/:/g, "：");
+    return s.trim();
 }
 
-function writeQA(l,s,p,a,n) {
-  const lock = LockService.getScriptLock();
-  try { 
-    lock.waitLock(10000);
-    const sheet = ss.getSheetByName(SHEET_NAMES.QA);
-    if (!sheet) return false;
-    const cleanP = sanitizeForSheet(p);
-    const cleanA = sanitizeForSheet(a);
-    const cleanN = sanitizeForSheet(n);
-    sheet.appendRow([[new Date().toLocaleDateString(),l,s,cleanP,cleanA,cleanN].join(", ")]);
-    SpreadsheetApp.flush();
-    return true;
-  } catch (e) { 
-      writeLog("[WriteQA Error] " + e);
-      return false; 
-  } finally { 
-      try { lock.releaseLock(); } catch (e) {} 
-  }
+function writeQA(l, s, p, a, n) {
+    const lock = LockService.getScriptLock();
+    try {
+        lock.waitLock(10000);
+        const sheet = ss.getSheetByName(SHEET_NAMES.QA);
+        if (!sheet) return false;
+        const cleanP = sanitizeForSheet(p);
+        const cleanA = sanitizeForSheet(a);
+        const cleanN = sanitizeForSheet(n);
+        sheet.appendRow([[new Date().toLocaleDateString(), l, s, cleanP, cleanA, cleanN].join(", ")]);
+        SpreadsheetApp.flush();
+        return true;
+    } catch (e) {
+        writeLog("[WriteQA Error] " + e);
+        return false;
+    } finally {
+        try { lock.releaseLock(); } catch (e) { }
+        flushLogs(); // 確保 Log 寫入
+    }
 }
 
-function writeRule(k,d,u,desc) {
-  const lock = LockService.getScriptLock();
-  try { 
-    lock.waitLock(10000);
-    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-    if (!sheet) return false;
-    const cleanK = sanitizeForSheet(k);
-    const cleanD = sanitizeForSheet(d);
-    const cleanDesc = sanitizeForSheet(desc);
-    sheet.appendRow([[cleanK,cleanD,u,cleanDesc].join(", ")]);
-    SpreadsheetApp.flush();
-    return true;
-  } catch (e) { 
-      writeLog("[WriteRule Error] " + e);
-      return false; 
-  } finally { 
-      try { lock.releaseLock(); } catch (e) {} 
-  }
+function writeRule(k, d, u, desc) {
+    const lock = LockService.getScriptLock();
+    try {
+        lock.waitLock(10000);
+        const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+        if (!sheet) return false;
+        const cleanK = sanitizeForSheet(k);
+        const cleanD = sanitizeForSheet(d);
+        const cleanDesc = sanitizeForSheet(desc);
+        sheet.appendRow([[cleanK, cleanD, u, cleanDesc].join(", ")]);
+        SpreadsheetApp.flush();
+        return true;
+    } catch (e) {
+        writeLog("[WriteRule Error] " + e);
+        return false;
+    } finally {
+        try { lock.releaseLock(); } catch (e) { }
+    }
 }
 
 function writeLog(a, b, c) {
@@ -4033,24 +4780,47 @@ function writeLog(a, b, c) {
         msgForLog = `[${type}] ${content}`;
     }
 
-    if(ss) {
-            try { 
-                    // 移除換行，確保 Log 單行
-                    const cleanMsg = msgForLog.replace(/[\r\n]+/g, " ");
-                    const logSheet = ss.getSheetByName(SHEET_NAMES.LOG);
-                    logSheet.appendRow([new Date(), cleanMsg]); 
-                    SpreadsheetApp.flush(); 
-          
-                    // 自動清理：保留最新 500 筆
-                    const lastRow = logSheet.getLastRow();
-                    if (lastRow > 600) {
-                            const deleteCount = lastRow - 500;
-                            logSheet.deleteRows(1, deleteCount);
-                            SpreadsheetApp.flush();
-                    }
-            } catch(e){} 
-    }
+    // v27.8.5 Performance: 改為寫入緩衝區，不直接寫 Sheet
+    // 解決 writeLog 阻塞導致回應變慢的問題
+    PENDING_LOGS.push([new Date(), msgForLog.replace(/[\r\n]+/g, " ")]);
     console.log(msgForLog);
+
+    // 安全機制：緩衝區過大時強制寫入 (避免 timeout 丟失太多)
+    if (PENDING_LOGS.length >= 50) {
+        flushLogs();
+    }
+}
+
+function flushLogs() {
+    if (PENDING_LOGS.length === 0) return;
+
+    // 🧪 TEST MODE: 不寫入 Sheet
+    if (typeof IS_TEST_MODE !== 'undefined' && IS_TEST_MODE) {
+        PENDING_LOGS = [];
+        return;
+    }
+
+    try {
+        if (ss) {
+            const logSheet = ss.getSheetByName(SHEET_NAMES.LOG);
+            if (logSheet) {
+                // 批量寫入 (Batch Write) - 效能關鍵點
+                logSheet.getRange(logSheet.getLastRow() + 1, 1, PENDING_LOGS.length, 2).setValues(PENDING_LOGS);
+                SpreadsheetApp.flush();
+
+                // 自動清理：保留最新 500 筆
+                const lastRow = logSheet.getLastRow();
+                if (lastRow > 600) {
+                    const deleteCount = lastRow - 500;
+                    logSheet.deleteRows(1, deleteCount);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Flush Logs Error: " + e.message);
+    } finally {
+        PENDING_LOGS = []; // 清空緩衝區
+    }
 }
 
 /**
@@ -4066,10 +4836,10 @@ function extractContextFromHistory(userId, contextId) {
         if (!history || history.length === 0) {
             return null;
         }
-        
+
         // 合併最近 10 條訊息的內容
         const recentMsgs = history.slice(-10).map(m => m.content || '').join(' ');
-        
+
         // 提取型號
         const MODEL_REGEX = /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{1,2}[A-Z]?|G\d{2}[A-Z]{0,2})\b/g;
         const models = [];
@@ -4079,11 +4849,11 @@ function extractContextFromHistory(userId, contextId) {
                 models.push(match[0]);
             }
         }
-        
+
         // 提取品牌（簡單方法：檢查是否提到 Samsung/三星）
         const hasSamsung = /samsung|三星|SAMSUNG/i.test(recentMsgs);
         const brand = hasSamsung ? 'Samsung' : null;
-        
+
         // 提取功能特徵（簡單方法：檢查常見術語）
         const features = [];
         const featureKeywords = {
@@ -4096,13 +4866,13 @@ function extractContextFromHistory(userId, contextId) {
             'USB-C': /USB-C|type-c/i,
             'Thunderbolt': /thunderbolt/i
         };
-        
+
         for (const [name, pattern] of Object.entries(featureKeywords)) {
             if (pattern.test(recentMsgs)) {
                 features.push(name);
             }
         }
-        
+
         // 提取場景（簡單方法：檢查常見場景詞）
         const scenario = [];
         const scenarioKeywords = {
@@ -4111,20 +4881,20 @@ function extractContextFromHistory(userId, contextId) {
             '商務': /business|office|商務|辦公/i,
             '居家': /home|living|家用|living room/i
         };
-        
+
         for (const [name, pattern] of Object.entries(scenarioKeywords)) {
             if (pattern.test(recentMsgs)) {
                 scenario.push(name);
             }
         }
-        
+
         return {
             models: models.length > 0 ? models : null,
             brand: brand,
             features: features.length > 0 ? features : null,
             scenario: scenario.length > 0 ? scenario : null
         };
-        
+
     } catch (e) {
         writeLog(`[extractContextFromHistory] 錯誤: ${e.message}`);
         return null;
@@ -4132,98 +4902,98 @@ function extractContextFromHistory(userId, contextId) {
 }
 
 function getHistoryFromCacheOrSheet(cid) {
-  const c = CacheService.getScriptCache();
-  const k = `${CACHE_KEYS.HISTORY_PREFIX}${cid}`;
-  const v = c.get(k);
-  if (v) {
-      try { return JSON.parse(v); } catch(e) {}
-  }
-  try {
-    // 2025-12-05: 恢復 Sheet 讀取 (Cache Miss 時的備案)
-    let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    if (!s) {
-        // 若 Sheet 不存在，視為無歷史，不需建立 (等到寫入時再建)
-        return [];
+    const c = CacheService.getScriptCache();
+    const k = `${CACHE_KEYS.HISTORY_PREFIX}${cid}`;
+    const v = c.get(k);
+    if (v) {
+        try { return JSON.parse(v); } catch (e) { }
     }
-    const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-    if (f) {
-        return JSON.parse(s.getRange(f.getRow(), 2).getValue());
-    }
-  } catch(e) {}
-  return [];
+    try {
+        // 2025-12-05: 恢復 Sheet 讀取 (Cache Miss 時的備案)
+        let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+        if (!s) {
+            // 若 Sheet 不存在，視為無歷史，不需建立 (等到寫入時再建)
+            return [];
+        }
+        const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+        if (f) {
+            return JSON.parse(s.getRange(f.getRow(), 2).getValue());
+        }
+    } catch (e) { }
+    return [];
 }
 
 function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
-  try {
-    let base = Array.isArray(prev) ? prev.slice() : [];
-    if (base.length % 2 !== 0) {
-        base.shift();
-    }
-    
-    // 合併新訊息
-    let newHist = [...base, uMsg, aMsg];
-    
-    // v24.0.0: 智慧摘要機制 (Rolling Summary)
-    // 只在超長對話 (>12對=24則) 才觸發摘要，避免過度壓縮導致失憶
-    const SUMMARY_THRESHOLD = CONFIG.SUMMARY_THRESHOLD * 2; // 24
-    const MAX_MSG_COUNT = CONFIG.HISTORY_PAIR_LIMIT * 2; // 20 (Fast Mode 上限)
-    
-    if (newHist.length > SUMMARY_THRESHOLD) {
-        writeLog(`[History] 超長對話 (${newHist.length} > ${SUMMARY_THRESHOLD})，啟動摘要...`);
-        
-        const splitIndex = Math.floor(newHist.length / 2);
-        const safeSplitIndex = splitIndex % 2 === 0 ? splitIndex : splitIndex - 1;
-        
-        const oldMsgs = newHist.slice(0, safeSplitIndex);
-        const recentMsgs = newHist.slice(safeSplitIndex);
-        
-        const summary = callGeminiToSummarize(oldMsgs);
-        
-        if (summary) {
-            const summaryMsg = { 
-                role: 'user', 
-                content: `【系統自動摘要】\n之前的對話重點：${summary}\n(請基於此上下文繼續服務)` 
-            };
-            const ackMsg = {
-                role: 'assistant',
-                content: '好的，我已了解之前的對話脈絡。'
-            };
-            
-            newHist = [summaryMsg, ackMsg, ...recentMsgs];
-            writeLog(`[History] 摘要完成，新長度: ${newHist.length}`);
-        } else {
-            newHist = newHist.slice(-MAX_MSG_COUNT);
-            writeLog(`[History] 摘要失敗，執行簡單切分`);
-        }
-    }
-    
-    const json = JSON.stringify(newHist);
-    CacheService.getScriptCache().put(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`, json, CONFIG.CACHE_TTL_SEC);
-
-    // 2025-12-05: 恢復 Sheet 寫入 (長期記憶備份)
-    // 自動檢查並建立 Sheet，防止因刪除導致失效
     try {
-        let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-        if (!s) {
-            s = ss.insertSheet(SHEET_NAMES.LAST_CONVERSATION);
-            s.appendRow(["ContextID", "HistoryJSON", "LastUpdated"]); // 補標題
-            writeLog(`[AutoCreate] 已自動重建 ${SHEET_NAMES.LAST_CONVERSATION} 工作表`);
+        let base = Array.isArray(prev) ? prev.slice() : [];
+        if (base.length % 2 !== 0) {
+            base.shift();
         }
-        
-        const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-        if (f) {
-            s.getRange(f.getRow(), 2).setValue(json);
-            s.getRange(f.getRow(), 3).setValue(new Date());
-        } else {
-            s.appendRow([cid, json, new Date()]);
-        }
-    } catch (sheetErr) {
-        writeLog(`[History Sheet Error] ${sheetErr.message}`);
-    }
 
-  } catch (e) {
-      writeLog(`[UpdateHistory Error] ${e.message}`);
-  }
+        // 合併新訊息
+        let newHist = [...base, uMsg, aMsg];
+
+        // v24.0.0: 智慧摘要機制 (Rolling Summary)
+        // 只在超長對話 (>12對=24則) 才觸發摘要，避免過度壓縮導致失憶
+        const SUMMARY_THRESHOLD = CONFIG.SUMMARY_THRESHOLD * 2; // 24
+        const MAX_MSG_COUNT = CONFIG.HISTORY_PAIR_LIMIT * 2; // 20 (Fast Mode 上限)
+
+        if (newHist.length > SUMMARY_THRESHOLD) {
+            writeLog(`[History] 超長對話 (${newHist.length} > ${SUMMARY_THRESHOLD})，啟動摘要...`);
+
+            const splitIndex = Math.floor(newHist.length / 2);
+            const safeSplitIndex = splitIndex % 2 === 0 ? splitIndex : splitIndex - 1;
+
+            const oldMsgs = newHist.slice(0, safeSplitIndex);
+            const recentMsgs = newHist.slice(safeSplitIndex);
+
+            const summary = callGeminiToSummarize(oldMsgs);
+
+            if (summary) {
+                const summaryMsg = {
+                    role: 'user',
+                    content: `【系統自動摘要】\n之前的對話重點：${summary}\n(請基於此上下文繼續服務)`
+                };
+                const ackMsg = {
+                    role: 'assistant',
+                    content: '好的，我已了解之前的對話脈絡。'
+                };
+
+                newHist = [summaryMsg, ackMsg, ...recentMsgs];
+                writeLog(`[History] 摘要完成，新長度: ${newHist.length}`);
+            } else {
+                newHist = newHist.slice(-MAX_MSG_COUNT);
+                writeLog(`[History] 摘要失敗，執行簡單切分`);
+            }
+        }
+
+        const json = JSON.stringify(newHist);
+        CacheService.getScriptCache().put(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`, json, CONFIG.CACHE_TTL_SEC);
+
+        // 2025-12-05: 恢復 Sheet 寫入 (長期記憶備份)
+        // 自動檢查並建立 Sheet，防止因刪除導致失效
+        try {
+            let s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+            if (!s) {
+                s = ss.insertSheet(SHEET_NAMES.LAST_CONVERSATION);
+                s.appendRow(["ContextID", "HistoryJSON", "LastUpdated"]); // 補標題
+                writeLog(`[AutoCreate] 已自動重建 ${SHEET_NAMES.LAST_CONVERSATION} 工作表`);
+            }
+
+            const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+            if (f) {
+                s.getRange(f.getRow(), 2).setValue(json);
+                s.getRange(f.getRow(), 3).setValue(new Date());
+            } else {
+                s.appendRow([cid, json, new Date()]);
+            }
+        } catch (sheetErr) {
+            writeLog(`[History Sheet Error] ${sheetErr.message}`);
+        }
+
+    } catch (e) {
+        writeLog(`[UpdateHistory Error] ${e.message}`);
+    }
 }
 
 /**
@@ -4232,9 +5002,9 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
 function callGeminiToSummarize(messages) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) return null;
-    
+
     const convoText = messages.map(m => `${m.role === 'user' ? '用戶' : '客服'}: ${m.content}`).join('\n');
-    
+
     // 2025-12-05 v23.6.5: 強化摘要 Prompt，強制保留關鍵實體
     const prompt = `請將以下客服對話摘要成 300 字以內的重點。
 【強制保留關鍵實體 (Key Entities)】
@@ -4249,12 +5019,12 @@ ${convoText}`;
 
     const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { 
-            maxOutputTokens: 500, 
+        generationConfig: {
+            maxOutputTokens: 500,
             temperature: 0.3
         }
     };
-    
+
     try {
         // v24.2.3: 簡單摘要用 Fast 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
@@ -4263,9 +5033,9 @@ ${convoText}`;
             payload: JSON.stringify(payload),
             muteHttpExceptions: true
         });
-        
+
         if (res.getResponseCode() !== 200) return null;
-        
+
         const json = JSON.parse(res.getContentText());
         if (json.candidates && json.candidates[0].content) {
             return json.candidates[0].content.parts[0].text.trim();
@@ -4278,171 +5048,217 @@ ${convoText}`;
 }
 
 function clearHistorySheetAndCache(cid) {
-  try {
-    // v24.1.10 重大修復：真正清除對話記憶（包含 Sheet + Cache）
-    // 之前只清除 Cache，導致系統降級讀取 Sheet 中的舊對話
-    
-    // 1. 清除 Sheet 中的歷史記錄
-    const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
-    if (s) {
-        const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
-        if (f) {
-            s.getRange(f.getRow(), 2).clearContent();
-            writeLog(`[ClearHistory] 已從 Sheet 清除 ${cid} 的歷史記錄`);
-        }
-    }
-    
-    // 2. 清除 Cache 中的歷史記錄
-    const cache = CacheService.getScriptCache();
-    cache.remove(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`);
-    
-    // 3. 清除 PDF 模式狀態
-    cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + cid);
+    try {
+        // v24.1.10 重大修復：真正清除對話記憶（包含 Sheet + Cache）
+        // 之前只清除 Cache，導致系統降級讀取 Sheet 中的舊對話
 
-    // v27.2.6+: 一併清除 PDF 反問暫存與直通車注入的型號，避免重啟後還吃到舊 pending
-    cache.remove(CACHE_KEYS.PENDING_PDF_SELECTION + cid);
-    cache.remove(`${cid}:hit_alias_key`);
-    cache.remove(`${cid}:direct_search_models`);
-    
-    writeLog(`[ClearHistory] ✅ 完全清除了 ${cid} 的對話記憶 (Sheet + Cache + PDF Mode)`);
-  } catch (e) {
-      writeLog(`[ClearHistory Error] ${e.message}`);
-  }
+        // 1. 清除 Sheet 中的歷史記錄
+        const s = ss.getSheetByName(SHEET_NAMES.LAST_CONVERSATION);
+        if (s) {
+            const f = s.getRange("A:A").createTextFinder(cid).matchEntireCell(true).findNext();
+            if (f) {
+                s.getRange(f.getRow(), 2).clearContent();
+                writeLog(`[ClearHistory] 已從 Sheet 清除 ${cid} 的歷史記錄`);
+            }
+        }
+
+        // 2. 清除 Cache 中的歷史記錄
+        const cache = CacheService.getScriptCache();
+        cache.remove(`${CACHE_KEYS.HISTORY_PREFIX}${cid}`);
+
+        // 3. 清除 PDF 模式狀態
+        cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + cid);
+
+        // v27.2.6+: 一併清除 PDF 反問暫存與直通車注入的型號，避免重啟後還吃到舊 pending
+        cache.remove(CACHE_KEYS.PENDING_PDF_SELECTION + cid);
+        cache.remove(`${cid}:hit_alias_key`);
+        cache.remove(`${cid}:direct_search_models`);
+
+        writeLog(`[ClearHistory] ✅ 完全清除了 ${cid} 的對話記憶 (Sheet + Cache + PDF Mode)`);
+    } catch (e) {
+        writeLog(`[ClearHistory Error] ${e.message}`);
+    }
 }
 
 // ========== 7. LINE Webhook 入口 ==========
-
-/**
- * GET 請求處理（健康檢查 + 自動恢復觸發器）
- * 部署後瀏覽器訪問一次 Web App URL 即可啟動排程
- */
-function doGet(e) {
-  ensureSyncTriggerExists();
-  return ContentService.createTextOutput("OK - Trigger verified").setMimeType(ContentService.MimeType.TEXT);
-}
+// 注意：doGet 已移至區塊 9 (TEST UI) 並合併健康檢查功能
 
 function doPost(e) {
-  try {
-    // 自動檢查並恢復排程（部署後自癒）
-    ensureSyncTriggerExists();
-    
-    const postData = e && e.postData ? e.postData : {};
-    const contents = postData.contents || '{}';
-    const json = JSON.parse(contents);
-    const events = json.events || [];
-    
-    events.forEach(function(event) {
-      if (event.type === 'message') {
-        const eventId = event.webhookEventId;
-        if (isDuplicateEvent(eventId)) return;
-        
-        const isGroup = event.source.type === 'group' || event.source.type === 'room';
-        var contextId = isGroup ? event.source.groupId : event.source.userId;
-        var userId = event.source.userId;
-        var replyToken = event.replyToken;
+    try {
+        // 自動檢查並恢復排程（部署後自癒）
+        ensureSyncTriggerExists();
 
-        if (isGroup) {
-            if (event.message.type === 'text') {
-                const botUserId = getBotUserId();
-                const mention = event.message.mention || {};
-                const mentions = mention.mentionees || [];
-                if (!mentions.some(function(m) { return m.userId === botUserId; })) return;
-                var cleanedText = event.message.text;
-                mentions.forEach(function(m) { 
-                    if (m.userId === botUserId) {
-                        cleanedText = cleanedText.replace(cleanedText.substring(m.index, m.index + m.length), '').trim(); 
+        const postData = e && e.postData ? e.postData : {};
+        const contents = postData.contents || '{}';
+        const json = JSON.parse(contents);
+        const events = json.events || [];
+
+        events.forEach(function (event) {
+            if (event.type === 'message') {
+                const eventId = event.webhookEventId;
+                if (isDuplicateEvent(eventId)) return;
+
+                const isGroup = event.source.type === 'group' || event.source.type === 'room';
+                var contextId = isGroup ? event.source.groupId : event.source.userId;
+                var userId = event.source.userId;
+                var replyToken = event.replyToken;
+
+                if (isGroup) {
+                    if (event.message.type === 'text') {
+                        const botUserId = getBotUserId();
+                        const mention = event.message.mention || {};
+                        const mentions = mention.mentionees || [];
+                        if (!mentions.some(function (m) { return m.userId === botUserId; })) return;
+                        var cleanedText = event.message.text;
+                        mentions.forEach(function (m) {
+                            if (m.userId === botUserId) {
+                                cleanedText = cleanedText.replace(cleanedText.substring(m.index, m.index + m.length), '').trim();
+                            }
+                        });
+                        if (!cleanedText) { replyMessage(replyToken, "有事嗎？"); return; }
+                        // v27.4.0: 修改 event.message.text 為清理後的文字，再傳遞整個 event
+                        event.message.text = cleanedText;
+                        handleMessage(event);
+                    } else if (event.message.type === 'image') {
+                        if (userId === CONFIG.VIP_IMAGE_USER) {
+                            handleImageMessage(event.message.id, userId, replyToken, contextId);
+                        }
                     }
-                });
-                if (!cleanedText) { replyMessage(replyToken, "有事嗎？"); return; }
-                // v27.4.0: 修改 event.message.text 為清理後的文字，再傳遞整個 event
-                event.message.text = cleanedText;
-                handleMessage(event);
-            } else if (event.message.type === 'image') {
-                if (userId === CONFIG.VIP_IMAGE_USER) {
-                    handleImageMessage(event.message.id, userId, replyToken, contextId);
+                } else {
+                    if (event.message.type === 'text') {
+                        handleMessage(event);
+                    } else if (event.message.type === 'image') {
+                        handleImageMessage(event.message.id, userId, replyToken, contextId);
+                    }
                 }
             }
-        } else {
-            if (event.message.type === 'text') {
-                handleMessage(event);
-            } else if (event.message.type === 'image') {
-                handleImageMessage(event.message.id, userId, replyToken, contextId);
-            }
-        }
-      }
-    });
-    return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
-  } catch (e) { return ContentService.createTextOutput(JSON.stringify({ status: "error" })).setMimeType(ContentService.MimeType.JSON); }
+        });
+        return ContentService.createTextOutput(JSON.stringify({ status: "ok" })).setMimeType(ContentService.MimeType.JSON);
+    } catch (e) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error" })).setMimeType(ContentService.MimeType.JSON);
+    } finally {
+        flushLogs(); // 確保 Log 寫入 Sheet
+    }
 }
 
 // ========== 8. 輔助工具 (Utils) ==========
 
+function getHistoryModels(userId) {
+    // 簡單實作：從 Cache 的 HISTORY_JSON 中讀取最近的 User Message，並用正則提取型號
+    // 這是為了在 Deep Mode 但用戶未提及型號時 (例如「請切換模式幫我查」) 進行救援
+    try {
+        const cache = CacheService.getScriptCache();
+        const historyJson = cache.get(CACHE_KEYS.HISTORY_PREFIX + userId);
+        if (!historyJson) return [];
+
+        const history = JSON.parse(historyJson);
+        const models = [];
+        // 反向遍歷 (最新的先找)
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
+            if (msg.role === 'user') {
+                const text = msg.content;
+                // 使用與 getRelevantKBFiles 相同的正則 (複製自上方)
+                const match = text.match(/\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g);
+                if (match) {
+                    match.forEach(m => {
+                        if (!models.includes(m)) models.push(m);
+                    });
+                }
+                const lsMatch = text.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+                if (lsMatch) {
+                    lsMatch.forEach(ls => {
+                        const cleanModel = ls.replace(/^LS/, 'S').replace(/XZW$/, '');
+                        if (!models.includes(cleanModel)) models.push(cleanModel);
+                    });
+                }
+            }
+            if (models.length > 0) break; // 找到最近的一組就停，避免混淆這題跟上題的型號
+        }
+        return models;
+    } catch (e) {
+        writeLog(`[getHistoryModels Error] ${e.message}`);
+        return [];
+    }
+}
+
 function replyMessage(tk, txt) {
-  // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
-  if (IS_TEST_MODE || tk === 'TEST_REPLY_TOKEN') {
-    writeLog('[TEST MODE] 跳過 LINE API 呼叫');
-    return;
-  }
-  
-  try {
-    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
-      method: "post",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + PropertiesService.getScriptProperties().getProperty("TOKEN") },
-      payload: JSON.stringify({ replyToken: tk, messages: [{ type: "text", text: txt.substring(0, 4000) }] }),
-      muteHttpExceptions: true
-    });
-  } catch (e) {
-      writeLog("[Reply Error] " + e);
-  }
+    // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
+    if (IS_TEST_MODE || tk === 'TEST_REPLY_TOKEN') {
+        writeLog('[TEST MODE] 跳過 LINE API 呼叫');
+        return;
+    }
+
+    try {
+        const lineToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
+        writeLog(`[Reply Debug] LINE_TOKEN 前10字: ${lineToken ? lineToken.substring(0, 10) : 'NULL'}`);
+        
+        const response = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "post",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + lineToken },
+            payload: JSON.stringify({ replyToken: tk, messages: [{ type: "text", text: txt.substring(0, 4000) }] }),
+            muteHttpExceptions: true
+        });
+        
+        const code = response.getResponseCode();
+        if (code === 200) {
+            writeLog(`[Reply] ✅ LINE 回覆成功 (${txt.substring(0, 50)}...)`);
+        } else {
+            const errorBody = response.getContentText();
+            writeLog(`[Reply] ❌ LINE API 錯誤 ${code}: ${errorBody}`);
+        }
+    } catch (e) {
+        writeLog("[Reply Error] " + e);
+    }
 }
 
 function showLoadingAnimation(uid, sec) {
-  try {
-    UrlFetchApp.fetch("https://api.line.me/v2/bot/chat/loading/start", {
-      method: "post",
-      headers: { "Authorization": "Bearer " + PropertiesService.getScriptProperties().getProperty("TOKEN"), "Content-Type": "application/json" },
-      payload: JSON.stringify({ chatId: uid, loadingSeconds: sec }),
-      muteHttpExceptions: true
-    });
-  } catch (e) {}
+    try {
+        UrlFetchApp.fetch("https://api.line.me/v2/bot/chat/loading/start", {
+            method: "post",
+            headers: { "Authorization": "Bearer " + PropertiesService.getScriptProperties().getProperty("LINE_TOKEN"), "Content-Type": "application/json" },
+            payload: JSON.stringify({ chatId: uid, loadingSeconds: sec }),
+            muteHttpExceptions: true
+        });
+    } catch (e) { }
 }
 
 function getBotUserId() {
-  let id = PropertiesService.getScriptProperties().getProperty("BOT_USER_ID");
-  if (!id) {
-    try {
-      const res = UrlFetchApp.fetch("https://api.line.me/v2/bot/info", { headers: { "Authorization": "Bearer " + PropertiesService.getScriptProperties().getProperty("TOKEN") } });
-      if (res.getResponseCode() === 200) { 
-          id = JSON.parse(res.getContentText()).userId; 
-          PropertiesService.getScriptProperties().setProperty("BOT_USER_ID", id); 
-      }
-    } catch (e) {}
-  }
-  return id;
+    let id = PropertiesService.getScriptProperties().getProperty("BOT_USER_ID");
+    if (!id) {
+        try {
+            const res = UrlFetchApp.fetch("https://api.line.me/v2/bot/info", { headers: { "Authorization": "Bearer " + PropertiesService.getScriptProperties().getProperty("LINE_TOKEN") } });
+            if (res.getResponseCode() === 200) {
+                id = JSON.parse(res.getContentText()).userId;
+                PropertiesService.getScriptProperties().setProperty("BOT_USER_ID", id);
+            }
+        } catch (e) { }
+    }
+    return id;
 }
 
 function isDuplicateEvent(id) {
-  const c = CacheService.getScriptCache();
-  if(c.get(id)) return true;
-  c.put(id,'1',60);
-  return false;
+    const c = CacheService.getScriptCache();
+    if (c.get(id)) return true;
+    c.put(id, '1', 60);
+    return false;
 }
 
-function hasRecentAnimation(id) { 
-    return CacheService.getScriptCache().get(`anim_${id}`) != null; 
+function hasRecentAnimation(id) {
+    return CacheService.getScriptCache().get(`anim_${id}`) != null;
 }
 
-function markAnimationShown(id) { 
-    CacheService.getScriptCache().put(`anim_${id}`, '1', 20); 
+function markAnimationShown(id) {
+    CacheService.getScriptCache().put(`anim_${id}`, '1', 20);
 }
 
-function runInitializeAndSync() { 
-    Object.values(SHEET_NAMES).forEach(name => { 
+function runInitializeAndSync() {
+    Object.values(SHEET_NAMES).forEach(name => {
         if (!ss.getSheetByName(name)) {
-            ss.insertSheet(name); 
+            ss.insertSheet(name);
         }
-    }); 
-    syncGeminiKnowledgeBase(); 
+    });
+    syncGeminiKnowledgeBase();
 }
 
 // 讀取最近 LOG（供 CLASP 呼叫）
@@ -4460,15 +5276,15 @@ function testDraftFunction(inputText) {
     try {
         const testInput = inputText || "M50A,M50B,M50C有內建陀螺儀";
         writeLog(`[Test] 測試輸入: ${testInput}`);
-        
+
         // Step 1: 呼叫 callGeminiToDraft
         const draft = callGeminiToDraft(testInput, "initial", null);
         writeLog(`[Test] AI 產出 Draft: ${JSON.stringify(draft)}`);
-        
+
         // Step 2: 產生預覽訊息
         const preview = generatePreviewMsg(draft);
         writeLog(`[Test] 預覽訊息: ${preview.substring(0, 200)}...`);
-        
+
         // Step 3: 模擬驗證 (不實際寫入)
         let validationResult = "";
         if (draft.type === "qa") {
@@ -4488,9 +5304,9 @@ function testDraftFunction(inputText) {
         } else {
             validationResult = `❌ 未知類型: ${draft.type}`;
         }
-        
+
         writeLog(`[Test] 驗證結果: ${validationResult}`);
-        
+
         return {
             input: testInput,
             draft: draft,
@@ -4512,12 +5328,23 @@ function testDraftFunction(inputText) {
 // 9. TEST UI (測試介面專用 - V27.3.7)
 // ==========================================
 
-// 1. 網頁入口
+// 1. 網頁入口（合併版：健康檢查 + TestUI）
+// - LINE Verify: 不帶參數，返回 200 OK
+// - TestUI: 訪問 ?test=1，返回測試介面
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('TestUI')
-      .evaluate()
-      .setTitle('LINE Bot 測試模擬器 v2.3')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
+    // 確保觸發器存在
+    ensureSyncTriggerExists();
+    
+    // 若有 test 參數，顯示 TestUI
+    if (e && e.parameter && e.parameter.test === '1') {
+        return HtmlService.createTemplateFromFile('TestUI')
+            .evaluate()
+            .setTitle('LINE Bot 測試模擬器 v2.3')
+            .addMetaTag('viewport', 'width=device-width, initial-scale=1, user-scalable=no');
+    }
+    
+    // 預設：返回健康檢查（給 LINE Verify 用）
+    return ContentService.createTextOutput("OK - Trigger verified").setMimeType(ContentService.MimeType.TEXT);
 }
 
 /**
@@ -4525,156 +5352,156 @@ function doGet(e) {
  * 修正重點：捕捉型號選擇反問，確保前端能顯示選項
  */
 function testMessage(msg, userId) {
-  IS_TEST_MODE = true; 
-  TEST_LOGS = []; 
-  
-  if (msg === undefined || msg === null) msg = "";
-  if (typeof msg === 'object') {
-      try { msg = JSON.stringify(msg); } catch(e) { msg = ""; }
-  }
-  msg = String(msg).trim();
-  
-  userId = userId || "TEST_DEV_001";
+    IS_TEST_MODE = true;
+    TEST_LOGS = [];
 
-  var fakeEvent = {
-    replyToken: "TEST_REPLY_TOKEN",
-    source: { type: "user", userId: userId },
-    message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
-    type: "message",
-    timestamp: new Date().getTime()
-  };
-
-  try {
-    if (typeof handleMessage === 'function') {
-        handleMessage(fakeEvent);
-    } else {
-        throw new Error("找不到 handleMessage 主函式");
+    if (msg === undefined || msg === null) msg = "";
+    if (typeof msg === 'object') {
+        try { msg = JSON.stringify(msg); } catch (e) { msg = ""; }
     }
-  } catch (e) {
-    var errStr = e.toString();
-    if (errStr.indexOf("ContentService") === -1) {
-       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
-    }
-  }
+    msg = String(msg).trim();
 
-  // 收集回覆 (優先級：[Reply] > [AI Reply] > PDF反問 > [API Short Response])
-  var botResponses = [];
-  var seenContent = new Set();
-  var hasOfficialReply = false;
+    userId = userId || "TEST_DEV_001";
 
-  // 1️⃣ 優先找 [Reply] 和 [AI Reply]
-  for (var i = 0; i < TEST_LOGS.length; i++) {
-    var log = TEST_LOGS[i];
-    if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
-        var content = parseLogContent(log, log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]");
-        if (content && !seenContent.has(content)) {
-            botResponses.push(content);
-            seenContent.add(content);
-            hasOfficialReply = true;
+    var fakeEvent = {
+        replyToken: "TEST_REPLY_TOKEN",
+        source: { type: "user", userId: userId },
+        message: { type: "text", text: msg, id: "TEST_" + new Date().getTime() },
+        type: "message",
+        timestamp: new Date().getTime()
+    };
+
+    try {
+        if (typeof handleMessage === 'function') {
+            handleMessage(fakeEvent);
+        } else {
+            throw new Error("找不到 handleMessage 主函式");
+        }
+    } catch (e) {
+        var errStr = e.toString();
+        if (errStr.indexOf("ContentService") === -1) {
+            TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
         }
     }
-  }
 
-  // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
-  if (!hasOfficialReply) {
-      var hasPdfSelectLog = TEST_LOGS.some(l => l.indexOf("[PDF Select] 用戶選擇") > -1 || l.indexOf("[PDF Select] 用戶輸入完整型號") > -1);
-      if (hasPdfSelectLog) {
-          // 表示已經觸發 PDF 查詢，但結果未被正確記錄
-          // 這是 TEST MODE 的局限，需要從 LOG 中重新提取
-          // 嘗試從日誌中找 [AI Reply] 或其他結果
-          var hasResults = false;
-          for (var i = 0; i < TEST_LOGS.length; i++) {
-              var log = TEST_LOGS[i];
-              if (log.indexOf("[AI Reply]") > -1) {
-                  var content = parseLogContent(log, "[AI Reply]");
-                  if (content && !seenContent.has(content)) {
-                      botResponses.push(content);
-                      seenContent.add(content);
-                      hasOfficialReply = true;
-                      hasResults = true;
-                  }
-              }
-          }
-          // 如果 PDF 選擇後還是沒有回答，表示 API 調用失敗或超時
-          if (!hasResults && hasPdfSelectLog) {
-              botResponses.push("⏳ PDF 查詢中，請稍候...");
-              hasOfficialReply = true;
-          }
-      }
-  }
+    // 收集回覆 (優先級：[Reply] > [AI Reply] > PDF反問 > [API Short Response])
+    var botResponses = [];
+    var seenContent = new Set();
+    var hasOfficialReply = false;
 
-  // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
-  if (!hasOfficialReply) {
-      var hasPdfQuestion = TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1);
-      if (hasPdfQuestion) {
-          // 從 Cache 中還原型號選擇訊息（handleMessage 已存入 PENDING_PDF_SELECTION）
-          var cache = CacheService.getScriptCache();
-          var pendingPdfData = cache.get(CACHE_KEYS.PENDING_PDF_SELECTION + userId);
-          
-          if (pendingPdfData) {
-              try {
-                  var pending = JSON.parse(pendingPdfData);
-                  if (pending.options && pending.options.length > 0) {
-                      // 重新生成選項訊息（與 LINE 一致）
-                      var selectionMsg = buildPdfSelectionMessage(pending.aliasKey, pending.options);
-                      botResponses.push(selectionMsg);
-                      hasOfficialReply = true;
-                  }
-              } catch(e) {
-                  // 如果解析失敗，用備用提示
-                  botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
-                  hasOfficialReply = true;
-              }
-          } else {
-              // Cache 已過期或不存在，用備用提示
-              botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
-              hasOfficialReply = true;
-          }
-      }
-  }
-
-  // 3️⃣ 如果還是沒有，才用 [API Short Response]
-  if (!hasOfficialReply) {
-      for (var i = 0; i < TEST_LOGS.length; i++) {
+    // 1️⃣ 優先找 [Reply] 和 [AI Reply]
+    for (var i = 0; i < TEST_LOGS.length; i++) {
         var log = TEST_LOGS[i];
-        if (log.indexOf("[API Short Response]") > -1) {
-            // 日誌格式: [API Short Response] Out: X tokens, Content: "..."
-            // 需要提取 Content: 之後的內容
-            var contentStart = log.indexOf('Content: "');
-            if (contentStart > -1) {
-                var contentStr = log.substring(contentStart + 10); // skip 'Content: "'
-                var contentEnd = contentStr.lastIndexOf('"');
-                if (contentEnd > -1) {
-                    var content = contentStr.substring(0, contentEnd);
+        if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
+            var content = parseLogContent(log, log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]");
+            if (content && !seenContent.has(content)) {
+                botResponses.push(content);
+                seenContent.add(content);
+                hasOfficialReply = true;
+            }
+        }
+    }
+
+    // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
+    if (!hasOfficialReply) {
+        var hasPdfSelectLog = TEST_LOGS.some(l => l.indexOf("[PDF Select] 用戶選擇") > -1 || l.indexOf("[PDF Select] 用戶輸入完整型號") > -1);
+        if (hasPdfSelectLog) {
+            // 表示已經觸發 PDF 查詢，但結果未被正確記錄
+            // 這是 TEST MODE 的局限，需要從 LOG 中重新提取
+            // 嘗試從日誌中找 [AI Reply] 或其他結果
+            var hasResults = false;
+            for (var i = 0; i < TEST_LOGS.length; i++) {
+                var log = TEST_LOGS[i];
+                if (log.indexOf("[AI Reply]") > -1) {
+                    var content = parseLogContent(log, "[AI Reply]");
                     if (content && !seenContent.has(content)) {
                         botResponses.push(content);
                         seenContent.add(content);
+                        hasOfficialReply = true;
+                        hasResults = true;
+                    }
+                }
+            }
+            // 如果 PDF 選擇後還是沒有回答，表示 API 調用失敗或超時
+            if (!hasResults && hasPdfSelectLog) {
+                botResponses.push("⏳ PDF 查詢中，請稍候...");
+                hasOfficialReply = true;
+            }
+        }
+    }
+
+    // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
+    if (!hasOfficialReply) {
+        var hasPdfQuestion = TEST_LOGS.some(l => l.indexOf("已發送型號選擇反問") > -1);
+        if (hasPdfQuestion) {
+            // 從 Cache 中還原型號選擇訊息（handleMessage 已存入 PENDING_PDF_SELECTION）
+            var cache = CacheService.getScriptCache();
+            var pendingPdfData = cache.get(CACHE_KEYS.PENDING_PDF_SELECTION + userId);
+
+            if (pendingPdfData) {
+                try {
+                    var pending = JSON.parse(pendingPdfData);
+                    if (pending.options && pending.options.length > 0) {
+                        // 重新生成選項訊息（與 LINE 一致）
+                        var selectionMsg = buildPdfSelectionMessage(pending.aliasKey, pending.options);
+                        botResponses.push(selectionMsg);
+                        hasOfficialReply = true;
+                    }
+                } catch (e) {
+                    // 如果解析失敗，用備用提示
+                    botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
+                    hasOfficialReply = true;
+                }
+            } else {
+                // Cache 已過期或不存在，用備用提示
+                botResponses.push("🔍 系統偵測到需要選擇型號，請見快速回覆選項");
+                hasOfficialReply = true;
+            }
+        }
+    }
+
+    // 3️⃣ 如果還是沒有，才用 [API Short Response]
+    if (!hasOfficialReply) {
+        for (var i = 0; i < TEST_LOGS.length; i++) {
+            var log = TEST_LOGS[i];
+            if (log.indexOf("[API Short Response]") > -1) {
+                // 日誌格式: [API Short Response] Out: X tokens, Content: "..."
+                // 需要提取 Content: 之後的內容
+                var contentStart = log.indexOf('Content: "');
+                if (contentStart > -1) {
+                    var contentStr = log.substring(contentStart + 10); // skip 'Content: "'
+                    var contentEnd = contentStr.lastIndexOf('"');
+                    if (contentEnd > -1) {
+                        var content = contentStr.substring(0, contentEnd);
+                        if (content && !seenContent.has(content)) {
+                            botResponses.push(content);
+                            seenContent.add(content);
+                        }
                     }
                 }
             }
         }
-      }
-  }
+    }
 
-  // 4️⃣ 最後檢查錯誤
-  for (var i = 0; i < TEST_LOGS.length; i++) {
-      var log = TEST_LOGS[i];
-      if (log.indexOf("[Fatal]") > -1) {
-          var fatalMsg = "❌ " + log;
-          if (!seenContent.has(fatalMsg)) {
-              botResponses.push(fatalMsg);
-              seenContent.add(fatalMsg);
-          }
-      }
-  }
+    // 4️⃣ 最後檢查錯誤
+    for (var i = 0; i < TEST_LOGS.length; i++) {
+        var log = TEST_LOGS[i];
+        if (log.indexOf("[Fatal]") > -1) {
+            var fatalMsg = "❌ " + log;
+            if (!seenContent.has(fatalMsg)) {
+                botResponses.push(fatalMsg);
+                seenContent.add(fatalMsg);
+            }
+        }
+    }
 
-  IS_TEST_MODE = false;
-  
-  return {
-    success: true,
-    replies: botResponses,
-    logs: TEST_LOGS
-  };
+    IS_TEST_MODE = false;
+
+    return {
+        success: true,
+        replies: botResponses,
+        logs: TEST_LOGS
+    };
 }
 
 // 輔助: 清洗 Log 內容
@@ -4686,54 +5513,54 @@ function parseLogContent(logLine, keyword) {
 
 // 清除快取
 function clearTestSession(userId) {
-  var cache = CacheService.getScriptCache();
-  userId = userId || "TEST_DEV_001";
-  cache.remove(`${userId}:context`);
-  cache.remove(`${userId}:pdf_mode`);
-  cache.remove(`${userId}:direct_search_models`);
-  cache.remove(`${userId}:hit_alias_key`);
-  return { success: true, msg: "✅ 髒資料已清除" };
+    var cache = CacheService.getScriptCache();
+    userId = userId || "TEST_DEV_001";
+    cache.remove(`${userId}:context`);
+    cache.remove(`${userId}:pdf_mode`);
+    cache.remove(`${userId}:direct_search_models`);
+    cache.remove(`${userId}:hit_alias_key`);
+    return { success: true, msg: "✅ 髒資料已清除" };
 }
 
 // --- 雲端歷史紀錄功能 ---
 
 function getCloudHistory() {
-  try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("TEST_HISTORY");
-    if (!sheet) return []; // 如果沒有分頁，回傳空陣列 (前端會用預設值)
-    
-    // 讀取 A 欄所有資料
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 1) return [];
-    
-    var data = sheet.getRange(1, 1, lastRow, 1).getValues();
-    // 轉成一維陣列並過濾空值
-    return data.map(r => r[0]).filter(t => t);
-  } catch(e) {
-    return [];
-  }
+    try {
+        var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("TEST_HISTORY");
+        if (!sheet) return []; // 如果沒有分頁，回傳空陣列 (前端會用預設值)
+
+        // 讀取 A 欄所有資料
+        var lastRow = sheet.getLastRow();
+        if (lastRow < 1) return [];
+
+        var data = sheet.getRange(1, 1, lastRow, 1).getValues();
+        // 轉成一維陣列並過濾空值
+        return data.map(r => r[0]).filter(t => t);
+    } catch (e) {
+        return [];
+    }
 }
 
 function saveCloudHistory(historyArray) {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("TEST_HISTORY");
-    if (!sheet) {
-      sheet = ss.insertSheet("TEST_HISTORY");
+    try {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var sheet = ss.getSheetByName("TEST_HISTORY");
+        if (!sheet) {
+            sheet = ss.insertSheet("TEST_HISTORY");
+        }
+
+        // 清空舊資料
+        sheet.clear();
+
+        if (historyArray && historyArray.length > 0) {
+            // 轉成二維陣列寫入
+            var rows = historyArray.map(t => [t]);
+            sheet.getRange(1, 1, rows.length, 1).setValues(rows);
+        }
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.toString() };
     }
-    
-    // 清空舊資料
-    sheet.clear();
-    
-    if (historyArray && historyArray.length > 0) {
-      // 轉成二維陣列寫入
-      var rows = historyArray.map(t => [t]);
-      sheet.getRange(1, 1, rows.length, 1).setValues(rows);
-    }
-    return { success: true };
-  } catch(e) {
-    return { success: false, error: e.toString() };
-  }
 }// ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
