@@ -4,33 +4,41 @@
 const EXCHANGE_RATE = 32;  // 匯率 USD -> TWD
 
 // ════════════════════════════════════════════════════════════════
-// 🔧 LLM Provider Settings (LLM 提供者設定)
 // ════════════════════════════════════════════════════════════════
-// 🟢 選擇主要的 LLM 服務提供者
+// 1. 一般對話適用的服務 (可改)
+// ════════════════════════════════════════════════════════════════
+// 🟢 [開關] 選擇主要的 LLM 服務提供者
 // 選項: 'Gemini' (Google 原廠) 或 'OpenRouter' (第三方聚合服務)
-// 注意: PDF 閱讀模式 (Think Mode) 目前強制定錨在 Google Gemini 以確保穩定性
 const LLM_PROVIDER = 'Gemini'; 
 
-// 🔧 OpenRouter 設定
-// 請在 "專案設定 > 指令碼屬性" 中設定 'OPENROUTER_API_KEY'
-// 在這裡指定要使用的模型名稱 (例如: 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat')
-const OPENROUTER_MODEL = 'google/gemini-2.0-flash-exp:free';
-
-// 🔧 Gemini 設定 (Google 原廠)
-// 【模型 1】一般對話 (FAST)
+// ════════════════════════════════════════════════════════════════
+// 2. 一般對話 (Fast Mode) 模型與價格 (可改)
+// ════════════════════════════════════════════════════════════════
+// 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
 const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';
 const PRICE_FAST_INPUT = 0.10;   // $0.10 per 1M Input
 const PRICE_FAST_OUTPUT = 0.40;  // $0.40 per 1M Output
 
-// 【模型 2】PDF 深讀 (THINK) 
+// 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
+const OPENROUTER_MODEL = 'deepseek/deepseek-r1-0528';
+const OPENROUTER_PRICE_IN = 0.40;  // $0.40 per 1M Input
+const OPENROUTER_PRICE_OUT = 1.75; // $1.75 per 1M Output
+
+// ════════════════════════════════════════════════════════════════
+// 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
+// ════════════════════════════════════════════════════════════════
+// ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
 const GEMINI_MODEL_THINK = 'models/gemini-2.0-flash';
 const PRICE_THINK_INPUT = 0.10;
 const PRICE_THINK_OUTPUT = 0.40;
 
-// 【模型 3】/記錄 初版 QA 生成 (POLISH) - 只有 callGeminiToPolish 使用
+// ════════════════════════════════════════════════════════════════
+// 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
+// ════════════════════════════════════════════════════════════════
+// ⚠️ 注意：/記錄 功能目前強制使用 Gemini 3 Flash Preview 以確保品質
 const GEMINI_MODEL_POLISH = 'models/gemini-3-flash-preview';
-const PRICE_POLISH_INPUT = 0.50;   // $0.50 per 1M Input (Gemini 3 Flash)
-const PRICE_POLISH_OUTPUT = 3.00;  // $3.00 per 1M Output (Gemini 3 Flash)
+const PRICE_POLISH_INPUT = 0.50;
+const PRICE_POLISH_OUTPUT = 3.00;
 // ════════════════════════════════════════════════════════════════
 // 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
 // ════════════════════════════════════════════════════════════════
@@ -51,7 +59,14 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.38 (Typo Fix)
+ * Version: v27.9.40 (Config Structure)
+ * 
+ * 🔥 v27.9.40 更新 (Config Structure):
+ *   - 優化：設定區塊重構為 4 大區塊，明確區分「可修改」與「強制」項目
+ *   - 1. 主要服務 (Gemini/OpenRouter) - 可改
+ *   - 2. 一般對話 (Fast Mode) - 可改 (含 OpenRouter 費率)
+ *   - 3. PDF 對話 (Think Mode) - 強制 Gemini
+ *   - 4. QA 生成 (Polish Mode) - 強制 Gemini 3 Flash
  * 
  * 🔥 v27.9.38 更新 (Fixes):
  *   - 修正：修復 LLM_PROVIDER 未定義導致的系統錯誤
@@ -2945,13 +2960,18 @@ function callOpenRouter(messages, temperature = 0.7, tools = undefined) {
             
             // 記錄 Token
             if (json.usage) {
+                // v27.9.39: 根據設定計算 OpenRouter 成本
+                const costUSD = (json.usage.prompt_tokens / 1000000 * OPENROUTER_PRICE_IN) + 
+                               (json.usage.completion_tokens / 1000000 * OPENROUTER_PRICE_OUT);
+                const costTWD = costUSD * EXCHANGE_RATE;
+
                 lastTokenUsage = {
                     input: json.usage.prompt_tokens,
                     output: json.usage.completion_tokens,
                     total: json.usage.total_tokens,
-                    costTWD: 0 
+                    costTWD: costTWD 
                 };
-                writeLog(`[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${json.usage.completion_tokens}, Total: ${json.usage.total_tokens}`);
+                writeLog(`[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${json.usage.completion_tokens}, Total: ${json.usage.total_tokens} (約 NT$${costTWD.toFixed(4)})`);
             }
 
             if (json.choices && json.choices.length > 0) {
@@ -5727,7 +5747,7 @@ function getBotVersion() {
     }
 
     return {
-        version: "27.9.38",
+        version: "27.9.40",
         description: `OpenRouter Support: ${providerInfo}`
     };
 }
