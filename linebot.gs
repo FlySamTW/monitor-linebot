@@ -9,7 +9,7 @@ const EXCHANGE_RATE = 32;  // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🟢 [開關] 選擇主要的 LLM 服務提供者
 // 選項: 'Gemini' (Google 原廠) 或 'OpenRouter' (第三方聚合服務)
-const LLM_PROVIDER = 'Gemini'; 
+const LLM_PROVIDER = 'OpenRouter'; 
 
 // ════════════════════════════════════════════════════════════════
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
@@ -20,9 +20,9 @@ const PRICE_FAST_INPUT = 0.10;   // $0.10 per 1M Input
 const PRICE_FAST_OUTPUT = 0.40;  // $0.40 per 1M Output
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
-const OPENROUTER_MODEL = 'deepseek/deepseek-r1-0528';
-const OPENROUTER_PRICE_IN = 0.40;  // $0.40 per 1M Input
-const OPENROUTER_PRICE_OUT = 1.75; // $1.75 per 1M Output
+const OPENROUTER_MODEL = 'x-ai/grok-code-fast-1';
+const OPENROUTER_PRICE_IN = 0.05;  // $0.05 per 1M Input
+const OPENROUTER_PRICE_OUT = 0.15; // $0.15 per 1M Output
 
 // ════════════════════════════════════════════════════════════════
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
@@ -59,7 +59,12 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.40 (Config Structure)
+ * Version: v27.9.41 (Model Switch)
+ * 
+ * 🔥 v27.9.41 更新 (Model Switch):
+ *   - 切換：主要服務商改為 OpenRouter
+ *   - 模型：使用 x-ai/grok-code-fast-1
+ *   - 費率：更新為 $0.05/$0.15
  * 
  * 🔥 v27.9.40 更新 (Config Structure):
  *   - 優化：設定區塊重構為 4 大區塊，明確區分「可修改」與「強制」項目
@@ -5747,7 +5752,7 @@ function getBotVersion() {
     }
 
     return {
-        version: "27.9.40",
+        version: "27.9.41",
         description: `OpenRouter Support: ${providerInfo}`
     };
 }
