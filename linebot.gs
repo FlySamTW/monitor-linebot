@@ -51,7 +51,10 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.37 (OpenRouter Support)
+ * Version: v27.9.38 (Typo Fix)
+ * 
+ * 🔥 v27.9.38 更新 (Fixes):
+ *   - 修正：修復 LLM_PROVIDER 未定義導致的系統錯誤
  * 
  * 🔥 v27.9.37 更新 (OpenRouter Integration):
  *   - 新增：支援切換至 OpenRouter (如 DeepSeek, Claude 等模型)
@@ -5724,7 +5727,7 @@ function getBotVersion() {
     }
 
     return {
-        version: "27.9.37",
+        version: "27.9.38",
         description: `OpenRouter Support: ${providerInfo}`
     };
 }
