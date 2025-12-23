@@ -59,7 +59,11 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.42 (Model Switch: Qwen)
+ * Version: v27.9.43 (PDF Trigger Fix)
+ * 
+ * 🔥 v27.9.43 更新 (PDF Trigger Fix):
+ *   - 修正：針對 OpenRouter 模型 (Qwen/DeepSeek) 優化 PDF 觸發機制
+ *   - 邏輯：命中直通車關鍵字且非簡單問題時，強制啟動手冊查詢，不再完全依賴 AI 判斷
  * 
  * 🔥 v27.9.42 更新 (Model Switch: Qwen):
  *   - 切換：OpenRouter 模型改為 qwen/qwen-2.5-7b-instruct
@@ -3536,6 +3540,13 @@ function handleMessage(event) {
                                 }
                             }
 
+                            // v27.9.43: 解決 Qwen/DeepSeek 不愛主動查 PDF 問題
+                            // 若命中直通車關鍵字，且不是簡單問題(價格/閒聊)，強制觸發 PDF 智慧匹配
+                            if (cachedAliasKey && !aiRequestedPdfSearch && !isSimpleQuestion) {
+                                writeLog(`[Auto Search] 命中直通車 (${cachedAliasKey}) 且非簡單問題，強制觸發 PDF 搜尋 (OpenRouter Fix)`);
+                                aiRequestedPdfSearch = true;
+                            }
+
                             // v27.9.12: 只有當 AI 明確要求 PDF 搜尋([AUTO_SEARCH_PDF])時，才進行 PDF 智慧匹配
                             // 規格問題（如「M5有支援Smart嗎」）即使命中直通車，也不應觸發 PDF 匹配
                             if (cachedAliasKey && aiRequestedPdfSearch) {
@@ -5756,9 +5767,17 @@ function getBotVersion() {
     }
 
     return {
-        version: "27.9.42",
+        version: "27.9.43",
         description: `OpenRouter Support: ${providerInfo}`
     };
+}
+
+// 🔧 工具函式：一次性設定 API Key (執行後可刪除對應程式碼，但屬性會保留)
+function _SETUP_API_KEY() {
+    const key = "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";
+    PropertiesService.getScriptProperties().setProperty("OPENROUTER_API_KEY", key);
+    console.log("✅ OPENROUTER_API_KEY 已成功寫入 Script Properties！");
+    return "✅ 設定完成";
 }
 // ════════════════════════════════════════════════════════════════
 
