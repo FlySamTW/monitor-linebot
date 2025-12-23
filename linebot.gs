@@ -37,7 +37,12 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.34 (Git Sync Upgrade)
+ * Version: v27.9.37 (OpenRouter Support)
+ * 
+ * 🔥 v27.9.37 更新 (OpenRouter Integration):
+ *   - 新增：支援切換至 OpenRouter (如 DeepSeek, Claude 等模型)
+ *   - 設定：於程式碼最上方調整 LLM_PROVIDER 與 OPENROUTER_MODEL
+ *   - 限制：PDF 模式與 Talk Smart 模式仍維持使用 Gemini 以確保穩定性
  * 
  * 🔥 v27.9.34 更新 (Git Sync):
  *   - 同步本地變更至 GitHub 倉庫
@@ -2703,6 +2708,25 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
             lastLoadingTime = now;
         }
         try {
+            // 決定是否切換到 OpenRouter
+            // 條件: 設定為 OpenRouter + 非 PDF 模式 + 非圖片 + 非 Web Search (因為 Web Search 用 Google Tool)
+            if (LLM_PROVIDER === 'OpenRouter' && !attachPDFs && !imageBlob && !forceWebSearch) {
+                try {
+                    // OpenRouter 需要 System Prompt 放入 messages
+                    const openRouterMessages = [...geminiContents];
+                    if (dynamicPrompt) {
+                        openRouterMessages.unshift({ role: 'system', parts: [{ text: dynamicPrompt }] });
+                    }
+                    
+                    const responseText = callOpenRouter(openRouterMessages, genConfig.temperature);
+                    return responseText;
+
+                } catch (orErr) {
+                    writeLog(`[OpenRouter Fail] ${orErr.message}, Fallback to Gemini...`);
+                    // 失敗則 Fallback 到 Gemini (繼續往下執行)
+                }
+            }
+
             const response = UrlFetchApp.fetch(url, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), muteHttpExceptions: true });
             const endTime = new Date().getTime();
             const code = response.getResponseCode();
@@ -4397,6 +4421,21 @@ function callGeminiToModify(currentText, instruction) {
     };
 
     try {
+        // v27.9.37: 支援 OpenRouter 切換
+        if (LLM_PROVIDER === 'OpenRouter') {
+            try {
+                // 建構 OpenRouter 訊息
+                const messages = [
+                     { role: 'user', parts: [{ text: prompt }] }
+                ];
+                // 使用 callOpenRouter (不帶 System Prompt，因為這裡 prompt 包含了所有指示)
+                const responseText = callOpenRouter(messages, 0.4);
+                return responseText.trim().replace(/[\r\n]+/g, ' ');
+            } catch (orErr) {
+                 writeLog(`[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`);
+            }
+        }
+
         // v24.2.3: 簡單格式化用 Fast 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
             method: 'post',
@@ -5562,5 +5601,21 @@ function saveCloudHistory(historyArray) {
         return { success: false, error: e.toString() };
     }
 }// ════════════════════════════════════════════════════════════════
+
+function getBotVersion() {
+    // 判斷當前使用的 LLM
+    let providerInfo = LLM_PROVIDER;
+    if (LLM_PROVIDER === 'OpenRouter') {
+        providerInfo += ` (${OPENROUTER_MODEL})`;
+    } else {
+        providerInfo += ' (Gemini 2.0 Flash)';
+    }
+
+    return {
+        version: "27.9.37",
+        description: `OpenRouter Support: ${providerInfo}`
+    };
+}
+// ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
