@@ -20,9 +20,9 @@ const PRICE_FAST_INPUT = 0.10;   // $0.10 per 1M Input
 const PRICE_FAST_OUTPUT = 0.40;  // $0.40 per 1M Output
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
-const OPENROUTER_MODEL = 'x-ai/grok-code-fast-1';
-const OPENROUTER_PRICE_IN = 0.05;  // $0.05 per 1M Input
-const OPENROUTER_PRICE_OUT = 0.15; // $0.15 per 1M Output
+const OPENROUTER_MODEL = 'qwen/qwen-2.5-7b-instruct';
+const OPENROUTER_PRICE_IN = 0.04;  // $0.04 per 1M Input
+const OPENROUTER_PRICE_OUT = 0.10; // $0.10 per 1M Output
 
 // ════════════════════════════════════════════════════════════════
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
@@ -59,7 +59,11 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.41 (Model Switch)
+ * Version: v27.9.42 (Model Switch: Qwen)
+ * 
+ * 🔥 v27.9.42 更新 (Model Switch: Qwen):
+ *   - 切換：OpenRouter 模型改為 qwen/qwen-2.5-7b-instruct
+ *   - 費率：更新為 $0.04/$0.10
  * 
  * 🔥 v27.9.41 更新 (Model Switch):
  *   - 切換：主要服務商改為 OpenRouter
@@ -5752,7 +5756,7 @@ function getBotVersion() {
     }
 
     return {
-        version: "27.9.41",
+        version: "27.9.42",
         description: `OpenRouter Support: ${providerInfo}`
     };
 }
