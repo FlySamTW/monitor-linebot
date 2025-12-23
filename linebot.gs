@@ -1,3 +1,4 @@
+// ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
 // ════════════════════════════════════════════════════════════════
 // 🔧 模型與計價設定 (要調整就改這裡！)
 // ════════════════════════════════════════════════════════════════
@@ -9,7 +10,7 @@ const EXCHANGE_RATE = 32;  // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🟢 [開關] 選擇主要的 LLM 服務提供者
 // 選項: 'Gemini' (Google 原廠) 或 'OpenRouter' (第三方聚合服務)
-const LLM_PROVIDER = 'OpenRouter'; 
+const LLM_PROVIDER = 'Gemini'; 
 
 // ════════════════════════════════════════════════════════════════
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
@@ -50,6 +51,20 @@ const PRICE_POLISH_OUTPUT = 3.00;
 //    1. 開啟 Web App URL 並加上 ?test=1 參數
 //    2. 例如：https://script.google.com/macros/s/xxxxx/exec?test=1
 //    3. 或在 GAS 編輯器選擇函數 doGet 並執行
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// 版本號：v27.9.54 (Switch to Gemini)
+// 1. 設定: 將 LLM_PROVIDER 切換回 Gemini (原廠穩定版)
+// 2. 修正: 解決用戶端配置未生效的問題
+// ════════════════════════════════════════════════════════════════
 // ⚠️ 清除測試介面時請刪除此區塊 + 區塊 9 (TEST UI) + TestUI.html
 var IS_TEST_MODE = false;
 var TEST_LOGS = [];
@@ -59,12 +74,12 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.44 (Strict Workflow)
+ * Version: v27.9.54 (Switch to Gemini)
  * 
- * 🔥 v27.9.44 更新 (Strict Workflow):
- *   - 重構：移除硬編碼的 PDF 觸發修補
- *   - 優化：改寫 System Prompt，強制執行嚴格的資料來源工作流
- *   - 規則：QA -> Rules -> PDF -> Web (禁止 LLM 使用訓練資料回答產品問題)
+ * 🔥 v27.9.54 更新 (Switch to Gemini):
+ *   - 設定: 將 LLM_PROVIDER 切換回 Gemini (原廠穩定版)
+ *   - 修正: 解決用戶端配置未生效的問題
+ *   - 測試: 注入 [System Checks] Log 以驗證版本
  * 
  * 🔥 v27.9.43 更新 (PDF Trigger Fix):
  *   - 修正：針對 OpenRouter 模型 (Qwen/DeepSeek) 優化 PDF 觸發機制
@@ -2517,7 +2532,8 @@ function getRelevantKBFiles(messages, kbList, userId = null, contextId = null, f
 }
 
 // v27.8.15: 新增 data-drive keyword detection, forceWebSearch 參數
-function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, isRetry = false, userId = null, forceWebSearch = false) {
+// v27.9.51: Refactor Name (ChatGPT -> LLM)
+function callLLMWithRetry(messages, imageBlob = null, attachPDFs = false, isRetry = false, userId = null, forceWebSearch = false) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("API Key Missing");
 
@@ -2588,6 +2604,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     // 這能解決「舊記憶曾瞎掰 M9 是 49 吋」導致 AI 一直錯下去的問題。
     let dynamicPrompt = `【Sheet C3 指令】\n${c3Prompt}\n`;
     dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
+    dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
 
     // 注入動態上下文
     if (dynamicContext) {
@@ -2605,7 +2622,7 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
         // v27.8.21: 允許極速模式觸發網路搜尋
         // v27.9.13: 區分 QA 和 CLASS_RULES 來源標註
         // v27.9.43: 嚴格執行來源工作流 (Strict Source Workflow)
-        dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA 有答案 -> 使用 QA 回答，標註 [來源: QA]\n   - 若 CLASS_RULES 有答案 -> 使用 Rules 回答，標註 [來源: 規格庫]\n\n2. Fallback to PDF (重要!):\n   - 若 Context 中沒有足夠資訊回答用戶的具體產品問題（如操作步驟、故障排除、特定規格），你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF]\n   - 不可以使用你的訓練資料「猜測」或「補充」答案。\n   - 寧可不回答，也不要給出沒有來源的答案。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用定義 (什麼是HDMI) 時，才可用通用知識回答。`;
+        dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA 有答案 -> 使用 QA 回答，標註 [來源: QA]\n   - 若 CLASS_RULES 有答案 -> 使用 Rules 回答，標註 [來源: 規格庫]\n\n2. Fallback to PDF (重要!):\n   - 若 Context 中沒有足夠資訊回答用戶的具體產品問題（如操作步驟、故障排除、特定規格），你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF]\n   - **絕對禁止** 輸出任何程式碼樣式 (如 .setAuto_search_pdf() 或 python code 等變體)。\n   - 指令必須完全精確為 [AUTO_SEARCH_PDF]，不得包含任何其他字元。\n   - 不可以使用你的訓練資料「猜測」或「補充」答案。\n   - 寧可不回答，也不要給出沒有來源的答案。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用定義 (什麼是HDMI) 時，才可用通用知識回答。`;
     } else if (attachPDFs) {
         // Phase 2 & 3: 深度模式 (Deep Mode)
         // v27.8.6: 防護機制 - 確保真的有掛載 PDF
@@ -2769,7 +2786,11 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
                         openRouterMessages.unshift({ role: 'system', parts: [{ text: dynamicPrompt }] });
                     }
                     
-                    const responseText = callOpenRouter(openRouterMessages, genConfig.temperature);
+                    // v27.9.47: 支援 OpenRouter Web Search (Pass 2)
+                    // 當 forceWebSearch=true 時，使用 :online 後綴啟用網路插件
+                    const useOnline = forceWebSearch;
+                    
+                    const responseText = callOpenRouter(openRouterMessages, genConfig.temperature, undefined, useOnline);
                     return responseText;
 
                 } catch (orErr) {
@@ -2921,7 +2942,11 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
 /**
  * 呼叫 OpenRouter API (OpenAI Compatible)
  */
-function callOpenRouter(messages, temperature = 0.7, tools = undefined) {
+/**
+ * 呼叫 OpenRouter API (OpenAI Compatible)
+ * v27.9.47: 新增 isOnline 參數，若為 true 則在模型後加上 :online 以啟用網路搜尋
+ */
+function callOpenRouter(messages, temperature = 0.7, tools = undefined, isOnline = false) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
     if (!apiKey) throw new Error("缺少 OPENROUTER_API_KEY");
 
@@ -2941,7 +2966,7 @@ function callOpenRouter(messages, temperature = 0.7, tools = undefined) {
     });
 
     const payload = {
-        model: OPENROUTER_MODEL,
+        model: isOnline ? `${OPENROUTER_MODEL}:online` : OPENROUTER_MODEL,
         messages: openAiMessages,
         temperature: temperature,
         // OpenRouter 特定標頭
@@ -2952,7 +2977,7 @@ function callOpenRouter(messages, temperature = 0.7, tools = undefined) {
 
     const url = "https://openrouter.ai/api/v1/chat/completions";
     
-    writeLog(`[OpenRouter Call] Model: ${OPENROUTER_MODEL}, Temp: ${temperature}`);
+    writeLog(`[OpenRouter Call] Model: ${payload.model}, Temp: ${temperature}, Online: ${isOnline}`);
     const start = new Date().getTime();
 
     try {
@@ -3330,7 +3355,7 @@ function handleMessage(event) {
         try {
             // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
             // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
-            let rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
+            let rawResponse = callLLMWithRetry([...history, userMsgObj], null, false, false, userId);
 
             // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
             if (rawResponse === "[KB_EXPIRED]") {
@@ -3341,7 +3366,7 @@ function handleMessage(event) {
                 scheduleImmediateRebuild();
 
                 // 用極速模式重試（不帶 PDF），用戶完全無感
-                rawResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId);
+                rawResponse = callLLMWithRetry([...history, userMsgObj], null, false, false, userId);
                 // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
             }
 
@@ -3353,10 +3378,12 @@ function handleMessage(event) {
                 let aiRequestedPdfSearch = false;
 
                 // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
-                if (finalText.includes("[AUTO_SEARCH_PDF]") || finalText.includes("[NEED_DOC]")) {
+                // v27.9.48 fix: 增加對 hallucination (如 [.setAuto_search_pdf()]) 的容錯
+                const pdfTriggerRegex = /\[(?:AUTO_SEARCH_PDF|\.?setAuto_search_pdf.*?)\]/i;
+                if (pdfTriggerRegex.test(finalText) || finalText.includes("[NEED_DOC]")) {
                     writeLog("[Auto Search] 偵測到搜尋暗號");
                     aiRequestedPdfSearch = true;  // v27.9.12: 標記 AI 要求 PDF 搜尋
-                    finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+                    finalText = finalText.replace(new RegExp(pdfTriggerRegex, 'gi'), "").trim();
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
 
                     // v27.8.21: Fast Mode 觸發 [AUTO_SEARCH_WEB] 攔截
@@ -3367,7 +3394,7 @@ function handleMessage(event) {
                     const pass1Usage = (typeof lastTokenUsage === 'object') ? { ...lastTokenUsage } : { input: 0, output: 0, total: 0, costTWD: 0 };
 
                     // 執行 Pass 2 (Force Web Search)
-                    const searchResponse = callChatGPTWithRetry([...history, userMsgObj], null, false, false, userId, true);
+                    const searchResponse = callLLMWithRetry([...history, userMsgObj], null, false, false, userId, true);
 
                     // 累加費用
                     if (lastTokenUsage && pass1Usage.total > 0) {
@@ -3450,7 +3477,10 @@ function handleMessage(event) {
                             // v24.5.0: 顯示 Loading 動畫
                             showLoadingAnimation(userId, 60);
 
-                            const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+                            // v24.5.0: 顯示 Loading 動畫
+                            showLoadingAnimation(userId, 60);
+
+                            const deepResponse = callLLMWithRetry([...history, userMsgObj], null, true, true, userId);
 
                             if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
                                 finalText = formatForLineMobile(deepResponse);
@@ -3466,7 +3496,7 @@ function handleMessage(event) {
                                     const pass1Usage = (typeof lastTokenUsage === 'object') ? { ...lastTokenUsage } : { input: 0, output: 0, total: 0, costTWD: 0 };
 
                                     // Pass 2: Force Web Search call
-                                    const searchResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId, true);
+                                    const searchResponse = callLLMWithRetry([...history, userMsgObj], null, true, true, userId, true);
 
                                     // v27.8.16 Cost Fix: 累加費用 (Pass 1 + Pass 2)
                                     if (lastTokenUsage && pass1Usage.total > 0) {
@@ -3597,7 +3627,11 @@ function handleMessage(event) {
                                     isInPdfMode = true;
                                     cache.put(pdfModeKey, 'true', 300);
 
-                                    const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+                                    // 設定 PDF 模式並重試
+                                    isInPdfMode = true;
+                                    cache.put(pdfModeKey, 'true', 300);
+
+                                    const deepResponse = callLLMWithRetry([...history, userMsgObj], null, true, true, userId);
 
                                     if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
                                         finalText = formatForLineMobile(deepResponse);
@@ -3680,7 +3714,10 @@ function handleMessage(event) {
                                     isInPdfMode = true;
                                     cache.put(pdfModeKey, 'true', 300);
 
-                                    const deepResponse = callChatGPTWithRetry([...history, userMsgObj], null, true, true, userId);
+                                    isInPdfMode = true;
+                                    cache.put(pdfModeKey, 'true', 300);
+
+                                    const deepResponse = callLLMWithRetry([...history, userMsgObj], null, true, true, userId);
 
                                     if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
                                         finalText = formatForLineMobile(deepResponse);
@@ -3796,7 +3833,9 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
         const token = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
         const blob = UrlFetchApp.fetch(`https://api-data.line.me/v2/bot/message/${msgId}/content`, { headers: { "Authorization": "Bearer " + token } }).getBlob();
 
-        const analysis = callChatGPTWithRetry(null, blob, false, false, userId);
+
+
+        const analysis = callLLMWithRetry(null, blob, false, false, userId);
         const final = formatForLineMobile(analysis);
         replyMessage(replyToken, final);
 
@@ -3869,7 +3908,8 @@ function startNewEntryDraft(content, userId) {
         var totalOutputTokens = 0;
 
         // Step 1: AI 產生初版 QA
-        const polishedText = callGeminiToPolish(content);
+        // v27.9.45: 傳入 userId 以便在模型失效時通知
+        const polishedText = callGeminiToPolish(content, userId);
         writeLog(userId, 'UserRecord', `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`);
         
         // 累計費用
@@ -4438,8 +4478,9 @@ ${historyText}
 /**
  * 簡化版建檔：AI 潤飾使用者輸入，回傳單一字串
  * 格式：問題 / A：答案
+ * v27.9.45: 新增 userId 參數，支援模型失效時的主動回報
  */
-function callGeminiToPolish(input) {
+function callGeminiToPolish(input, userId = null) {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
@@ -4471,12 +4512,34 @@ ${input}
 
     try {
         // v27.9.20: 使用 GEMINI_MODEL_POLISH（程式最前面設定），只有這裡會用到
-        const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`, {
+        let res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`, {
             method: 'post',
             headers: { 'Content-Type': 'application/json' },
             payload: JSON.stringify(payload),
             muteHttpExceptions: true
         });
+
+        // v27.9.45: 模型回滾機制 (Model Fallback Strategy)
+        // 若 Preview 模型失效 (404 Not Found 或 400 Bad Request)，自動切換至穩定的 Fast Mode
+        // ⛔️ 禁止使用 Push Message! 改為在結果中附加警告訊息
+        var warningMsg = "";
+        
+        if (res.getResponseCode() === 404 || res.getResponseCode() === 400) {
+            const errBody = res.getContentText();
+            writeLog(`[Polish Warning] ${GEMINI_MODEL_POLISH} 失效 (${res.getResponseCode()})，嘗試回滾... Err: ${errBody}`);
+            
+            // 準備警告文字，將隨返還內容一起顯示
+            warningMsg = `⚠️ [系統警告] Preview 模型 (${GEMINI_MODEL_POLISH}) 已失效，系統已自動切換至 ${CONFIG.MODEL_NAME_FAST} 繼續服務。請通知管理員更新程式設定。\n\n`;
+
+            // 2. 自動切換至 Fast Mode 重試
+            writeLog(`[Polish Fallback] Switching to ${CONFIG.MODEL_NAME_FAST}`);
+            res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
+                method: 'post',
+                headers: { 'Content-Type': 'application/json' },
+                payload: JSON.stringify(payload), // payload 通用
+                muteHttpExceptions: true
+            });
+        }
 
         const code = res.getResponseCode();
         const body = res.getContentText();
@@ -4532,8 +4595,8 @@ ${input}
             return simplePolishFallback(input);
         }
 
-        // 清理多餘的換行和空白
-        return rawText.trim().replace(/[\r\n]+/g, ' ');
+        // 清理多餘的換行和空白，並附加警告訊息 (如果有)
+        return warningMsg + rawText.trim().replace(/[\r\n]+/g, ' ');
 
     } catch (e) {
         writeLog(`[Polish Error] ${e.message}`);
@@ -5408,6 +5471,8 @@ function replyMessage(tk, txt) {
     }
 }
 
+
+
 function showLoadingAnimation(uid, sec) {
     try {
         UrlFetchApp.fetch("https://api.line.me/v2/bot/chat/loading/start", {
@@ -5760,27 +5825,100 @@ function saveCloudHistory(historyArray) {
 }// ════════════════════════════════════════════════════════════════
 
 function getBotVersion() {
-    // 判斷當前使用的 LLM
-    let providerInfo = LLM_PROVIDER;
-    if (LLM_PROVIDER === 'OpenRouter') {
-        providerInfo += ` (${OPENROUTER_MODEL})`;
-    } else {
-        providerInfo += ' (Gemini 2.0 Flash)';
-    }
-
     return {
-        version: "27.9.44",
-        description: `OpenRouter Support: ${providerInfo}`
+        version: "v27.9.54",
+        description: `Back: ${LLM_PROVIDER} | OR-Search: ON | TW_Force`
     };
 }
 
 // 🔧 工具函式：一次性設定 API Key (執行後可刪除對應程式碼，但屬性會保留)
+// 🔧 工具函式：設定 API Key 並驗證
 function _SETUP_API_KEY() {
-    const key = "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";
-    PropertiesService.getScriptProperties().setProperty("OPENROUTER_API_KEY", key);
-    console.log("✅ OPENROUTER_API_KEY 已成功寫入 Script Properties！");
-    return "✅ 設定完成";
+    // ⚠️ 安全提醒：請在執行後刪除此處的金鑰
+    const key = "YOUR_OPENROUTER_KEY_HERE"; 
+    
+    // 檢查格式
+    if (key === "YOUR_OPENROUTER_KEY_HERE") {
+        console.warn("⚠️ 請先填入有效的 OpenRouter Key");
+        return "❌ 設定失敗：請填入金鑰";
+    }
+
+    PropertiesService.getScriptProperties().setProperty("OPENROUTER_API_KEY", key.trim());
+    
+    const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
+    console.log(`✅ OPENROUTER_API_KEY 已更新！`);
+    console.log(`當前儲存: ${masked}`);
+    console.log(`請重新測試 LINE 對話。`);
+    
+    return `✅ 設定完成 (${masked})`;
 }
 // ════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+// 🧪 測試工具：驗證金鑰與網路搜尋
+// ════════════════════════════════════════════════════════════════
+function _TEST_OPENROUTER_SEARCH() {
+    // 1. 取得金鑰 (預設抓最後一次填入的，請自行替換)
+    const key = PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
+    
+    if (!key) {
+        console.error("❌ 找不到儲存的金鑰，請先設定 Script Properties");
+        return;
+    }
+    
+    console.log(`正在測試金鑰: ${key.substring(0, 10)}...`);
+
+    const url = "https://openrouter.ai/api/v1/chat/completions";
+    const payload = {
+        "model": "qwen/qwen-2.5-7b-instruct:online", // 測試 Web Search
+        "messages": [
+            {"role": "user", "content": "What is the capital of Taiwan? Please search online."}
+        ]
+    };
+
+    try {
+        const response = UrlFetchApp.fetch(url, {
+            method: 'post',
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                'HTTP-Referer': 'https://script.google.com/',
+                'X-Title': 'Test Script',
+                'Content-Type': 'application/json'
+            },
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+        });
+
+        const code = response.getResponseCode();
+        const text = response.getContentText();
+        
+        console.log(`\n📡 API 回應代碼: ${code}`);
+        console.log(`📜 回應內容: ${text.substring(0, 500)}...`);
+
+        if (code === 200) {
+            console.log("\n✅ 測試成功！金鑰有效，且網路搜尋 (:online) 運作正常。");
+        } else {
+            console.error("\n❌ 測試失敗。請檢查：");
+            console.error("1. 金鑰是否正確？(現在這組看起來還是範例的)");
+            console.error("2. 若您堅持這是真的，那可能是 OpenRouter 尚未開通 Credits");
+        }
+    } catch (e) {
+        console.error(`❌ 連線錯誤: ${e.toString()}`);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 🔍 偵錯工具：查看目前系統讀到的金鑰
+// ════════════════════════════════════════════════════════════════
+function __DEBUG_SHOW_CURRENT_KEY() {
+    const key = PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
+    if (!key) {
+        console.log("❌ 目前沒有儲存任何金鑰 (Null)");
+    } else {
+        const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
+        console.log(`✅ 目前系統內的金鑰: ${masked}`);
+        console.log(`(原始長度: ${key.length})`);
+    }
+}
