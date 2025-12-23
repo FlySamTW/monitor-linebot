@@ -3,6 +3,20 @@
 // ════════════════════════════════════════════════════════════════
 const EXCHANGE_RATE = 32;  // 匯率 USD -> TWD
 
+// ════════════════════════════════════════════════════════════════
+// 🔧 LLM Provider Settings (LLM 提供者設定)
+// ════════════════════════════════════════════════════════════════
+// 🟢 選擇主要的 LLM 服務提供者
+// 選項: 'Gemini' (Google 原廠) 或 'OpenRouter' (第三方聚合服務)
+// 注意: PDF 閱讀模式 (Think Mode) 目前強制定錨在 Google Gemini 以確保穩定性
+const LLM_PROVIDER = 'Gemini'; 
+
+// 🔧 OpenRouter 設定
+// 請在 "專案設定 > 指令碼屬性" 中設定 'OPENROUTER_API_KEY'
+// 在這裡指定要使用的模型名稱 (例如: 'google/gemini-2.0-flash-exp:free', 'deepseek/deepseek-chat')
+const OPENROUTER_MODEL = 'google/gemini-2.0-flash-exp:free';
+
+// 🔧 Gemini 設定 (Google 原廠)
 // 【模型 1】一般對話 (FAST)
 const GEMINI_MODEL_FAST = 'models/gemini-2.0-flash';
 const PRICE_FAST_INPUT = 0.10;   // $0.10 per 1M Input
@@ -2867,6 +2881,89 @@ function callChatGPTWithRetry(messages, imageBlob = null, attachPDFs = false, is
     return `⚠️ 系統忙碌中 (${lastError})，請稍後再試`;
 }
 
+/**
+ * 呼叫 OpenRouter API (OpenAI Compatible)
+ */
+function callOpenRouter(messages, temperature = 0.7, tools = undefined) {
+    const apiKey = PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
+    if (!apiKey) throw new Error("缺少 OPENROUTER_API_KEY");
+
+    // 轉換訊息格式 (Gemini -> OpenAI)
+    // Gemini: { role: 'user'|'model', parts: [{text: '...'}] }
+    // OpenAI: { role: 'user'|'assistant'|'system', content: '...' }
+    const openAiMessages = messages.map(msg => {
+        let role = msg.role === 'model' ? 'assistant' : msg.role;
+        // 如果是 System Prompt (Gemini 通常放在 systemInstruction，但這裡可能混合在 messages)
+        // 這裡主要處理標準 user/model
+        
+        let content = '';
+        if (msg.parts && msg.parts.length > 0) {
+            content = msg.parts.map(p => p.text).join('\n');
+        }
+        return { role: role, content: content };
+    });
+
+    const payload = {
+        model: OPENROUTER_MODEL,
+        messages: openAiMessages,
+        temperature: temperature,
+        // OpenRouter 特定標頭
+        provider: {
+            require_parameters: false
+        }
+    };
+
+    const url = "https://openrouter.ai/api/v1/chat/completions";
+    
+    writeLog(`[OpenRouter Call] Model: ${OPENROUTER_MODEL}, Temp: ${temperature}`);
+    const start = new Date().getTime();
+
+    try {
+        const response = UrlFetchApp.fetch(url, {
+            method: 'post',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'HTTP-Referer': 'https://script.google.com/', // OpenRouter 要求
+                'X-Title': 'LineBot Assistant', // OpenRouter 要求
+                'Content-Type': 'application/json'
+            },
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+        });
+
+        const endTime = new Date().getTime();
+        const code = response.getResponseCode();
+        const text = response.getContentText();
+        
+        writeLog(`[OpenRouter End] ${(endTime - start) / 1000}s, Code: ${code}`);
+
+        if (code === 200) {
+            const json = JSON.parse(text);
+            
+            // 記錄 Token
+            if (json.usage) {
+                lastTokenUsage = {
+                    input: json.usage.prompt_tokens,
+                    output: json.usage.completion_tokens,
+                    total: json.usage.total_tokens,
+                    costTWD: 0 
+                };
+                writeLog(`[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${json.usage.completion_tokens}, Total: ${json.usage.total_tokens}`);
+            }
+
+            if (json.choices && json.choices.length > 0) {
+                return json.choices[0].message.content || '';
+            }
+        } else {
+             writeLog(`[OpenRouter Error] Code: ${code}, Body: ${text.substring(0, 300)}`);
+             throw new Error(`OpenRouter API Error: ${code}`);
+        }
+    } catch (e) {
+        writeLog(`[OpenRouter Exception] ${e.message}`);
+        throw e;
+    }
+}
+
 // ==========================================
 // 4. 訊息處理 (AI-Driven Trigger)
 // ==========================================
@@ -5065,6 +5162,21 @@ ${convoText}`;
     };
 
     try {
+        // v27.9.37: 支援 OpenRouter 切換
+        if (LLM_PROVIDER === 'OpenRouter') {
+            try {
+                // 建構 OpenRouter 訊息
+                const messages = [
+                     { role: 'user', parts: [{ text: prompt }] }
+                ];
+                // 使用 callOpenRouter (不帶 System Prompt，因為這裡 prompt 包含了所有指示)
+                const responseText = callOpenRouter(messages, 0.4);
+                return responseText.trim().replace(/[\r\n]+/g, ' ');
+            } catch (orErr) {
+                 writeLog(`[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`);
+            }
+        }
+
         // v24.2.3: 簡單摘要用 Fast 模型
         const res = UrlFetchApp.fetch(`${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`, {
             method: 'post',
