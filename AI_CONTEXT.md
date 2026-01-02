@@ -37,3 +37,27 @@
 
 - **400 Bad Request**: 視為無效 Key，應回傳「API Key 無效」訊息。
 - **429 Too Many Requests**: 視為額度限制 (Quota Limit) 或頻率限制 (Rate Limit)，應回傳「系統忙碌中 (429)」訊息。
+
+## 5. 架構原則與開發鐵律 (Architecture & Iron Rules)
+
+### 核心原則 (Brain-First)
+
+優先級順序：**QA 資料庫 (最優先) > CLASS_RULES (規格/術語) > LLM 通用知識 > PDF 手冊 > 網路搜尋**
+
+### 開發鐵律 (Do's and Don'ts)
+
+1.  **Fast Mode 優先**: 所有問題必須先走 Fast Mode (QA + RULES)。只有當 Fast Mode 回傳 `[AUTO_SEARCH_PDF]` 時，才允許進入 Deep Mode。
+2.  **禁止盲目與官方搜尋**:
+    - **禁止**搜尋官方公告、韌體更新、驅動程式 (由使用者在 QA 維護)。
+    - **禁止**在「什麼是 HDR」等通識問題進入 PDF Mode。
+3.  **防止型號汙染**: 必須嚴格遵守 `hasInjectedModels` 邏輯，避免一次載入多個不相關型號的 PDF。
+4.  **源頭淨化**: 在 `handleMessage` 與 `testMessage` 入口處，必須強制檢查並轉型輸入資料，防止 `[object Object]` 或非字串導致的崩潰。
+
+## 6. 檔案整併說明 (File Consolidation)
+
+本專案已將歷史文檔整併，所有開發邏輯請以本文件 (`AI_CONTEXT.md`) 與 `程式編寫開發及功能手冊.md` 為準。以下舊文件已廢棄：
+
+- `LLM_LOGIC_HISTORY.md`
+- `PRIORITY_LOGIC_ARCHITECTURE.md`
+- `progress.md`
+- `v27.3.3_INTEGRATION.md`
