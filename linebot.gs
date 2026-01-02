@@ -1773,6 +1773,7 @@ function buildDynamicContext(messages, userId) {
     // 只要 User Input 包含 KEYWORD_MAP 中的任何 Key (別稱/型號)，就視為關鍵字命中
     // 這樣 "Odyssey3D", "G7", "M8" 都能被正確抓到，完全依照 Sheet 定義
     let sheetDefinedKeywords = [];
+    let reverseMatchedModels = []; // v27.9.58: 規格內容反查型號
     try {
       const mapJson = PropertiesService.getScriptProperties().getProperty(
         CACHE_KEYS.KEYWORD_MAP
@@ -1786,6 +1787,39 @@ function buildDynamicContext(messages, userId) {
             sheetDefinedKeywords.push(key);
           }
         });
+
+        // v27.9.58: 規格內容反查 (Reverse Lookup)
+        // 若用戶說的關鍵字 (如「強力洗淨」) 不在 Keys 裡，則掃描 Values 找出包含該詞的型號
+        if (
+          sheetDefinedKeywords.length === 0 &&
+          filteredCnKeywords.length > 0
+        ) {
+          Object.entries(keywordMap).forEach(([modelKey, specContent]) => {
+            // specContent 是該型號的完整規格內容
+            if (typeof specContent === "string") {
+              const upperSpec = specContent.toUpperCase();
+              // 檢查規格內容是否包含用戶說的任何中文關鍵字
+              for (const cnKw of filteredCnKeywords) {
+                if (upperSpec.includes(cnKw.toUpperCase())) {
+                  // 找到了！把型號加入反查結果
+                  if (!reverseMatchedModels.includes(modelKey)) {
+                    reverseMatchedModels.push(modelKey);
+                  }
+                  break; // 一個型號只加一次
+                }
+              }
+            }
+          });
+          if (reverseMatchedModels.length > 0) {
+            writeLog(
+              `[DynamicContext] 規格反查命中: ${reverseMatchedModels.join(
+                ", "
+              )} (關鍵字: ${filteredCnKeywords.join(", ")})`
+            );
+            // 將反查到的型號加入 sheetDefinedKeywords，讓後續流程正常運作
+            sheetDefinedKeywords.push(...reverseMatchedModels);
+          }
+        }
       }
     } catch (e) {
       writeLog(`[DynamicContext] Keyword Map Load Error: ${e.message}`);
