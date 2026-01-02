@@ -1789,11 +1789,14 @@ function buildDynamicContext(messages, userId) {
         });
 
         // v27.9.58: 規格內容反查 (Reverse Lookup)
-        // 若用戶說的關鍵字 (如「強力洗淨」) 不在 Keys 裡，則掃描 Values 找出包含該詞的型號
-        if (
-          sheetDefinedKeywords.length === 0 &&
-          filteredCnKeywords.length > 0
-        ) {
+        // 掃描 Values 找出包含用戶說的關鍵字 (如「強力洗淨」) 的型號
+        // v27.9.59: 移除「sheetDefinedKeywords.length === 0」限制，讓反查總是執行
+        if (filteredCnKeywords.length > 0) {
+          writeLog(
+            `[DynamicContext] 開始規格反查，中文關鍵字: ${filteredCnKeywords.join(
+              ", "
+            )}`
+          );
           Object.entries(keywordMap).forEach(([modelKey, specContent]) => {
             // specContent 是該型號的完整規格內容
             if (typeof specContent === "string") {
@@ -1818,6 +1821,8 @@ function buildDynamicContext(messages, userId) {
             );
             // 將反查到的型號加入 sheetDefinedKeywords，讓後續流程正常運作
             sheetDefinedKeywords.push(...reverseMatchedModels);
+          } else {
+            writeLog(`[DynamicContext] 規格反查無命中`);
           }
         }
       }
