@@ -74,7 +74,12 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.54 (Switch to Gemini)
+ * Version: v27.9.55 (Fix Error Handling & Ext)
+ *
+ * 🔥 v27.9.55 更新 (Fix Error Handling & Ext):
+ *   - 修正: 針對 API 400 (Invalid Key) / 429 (Quota) 回傳繁體中文錯誤提示
+ *   - 優化: 本地端工具檔統一更名為 .gs 以解決 Clasp 上傳問題
+ *   - 文件: 建立 AI_CONTEXT.md 並定義語言鐵律
  *
  * 🔥 v27.9.54 更新 (Switch to Gemini):
  *   - 設定: 將 LLM_PROVIDER 切換回 Gemini (原廠穩定版)
@@ -7020,106 +7025,4 @@ function getBotVersion() {
     version: "v27.9.54",
     description: `Back: ${LLM_PROVIDER} | OR-Search: ON | TW_Force`,
   };
-}
-
-// 🔧 工具函式：一次性設定 API Key (執行後可刪除對應程式碼，但屬性會保留)
-// 🔧 工具函式：設定 API Key 並驗證
-function _SETUP_API_KEY() {
-  // ⚠️ 安全提醒：請在執行後刪除此處的金鑰
-  const key = "YOUR_OPENROUTER_KEY_HERE";
-
-  // 檢查格式
-  if (key === "YOUR_OPENROUTER_KEY_HERE") {
-    console.warn("⚠️ 請先填入有效的 OpenRouter Key");
-    return "❌ 設定失敗：請填入金鑰";
-  }
-
-  PropertiesService.getScriptProperties().setProperty(
-    "OPENROUTER_API_KEY",
-    key.trim()
-  );
-
-  const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
-  console.log(`✅ OPENROUTER_API_KEY 已更新！`);
-  console.log(`當前儲存: ${masked}`);
-  console.log(`請重新測試 LINE 對話。`);
-
-  return `✅ 設定完成 (${masked})`;
-}
-// ════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════
-// 🧪 測試工具：驗證金鑰與網路搜尋
-// ════════════════════════════════════════════════════════════════
-function _TEST_OPENROUTER_SEARCH() {
-  // 1. 取得金鑰 (預設抓最後一次填入的，請自行替換)
-  const key =
-    PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
-
-  if (!key) {
-    console.error("❌ 找不到儲存的金鑰，請先設定 Script Properties");
-    return;
-  }
-
-  console.log(`正在測試金鑰: ${key.substring(0, 10)}...`);
-
-  const url = "https://openrouter.ai/api/v1/chat/completions";
-  const payload = {
-    model: "qwen/qwen-2.5-7b-instruct:online", // 測試 Web Search
-    messages: [
-      {
-        role: "user",
-        content: "What is the capital of Taiwan? Please search online.",
-      },
-    ],
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(url, {
-      method: "post",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "HTTP-Referer": "https://script.google.com/",
-        "X-Title": "Test Script",
-        "Content-Type": "application/json",
-      },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    });
-
-    const code = response.getResponseCode();
-    const text = response.getContentText();
-
-    console.log(`\n📡 API 回應代碼: ${code}`);
-    console.log(`📜 回應內容: ${text.substring(0, 500)}...`);
-
-    if (code === 200) {
-      console.log("\n✅ 測試成功！金鑰有效，且網路搜尋 (:online) 運作正常。");
-    } else {
-      console.error("\n❌ 測試失敗。請檢查：");
-      console.error("1. 金鑰是否正確？(現在這組看起來還是範例的)");
-      console.error(
-        "2. 若您堅持這是真的，那可能是 OpenRouter 尚未開通 Credits"
-      );
-    }
-  } catch (e) {
-    console.error(`❌ 連線錯誤: ${e.toString()}`);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-// 🔍 偵錯工具：查看目前系統讀到的金鑰
-// ════════════════════════════════════════════════════════════════
-function __DEBUG_SHOW_CURRENT_KEY() {
-  const key =
-    PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
-  if (!key) {
-    console.log("❌ 目前沒有儲存任何金鑰 (Null)");
-  } else {
-    const masked = key.substring(0, 15) + "..." + key.substring(key.length - 4);
-    console.log(`✅ 目前系統內的金鑰: ${masked}`);
-    console.log(`(原始長度: ${key.length})`);
-  }
 }
