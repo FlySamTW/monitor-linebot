@@ -4482,6 +4482,9 @@ function handleMessage(event) {
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
                     finalText = formatForLineMobile(deepResponse);
                     finalText = finalText
+                      .replace(/```tool_code/g, "")
+                      .replace(/tool_code/g, "")
+                      .replace(/```/g, "")
                       .replace(/\[AUTO_SEARCH_PDF\]/g, "")
                       .trim();
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
