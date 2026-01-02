@@ -1731,8 +1731,48 @@ function buildDynamicContext(messages, userId) {
     const keywords = upperMsg.match(/[A-Z0-9]{3,}/g) || [];
 
     // 2025-12-05: 改為「通用中文關鍵字擷取」，不再硬寫死特定詞彙
+    // v27.9.60: 增加「語意分詞 (Semantic Segmentation)」機制
+    // 為了解決 "強力洗淨和一般洗" 被當作一個詞的問題，我們定義一組「分詞符號 (Particles)」
+    // 在提取關鍵字前，先把這些虛詞換成空格，達到自然分詞的效果
+    let processedMsg = upperMsg;
+    const segmentList = [
+      "和",
+      "跟",
+      "與",
+      "的",
+      "了",
+      "嗎",
+      "呢",
+      "吧",
+      "有",
+      "是",
+      "在",
+      "對",
+      "也",
+      "就",
+      "都",
+      "及",
+      "或",
+      "等",
+      "但",
+      "去",
+      "來",
+      "看",
+      "查",
+      "問",
+      "說",
+      "想",
+      "要",
+      "能",
+      "會",
+    ];
+    segmentList.forEach((particle) => {
+      // 簡單全域替換為空格
+      processedMsg = processedMsg.split(particle).join(" ");
+    });
+
     // 擷取所有長度 >= 2 的中文詞彙，讓使用者說什麼就查什麼
-    const cnKeywords = upperMsg.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    const cnKeywords = processedMsg.match(/[\u4e00-\u9fa5]{2,}/g) || [];
 
     // 2025-12-05: 排除過於寬泛或無意義的關鍵字 (Stop Words)
     // 修正：保留重要產品系列名 (ODYSSEY, SMART, OLED, QLED)，避免過度過濾導致變笨
