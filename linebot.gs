@@ -1854,11 +1854,20 @@ function buildDynamicContext(messages, userId) {
             }
           });
           if (reverseMatchedModels.length > 0) {
+            const bestMatchModel = reverseMatchedModels[0];
             writeLog(
               `[DynamicContext] 規格反查命中: ${reverseMatchedModels.join(
                 ", "
               )} (關鍵字: ${filteredCnKeywords.join(", ")})`
             );
+            // v27.9.61: 將反查到的型號存入 Cache，供 PDF 搜尋使用 (TTL: 5分鐘)
+            if (userId) {
+              const cache = CacheService.getScriptCache();
+              cache.put(`REVERSE_LOOKUP_MODEL:${userId}`, bestMatchModel, 300);
+              writeLog(
+                `[DynamicContext] 已暫存反查型號 ${bestMatchModel} 至 Cache`
+              );
+            }
             // 將反查到的型號加入 sheetDefinedKeywords，讓後續流程正常運作
             sheetDefinedKeywords.push(...reverseMatchedModels);
           } else {
@@ -4579,7 +4588,92 @@ function handleMessage(event) {
                   }
                   replyText = finalText;
                 } else {
-                  writeLog("[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案");
+                  // v27.9.62: 嘗試使用反查型號救援
+                  // 若一般搜尋找不到 PDF，但之前「規格反查」有找到型號，則使用該型號
+                  let rescueSuccess = false;
+                  try {
+                    const cache = CacheService.getScriptCache();
+                    const cachedReverseModel = cache.get(
+                      `REVERSE_LOOKUP_MODEL:${userId}`
+                    );
+                    if (cachedReverseModel) {
+                      writeLog(
+                        `[Auto Search] 找不到 PDF，嘗試使用反查型號救援: ${cachedReverseModel}`
+                      );
+                      // 注入直通車 Cache，讓 getRelevantKBFiles 能讀到
+                      cache.put(
+                        `${userId}:direct_search_models`,
+                        JSON.stringify([cachedReverseModel]),
+                        300
+                      );
+
+                      // 重試搜尋 (強制使用當前訊息+Cache，或直接依賴Cache)
+                      const rescueFiles = getRelevantKBFiles(
+                        [userMsgObj],
+                        kbList,
+                        userId,
+                        contextId,
+                        true
+                      );
+                      const rescuePdfNames = rescueFiles
+                        .filter((f) => f.mimeType === "application/pdf")
+                        .map((f) => f.name.replace(".pdf", ""));
+                      const rescueProductNames = rescuePdfNames
+                        .map((name) => getPdfProductName(name))
+                        .slice(0, 3);
+
+                      if (rescueProductNames.length > 0) {
+                        writeLog(
+                          `[Auto Search] 救援成功! 找到: ${rescueProductNames.join(
+                            "、"
+                          )}，開始重試...`
+                        );
+                        rescueSuccess = true;
+
+                        isInPdfMode = true;
+                        cache.put(pdfModeKey, "true", 300);
+
+                        const deepResponse = callLLMWithRetry(
+                          [...history, userMsgObj],
+                          null,
+                          true,
+                          true,
+                          userId
+                        );
+
+                        if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                          finalText = formatForLineMobile(deepResponse);
+                          finalText = finalText
+                            .replace(/```tool_code/g, "")
+                            .replace(/tool_code/g, "")
+                            .replace(/```/g, "")
+                            .replace(/\[AUTO_SEARCH_PDF\]/g, "")
+                            .trim();
+                          finalText = finalText
+                            .replace(/\[NEED_DOC\]/g, "")
+                            .trim();
+
+                          if (finalText.startsWith("根據我的資料庫")) {
+                            finalText = finalText.replace(
+                              /^根據我的資料庫/,
+                              "根據產品手冊"
+                            );
+                          }
+                        } else {
+                          finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                        }
+                        replyText = finalText;
+                      }
+                    }
+                  } catch (e) {
+                    writeLog(`[Auto Search] Rescue Error: ${e.message}`);
+                  }
+
+                  if (!rescueSuccess) {
+                    writeLog(
+                      "[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案"
+                    );
+
                   // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
                   if (!finalText || finalText.trim().length === 0) {
                     finalText =
