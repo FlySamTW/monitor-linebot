@@ -12,6 +12,7 @@
     - 更新 `progress.md` 或相關文件中記錄變更
     - 執行 `git commit`（提交變更）
     - 執行 `clasp push`（推送到 GAS）
+    - 執行 `clasp deploy` (更新 Web App 部署) - **只要說儲存，就必須做這步！**
 
 ## 2. 功能地圖 (Feature Map)
 

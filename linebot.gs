@@ -74,7 +74,12 @@ var PENDING_LOGS = [];
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
- * Version: v27.9.55 (Fix Error Handling & Ext)
+ * Version: v27.9.56 (Fix blank PDF reply, Update 2026-01 Activity, Washing Machine Series)
+ *
+ * 🔥 v27.9.56 更新 (Fix blank PDF reply, Update 2026-01 Activity, Washing Machine Series):
+ *   - 修正: 解決 PDF 模式下偶爾出現空白回覆的問題
+ *   - 更新: 2026-01 活動規則與洗衣機系列產品資訊
+ *   - 優化: 延長動畫顯示時間至 60 秒，提升用戶體驗
  *
  * 🔥 v27.9.55 更新 (Fix Error Handling & Ext):
  *   - 修正: 針對 API 400 (Invalid Key) / 429 (Quota) 回傳繁體中文錯誤提示
@@ -3196,7 +3201,7 @@ function callLLMWithRetry(
     const now = new Date().getTime();
     if (userId && now - lastLoadingTime > 18000) {
       try {
-        showLoadingAnimation(userId, 20);
+        showLoadingAnimation(userId, 60);
       } catch (e) {}
       lastLoadingTime = now;
     }
@@ -3746,7 +3751,7 @@ function handleMessage(event) {
     // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
     // 改用 20 秒，API 迴圈中會每 18 秒補發一次
     if (!hasRecentAnimation(userId)) {
-      showLoadingAnimation(userId, 20);
+      showLoadingAnimation(userId, 60);
       markAnimationShown(userId);
     }
 
@@ -4493,6 +4498,11 @@ function handleMessage(event) {
                   replyText = finalText;
                 } else {
                   writeLog("[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案");
+                  // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
+                  if (!finalText || finalText.trim().length === 0) {
+                    finalText =
+                      "抱歉，雖然這看起來像需要查手冊的問題，但我找不到相關的 PDF 手冊檔案。😅\n請確認您的型號是否正確（例如包含完整型號），或是問得更具體一點喔！";
+                  }
                   replyText = finalText;
                 }
               }
@@ -4606,7 +4616,7 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
     // writeRecordDirectly(userId, "[傳圖]", contextId, 'user', '');
 
     if (!hasRecentAnimation(userId)) {
-      showLoadingAnimation(userId, 20);
+      showLoadingAnimation(userId, 60);
       markAnimationShown(userId);
     }
 
