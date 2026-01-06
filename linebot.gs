@@ -1624,8 +1624,11 @@ function buildDynamicContext(messages, userId) {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "user") {
         combinedMsg += messages[i].content + " ";
-        if (combinedMsg.length > 500) break; // 只看最近 500 字
       }
+    }
+    // Optimization: 強制截斷以避免長文攻擊 (Token Explosion)
+    if (combinedMsg.length > 500) {
+      combinedMsg = combinedMsg.substring(0, 500);
     }
     const upperMsg = combinedMsg.toUpperCase();
 
@@ -1774,6 +1777,21 @@ function buildDynamicContext(messages, userId) {
     // 擷取所有長度 >= 2 的中文詞彙，讓使用者說什麼就查什麼
     const cnKeywords = processedMsg.match(/[\u4e00-\u9fa5]{2,}/g) || [];
 
+    // v27.9.62: 用戶要求完整保留日誌以便除錯，不進行截斷
+    writeLog(
+      `[General] [DynamicContext] 開始規格反查，中文關鍵字 (全): ${cnKeywords.join(
+        ", "
+      )}`
+    );
+
+    // v27.9.61: 洗衣機規則安全排除邏輯
+    // 只有在用戶明確提到「洗」、「衣」、「機」、「強力洗淨」、"WA"、"WD" 等關鍵詞時，才允許注入洗衣機規則
+    // 防止詢問「螢幕」時因為通用詞 (如 "系列") 而誤觸發洗衣機規則
+    const WASHING_MACHINE_TRIGGERS = ["洗", "衣", "機", "淨", "WA", "WD", "VR"];
+    const isWashingMachineRelated = WASHING_MACHINE_TRIGGERS.some((trigger) =>
+      upperMsg.includes(trigger)
+    );
+
     // 2025-12-05: 排除過於寬泛或無意義的關鍵字 (Stop Words)
     // 修正：保留重要產品系列名 (ODYSSEY, SMART, OLED, QLED)，避免過度過濾導致變笨
     const stopList = [
@@ -1861,11 +1879,18 @@ function buildDynamicContext(messages, userId) {
               )} (關鍵字: ${filteredCnKeywords.join(", ")})`
             );
             // v27.9.61: 將反查到的型號存入 Cache，供 PDF 搜尋使用 (TTL: 5分鐘)
+            // v27.9.63 Debug: 強制記錄 userId 狀態
+            // writeLog(`[DynamicContext Debug] UserId: ${userId} (${typeof userId})`);
+
             if (userId) {
               const cache = CacheService.getScriptCache();
               cache.put(`REVERSE_LOOKUP_MODEL:${userId}`, bestMatchModel, 300);
               writeLog(
-                `[DynamicContext] 已暫存反查型號 ${bestMatchModel} 至 Cache`
+                `[DynamicContext] 已暫存反查型號 ${bestMatchModel} 至 Cache (User: ${userId})`
+              );
+            } else {
+              writeLog(
+                `[DynamicContext Debug] ⚠️ UserId 為空，無法寫入 Cache!`
               );
             }
             // 將反查到的型號加入 sheetDefinedKeywords，讓後續流程正常運作
@@ -1877,6 +1902,15 @@ function buildDynamicContext(messages, userId) {
       }
     } catch (e) {
       writeLog(`[DynamicContext] Keyword Map Load Error: ${e.message}`);
+    }
+
+    // v27.9.64: Proactive Prompting (主動引導)
+    // 若反查有結果，強制注入系統提示，要求 LLM 主動假設型號並查手冊
+    let systemHint = "";
+    if (reverseMatchedModels.length > 0) {
+      const bestMatch = reverseMatchedModels[0];
+      systemHint = `\n【系統強力提示】\n偵測到用戶的描述高度符合型號規格：${bestMatch}。\n請直接假設用戶正在詢問 ${bestMatch}。\n若 Rules 資料不足以回答其具體操作或差異，請直接輸出 [AUTO_SEARCH_PDF] 以查閱手冊，不要反問用戶是否為該型號。\n`;
+      writeLog(`[DynamicContext] 已注入主動引導提示: ${bestMatch}`);
     }
 
     const shortModelPattern = /\b[A-Z][0-9]{1,2}\b/g;
@@ -2023,7 +2057,8 @@ function buildDynamicContext(messages, userId) {
     // 若篩選後內容太少，可能是關鍵字沒抓到，加入一些基礎定義?
     // 暫不加入，保持精簡
 
-    return relevantContext;
+    // Inject systemHint at the end to ensure it has high priority
+    return relevantContext + (systemHint || "");
   } catch (e) {
     writeLog(`[DynamicContext Error] ${e.message}`);
     return "";
@@ -3108,14 +3143,14 @@ function callLLMWithRetry(
     // v27.8.21: 允許極速模式觸發網路搜尋
     // v27.9.13: 區分 QA 和 CLASS_RULES 來源標註
     // v27.9.43: 嚴格執行來源工作流 (Strict Source Workflow)
-    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA 有答案 -> 使用 QA 回答，標註 [來源: QA]\n   - 若 CLASS_RULES 有答案 -> 使用 Rules 回答，標註 [來源: 規格庫]\n\n2. Fallback to PDF (重要!):\n   - 若 Context 中沒有足夠資訊回答用戶的具體產品問題（如操作步驟、故障排除、特定規格），你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF]\n   - **絕對禁止** 輸出任何程式碼樣式 (如 .setAuto_search_pdf() 或 python code 等變體)。\n   - 指令必須完全精確為 [AUTO_SEARCH_PDF]，不得包含任何其他字元。\n   - 不可以使用你的訓練資料「猜測」或「補充」答案。\n   - 寧可不回答，也不要給出沒有來源的答案。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用定義 (什麼是HDMI) 時，才可用通用知識回答。`;
+    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【防幻覺鐵律 (Anti-Hallucination)】\n1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。\n2. **預設否定**：若 Context 中該型號的規格列表未明確包含該功能 (如 4K)，**必須直接回答「不支援」**，不得猜測。\n3. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA 有答案 -> 使用 QA 回答，標註 [來源: QA]\n   - 若 CLASS_RULES 有答案 -> 使用 Rules 回答，標註 [來源: 規格庫]\n   - **若找不到支援的證據 -> 直接回答「根據目前資料，該型號不支援此功能」。**\n\n2. Fallback to PDF (重要!):\n   - 若 Context 中沒有足夠資訊回答用戶的具體產品問題（如操作步驟、故障排除、特定規格），你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF]\n   - **絕對禁止** 輸出任何程式碼樣式 (如 .setAuto_search_pdf() 或 python code 等變體)。\n   - 指令必須完全精確為 [AUTO_SEARCH_PDF]，不得包含任何其他字元。\n   - 不可以使用你的訓練資料「猜測」或「補充」答案。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用定義 (什麼是HDMI) 時，才可用通用知識回答。`;
   } else if (attachPDFs) {
     // Phase 2 & 3: 深度模式 (Deep Mode)
     // v27.8.6: 防護機制 - 確保真的有掛載 PDF
     if (filesToAttach.length === 0) {
       dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認您詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
     } else {
-      dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。\n【來源標註規則 (嚴格執行)】\n1. 若答案來自手冊，請標註「[來源: 產品手冊]」。\n2. 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
+      dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。\n【來源標註規則 (嚴格執行)】\n1. 若答案來自手冊，請標註「[來源: 產品手冊]」。\n2. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶「是否要幫你查手冊」。\n3. 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。(切勿自行標註網路搜尋)\n4. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n5. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
     }
   }
 
@@ -4330,6 +4365,9 @@ function handleMessage(event) {
               // v27.9.12: 只有當 AI 明確要求 PDF 搜尋([AUTO_SEARCH_PDF])時，才進行 PDF 智慧匹配
               // 規格問題（如「M5有支援Smart嗎」）即使命中直通車，也不應觸發 PDF 匹配
               if (cachedAliasKey && aiRequestedPdfSearch) {
+                // v27.9.65: 切換至 PDF 模式，屬於耗時操作，再次觸發 Loading 動畫以防過期
+                showLoadingAnimation(userId, 60);
+
                 // 有直通車關鍵字 + AI 要求 PDF → 使用 PDF 智慧匹配
                 writeLog(
                   `[Auto Search] AI 要求 PDF 搜尋，使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey}`
@@ -4437,6 +4475,9 @@ function handleMessage(event) {
                     "\n\n這個型號的手冊我還沒有建檔，可以找 Sam 幫你查喔！";
                 }
               } else if (aiRequestedPdfSearch) {
+                // v27.9.67: 標準 PDF 搜尋路徑，補上 Loading 動畫
+                showLoadingAnimation(userId, 60);
+
                 // v27.9.12: 只有當 AI 明確要求 PDF 搜尋時，才使用傳統 PDF 匹配
                 // 沒有直通車關鍵字 → 使用傳統方式（依據型號匹配）
                 writeLog(
@@ -4597,6 +4638,9 @@ function handleMessage(event) {
                       `REVERSE_LOOKUP_MODEL:${userId}`
                     );
                     if (cachedReverseModel) {
+                      // v27.9.65: 觸發 Rescue Mode，再次顯示 Loading 動畫
+                      showLoadingAnimation(userId, 60);
+
                       writeLog(
                         `[Auto Search] 找不到 PDF，嘗試使用反查型號救援: ${cachedReverseModel}`
                       );
@@ -4674,12 +4718,13 @@ function handleMessage(event) {
                       "[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案"
                     );
 
-                  // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
-                  if (!finalText || finalText.trim().length === 0) {
-                    finalText =
-                      "抱歉，雖然這看起來像需要查手冊的問題，但我找不到相關的 PDF 手冊檔案。😅\n請確認您的型號是否正確（例如包含完整型號），或是問得更具體一點喔！";
+                    // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
+                    if (!finalText || finalText.trim().length === 0) {
+                      finalText =
+                        "抱歉，雖然這看起來像需要查手冊的問題，但我找不到相關的 PDF 手冊檔案。😅\n請確認您的型號是否正確（例如包含完整型號），或是問得更具體一點喔！";
+                    }
+                    replyText = finalText;
                   }
-                  replyText = finalText;
                 }
               }
             } // v24.5.0: 結束 else { 有直通車關鍵字 } 區塊
@@ -6789,6 +6834,8 @@ function replyMessage(tk, txt) {
         },
         payload: JSON.stringify({
           replyToken: tk,
+          // v27.9.61: 強制將 [來源] 與 [費用] 資訊拼接在訊息末尾，確保使用者可見
+          // 注意：這裡假設 txt 已經包含了基本的 AI 回覆，若 txt 過長可能導致截斷，需注意 4000 字限制
           messages: [{ type: "text", text: txt.substring(0, 4000) }],
         }),
         muteHttpExceptions: true,
