@@ -2324,20 +2324,32 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         .getRange(2, 1, ruleSheet.getLastRow() - 1, 1)
         .getValues();
 
-      // v27.9.82: 第 0 遍 - 收集所有實體型號
+      // v27.9.85: 第 0 遍 - 全域收集所有實體型號 (更加強健的搜尋)
       const allExistModels = [];
       allRows.forEach((row) => {
         if (!row[0]) return;
-        const text = row[0].toString();
-        const firstPart = text.split(",")[0].trim().toUpperCase();
-        if (firstPart.startsWith("型號：") || firstPart.startsWith("型號:")) {
-          allExistModels.push(firstPart.replace(/^型號[：:]/, "").trim());
-        } else if (firstPart.startsWith("LS")) {
-          allExistModels.push(
-            firstPart.replace(/^LS/, "S").replace(/XZW$/, "")
-          );
-        }
+        const rowText = row[0].toString();
+        // 匹配 LS...XZW 格式 或 型號：... 格式 (搜尋全行)
+        const lsMatches =
+          rowText.match(/LS\d{2}[A-Z]{2}\d{3}[A-Z]{2}(XZW)?/gi) || [];
+        const labelMatches = rowText.match(/型號[：:][\s]*([\w-]+)/gi) || [];
+
+        lsMatches.forEach((m) => {
+          const clean = m.toUpperCase().replace(/^LS/, "S").replace(/XZW$/, "");
+          if (!allExistModels.includes(clean)) allExistModels.push(clean);
+        });
+        labelMatches.forEach((m) => {
+          const clean = m
+            .replace(/型號[：:]/i, "")
+            .trim()
+            .toUpperCase();
+          if (clean && !allExistModels.includes(clean))
+            allExistModels.push(clean);
+        });
       });
+      writeLog(
+        `[Sync] 知識庫初始化完成，從 CLASS_RULES 發現 ${allExistModels.length} 個實體型號`
+      );
 
       allRows.forEach((row) => {
         if (!row[0]) return;
@@ -2352,7 +2364,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           rawKey.startsWith("別稱_")
         ) {
           const cleanKey = rawKey.replace(/^(別稱|術語|系列)_/, "");
-          // v24.1.17: 放寬長度限制，允許 2 碼關鍵字 (如 S8, M7, G9)
           if (cleanKey.length >= 2) {
             strongKeywords.push(cleanKey);
           }
@@ -2365,11 +2376,10 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         let isModelRow = false;
         let sModel = "";
 
-        // 判斷是否為型號規格行 (新格式: 型號：S... 或 舊格式: LS...)
         if (key.startsWith("型號：") || key.startsWith("型號:")) {
           isModelRow = true;
           sModel = key.replace(/^型號[：:]/, "").trim();
-          key = sModel; // 將 key 更新為純型號 (S27DG602SC)
+          key = sModel;
         } else if (key.startsWith("LS")) {
           isModelRow = true;
           sModel = key.replace(/^LS/, "S").replace(/XZW$/, "");
@@ -2378,8 +2388,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         if (isModelRow) {
           specsContent += `* ${text}\n`;
 
-          // 提取別稱建立雙向映射 (G80SD ↔ S32DG802SC)
-          // 掃描整行文字尋找可能的別稱 (Gxx, Mxx, Sxx...)
           const potentialAliases =
             text.match(
               /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3})\b/g
@@ -2387,16 +2395,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
           potentialAliases.forEach((alias) => {
             alias = alias.toUpperCase();
-            // 排除 S-Model 本身和 LS-Model (避免自我映射)
             if (alias !== sModel && !alias.startsWith("LS")) {
-              // 排除只是 S-Model 的子字串 (例如 S32DG802SC 包含 S32) - 這裡的正則比較嚴格應該還好
-              // 建立映射: 別稱 -> S-Model
               keywordMap[alias] = sModel;
-              // writeLog(`[Sync] 別稱映射: ${alias} → ${sModel}`);
             }
           });
 
-          // 確保 LS 型號也能映射到 S 型號
           const lsMatch = text.match(/\bLS\d{2}[A-Z]{2}\d{3}[A-Z]{2}XZW\b/);
           if (lsMatch) {
             keywordMap[lsMatch[0]] = sModel;
@@ -2426,7 +2429,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             });
 
             if (matchedModels.length > 0) {
-              resolvedModelsText = ` (對應實體型號：${matchedModels.join(
+              resolvedModelsText = ` (⚠️ 注意！此系列包含實體型號如下，請優先引導用戶確認型號：${matchedModels.join(
                 "、"
               )})`;
               writeLog(
