@@ -7403,8 +7403,8 @@ function saveCloudHistory(historyArray) {
 
 function getBotVersion() {
   return {
-    version: "v27.9.54",
-    description: `Back: ${LLM_PROVIDER} | OR-Search: ON | TW_Force`,
+    version: "v27.9.64",
+    description: `Back: ${LLM_PROVIDER} | Smart Editor Mode: ON | Dynamic Rules`,
   };
 }
 
@@ -7415,43 +7415,63 @@ function getBotVersion() {
 function isSamsungRelated(msg) {
   const upper = msg.toUpperCase();
   const cache = CacheService.getScriptCache();
-  
+
   // 1. 嘗試從 Cache 取得關鍵字列表 (這是 syncGeminiKnowledgeBase 建立的)
   // 若沒有，則回退到基本關鍵字 (防止完全無 Cache 時失效)
-  const basicKeywords = ["SAMSUNG", "GALAXY", "ODYSSEY", "SMART", "MONITOR", "WASHER", "TV", "冰箱", "洗衣機", "吸塵器", "螢幕", "M5", "M7", "M8", "G5", "G7", "G8", "S9"];
-  
-  try {
-     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-     // 簡單優化：若已經命中任何一個 Cache 中的 Rule Key，則 True
-     if (upper.includes("SAMSUNG") || upper.includes("三星")) return true;
+  const basicKeywords = [
+    "SAMSUNG",
+    "GALAXY",
+    "ODYSSEY",
+    "SMART",
+    "MONITOR",
+    "WASHER",
+    "TV",
+    "冰箱",
+    "洗衣機",
+    "吸塵器",
+    "螢幕",
+    "M5",
+    "M7",
+    "M8",
+    "G5",
+    "G7",
+    "G8",
+    "S9",
+  ];
 
-     // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
-     // 我們讀取 Sheet 的第一欄 (A欄)，取前 200 行
-     // 為了不每次讀，應該 Cache 這份清單
-     let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
-     if (!productKeywords) {
-         if (ruleSheet) {
-            const data = ruleSheet.getRange("A2:A200").getValues();
-            // 解析：如果含有 "_" 取後面 (如 系列_Odyssey -> Odyssey)，否則取原字
-            const keys = data.map(r => {
-                const txt = r[0].toString();
-                if (!txt) return "";
-                if (txt.includes("_")) return txt.split("_")[1];
-                return txt;
-            }).filter(k => k && k.length > 1); // 過濾掉空值和單字
-            productKeywords = JSON.stringify(keys);
-            cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); // 6小時
-         } else {
-            productKeywords = JSON.stringify(basicKeywords);
-         }
-     }
-     
-     const keywords = JSON.parse(productKeywords);
-     // 檢查是否包含任何一個關鍵字
-     return keywords.some(key => upper.includes(key.toUpperCase()));
-     
+  try {
+    const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    // 簡單優化：若已經命中任何一個 Cache 中的 Rule Key，則 True
+    if (upper.includes("SAMSUNG") || upper.includes("三星")) return true;
+
+    // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
+    // 我們讀取 Sheet 的第一欄 (A欄)，取前 200 行
+    // 為了不每次讀，應該 Cache 這份清單
+    let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
+    if (!productKeywords) {
+      if (ruleSheet) {
+        const data = ruleSheet.getRange("A2:A200").getValues();
+        // 解析：如果含有 "_" 取後面 (如 系列_Odyssey -> Odyssey)，否則取原字
+        const keys = data
+          .map((r) => {
+            const txt = r[0].toString();
+            if (!txt) return "";
+            if (txt.includes("_")) return txt.split("_")[1];
+            return txt;
+          })
+          .filter((k) => k && k.length > 1); // 過濾掉空值和單字
+        productKeywords = JSON.stringify(keys);
+        cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); // 6小時
+      } else {
+        productKeywords = JSON.stringify(basicKeywords);
+      }
+    }
+
+    const keywords = JSON.parse(productKeywords);
+    // 檢查是否包含任何一個關鍵字
+    return keywords.some((key) => upper.includes(key.toUpperCase()));
   } catch (e) {
-     writeLog("[isSamsungRelated] Error: " + e.message);
-     return basicKeywords.some(key => upper.includes(key));
+    writeLog("[isSamsungRelated] Error: " + e.message);
+    return basicKeywords.some((key) => upper.includes(key));
   }
 }
