@@ -1620,10 +1620,17 @@ function buildDynamicContext(messages, userId) {
     const cache = CacheService.getScriptCache();
 
     // 1. 組合用戶最近訊息 (用於關鍵字匹配)
+    // v27.9.63: 分離「完整歷史上下文」與「最新用戶訊息」
+    // 用於 Context 檢索：還是需要歷史，否則會失憶
+    // 用於 洗衣機判斷：只看最新一句，避免歷史污染
     let combinedMsg = "";
+    let latestUserMsg = "";
+
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "user") {
-        combinedMsg += messages[i].content + " ";
+        const txt = messages[i].content;
+        combinedMsg += txt + " ";
+        if (latestUserMsg === "") latestUserMsg = txt; // 抓最新的
       }
     }
     // Optimization: 強制截斷以避免長文攻擊 (Token Explosion)
@@ -1631,6 +1638,7 @@ function buildDynamicContext(messages, userId) {
       combinedMsg = combinedMsg.substring(0, 500);
     }
     const upperMsg = combinedMsg.toUpperCase();
+    const upperLatestMsg = latestUserMsg.toUpperCase();
 
     // v24.5.5: 注入直通車偵測到的型號定義 (Fix Bug A)
     // 解決 Fast Mode 不知道 "M8" 是 "M80D" 的問題
@@ -1787,9 +1795,10 @@ function buildDynamicContext(messages, userId) {
     // v27.9.61: 洗衣機規則安全排除邏輯
     // 只有在用戶明確提到「洗」、「衣」、「機」、「強力洗淨」、"WA"、"WD" 等關鍵詞時，才允許注入洗衣機規則
     // 防止詢問「螢幕」時因為通用詞 (如 "系列") 而誤觸發洗衣機規則
+    // v27.9.63: 修正為只檢查「最新用戶訊息」(upperLatestMsg)，避免歷史對話中的洗衣機關鍵字污染當前查詢
     const WASHING_MACHINE_TRIGGERS = ["洗", "衣", "機", "淨", "WA", "WD", "VR"];
     const isWashingMachineRelated = WASHING_MACHINE_TRIGGERS.some((trigger) =>
-      upperMsg.includes(trigger)
+      upperLatestMsg.includes(trigger)
     );
 
     // 2025-12-05: 排除過於寬泛或無意義的關鍵字 (Stop Words)
