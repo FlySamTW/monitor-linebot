@@ -4769,7 +4769,16 @@ function handleMessage(event) {
 
                   replyMessage(replyToken, askMsg);
 
-                  // 寫入歷史以便延續
+                  // v27.9.76: 修復對話記憶丟失 - 必須更新歷史快取！
+                  // writeRecordDirectly 只寫入「所有紀錄」Sheet，不會更新對話歷史
+                  // 必須同時呼叫 updateHistorySheetAndCache 才能讓 LLM 在下一輪看到上下文
+                  const askMsgObj = { role: "assistant", content: askMsg };
+                  updateHistorySheetAndCache(
+                    contextId,
+                    history,
+                    userMsgObj,
+                    askMsgObj
+                  );
                   writeRecordDirectly(userId, msg, contextId, "user", "");
                   writeRecordDirectly(
                     userId,
