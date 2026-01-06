@@ -3891,8 +3891,9 @@ function handleMessage(event) {
     // 條件：長度 > 200 且 包含 Samsung 關鍵字 且 非指令
     // 目標：快速摘要長文資料，繞過標準 RAG 流程
     if (msg.length > 200 && !msg.startsWith("/")) {
-      const isSamsung = isSamsungRelated(msg);
-      if (isSamsung) {
+      // v27.9.67: 放寬至「科技新聞」，不再侷限三星
+      const validContent = isValidTechContent(msg);
+      if (validContent) {
         writeLog(
           `[SmartEditor] 偵測到長文 (${msg.length} 字)，且包含相關關鍵字，啟動總編模式`
         );
@@ -4008,22 +4009,15 @@ function handleMessage(event) {
         }
       } else {
         writeLog(`[SmartEditor] 長文但無三星關鍵字，忽略或進入一般流程`);
-        // User 說「不回答」，但為了避免誤殺長問題，我們這裡選擇 Default:
-        // 1. 若完全無關 -> 不回應 (to save token)?
-        // 但 User 說 "然後門檻... 就可以"，這裡我們做個簡單的 Check
-        // 若過濾掉，直接 Return?
-
-        // User Requirement: "一律先判定是否為台灣三星產品相關(競品不回答)"
-        // 這裡若 !isSamsung，則直接 return?
-        // 風險：用戶問「請問哪裡買轉接頭」可能沒三星字眼。
-        // 折衷：只攔截「超級長文(>500) 且 無關鍵字」？
-        // User Set: >200. We stick to user rule.
-        // If > 200 and NOT Samsung related => Ignore.
+      } else {
+        writeLog(`[SmartEditor] 長文但無科技/三星關鍵字，拒絕處理`);
+        
+        // User v27.9.67 Requirement: 就算不符合也要回覆婉拒
         if (msg.length > 200) {
-          writeLog(
-            "[SmartEditor] 長文 (>200) 但未偵測到三星產品關鍵字，視為無關內容或競品，不予處理。"
-          );
-          return;
+           writeLog("[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。");
+           replyMessage(replyToken, "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️");
+           // 這裡必須 Return，否則會繼續往下走 RAG
+           return;
         }
       }
     }
@@ -7411,70 +7405,55 @@ function getBotVersion() {
 }
 
 /**
- * [Smart Editor Mode] 檢查是否與三星產品相關 (動態版)
- * v27.9.64: 改為檢查 Cache 中的關鍵字或 CLASS_RULES，避免 Hardcode
+ * [Smart Editor Mode] 檢查是否為科技新聞或三星產品相關 (v27.9.67 放寬版)
+ * 包含一般科技關鍵字 (AI, Apple, Chip, etc.) + 三星系列
  */
-function isSamsungRelated(msg) {
+function isValidTechContent(msg) {
   const upper = msg.toUpperCase();
   const cache = CacheService.getScriptCache();
-
-  // 1. 嘗試從 Cache 取得關鍵字列表 (這是 syncGeminiKnowledgeBase 建立的)
-  // 若沒有，則回退到基本關鍵字 (防止完全無 Cache 時失效)
+  
+  // 1. 基礎科技關鍵字 (Fallback & General Tech)
+  // 用戶要求：放寬至科技新聞 (AI, PC, Mobile, Chip, Tech Giants)
   const basicKeywords = [
-    "SAMSUNG",
-    "GALAXY",
-    "ODYSSEY",
-    "SMART",
-    "MONITOR",
-    "WASHER",
-    "TV",
-    "冰箱",
-    "洗衣機",
-    "吸塵器",
-    "螢幕",
-    "M5",
-    "M7",
-    "M8",
-    "G5",
-    "G7",
-    "G8",
-    "S9",
+      // Samsung Core
+      "SAMSUNG", "GALAXY", "ODYSSEY", "SMART", "MONITOR", "WASHER", "TV", "冰箱", "洗衣機", "吸塵器", "螢幕", "M5", "M7", "M8", "G5", "G7", "G8", "S9",
+      // Tech Giants & General
+      "APPLE", "IPHONE", "IPAD", "MAC", "GOOGLE", "PIXEL", "MICROSOFT", "WINDOWS", "SURFACE", "TESLA", 
+      "NVIDIA", "AMD", "INTEL", "QUALCOMM", "TSMC", "ASUS", "ACER", "MSI", "ROG", "SONY", "LG", "PANASONIC",
+      "AI", "CHIP", "PANEL", "DISPLAY", "OLED", "MINI LED", "PROCESSOR", "GPU", "CPU", "RAM", 
+      "科技", "新聞", "發表", "上市", "規格", "評測", "半導體", "晶片", "手機", "筆電", "電腦", "人工智慧"
   ];
-
+  
   try {
-    const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-    // 簡單優化：若已經命中任何一個 Cache 中的 Rule Key，則 True
-    if (upper.includes("SAMSUNG") || upper.includes("三星")) return true;
+     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+     // 快篩：若命中基礎科技關鍵字 -> True
+     if (basicKeywords.some(k => upper.includes(k))) return true;
 
-    // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
-    // 我們讀取 Sheet 的第一欄 (A欄)，取前 200 行
-    // 為了不每次讀，應該 Cache 這份清單
-    let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
-    if (!productKeywords) {
-      if (ruleSheet) {
-        const data = ruleSheet.getRange("A2:A200").getValues();
-        // 解析：如果含有 "_" 取後面 (如 系列_Odyssey -> Odyssey)，否則取原字
-        const keys = data
-          .map((r) => {
-            const txt = r[0].toString();
-            if (!txt) return "";
-            if (txt.includes("_")) return txt.split("_")[1];
-            return txt;
-          })
-          .filter((k) => k && k.length > 1); // 過濾掉空值和單字
-        productKeywords = JSON.stringify(keys);
-        cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); // 6小時
-      } else {
-        productKeywords = JSON.stringify(basicKeywords);
-      }
-    }
-
-    const keywords = JSON.parse(productKeywords);
-    // 檢查是否包含任何一個關鍵字
-    return keywords.some((key) => upper.includes(key.toUpperCase()));
+     // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
+     // 這是為了確保比較冷門的三星系列也能過關 (原本邏輯)
+     let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
+     if (!productKeywords) {
+         if (ruleSheet) {
+            const data = ruleSheet.getRange("A2:A200").getValues();
+            const keys = data.map(r => {
+                const txt = r[0].toString();
+                if (!txt) return "";
+                if (txt.includes("_")) return txt.split("_")[1];
+                return txt;
+            }).filter(k => k && k.length > 1); 
+            productKeywords = JSON.stringify(keys);
+            cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); 
+         } else {
+            productKeywords = "[]";
+         }
+     }
+     
+     const keywords = JSON.parse(productKeywords);
+     return keywords.some(key => upper.includes(key.toUpperCase()));
+     
   } catch (e) {
-    writeLog("[isSamsungRelated] Error: " + e.message);
-    return basicKeywords.some((key) => upper.includes(key));
+     writeLog("[isValidTechContent] Error: " + e.message);
+     return basicKeywords.some(key => upper.includes(key));
   }
 }
 
