@@ -3935,6 +3935,8 @@ function handleMessage(event) {
         };
 
         const startTime = new Date().getTime();
+        const GEMINI_API_KEY =
+          PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
 
         try {
@@ -7474,4 +7476,41 @@ function isSamsungRelated(msg) {
     writeLog("[isSamsungRelated] Error: " + e.message);
     return basicKeywords.some((key) => upper.includes(key));
   }
+}
+
+/**
+ * 讀取 Prompt 設定 (優先查 Cache，無則查 Sheet)
+ * v27.9.64: 補上遺失的 helper function
+ */
+function getPromptsFromCacheOrSheet() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("KB_PROMPTS_JSON");
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (e) {}
+  }
+
+  // Cache Miss, read Sheet
+  const sheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+  if (!sheet) return {};
+
+  const data = sheet.getDataRange().getValues();
+  // 假設格式: [Type], [Key], [Content]
+  // 我們需要將 Key (例如 "總編模式") 對應到 Content
+  const prompts = {};
+  data.forEach((row) => {
+    if (row.length >= 3) {
+      // row[1] is Key (e.g., 總編模式), row[2] is Content
+      const key = row[1].toString().trim();
+      const content = row[2].toString().trim();
+      if (key && content) {
+        prompts[key] = content;
+      }
+    }
+  });
+
+  // 寫入 Cache (1小時)
+  cache.put("KB_PROMPTS_JSON", JSON.stringify(prompts), 3600);
+  return prompts;
 }
