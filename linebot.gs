@@ -2409,7 +2409,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
           if (patternMatch) {
             const patternStr = patternMatch[1].trim();
-            const patterns = patternStr.split(/[,,|]/);
+            const patterns = patternStr.split(/[,，|]/);
             const matchedModels = [];
 
             patterns.forEach((p) => {
