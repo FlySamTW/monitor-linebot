@@ -3731,9 +3731,17 @@ function formatForLineMobile(text) {
   processed = processed.replace(/\[INTERNAL\].*?(?=\n\n|$)/gs, "");
   processed = processed.replace(/\[THINKING\].*?(?=\n\n|$)/gs, "");
 
-  processed = processed.replace(/\*\*(.*?)\*\*/g, "$1");
-  processed = processed.replace(/^\*\s+/gm, "• ");
+  // === Markdown 清理 (v27.9.73 強化版) ===
+  // 1. 移除粗體標記 **text** -> text (非貪婪模式)
+  processed = processed.replace(/\*\*([^*]+)\*\*/g, "$1");
+
+  // 2. 將列表項目 * item 轉換為 • item (處理開頭空格情況)
+  processed = processed.replace(/^\s*\*\s+/gm, "• ");
+
+  // 3. 核彈級清除：移除所有剩餘的星號
   processed = processed.replace(/\*/g, "");
+
+  // 4. 其他格式化
   processed = processed.replace(/(\d+)\.\s+/g, "$1.");
   processed = processed.replace(/->/g, "→");
 
@@ -4808,6 +4816,11 @@ function handleMessage(event) {
                         /^根據我的資料庫/,
                         "根據產品手冊"
                       );
+                    }
+
+                    // v27.9.73: 加入 PDF 來源型號標註
+                    if (productNames.length > 0) {
+                      finalText += `\n\n[來源: ${productNames[0]} 使用手冊]`;
                     }
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
