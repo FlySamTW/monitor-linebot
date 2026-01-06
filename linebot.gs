@@ -4791,7 +4791,12 @@ function handleMessage(event) {
                       );
                     }
 
-                    // v27.9.73: 加入 PDF 來源型號標註
+                    // v27.9.78: 移除 LLM 可能自行加入的重複來源標籤
+                    finalText = finalText
+                      .replace(/\[來源[：:][^\]]*\]/g, "")
+                      .trim();
+
+                    // v27.9.73: 加入 PDF 來源型號標註（只保留一個）
                     if (productNames.length > 0) {
                       finalText += `\n\n[來源: ${productNames[0]} 使用手冊]`;
                     }
@@ -6562,11 +6567,15 @@ function extractContextFromHistory(userId, contextId) {
       return null;
     }
 
-    // 合併最近 10 條訊息的內容
-    const recentMsgs = history
-      .slice(-10)
-      .map((m) => m.content || "")
-      .join(" ");
+    // v27.9.78: 只從「最後一條 assistant 訊息」提取型號
+    // 原因：用戶選擇特定型號後，最後的 assistant 回覆會包含該型號的詳細資訊
+    // 這樣可以確保只搜尋用戶實際選擇的型號，避免歷史中其他型號干擾
+    const lastAssistantMsg = history
+      .slice()
+      .reverse()
+      .find((m) => m.role === "assistant");
+
+    const recentMsgs = lastAssistantMsg ? lastAssistantMsg.content || "" : "";
 
     // 提取型號
     const MODEL_REGEX =
