@@ -2841,10 +2841,13 @@ function getRelevantKBFiles(
       contextFromHistory.models.length > 0
     ) {
       exactModels = exactModels.concat(contextFromHistory.models);
+      // v27.9.79: 當從歷史提取到型號時，跳過後續的 KEYWORD_MAP 擴展
+      // 這樣可以確保只搜尋用戶選定的型號，不會被其他型號污染
+      hasInjectedModels = true;
       writeLog(
         `[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(
           ", "
-        )}`
+        )} (將跳過 KEYWORD_MAP 擴展)`
       );
     }
 
