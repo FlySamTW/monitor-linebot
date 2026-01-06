@@ -2403,7 +2403,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           }
         } else {
           // v27.9.82: 型號模式自動窮舉機制
-          // 找到「型號模式為：G8,S27?G8*,...」
           const patternMatch = text.match(/型號模式為[：:](.*)/);
           let resolvedModelsText = "";
 
@@ -2415,7 +2414,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             patterns.forEach((p) => {
               const cleanP = p.trim();
               if (!cleanP) return;
-              // 將通配符 ? 轉為 . , * 轉為 .*
               const regexStr =
                 "^" + cleanP.replace(/\?/g, ".").replace(/\*/g, ".*") + "$";
               const regex = new RegExp(regexStr, "i");
@@ -2431,16 +2429,25 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               resolvedModelsText = ` (對應實體型號：${matchedModels.join(
                 "、"
               )})`;
+              writeLog(
+                `[Sync] ✅ 模式 [${rawKey}] 成功窮舉: ${matchedModels.length} 個型號`
+              );
             }
           }
 
-          // 替換通配符描述為實體清單，避免 LLM 看到或輸出通配符
+          // v27.9.84: 確保 keywordMap 也使用處理過的 cleanText
           const cleanText = text.replace(/[,，]?型號模式為[：:].*/g, "").trim();
-          definitionsContent += `* ${cleanText}${resolvedModelsText}\n`;
+          const processedText = `${cleanText}${resolvedModelsText}`;
+          definitionsContent += `* ${processedText}\n`;
+
+          // 更新 keywordMap
+          if (key && processedText.length > key.length) {
+            keywordMap[key] = processedText;
+          }
         }
 
-        // 建立動態映射 (Map)
-        if (key && text.length > key.length) {
+        // v27.9.84: 對於 ModelRow，使用原始 text (因為它是規格行)
+        if (isModelRow && key && text.length > key.length) {
           keywordMap[key] = text;
         }
       });
