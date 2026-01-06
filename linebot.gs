@@ -3089,7 +3089,8 @@ function callLLMWithRetry(
   } else if (attachPDFs) {
     // PDF 模式：掛載 PDF + Dynamic Context
     // v24.3.1: 傳入 userId 以支援上下文提取
-    filesToAttach = getRelevantKBFiles(messages, kbList, userId);
+    // v27.9.68: Fix missing contextId (pass userId) to ensure history-based model extraction works
+    filesToAttach = getRelevantKBFiles(messages, kbList, userId, userId);
     dynamicContext = buildDynamicContext(messages, userId);
   } else {
     // 極速模式：只注入 Dynamic Context，不掛載任何檔案
@@ -4731,11 +4732,32 @@ function handleMessage(event) {
                   .map((name) => getPdfProductName(name))
                   .slice(0, 3);
 
+                // v27.9.68 Check for uniqueness
+                const uniqueProducts = [...new Set(productNames)];
+
+                if (uniqueProducts.length > 1) {
+                   // v27.9.68: 多型號反問機制
+                   // 用戶問的比較模糊，導致命中多個不兼容的 PDF，需要用戶釐清
+                   writeLog(`[Auto Deep] ⚠️ 命中多個型號: ${uniqueProducts.join(", ")}，反問用戶`);
+                   
+                   const askMsg = 
+                        `您詢問的內容可能涉及多款型號：\n${uniqueProducts.join("、")}\n\n` +
+                        `為了提供最準確的手冊資訊，請告訴我您想查詢哪一個型號？\n` +
+                        `(例如輸入：「${uniqueProducts[0]}」)`;
+                   
+                   replyMessage(replyToken, askMsg);
+                   
+                   // 寫入歷史以便延續
+                   writeRecordDirectly(userId, msg, contextId, "user", "");
+                   writeRecordDirectly(userId, askMsg, contextId, "assistant", "");
+                   
+                   // 放入 Pending Cache (Optional, relying on history is better now)
+                   return;
+                }
+
                 if (productNames.length > 0) {
                   writeLog(
-                    `[Auto Deep] 找到相關手冊: ${productNames.join(
-                      "、"
-                    )}，開始重試...`
+                    `[Auto Deep] 找到相關手冊: ${productNames.join("、")}，開始重試...`
                   );
 
                   isInPdfMode = true;
