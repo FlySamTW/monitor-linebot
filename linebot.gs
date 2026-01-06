@@ -3979,7 +3979,7 @@ function handleMessage(event) {
 
           // 3. 格式化輸出 (移除 **, 調整排版)
           if (replyText) {
-             replyText = formatForLineMobile(replyText);
+            replyText = formatForLineMobile(replyText);
           }
 
           // 4. 加上強制註腳
@@ -3996,13 +3996,7 @@ function handleMessage(event) {
           // v27.9.71: 修復欄位錯位問題 (Correct args: u, t, c, r, f)
           // F欄回歸 Empty String (Boolean compatible)
           writeRecordDirectly(userId, msg, contextId, "user", "");
-          writeRecordDirectly(
-            userId,
-            replyText,
-            contextId,
-            "SmartEditor",
-            ""
-          );
+          writeRecordDirectly(userId, replyText, contextId, "SmartEditor", "");
           writeLog(
             `[SmartEditor] 完成摘要，耗時 ${
               (new Date().getTime() - startTime) / 1000
@@ -4016,16 +4010,20 @@ function handleMessage(event) {
           // 為了保險，Fallthrough 到一般流程
         }
       } else {
-        writeLog(`[SmartEditor] 長文但無三星關鍵字，忽略或進入一般流程`);
-      } else {
+        // v27.9.67: 長文但無科技/三星關鍵字，拒絕處理
         writeLog(`[SmartEditor] 長文但無科技/三星關鍵字，拒絕處理`);
-        
+
         // User v27.9.67 Requirement: 就算不符合也要回覆婉拒
         if (msg.length > 200) {
-           writeLog("[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。");
-           replyMessage(replyToken, "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️");
-           // 這裡必須 Return，否則會繼續往下走 RAG
-           return;
+          writeLog(
+            "[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。"
+          );
+          replyMessage(
+            replyToken,
+            "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️"
+          );
+          // 這裡必須 Return，否則會繼續往下走 RAG
+          return;
         }
       }
     }
@@ -4743,28 +4741,42 @@ function handleMessage(event) {
                 const uniqueProducts = [...new Set(productNames)];
 
                 if (uniqueProducts.length > 1) {
-                   // v27.9.68: 多型號反問機制
-                   // 用戶問的比較模糊，導致命中多個不兼容的 PDF，需要用戶釐清
-                   writeLog(`[Auto Deep] ⚠️ 命中多個型號: ${uniqueProducts.join(", ")}，反問用戶`);
-                   
-                   const askMsg = 
-                        `您詢問的內容可能涉及多款型號：\n${uniqueProducts.join("、")}\n\n` +
-                        `為了提供最準確的手冊資訊，請告訴我您想查詢哪一個型號？\n` +
-                        `(例如輸入：「${uniqueProducts[0]}」)`;
-                   
-                   replyMessage(replyToken, askMsg);
-                   
-                   // 寫入歷史以便延續
-                   writeRecordDirectly(userId, msg, contextId, "user", "");
-                   writeRecordDirectly(userId, askMsg, contextId, "assistant", "");
-                   
-                   // 放入 Pending Cache (Optional, relying on history is better now)
-                   return;
+                  // v27.9.68: 多型號反問機制
+                  // 用戶問的比較模糊，導致命中多個不兼容的 PDF，需要用戶釐清
+                  writeLog(
+                    `[Auto Deep] ⚠️ 命中多個型號: ${uniqueProducts.join(
+                      ", "
+                    )}，反問用戶`
+                  );
+
+                  const askMsg =
+                    `您詢問的內容可能涉及多款型號：\n${uniqueProducts.join(
+                      "、"
+                    )}\n\n` +
+                    `為了提供最準確的手冊資訊，請告訴我您想查詢哪一個型號？\n` +
+                    `(例如輸入：「${uniqueProducts[0]}」)`;
+
+                  replyMessage(replyToken, askMsg);
+
+                  // 寫入歷史以便延續
+                  writeRecordDirectly(userId, msg, contextId, "user", "");
+                  writeRecordDirectly(
+                    userId,
+                    askMsg,
+                    contextId,
+                    "assistant",
+                    ""
+                  );
+
+                  // 放入 Pending Cache (Optional, relying on history is better now)
+                  return;
                 }
 
                 if (productNames.length > 0) {
                   writeLog(
-                    `[Auto Deep] 找到相關手冊: ${productNames.join("、")}，開始重試...`
+                    `[Auto Deep] 找到相關手冊: ${productNames.join(
+                      "、"
+                    )}，開始重試...`
                   );
 
                   isInPdfMode = true;
@@ -7440,49 +7452,107 @@ function getBotVersion() {
 function isValidTechContent(msg) {
   const upper = msg.toUpperCase();
   const cache = CacheService.getScriptCache();
-  
+
   // 1. 基礎科技關鍵字 (Fallback & General Tech)
   // 用戶要求：放寬至科技新聞 (AI, PC, Mobile, Chip, Tech Giants)
   const basicKeywords = [
-      // Samsung Core
-      "SAMSUNG", "GALAXY", "ODYSSEY", "SMART", "MONITOR", "WASHER", "TV", "冰箱", "洗衣機", "吸塵器", "螢幕", "M5", "M7", "M8", "G5", "G7", "G8", "S9",
-      // Tech Giants & General
-      "APPLE", "IPHONE", "IPAD", "MAC", "GOOGLE", "PIXEL", "MICROSOFT", "WINDOWS", "SURFACE", "TESLA", 
-      "NVIDIA", "AMD", "INTEL", "QUALCOMM", "TSMC", "ASUS", "ACER", "MSI", "ROG", "SONY", "LG", "PANASONIC",
-      "AI", "CHIP", "PANEL", "DISPLAY", "OLED", "MINI LED", "PROCESSOR", "GPU", "CPU", "RAM", 
-      "科技", "新聞", "發表", "上市", "規格", "評測", "半導體", "晶片", "手機", "筆電", "電腦", "人工智慧"
+    // Samsung Core
+    "SAMSUNG",
+    "GALAXY",
+    "ODYSSEY",
+    "SMART",
+    "MONITOR",
+    "WASHER",
+    "TV",
+    "冰箱",
+    "洗衣機",
+    "吸塵器",
+    "螢幕",
+    "M5",
+    "M7",
+    "M8",
+    "G5",
+    "G7",
+    "G8",
+    "S9",
+    // Tech Giants & General
+    "APPLE",
+    "IPHONE",
+    "IPAD",
+    "MAC",
+    "GOOGLE",
+    "PIXEL",
+    "MICROSOFT",
+    "WINDOWS",
+    "SURFACE",
+    "TESLA",
+    "NVIDIA",
+    "AMD",
+    "INTEL",
+    "QUALCOMM",
+    "TSMC",
+    "ASUS",
+    "ACER",
+    "MSI",
+    "ROG",
+    "SONY",
+    "LG",
+    "PANASONIC",
+    "AI",
+    "CHIP",
+    "PANEL",
+    "DISPLAY",
+    "OLED",
+    "MINI LED",
+    "PROCESSOR",
+    "GPU",
+    "CPU",
+    "RAM",
+    "科技",
+    "新聞",
+    "發表",
+    "上市",
+    "規格",
+    "評測",
+    "半導體",
+    "晶片",
+    "手機",
+    "筆電",
+    "電腦",
+    "人工智慧",
   ];
-  
-  try {
-     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-     // 快篩：若命中基礎科技關鍵字 -> True
-     if (basicKeywords.some(k => upper.includes(k))) return true;
 
-     // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
-     // 這是為了確保比較冷門的三星系列也能過關 (原本邏輯)
-     let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
-     if (!productKeywords) {
-         if (ruleSheet) {
-            const data = ruleSheet.getRange("A2:A200").getValues();
-            const keys = data.map(r => {
-                const txt = r[0].toString();
-                if (!txt) return "";
-                if (txt.includes("_")) return txt.split("_")[1];
-                return txt;
-            }).filter(k => k && k.length > 1); 
-            productKeywords = JSON.stringify(keys);
-            cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); 
-         } else {
-            productKeywords = "[]";
-         }
-     }
-     
-     const keywords = JSON.parse(productKeywords);
-     return keywords.some(key => upper.includes(key.toUpperCase()));
-     
+  try {
+    const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    // 快篩：若命中基礎科技關鍵字 -> True
+    if (basicKeywords.some((k) => upper.includes(k))) return true;
+
+    // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
+    // 這是為了確保比較冷門的三星系列也能過關 (原本邏輯)
+    let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
+    if (!productKeywords) {
+      if (ruleSheet) {
+        const data = ruleSheet.getRange("A2:A200").getValues();
+        const keys = data
+          .map((r) => {
+            const txt = r[0].toString();
+            if (!txt) return "";
+            if (txt.includes("_")) return txt.split("_")[1];
+            return txt;
+          })
+          .filter((k) => k && k.length > 1);
+        productKeywords = JSON.stringify(keys);
+        cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600);
+      } else {
+        productKeywords = "[]";
+      }
+    }
+
+    const keywords = JSON.parse(productKeywords);
+    return keywords.some((key) => upper.includes(key.toUpperCase()));
   } catch (e) {
-     writeLog("[isValidTechContent] Error: " + e.message);
-     return basicKeywords.some(key => upper.includes(key));
+    writeLog("[isValidTechContent] Error: " + e.message);
+    return basicKeywords.some((key) => upper.includes(key));
   }
 }
 
