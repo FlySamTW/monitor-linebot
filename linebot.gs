@@ -3887,6 +3887,145 @@ function handleMessage(event) {
       markAnimationShown(userId);
     }
 
+    // v27.9.64: [Smart Editor Mode] 長文自動摘要與總編模式
+    // 條件：長度 > 200 且 包含 Samsung 關鍵字 且 非指令
+    // 目標：快速摘要長文資料，繞過標準 RAG 流程
+    if (msg.length > 200 && !msg.startsWith("/")) {
+      const isSamsung = isSamsungRelated(msg);
+      if (isSamsung) {
+        writeLog(
+          `[SmartEditor] 偵測到長文 (${msg.length} 字)，且包含相關關鍵字，啟動總編模式`
+        );
+
+        // 1. 取得總編 Persona
+        let editorPersona = "";
+        try {
+          // 嘗試從 Prompt.csv 讀取 (雖然 User 說會自己貼，但我們會先讀 Cache 或預設)
+          const prompts = getPromptsFromCacheOrSheet();
+          editorPersona = prompts["總編模式"] || "";
+        } catch (e) {
+          writeLog(`[SmartEditor] Prompt Load Failed: ${e.message}`);
+        }
+
+        // 若沒有設定，使用預設值 (雖User會貼，但防呆)
+        if (!editorPersona) {
+          editorPersona = `你現在是專業科技編輯。用戶提供「原始長文」(可能含廣告/時間軸/廢話)。任務：1.去蕪存菁(移除廣告/訂閱提醒/無關閒聊)。2.邏輯重整(分段/下標題/列點)。3.提取關於「三星產品」的技術重點與操作步驟。4.保持客觀，不加主觀評論。輸出格式：【重點摘要】(3點)→【詳細內容】(分層結構)。若內容與三星產品無關，請回「內容似乎與三星產品無關，請提供相關資料」。`;
+        }
+
+        const editorSystemPrompt = `${editorPersona}\n\n[用戶原始長文]:\n${msg}`;
+
+        // 2. 呼叫 LLM (不查 QA, 不查 PDF)
+        // 這裡需要直接呼叫 chatWithGemini 但要繞過 context 組合
+        // 我們直接構造一個假的 context
+        const editorContext = `[System] ${editorPersona}`;
+
+        // 為了使用統一的 callGeminiApi，我們直接組裝
+        const modelName = "models/gemini-2.0-flash"; // 為了速度，用 Flash
+        const payload = {
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: editorSystemPrompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.3, // 摘要需要穩定
+            maxOutputTokens: 2000,
+          },
+        };
+
+        const startTime = new Date().getTime();
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+
+        try {
+          const response = UrlFetchApp.fetch(apiUrl, {
+            method: "post",
+            contentType: "application/json",
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true,
+          });
+          const resCode = response.getResponseCode();
+          const resText = response.getContentText();
+          const result = JSON.parse(resText);
+
+          let replyText = "";
+          let inputTokens = 0;
+          let outputTokens = 0;
+          let cost = 0;
+
+          if (result.candidates && result.candidates[0].content) {
+            replyText = result.candidates[0].content.parts[0].text;
+          }
+          // 計算 Token (若 API 有回傳 usageMetadata)
+          if (result.usageMetadata) {
+            inputTokens = result.usageMetadata.promptTokenCount || 0;
+            outputTokens = result.candidatesTokenCount || 0; // Gemini API 命名可能不同，視版本
+            if (!outputTokens && result.usageMetadata.candidatesTokenCount)
+              outputTokens = result.usageMetadata.candidatesTokenCount;
+
+            // 估算費用 (Flash Rate: In $0.1/1M, Out $0.4/1M -> NTD 32)
+            // NTD: In ~ 0.0000032, Out ~ 0.0000128
+            cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
+          } else {
+            // 模擬計算 (1 char ~ 1 token for Chinese context safety estimate)
+            inputTokens = msg.length;
+            outputTokens = replyText.length;
+            cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
+          }
+
+          // 3. 加上強制註腳
+          // [來源: 使用者提供長文] [費用: NT$...]
+          const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2); // 最低顯示 0.01
+          const footer = `\n\n[來源: 使用者提供長文] [費用: NT$${costStr}]`;
+          replyText += footer;
+
+          // 4. 回傳 LINE
+          replyMessage(replyToken, replyText);
+
+          // 5. 寫入 Log & Record
+          // 注意：不寫入 QA Cache，因為這是摘要
+          writeRecordDirectly(
+            userId,
+            replyToken,
+            contextId,
+            msg,
+            replyText,
+            "SmartEditor"
+          );
+          writeLog(
+            `[SmartEditor] 完成摘要，耗時 ${
+              (new Date().getTime() - startTime) / 1000
+            }s, Cost: ${costStr}`
+          );
+
+          return; // 結束，不走後面的 RAG
+        } catch (e) {
+          writeLog(`[SmartEditor] Error: ${e.message}`);
+          // 若失敗，Fallthrough 到一般流程? 或者回報錯誤?
+          // 為了保險，Fallthrough 到一般流程
+        }
+      } else {
+        writeLog(`[SmartEditor] 長文但無三星關鍵字，忽略或進入一般流程`);
+        // User 說「不回答」，但為了避免誤殺長問題，我們這裡選擇 Default:
+        // 1. 若完全無關 -> 不回應 (to save token)?
+        // 但 User 說 "然後門檻... 就可以"，這裡我們做個簡單的 Check
+        // 若過濾掉，直接 Return?
+
+        // User Requirement: "一律先判定是否為台灣三星產品相關(競品不回答)"
+        // 這裡若 !isSamsung，則直接 return?
+        // 風險：用戶問「請問哪裡買轉接頭」可能沒三星字眼。
+        // 折衷：只攔截「超級長文(>500) 且 無關鍵字」？
+        // User Set: >200. We stick to user rule.
+        // If > 200 and NOT Samsung related => Ignore.
+        if (msg.length > 200) {
+          writeLog(
+            "[SmartEditor] 長文 (>200) 但未偵測到三星產品關鍵字，視為無關內容或競品，不予處理。"
+          );
+          return;
+        }
+      }
+    }
+
     // v27.8.8: 將 Log 移到去重之後、處理之前，確保每條通過去重的訊息都有紀錄
     writeLog(`[HandleMsg] 收到: ${msg}`);
     const draftCache = cache.get(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
@@ -7267,4 +7406,52 @@ function getBotVersion() {
     version: "v27.9.54",
     description: `Back: ${LLM_PROVIDER} | OR-Search: ON | TW_Force`,
   };
+}
+
+/**
+ * [Smart Editor Mode] 檢查是否與三星產品相關 (動態版)
+ * v27.9.64: 改為檢查 Cache 中的關鍵字或 CLASS_RULES，避免 Hardcode
+ */
+function isSamsungRelated(msg) {
+  const upper = msg.toUpperCase();
+  const cache = CacheService.getScriptCache();
+  
+  // 1. 嘗試從 Cache 取得關鍵字列表 (這是 syncGeminiKnowledgeBase 建立的)
+  // 若沒有，則回退到基本關鍵字 (防止完全無 Cache 時失效)
+  const basicKeywords = ["SAMSUNG", "GALAXY", "ODYSSEY", "SMART", "MONITOR", "WASHER", "TV", "冰箱", "洗衣機", "吸塵器", "螢幕", "M5", "M7", "M8", "G5", "G7", "G8", "S9"];
+  
+  try {
+     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+     // 簡單優化：若已經命中任何一個 Cache 中的 Rule Key，則 True
+     if (upper.includes("SAMSUNG") || upper.includes("三星")) return true;
+
+     // 否則，檢查是否包含 CLASS_RULES 中的「系列」名稱 (通常在第1欄)
+     // 我們讀取 Sheet 的第一欄 (A欄)，取前 200 行
+     // 為了不每次讀，應該 Cache 這份清單
+     let productKeywords = cache.get("CORE_PRODUCT_KEYWORDS");
+     if (!productKeywords) {
+         if (ruleSheet) {
+            const data = ruleSheet.getRange("A2:A200").getValues();
+            // 解析：如果含有 "_" 取後面 (如 系列_Odyssey -> Odyssey)，否則取原字
+            const keys = data.map(r => {
+                const txt = r[0].toString();
+                if (!txt) return "";
+                if (txt.includes("_")) return txt.split("_")[1];
+                return txt;
+            }).filter(k => k && k.length > 1); // 過濾掉空值和單字
+            productKeywords = JSON.stringify(keys);
+            cache.put("CORE_PRODUCT_KEYWORDS", productKeywords, 21600); // 6小時
+         } else {
+            productKeywords = JSON.stringify(basicKeywords);
+         }
+     }
+     
+     const keywords = JSON.parse(productKeywords);
+     // 檢查是否包含任何一個關鍵字
+     return keywords.some(key => upper.includes(key.toUpperCase()));
+     
+  } catch (e) {
+     writeLog("[isSamsungRelated] Error: " + e.message);
+     return basicKeywords.some(key => upper.includes(key));
+  }
 }
