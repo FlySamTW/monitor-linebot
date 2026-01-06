@@ -2387,10 +2387,9 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             keywordMap[lsMatch[0]] = sModel;
           }
         } else {
-          // v27.9.74: 過濾掉「型號模式為：...(通配符)」避免 LLM 輸出通配符型號
-          const cleanText = text
-            .replace(/,?型號模式為[：:][^,，]*$/g, "")
-            .trim();
+          // v27.9.75: 過濾掉「型號模式為：...(通配符)」避免 LLM 輸出通配符型號
+          // 修正：移除從「型號模式為」到行尾的所有內容
+          const cleanText = text.replace(/[,，]?型號模式為[：:].*/g, "").trim();
           definitionsContent += `* ${cleanText}\n`;
         }
 
