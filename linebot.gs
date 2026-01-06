@@ -2320,11 +2320,26 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
     if (ruleSheet && ruleSheet.getLastRow() > 1) {
-      const data = ruleSheet
+      const allRows = ruleSheet
         .getRange(2, 1, ruleSheet.getLastRow() - 1, 1)
         .getValues();
 
-      data.forEach((row) => {
+      // v27.9.82: 第 0 遍 - 收集所有實體型號
+      const allExistModels = [];
+      allRows.forEach((row) => {
+        if (!row[0]) return;
+        const text = row[0].toString();
+        const firstPart = text.split(",")[0].trim().toUpperCase();
+        if (firstPart.startsWith("型號：") || firstPart.startsWith("型號:")) {
+          allExistModels.push(firstPart.replace(/^型號[：:]/, "").trim());
+        } else if (firstPart.startsWith("LS")) {
+          allExistModels.push(
+            firstPart.replace(/^LS/, "S").replace(/XZW$/, "")
+          );
+        }
+      });
+
+      allRows.forEach((row) => {
         if (!row[0]) return;
         const text = row[0].toString();
         const parts = text.split(",");
@@ -2387,10 +2402,41 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             keywordMap[lsMatch[0]] = sModel;
           }
         } else {
-          // v27.9.75: 過濾掉「型號模式為：...(通配符)」避免 LLM 輸出通配符型號
-          // 修正：移除從「型號模式為」到行尾的所有內容
+          // v27.9.82: 型號模式自動窮舉機制
+          // 找到「型號模式為：G8,S27?G8*,...」
+          const patternMatch = text.match(/型號模式為[：:](.*)/);
+          let resolvedModelsText = "";
+
+          if (patternMatch) {
+            const patternStr = patternMatch[1].trim();
+            const patterns = patternStr.split(/[,,|]/);
+            const matchedModels = [];
+
+            patterns.forEach((p) => {
+              const cleanP = p.trim();
+              if (!cleanP) return;
+              // 將通配符 ? 轉為 . , * 轉為 .*
+              const regexStr =
+                "^" + cleanP.replace(/\?/g, ".").replace(/\*/g, ".*") + "$";
+              const regex = new RegExp(regexStr, "i");
+
+              allExistModels.forEach((m) => {
+                if (regex.test(m) && !matchedModels.includes(m)) {
+                  matchedModels.push(m);
+                }
+              });
+            });
+
+            if (matchedModels.length > 0) {
+              resolvedModelsText = ` (對應實體型號：${matchedModels.join(
+                "、"
+              )})`;
+            }
+          }
+
+          // 替換通配符描述為實體清單，避免 LLM 看到或輸出通配符
           const cleanText = text.replace(/[,，]?型號模式為[：:].*/g, "").trim();
-          definitionsContent += `* ${cleanText}\n`;
+          definitionsContent += `* ${cleanText}${resolvedModelsText}\n`;
         }
 
         // 建立動態映射 (Map)
