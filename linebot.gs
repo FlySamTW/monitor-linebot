@@ -2456,6 +2456,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       });
     }
 
+    // v27.9.86: 強制清理舊索引
+    PropertiesService.getScriptProperties().deleteProperty(
+      CACHE_KEYS.KEYWORD_MAP
+    );
+
     // 儲存映射表
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.KEYWORD_MAP,
@@ -2574,7 +2579,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       JSON.stringify(newKbList)
     );
 
-    const statusMsg = `✓ 重啟與同步完成\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- Sheet 資料：已更新`;
+    const statusMsg = `✓ 重啟與同步完成 [v27.9.86]\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個`;
     writeLog(statusMsg);
 
     // 預約下次同步
