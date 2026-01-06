@@ -3993,13 +3993,15 @@ function handleMessage(event) {
 
           // 5. 寫入 Log & Record
           // 注意：不寫入 QA Cache，因為這是摘要
+          // v27.9.71: 修復欄位錯位問題 (Correct args: u, t, c, r, f)
+          // F欄回歸 Empty String (Boolean compatible)
+          writeRecordDirectly(userId, msg, contextId, "user", "");
           writeRecordDirectly(
             userId,
-            replyToken,
-            contextId,
-            msg,
             replyText,
-            "SmartEditor"
+            contextId,
+            "SmartEditor",
+            ""
           );
           writeLog(
             `[SmartEditor] 完成摘要，耗時 ${
