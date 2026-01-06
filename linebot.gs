@@ -2916,19 +2916,27 @@ function getRelevantKBFiles(
     });
   }
 
-  // 也從原始查詢提取型號
-  const directModelMatch = combinedQuery.match(MODEL_REGEX);
-  if (directModelMatch) {
-    exactModels = exactModels.concat(directModelMatch);
-  }
+  let directModelMatch = null;
+  let directLsMatch = null;
 
-  // 從原始查詢提取 LS 系列
-  const directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
-  if (directLsMatch) {
-    directLsMatch.forEach((ls) => {
-      const cleanModel = ls.replace(/^LS/, "S").replace(/XZW$/, "");
-      exactModels.push(cleanModel);
-    });
+  // v27.9.81: 當已從歷史提取型號時，跳過從當前查詢提取型號
+  // 原因：當前查詢（combinedQuery）包含歷史對話，會抓到上一輪AI列出的所有型號
+  // 例如：AI列出9個G5型號，這裡就會全部提取，導致PDF匹配錯誤
+  if (!hasInjectedModels) {
+    // 也從原始查詢提取型號
+    directModelMatch = combinedQuery.match(MODEL_REGEX);
+    if (directModelMatch) {
+      exactModels = exactModels.concat(directModelMatch);
+    }
+
+    // 從原始查詢提取 LS 系列
+    directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
+    if (directLsMatch) {
+      directLsMatch.forEach((ls) => {
+        const cleanModel = ls.replace(/^LS/, "S").replace(/XZW$/, "");
+        exactModels.push(cleanModel);
+      });
+    }
   }
 
   // v27.9.6: 嚴格限制歷史型號沿用 - 防止「你的優勢是什麼」這類問題載入 PDF
