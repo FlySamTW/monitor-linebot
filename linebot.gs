@@ -3977,7 +3977,12 @@ function handleMessage(event) {
             cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
           }
 
-          // 3. 加上強制註腳
+          // 3. 格式化輸出 (移除 **, 調整排版)
+          if (replyText) {
+             replyText = formatForLineMobile(replyText);
+          }
+
+          // 4. 加上強制註腳
           // [來源: 使用者提供長文] [費用: NT$...]
           const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2); // 最低顯示 0.01
           const footer = `\n\n[來源: 使用者提供長文] [費用: NT$${costStr}]`;
