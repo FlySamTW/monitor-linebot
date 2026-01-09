@@ -2,8 +2,8 @@
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-// v29.3.10: Fix Duplicate Prefix + Expansion Prompt Clarity
-const GAS_VERSION = "v29.3.10";
+// v29.3.11: Fix QA Step Requirement + Prompt Update
+const GAS_VERSION = "v29.3.11";
 // v29.0.0: Feature Flag for Quick Reply (可隨時關閉以恢復純文字模式)
 const ENABLE_QUICK_REPLY = true;
 
