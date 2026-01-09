@@ -7,7 +7,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.3.16";
+const GAS_VERSION = "v29.3.17";
 
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -2586,7 +2586,17 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       JSON.stringify(newKbList)
     );
 
-    const statusMsg = `✓ 重啟與同步完成 [v27.9.86]\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個`;
+    // Extract Prompt version and info
+    const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+    const configData = promptSheet.getRange("B3:C3").getValues()[0];
+    const tempSetting = typeof configData[0] === "number" ? configData[0] : 0.6;
+    const c3Prompt = configData[1] || "";
+    const promptVersionMatch = c3Prompt.match(/Prompt v([\d.]+)/);
+    const promptVersion = promptVersionMatch
+      ? promptVersionMatch[1]
+      : "unknown";
+
+    const statusMsg = `✓ 重啟與同步完成 📦 GAS: ${GAS_VERSION} | Prompt: v${promptVersion} | 🌡️ Temp: ${tempSetting}\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個`;
     writeLog(statusMsg);
 
     // 預約下次同步
