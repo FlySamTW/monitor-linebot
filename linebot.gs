@@ -2318,6 +2318,9 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 4. 嚴禁把 S27BM50 改成 M5 或 Smart Monitor，嚴禁繁中混用
 `;
 
+    // v27.9.85: 第 0 遍 - 全域收集所有實體型號 (更加強健的搜尋)
+    let allExistModels = [];
+
     const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
     if (ruleSheet && ruleSheet.getLastRow() > 1) {
       const allRows = ruleSheet
@@ -2325,7 +2328,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         .getValues();
 
       // v27.9.85: 第 0 遍 - 全域收集所有實體型號 (更加強健的搜尋)
-      const allExistModels = [];
       allRows.forEach((row) => {
         if (!row[0]) return;
         const rowText = row[0].toString();
