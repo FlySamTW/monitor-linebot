@@ -2,8 +2,8 @@
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-// v29.3.8: Feature Smart Contrastive Search (差異化搜尋)
-const GAS_VERSION = "v29.3.8";
+// v29.3.9: Rename Button Text (不滿意這回答請繼續擴大搜尋)
+const GAS_VERSION = "v29.3.9";
 // v29.0.0: Feature Flag for Quick Reply (可隨時關閉以恢復純文字模式)
 const ENABLE_QUICK_REPLY = true;
 
@@ -4407,8 +4407,8 @@ function handleMessage(event) {
     }
 
     // B. 指令
-    // v29.3.1: 支援 "繼續擴大搜尋答案" 作為指令觸發
-    if (msg.startsWith("/") || msg === "繼續擴大搜尋答案") {
+    // v29.3.1: 支援 "不滿意這回答請繼續擴大搜尋" 作為指令觸發
+    if (msg.startsWith("/") || msg === "不滿意這回答請繼續擴大搜尋") {
       const cmdResult = handleCommand(msg, userId, contextId);
       writeLog(`[Reply] ${cmdResult.substring(0, 100)}...`);
       replyMessage(replyToken, cmdResult);
@@ -5648,8 +5648,8 @@ function handleMessage(event) {
             // v29.3.0: 用戶要求模擬真實輸入 (Text = Label)
             quickOptions = [
               {
-                label: "繼續擴大搜尋答案",
-                text: "繼續擴大搜尋答案",
+                label: "不滿意這回答請繼續擴大搜尋",
+                text: "不滿意這回答請繼續擴大搜尋",
               },
             ];
           }
@@ -5844,8 +5844,12 @@ function handleCommand(c, u, cid) {
   }
 
   // v29.3.0: 擴大搜尋按鈕 (文字與指令完全一致)
-  if (cmd === "繼續擴大搜尋答案" || cmd === "/擴大搜尋" || cmd === "/不滿意") {
-    writeLog(`[Command] 繼續擴大搜尋答案 by ${u}`);
+  if (
+    cmd === "不滿意這回答請繼續擴大搜尋" ||
+    cmd === "/擴大搜尋" ||
+    cmd === "/不滿意"
+  ) {
+    writeLog(`[Command] 不滿意這回答請繼續擴大搜尋 by ${u}`);
     const cache = CacheService.getScriptCache();
 
     // v29.2.7: 防止濫用機制 - 同一問題最多 3 次
@@ -5901,7 +5905,7 @@ function handleCommand(c, u, cid) {
     // 構造一個暫時的 messages 陣列給 LLM (包含歷史 + 指令)
     const expandedHistory = [
       ...history,
-      { role: "user", content: "繼續擴大搜尋答案" },
+      { role: "user", content: "不滿意這回答請繼續擴大搜尋" },
       { role: "user", content: searchPrompt },
     ];
 
@@ -5927,7 +5931,10 @@ function handleCommand(c, u, cid) {
       // v29.3.6: Fix corrupted history (null role) by updating pair at once
       const finalReply = `🌍 [擴大搜尋結果]\n\n${aiReply}`;
 
-      const userCmdMsg = { role: "user", content: "繼續擴大搜尋答案" };
+      const userCmdMsg = {
+        role: "user",
+        content: "不滿意這回答請繼續擴大搜尋",
+      };
       const assistantReplyMsg = { role: "assistant", content: finalReply };
 
       updateHistorySheetAndCache(cid, history, userCmdMsg, assistantReplyMsg);
@@ -5935,12 +5942,12 @@ function handleCommand(c, u, cid) {
       // v29.3.4: 修復按鈕消失問題 - 若未達上限，強制重貼按鈕
       if (count < 3) {
         writeLog(
-          `[Dissatisfied] Re-attaching '繼續擴大搜尋答案' button (Count: ${count})`
+          `[Dissatisfied] Re-attaching '不滿意這回答請繼續擴大搜尋' button (Count: ${count})`
         );
         quickReplyOptions = []; // 確保清空舊的
         quickReplyOptions.push({
-          label: "繼續擴大搜尋答案",
-          text: "繼續擴大搜尋答案", // 保持自然語言指令
+          label: "不滿意這回答請繼續擴大搜尋",
+          text: "不滿意這回答請繼續擴大搜尋", // 保持自然語言指令
         });
       }
 
