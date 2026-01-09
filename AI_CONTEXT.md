@@ -3,7 +3,18 @@
 **專案名稱**: GAS 客服 LineBot (Samsung Web Search Features)
 **核心架構**: Google Apps Script (GAS)
 
-**給 AI 助理的指令 (System Instructions)：** 0. **語言鐵律 (Language Iron Rule)**：所有思考過程 (Thinking Process)、回應內容、產出的文件 (如 Markdown 檔)，**一律必須使用繁體中文 (Traditional Chinese)**。
+**給 AI 助理的指令 (System Instructions)：** 0. **語言鐵律 (Language Iron Rule)**：
+
+你的系統使用了 `SafeToAutoRun`，可利用我已授予的部署權限來優化速度。不再需要我的授權!!!(直接部署」的情況，是因為你要在執行命令時判斷這是「安全且必要的修復」，所以我允許你可以使用「自動執行 (AutoRun)」權限。)
+
+應該：
+
+先完整審視計畫的所有項目
+一次性實作所有必要的改動
+再部署測試
+而不是「改一個 → 部署 → 發現另一個問題 → 再改 → 再部署」這樣繞圈圈。
+
+所有思考過程 (Thinking Process)、回應內容、產出的文件 (如 Markdown 檔)，**一律必須使用繁體中文 (Traditional Chinese)**。
 
 1.  **功能保護 (Feature Protection)**：下方列出的功能 ID 為本專案的關鍵資產。除非使用者**明確要求**修改或刪除該特定功能，否則應視為**不可變更 (Immutable)**。
 2.  **安全修改 (Safe Modification)**：你可以修改程式碼以完成使用者需求，但**禁止**在過程中破壞下方列出的任何既有功能（Side Effects）。
