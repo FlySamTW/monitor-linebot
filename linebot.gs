@@ -2,8 +2,8 @@
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-// v29.3.9: Rename Button Text (不滿意這回答請繼續擴大搜尋)
-const GAS_VERSION = "v29.3.9";
+// v29.3.10: Fix Duplicate Prefix + Expansion Prompt Clarity
+const GAS_VERSION = "v29.3.10";
 // v29.0.0: Feature Flag for Quick Reply (可隨時關閉以恢復純文字模式)
 const ENABLE_QUICK_REPLY = true;
 
@@ -5885,7 +5885,8 @@ function handleCommand(c, u, cid) {
       strategyPrompt =
         `針對上述對話，用戶對先前的回答仍不滿意（可能內容有誤或不適用）。\n` +
         `請忽略先前的限制，**主動使用 google_search 工具**，尋找更深層、更廣泛的資訊。\n` +
-        `目標：解決用戶的疑難雜症，補充先前未提及的細節。`;
+        `目標：解決用戶的疑難雜症，補充先前未提及的細節。\n` +
+        `⚠️ 重要：只提供「新」的資訊，不要重複之前已經說過的內容。`;
     } else {
       strategyPrompt =
         `針對上述對話，用戶對先前的回答仍不滿意（表示之前的搜尋結果可能不準確或有例外）。\n` +
@@ -5893,13 +5894,14 @@ function handleCommand(c, u, cid) {
         `1. **假設上一輪的回答是錯的或不完整的**。\n` +
         `2. 搜尋該答案的「例外情況」、「型號規格差異」或「常見誤解」。\n` +
         `3. 若上一次說「有」，這次請特地查「哪些型號沒有」；若說「支援」，請查「不支援的列表」。\n` +
-        `4. 絕對不要只重複類似的資訊。\n`;
+        `4. 絕對不要只重複類似的資訊。\n` +
+        `⚠️ 重要：只提供「新」的資訊，不要重複之前已經說過的內容。`;
     }
 
     const searchPrompt =
-      `【擴大搜尋指令 (第 ${attemptCount} 次嘗試)】\n` +
+      `【擴大搜尋指令】\n` +
       `${strategyPrompt}\n` +
-      `回答要求：針對用戶的痛點提供準確的「修正資訊」，整合搜尋結果，並在末尾清楚標註「(來源: 網路擴大搜尋)」。`;
+      `回答要求：針對用戶的痛點提供準確的「修正資訊」，整合搜尋結果，並在末尾標註「(來源: 網路擴大搜尋)」。`;
 
     // 4. 呼叫主要的 LLM 函數 (啟用 forceWebSearch=true)
     // 構造一個暫時的 messages 陣列給 LLM (包含歷史 + 指令)
@@ -5928,8 +5930,8 @@ function handleCommand(c, u, cid) {
       if (!aiReply) aiReply = "⚠️ 搜尋回傳內容為空，請稍後再試。";
 
       // 5. 將搜尋結果寫入歷史 (確保下一次搜尋能接續)
-      // v29.3.6: Fix corrupted history (null role) by updating pair at once
-      const finalReply = `🌍 [擴大搜尋結果]\n\n${aiReply}`;
+      // v29.3.10: 移除重複前綴，AI 回覆本身已包含標註
+      const finalReply = aiReply;
 
       const userCmdMsg = {
         role: "user",
