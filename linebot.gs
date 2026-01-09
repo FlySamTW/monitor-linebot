@@ -2,8 +2,8 @@
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-// v29.3.12: Strengthen QA Priority Over Rules
-const GAS_VERSION = "v29.3.12";
+// v29.3.13: Force AI to List ALL QA Steps (No Exceptions)
+const GAS_VERSION = "v29.3.13";
 // v29.0.0: Feature Flag for Quick Reply (可隨時關閉以恢復純文字模式)
 const ENABLE_QUICK_REPLY = true;
 
