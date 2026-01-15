@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.30"; // 2026-01-15 Deterministic Direct Search (Bypass Fast Mode)
-const BUILD_TIMESTAMP = "2026-01-15 19:00";
+const GAS_VERSION = "v29.4.31"; // 2026-01-15 Fix Function Name Conflict
+const BUILD_TIMESTAMP = "2026-01-15 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4658,7 +4658,7 @@ function handleMessage(event) {
             );
 
             // 生成 Flex Message (使用 V2 去重版)
-            const flexMsg = createModelSelectionFlexV2(suggestedModels);
+            const flexMsg = createModelSelectionFlexV3(suggestedModels);
             // 若有 AI 文字回應，且非空白，則將其作為 Flex 的 AltText 或 分開傳送?
             // 為了 UX，我們讓 Flex 獨立發送，結束這一回合
             // 注意: 此時 replyText 尚未發送。若我們在這裡 return，replyText 就會被丟棄。
@@ -8163,7 +8163,7 @@ function getPromptsFromCacheOrSheet() {
  * 建立型號選擇的 Flex Message Carousel (V2)
  * v29.4.16: 加強版去重 (Case Insensitive) + 樣式微調
  */
-function createModelSelectionFlexV2(models) {
+function createModelSelectionFlexV3(models) {
   // 1. Strict Deduplication (Case Insensitive)
   const uniqueModels = [];
   const seen = new Set();
