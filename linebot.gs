@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.0";
-const BUILD_TIMESTAMP = "2026-01-15T13:12:00Z"; // Smart Router Two-Stage AI
+const GAS_VERSION = "v29.4.1";
+const BUILD_TIMESTAMP = "2026-01-15 13:50:00Z"; // Smart Router v29.4.1: Fix Spec Layer Injection
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1943,6 +1943,77 @@ function buildDynamicContext(messages, userId) {
       writeLog(
         `[DynamicContext v29.4] 輕量層全文注入: ${lightRules.length} 字元`
       );
+    }
+
+    // 3️⃣ 規格層 (Spec Layer) 寬鬆匹配注入 (L47+)
+    // v29.4.1 Fix: 恢復規格層注入，使用寬鬆關鍵字匹配，解決 "40吋" 無法識別問題
+    let specContext = "";
+    // 從 Cache 讀取規格層 (分塊讀取)
+    let fullSpecRules = "";
+    let chunkIndex = 0;
+    while (true) {
+      const chunk = cache.get(
+        `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`
+      );
+      if (!chunk) break;
+      fullSpecRules += chunk;
+      chunkIndex++;
+    }
+
+    if (fullSpecRules) {
+      const specLines = fullSpecRules.split("\n");
+      // 寬鬆分詞：抓取所有 英數字串 (40, G7, M7) 和 中文詞 (2字以上)
+      // v29.4.1: 特別允許純數字，以便匹配尺寸 (如 40)
+      const tokens =
+        normalizedMsg.match(/[a-zA-Z0-9]+|[\u4e00-\u9fa5]{2,}/g) || [];
+
+      // 去除太短的無意義數字 (如 1, 2)，但保留可能的型號簡稱或尺寸
+      const validTokens = tokens.filter((t) => {
+        // 中文保留
+        if (/[\u4e00-\u9fa5]/.test(t)) return true;
+        // 英數：長度>=2 (M7, 40, G8)
+        return t.length >= 2;
+      });
+
+      writeLog(
+        `[DynamicContext v29.4.1] 規格篩選 Token: ${JSON.stringify(
+          validTokens
+        )}`
+      );
+
+      if (validTokens.length > 0) {
+        let matchedSpecLines = [];
+        let matchCount = 0;
+
+        for (const line of specLines) {
+          if (matchCount >= 15) break; // 最多注入 15 筆規格，避免爆 Token
+
+          // 只要命中任一個 Token 就收錄
+          const isMatch = validTokens.some((token) =>
+            line.toLowerCase().includes(token.toLowerCase())
+          );
+
+          if (isMatch) {
+            matchedSpecLines.push(line);
+            matchCount++;
+          }
+        }
+
+        if (matchedSpecLines.length > 0) {
+          specContext += "=== 🖥️ 產品型號詳細規格 (Spec Rules) ===\n";
+          specContext += matchedSpecLines.join("\n") + "\n\n";
+          relevantContext += specContext;
+          writeLog(
+            `[DynamicContext v29.4.1] 注入規格行數: ${matchedSpecLines.length}`
+          );
+        } else {
+          writeLog(`[DynamicContext v29.4.1] ⚠️ 根據 Token 未匹配到任何規格行`);
+        }
+      } else {
+        writeLog(`[DynamicContext v29.4.1] ⚠️ 無有效 Token 可用於篩選規格`);
+      }
+    } else {
+      writeLog(`[DynamicContext v29.4.1] ⚠️ 無法讀取 Spec Rules Cache`);
     }
 
     // 3️⃣ 注入 Guide (型號識別指南)
