@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.29"; // 2026-01-15 Fix Hint Injection (Update userMsgObj)
-const BUILD_TIMESTAMP = "2026-01-15 18:55";
+const GAS_VERSION = "v29.4.30"; // 2026-01-15 Deterministic Direct Search (Bypass Fast Mode)
+const BUILD_TIMESTAMP = "2026-01-15 19:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4507,17 +4507,32 @@ function handleMessage(event) {
     try {
       // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
       // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
-      let rawResponse = callLLMWithRetry(
-        userMessage,
-        [...history, userMsgObj],
-        filesToAttach,
-        false, // attachPDFs
-        null, // imageBlob
-        false, // isRetry
-        userId,
-        false, // forceWebSearch
-        primaryModel // targetModelName
-      );
+      let rawResponse = "";
+
+      // v29.4.30: Deterministic Fix for Direct Search
+      // If a Direct Keyword is hit, we MUST NOT rely on LLM to output the secret code.
+      // We manually construct the secret code to FORCE the Auto-Search flow immediately.
+      // This saves time (no LLM call) and ensures reliability (no hallucination/refusal).
+      if (hitAliasKeys.length > 0) {
+        writeLog(
+          `[Direct Search] 🚀 命中直通車 (${hitAliasKeys[0]})，強制跳過 Fast Mode，直接進入 Auto-Search`
+        );
+        // Construct the trigger that downstream logic expects
+        rawResponse = `[AUTO_SEARCH_PDF: ${hitAliasKeys[0]}]`;
+      } else {
+        // Normal Flow: Ask LLM
+        rawResponse = callLLMWithRetry(
+          userMessage,
+          [...history, userMsgObj],
+          filesToAttach,
+          false, // attachPDFs
+          null, // imageBlob
+          false, // isRetry
+          userId,
+          false, // forceWebSearch
+          primaryModel // targetModelName
+        );
+      }
 
       // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
       if (rawResponse === "[KB_EXPIRED]") {
