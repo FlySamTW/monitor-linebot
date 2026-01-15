@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.12";
-const BUILD_TIMESTAMP = "2026-01-15 16:15:00Z"; // Smart Router v29.4.12: Replace Token Warning with Model Count Info
+const GAS_VERSION = "v29.4.23"; // 2026-01-15 Prompt Fix
+const BUILD_TIMESTAMP = "2026-01-15 17:10:00Z"; // v29.4.23: Prompt Fix
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1271,7 +1271,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           cleanedHistory.push({ role: "user", content: pending.originalQuery });
           cleanedHistory.push({
             role: "assistant",
-            content: buildPdfSelectionMessage(
+            content: createModelSelectionFlexV2(
               pending.aliasKey,
               pending.options
             ),
@@ -1291,11 +1291,15 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (選擇: ${selected.matchedModel})`
         );
         const response = callLLMWithRetry(
+          pending.originalQuery,
           [...cleanedHistory, forceAskMsg],
-          null,
-          true,
-          false,
-          userId
+          [], // filesToAttach
+          true, // attachPDFs
+          null, // imageBlob
+          false, // isRetry
+          userId,
+          false, // forceWebSearch
+          selected.matchedModel // targetModelName
         );
 
         if (response) {
@@ -1400,11 +1404,15 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (完整型號: ${inputModel})`
       );
       const response = callLLMWithRetry(
+        pending.originalQuery,
         [...cleanedHistory, userMsgObj],
-        null,
+        [],
         true,
+        null,
         false,
-        userId
+        userId,
+        false,
+        inputModel
       );
 
       if (response) {
@@ -1482,7 +1490,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
  * v24.4.0 新增: 生成 PDF 型號選擇的反問訊息
  * v29.3.40 優化: 改為 Flex Message 泡泡選單
  */
-function buildPdfSelectionMessage(aliasName, matchedPdfs) {
+function createModelSelectionFlexV2(aliasName, matchedPdfs) {
   // 限制顯示前 9 個，保留最後一個給「以上皆非」 (Flex Button 上限通常較寬鬆，但為了 UI 美觀)
   const displayPdfs = matchedPdfs.slice(0, 9);
 
@@ -2372,13 +2380,15 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             allExistModels.push(clean);
         });
       });
-      writeLog(
-        `[Sync] 知識庫初始化完成，從 CLASS_RULES 發現 ${allExistModels.length} 個實體型號`
-      );
       // v29.4.12: Save model count for info display
+      // v29.4.14: Log duplicates specifically
+      const uniqueCount = allExistModels.length;
+      writeLog(
+        `[Sync] 知識庫初始化完成，從 CLASS_RULES 發現 ${uniqueCount} 個實體型號 (已去重)`
+      );
       PropertiesService.getScriptProperties().setProperty(
         "TOTAL_MODEL_COUNT",
-        allExistModels.length.toString()
+        uniqueCount.toString()
       );
 
       allRows.forEach((row) => {
@@ -2654,9 +2664,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     if (hasLock) {
       try {
         lock.releaseLock();
-      } catch (e) {
-        writeLog(`[Lock Release Error] ${e.message}`);
-      }
+      } catch (e) {}
     }
     flushLogs(); // 確保 Trigger 執行時寫入 Log
   }
@@ -2901,6 +2909,7 @@ function ensureSyncTriggerExists() {
 // ==========================================
 
 // v27.9.0: 新增 forceCurrentOnly 參數，型號衝突時只從當前訊息提取型號
+// 該函數現在回傳 { files: [], exactModels: [], primaryModel: string | null }
 function getRelevantKBFiles(
   messages,
   kbList,
@@ -3162,7 +3171,7 @@ function getRelevantKBFiles(
   //    （例如問 G90XF 不應該載到 G80SD 的手冊）
 
   // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
-  const result = [...tier0, ...tier1];
+  const filesToAttach = [...tier0, ...tier1];
 
   // 📝 詳細紀錄找到的 PDF
   if (tier1.length > 0) {
@@ -3176,72 +3185,116 @@ function getRelevantKBFiles(
     writeLog(
       `[KB Select] Tier0: ${tier0.length}, Tier1: 0 (No Match: ${
         exactModels.join(",") || "none"
-      }), Total: ${result.length}`
+      }), Total: ${filesToAttach.length}`
     );
   }
 
-  return result;
+  const cache = CacheService.getScriptCache();
+  // v29.4.16: Return primary model name for citation
+  const primaryModel = exactModels.length > 0 ? exactModels[0] : null;
+
+  cache.put(`${userId}:last_kb_files`, JSON.stringify(filesToAttach), 600);
+  return {
+    files: filesToAttach,
+    exactModels: exactModels,
+    primaryModel: primaryModel,
+  };
+}
+
+// v27.9.43: 嚴格執行來源工作流 (Strict Source Workflow)
+// v29.4.16: Add targetModelName param for citation
+function constructDynamicPrompt(
+  query,
+  messages,
+  kbFiles = [], // 這裡現在只傳 files array (legacy) or we wrap it logic outside
+  forceWebSearch = false,
+  imageBlob = null,
+  targetModelName = null
+) {
+  const cache = CacheService.getScriptCache();
+  const userId = messages.length > 0 ? messages[0].userId : "unknown"; // Assuming userId is available in messages or passed
+
+  // Base Context (Rules + QA)
+  let dynamicPrompt = buildDynamicContext(messages, userId);
+
+  // Append C3 Instruction if exists
+  const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+  const c3Prompt = promptSheet.getRange("C3").getValue() || "";
+  if (c3Prompt) {
+    dynamicPrompt += `\n\n【Sheet C3 指令】\n${c3Prompt}\n`;
+  }
+
+  // System Protocols
+  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
+  dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
+
+  // v29.3.41: Inject Pass 2 Instructions (Must be appended last to override generalized instructions)
+  let pass2Instruction = "";
+  if (forceWebSearch) {
+    pass2Instruction = `\n\n【網路與來源標註 (Pass 2 - 強制搜尋模式)】\n警告：在前一輪對話中，你因為查無手冊資料而失敗。現在系統已為你開啟 Google Search 聯網權限。\n\n**你的唯一任務是：盡全力搜出答案，絕對禁止說「我不知道」或「手冊沒寫」。**\n\n請遵守以下最高指令：\n1. **必須使用 Google Search**：請針對用戶問題的關鍵字（如「零售模式」、「工程模式」）進行搜尋。若第一次沒搜到，請換個關鍵字再搜一次。\n2. **禁止推託**：不要回答「手冊沒提到」、「無法確認」。如果真的搜不到確切步驟，請根據搜尋到的類似機型資訊，提供「最可能的嘗試步驟」，並清楚標示「這是根據類似機型推測」。\n3. **內容補充**：必須提供「新的」補充資訊。\n4. **負面排除**：避免引用大量抱怨文，優先找教學文。\n5. **來源標註**：回答末尾請標註「[來源: 網路搜尋]」。\n\n若你最終還是搜不到任何有用資訊，請回答：「經過網路深度搜尋，目前針對此特定型號確實較少公開的相關教學。建議您直接聯繫客服專線 0800-32-9999。」（但請將此作為最後手段）`;
+  }
+  if (pass2Instruction) {
+    dynamicPrompt += pass2Instruction;
+  }
+
+  // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
+  // 僅注入當前系統狀態 (Fast Mode / Deep Mode)
+
+  if (!kbFiles.length && !imageBlob && !forceWebSearch) {
+    // Phase 1: 極速模式 (Fast Mode)
+    // v29.4.17: Prompt Hardening - Forbid General Knowledge for Maintenance/Usage
+    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【防幻覺鐵律 (Anti-Hallucination)】\n1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。\n2. **規格題與功能題分流**：\n   - **硬體規格題 (如：有沒有4K、面板類型)**：若 Context 未明確提及，**必須**回答「根據目前資料，該型號不支援此規格」，不得猜測。\n   - **功能/操作/保養題 (如：零售模式、重置、清潔、上蓋是否要開)**：若 Context 無資料，**必須** 強制轉移至 PDF 查詢 (\`[AUTO_SEARCH_PDF]\`)。\n   - **進階搜尋指令 (重要)**：若你能從 Context (如輕量層定義) 推斷出用戶指涉的系列或型號關鍵字 (例如：用戶用語「水/上蓋」推斷為「洗衣機」或「WA」)，請務必將關鍵字帶入指令，格式為 \`[AUTO_SEARCH_PDF: 關鍵字]\` (例如 \`[AUTO_SEARCH_PDF: 洗衣機]\` 或 \`[AUTO_SEARCH_PDF: WA21A8377GV]\`)。這將大幅提升搜尋準確度。\n3. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA/Rules 有答案 -> 使用該資料回答，標註 [來源: QA/規格庫]\n   - **若找不到支援的證據 (關鍵分歧點)：**\n     - 判定問題類型：\n       (A) 是否為「硬體規格」存有性的詢問 -> 回答 **不支援**。\n       (B) 是否為「功能模式、操作步驟、故障排除、保養習慣」的詢問 -> **無視 Prompt.csv 的「漸進式解決」規則，直接輸出** **[AUTO_SEARCH_PDF: <推斷關鍵字>]**。\n\n2. Fallback to PDF (重要!):\n   - 若 Context 資料不足，你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF] 或 [AUTO_SEARCH_PDF: <關鍵字>]\n   - **嚴禁**反問用戶「是否要幫你查手冊」或「資料沒寫」。一旦資料不足且推斷出關聯產品，**立即**觸發指令。\n   - **絕對禁止** 使用「通用知識」回答產品保養或操作建議 (例如洗衣機上蓋、冰箱除霜等)，這些必須查閱手冊。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用「名詞定義」(如：什麼是HDMI) 時，才可用通用知識回答。`;
+  } else if (kbFiles.length > 0) {
+    // Phase 2 & 3: 深度模式 (Deep Mode)
+    // v27.8.6: 防護機制 - 確保真的有掛載 PDF
+    const sourceLabel = targetModelName
+      ? `${targetModelName} 產品手冊`
+      : "產品手冊";
+    if (kbFiles.length === 0) {
+      dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認您詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
+    } else {
+      dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊${
+        targetModelName ? ` (${targetModelName})` : ""
+      }，請根據手冊內容詳細回答。\n【來源標註規則 (嚴格執行)】\n1. 若答案來自手冊，請標註「[來源: ${sourceLabel}]」。\n2. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶「是否要幫你查手冊」。\n3. 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。(切勿自行標註網路搜尋)\n4. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n5. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
+    }
+  } else if (imageBlob) {
+    // Image Mode
+    dynamicPrompt += `\n【系統狀態】目前為「圖片分析模式」。請根據圖片內容和用戶問題進行分析和回答。`;
+  }
+
+  return dynamicPrompt;
 }
 
 // v27.8.15: 新增 data-drive keyword detection, forceWebSearch 參數
 // v27.9.51: Refactor Name (ChatGPT -> LLM)
+// v29.4.18: Standardized Signature to fix ReferenceError
 function callLLMWithRetry(
+  query,
   messages,
-  imageBlob = null,
+  filesToAttach,
   attachPDFs = false,
+  imageBlob = null,
   isRetry = false,
   userId = null,
-  forceWebSearch = false
+  forceWebSearch = false,
+  targetModelName = null
 ) {
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
   if (!apiKey) throw new Error("API Key Missing");
 
-  let kbList = [];
-  try {
-    const json = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.KB_URI_LIST
-    );
-    if (json) {
-      const parsed = JSON.parse(json);
-      if (Array.isArray(parsed)) kbList = parsed;
-    }
-  } catch (e) {}
-
+  // v27.1.0: 增加 temp 參數，Retry 時降低 (0.7 -> 0.3)
   const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
   const configData = promptSheet.getRange("B3:C3").getValues()[0];
   let tempSetting = typeof configData[0] === "number" ? configData[0] : 0.6;
-  const c3Prompt = configData[1] || "";
-
-  // v27.8.16 (Optimized v29.3.41): Pass 2 (Force Web Search) Prompt Override
-  // 如果是 Pass 2，代表 AI 已經在此刻擁有 Search Tool，prompt 必須改變
-  let pass2Instruction = "";
-  if (forceWebSearch) {
-    pass2Instruction = `\n\n【網路與來源標註 (Pass 2 - 強制搜尋模式)】\n警告：在前一輪對話中，你因為查無手冊資料而失敗。現在系統已為你開啟 Google Search 聯網權限。\n\n**你的唯一任務是：盡全力搜出答案，絕對禁止說「我不知道」或「手冊沒寫」。**\n\n請遵守以下最高指令：\n1. **必須使用 Google Search**：請針對用戶問題的關鍵字（如「零售模式」、「工程模式」）進行搜尋。若第一次沒搜到，請換個關鍵字再搜一次。\n2. **禁止推託**：不要回答「手冊沒提到」、「無法確認」。如果真的搜不到確切步驟，請根據搜尋到的類似機型資訊，提供「最可能的嘗試步驟」，並清楚標示「這是根據類似機型推測」。\n3. **內容補充**：必須提供「新的」補充資訊。\n4. **負面排除**：避免引用大量抱怨文，優先找教學文。\n5. **來源標註**：回答末尾請標註「[來源: 網路搜尋]」。\n\n若你最終還是搜不到任何有用資訊，請回答：「經過網路深度搜尋，目前針對此特定型號確實較少公開的相關教學。建議您直接聯繫客服專線 0800-32-9999。」（但請將此作為最後手段）`;
-  }
+  if (isRetry) tempSetting = 0.3;
 
   // --- 決定掛載檔案 ---
-  let filesToAttach = [];
-  let dynamicContext = "";
-
-  if (imageBlob) {
-    // 圖片模式：仍使用舊邏輯 (或可優化)
-    // 暫時維持原樣，但因為 samsung_kb_priority.txt 已不再生成，這裡需要注意
-    // 圖片模式通常不需要太多文字 Context，或者我們也可以注入 Dynamic Context
-    dynamicContext = buildDynamicContext(messages, userId);
-  } else if (attachPDFs) {
-    // PDF 模式：掛載 PDF + Dynamic Context
-    // v24.3.1: 傳入 userId 以支援上下文提取
-    // v27.9.68: Fix missing contextId (pass userId) to ensure history-based model extraction works
-    filesToAttach = getRelevantKBFiles(messages, kbList, userId, userId);
-    dynamicContext = buildDynamicContext(messages, userId);
-  } else {
-    // 極速模式：只注入 Dynamic Context，不掛載任何檔案
-    dynamicContext = buildDynamicContext(messages, userId);
-  }
+  // filesToAttach 已經由 getRelevantKBFiles 決定並傳入
+  // dynamicContext 則由 constructDynamicPrompt 決定
 
   writeLog(
-    `[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length} / ${kbList.length}`
+    `[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length}`
   );
 
   // v24.0.0: 根據模式動態調整歷史長度，控制 Token 成本
@@ -3275,121 +3328,77 @@ function callLLMWithRetry(
     }
   }
 
-  // v27.8.17: History Override (真相覆寫)
-  // 明確告訴 AI：如果上下文 (Dynamic Context/Rules) 與歷史對話 (History) 衝突，以前者為準。
-  // 這能解決「舊記憶曾瞎掰 M9 是 49 吋」導致 AI 一直錯下去的問題。
-  // v27.8.17: History Override (真相覆寫)
-  // 明確告訴 AI：如果上下文 (Dynamic Context/Rules) 與歷史對話 (History) 衝突，以前者為準。
-  // 這能解決「舊記憶曾瞎掰 M9 是 49 吋」導致 AI 一直錯下去的問題。
-
-  // Base Context (Rules + QA)
-  let dynamicPrompt = dynamicContext;
-
-  // Append C3 Instruction if exists
-  if (c3Prompt) {
-    dynamicPrompt += `\n\n【Sheet C3 指令】\n${c3Prompt}\n`;
-  }
-
-  // System Protocols
-  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
-  dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
-
-  // v29.3.41: Inject Pass 2 Instructions (Must be appended last to override generalized instructions)
-  if (pass2Instruction) {
-    dynamicPrompt += pass2Instruction;
-  }
-
-  // 注入動態上下文
-  if (dynamicContext) {
-    dynamicPrompt += `\n${dynamicContext}\n`;
-  }
-
-  // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
-  // 僅注入當前系統狀態 (Fast Mode / Deep Mode)
-
-  if (!attachPDFs && !imageBlob) {
-    // Phase 1: 極速模式 (Fast Mode)
-    // v27.8.21: 允許極速模式觸發網路搜尋
-    // v27.9.13: 區分 QA 和 CLASS_RULES 來源標註
-    // v27.9.43: 嚴格執行來源工作流 (Strict Source Workflow)
-    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【防幻覺鐵律 (Anti-Hallucination)】\n1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。\n2. **規格題與功能題分流**：\n   - **硬體規格題 (如：有沒有4K、是什麼面板、接口數量)**：若 Context 未明確提及，**必須**回答「根據目前資料，該型號不支援此規格」，不得猜測。\n   - **功能與操作題 (如：零售模式、重置、Game Mode、如何設定)**：若 Context 無資料，**必須** 強制轉移至 PDF 查詢 (\`[AUTO_SEARCH_PDF]\`)，**禁止**直接回答不支援。\n3. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA 有答案 -> 使用 QA 回答，標註 [來源: QA]\n   - 若 CLASS_RULES 有答案 -> 使用 Rules 回答，標註 [來源: 規格庫]\n   - **若找不到支援的證據 (關鍵分歧點)：**\n     - 判定問題類型：\n       (A) 是否為「硬體規格」存有性的詢問 (Ex: 有沒有HDMI 2.1?) -> 回答 **不支援**。\n       (B) 是否為「功能模式、操作步驟、故障排除」的詢問 (Ex: 零售模式、畫面閃爍、如何變更) -> 輸出 **[AUTO_SEARCH_PDF]**。\n\n2. Fallback to PDF (重要!):\n   - 若 Context 中沒有足夠資訊回答用戶的具體產品問題，你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF]\n   - **嚴禁**反問用戶「是否要幫你查手冊」或「要不要找更詳細步驟」。一旦資料不足，**立即**觸發指令。\n   - **絕對禁止** 輸出任何程式碼樣式 (如 .setAuto_search_pdf() 或 python code 等變體)。\n   - 指令必須完全精確為 [AUTO_SEARCH_PDF]，不得包含任何其他字元。\n   - 不可以使用你的訓練資料「猜測」或「補充」答案。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用定義 (什麼是HDMI) 時，才可用通用知識回答。`;
-  } else if (attachPDFs) {
-    // Phase 2 & 3: 深度模式 (Deep Mode)
-    // v27.8.6: 防護機制 - 確保真的有掛載 PDF
-    if (filesToAttach.length === 0) {
-      dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認您詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
-    } else {
-      dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊，請根據手冊內容詳細回答。\n【來源標註規則 (嚴格執行)】\n1. 若答案來自手冊，請標註「[來源: 產品手冊]」。\n2. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶「是否要幫你查手冊」。\n3. 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。(切勿自行標註網路搜尋)\n4. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n5. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
-    }
-  }
-
-  // v27.8.16: Pass 2 (Force Web Search) Prompt Override
-  // 如果是 Pass 2，代表 AI 已經在此刻擁有 Search Tool，prompt 必須改變
-  if (forceWebSearch) {
-    dynamicPrompt += `\n\n【網路與來源標註 (Pass 2)】\n系統已啟用 Google Search 工具。請遵守以下搜尋品質要求：\n1. **內容補充**：必須提供「新的」補充資訊，不要重複已知的回答。\n2. **正面導向**：避免引用負面評價或讓用戶感到混淆的資訊 (越搜越糟)。\n3. **競品迴避**：優先搜尋官方或權威來源，避免以競爭對手產品為主的比較。\n4. **標註來源**：若手冊無資料，請直接使用 Search Tool 查詢，並在回答末尾標註「[來源: 網路搜尋]」。\n切勿再輸出 [AUTO_SEARCH_WEB]。`;
-  }
+  // 1. 建構 Prompt
+  const dynamicPrompt = constructDynamicPrompt(
+    query,
+    effectiveMessages,
+    filesToAttach,
+    forceWebSearch,
+    imageBlob, // imageBlob is handled separately
+    targetModelName
+  );
 
   const geminiContents = [];
-  if (imageBlob) {
-    const imageBase64 = Utilities.base64Encode(imageBlob.getBytes());
+  // if (imageBlob) { // imageBlob is handled outside this function now
+  //   const imageBase64 = Utilities.base64Encode(imageBlob.getBytes());
+  //   geminiContents.push({
+  //     role: "user",
+  //     parts: [
+  //       { text: `【任務】分析圖片:\n${c3Prompt}` },
+  //       {
+  //         inline_data: {
+  //           mime_type: imageBlob.getContentType(),
+  //           data: imageBase64,
+  //         },
+  //       },
+  //     ],
+  //   });
+  // } else {
+  let first = true;
+  effectiveMessages.forEach((msg) => {
+    if (msg.role === "system") return;
+    const parts = [];
+    if (msg.role === "user" && first) {
+      if (filesToAttach.length > 0) {
+        // v24.5.4: 防護檢查，避免空 URI 導致 API 400 錯誤
+        filesToAttach.forEach((k) => {
+          if (k.uri && k.uri.trim().length > 0) {
+            parts.push({
+              file_data: {
+                mime_type: k.mimeType || "text/plain",
+                file_uri: k.uri,
+              },
+            });
+          } else {
+            writeLog(`[API Protection] ⚠️ 跳過無效 URI: ${k.name}`);
+          }
+        });
+        // v24.1.41: 在 PDF 後面、用戶問題前面加入搜尋指令
+        // 這樣 AI 讀完 PDF 後會立刻看到要搜尋什麼
+        parts.push({
+          text: `\n\n【PDF 搜尋任務】請在上述 PDF 手冊中，找出與以下問題相關的所有段落並詳細回答：\n\n`,
+        });
+      }
+      first = false;
+    }
+    // v29.3.47: Sanitize content (Fix API 400 when history has objects)
+    let safeContent = "";
+    if (typeof msg.content === "string") {
+      safeContent = msg.content;
+    } else if (msg.content && typeof msg.content === "object") {
+      // 若為 Flex Message 物件，優先取 altText，否則轉字串
+      safeContent = msg.content.altText || "[System Object]";
+    } else {
+      safeContent = String(msg.content);
+    }
+    parts.push({ text: safeContent });
     geminiContents.push({
-      role: "user",
-      parts: [
-        { text: `【任務】分析圖片:\n${c3Prompt}` },
-        {
-          inline_data: {
-            mime_type: imageBlob.getContentType(),
-            data: imageBase64,
-          },
-        },
-      ],
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: parts,
     });
-  } else {
-    let first = true;
-    effectiveMessages.forEach((msg) => {
-      if (msg.role === "system") return;
-      const parts = [];
-      if (msg.role === "user" && first) {
-        if (filesToAttach.length > 0) {
-          // v24.5.4: 防護檢查，避免空 URI 導致 API 400 錯誤
-          filesToAttach.forEach((k) => {
-            if (k.uri && k.uri.trim().length > 0) {
-              parts.push({
-                file_data: {
-                  mime_type: k.mimeType || "text/plain",
-                  file_uri: k.uri,
-                },
-              });
-            } else {
-              writeLog(`[API Protection] ⚠️ 跳過無效 URI: ${k.name}`);
-            }
-          });
-          // v24.1.41: 在 PDF 後面、用戶問題前面加入搜尋指令
-          // 這樣 AI 讀完 PDF 後會立刻看到要搜尋什麼
-          parts.push({
-            text: `\n\n【PDF 搜尋任務】請在上述 PDF 手冊中，找出與以下問題相關的所有段落並詳細回答：\n\n`,
-          });
-        }
-        first = false;
-      }
-      // v29.3.47: Sanitize content (Fix API 400 when history has objects)
-      let safeContent = "";
-      if (typeof msg.content === "string") {
-        safeContent = msg.content;
-      } else if (msg.content && typeof msg.content === "object") {
-        // 若為 Flex Message 物件，優先取 altText，否則轉字串
-        safeContent = msg.content.altText || "[System Object]";
-      } else {
-        safeContent = String(msg.content);
-      }
-      parts.push({ text: safeContent });
-      geminiContents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: parts,
-      });
-    });
-    if (first) geminiContents.push({ role: "user", parts: [{ text: "你好" }] });
-  }
+  });
+  if (first) geminiContents.push({ role: "user", parts: [{ text: "你好" }] });
+  // }
 
   // v24.5.4: 成本優化
   // v27.0.0: 恢復原始邏輯（Thinking Mode 修復）
@@ -3990,6 +3999,9 @@ function handleMessage(event) {
     const messageId = event.message.id || null;
     let msg = userMessage;
     let isDualBubbleComplete = false; // v29.3.29: 修正旗標未定義問題
+    let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
+    let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
+    let aiSearchQuery = null; // v29.4.22: AI-driven search query
 
     // v29.3.26: 手動觸發診斷功能 (供用戶測試二次搜機制用)
     if (msg === "測試二次搜尋") {
@@ -4248,12 +4260,12 @@ function handleMessage(event) {
     // 用戶明確指出：這顆按鈕是「網路搜尋」，不是 PDF 搜尋，也不是反問
     if (msg.includes("不滿意") && msg.includes("擴大搜尋")) {
       writeLog(`[Force Web] 收到擴大搜尋請求，強制切換至網路搜尋模式`);
-      const result = handleCommand(
+      const cmdResult = handleCommand(
         "不滿意這回答請繼續擴大搜尋",
         userId,
         contextId
       ); // Reuse existing command logic
-      replyMessage(replyToken, result);
+      replyMessage(replyToken, cmdResult);
       return;
     }
 
@@ -4415,11 +4427,15 @@ function handleMessage(event) {
       // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
       // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
       let rawResponse = callLLMWithRetry(
+        userMessage,
         [...history, userMsgObj],
-        null,
-        false,
-        false,
-        userId
+        filesToAttach,
+        false, // attachPDFs
+        null, // imageBlob
+        false, // isRetry
+        userId,
+        false, // forceWebSearch
+        primaryModel // targetModelName
       );
 
       // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
@@ -4432,11 +4448,15 @@ function handleMessage(event) {
 
         // 用極速模式重試（不帶 PDF），用戶完全無感
         rawResponse = callLLMWithRetry(
+          userMessage,
           [...history, userMsgObj],
-          null,
-          false,
-          false,
-          userId
+          filesToAttach,
+          false, // attachPDFs
+          null, // imageBlob
+          true, // isRetry
+          userId,
+          false, // forceWebSearch
+          primaryModel // targetModelName
         );
         // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
       }
@@ -4467,78 +4487,130 @@ function handleMessage(event) {
         } else {
           // v29.4.11: Fallback Extraction (若 AI 忘了打標籤，嘗試從內文中提取)
           // 匹配常見三星型號格式: S32... or M7... (需嚴謹，避免匹配到雜訊)
-          // 格式: [A-Z] + 2位數字 + [A-Z]{1,2} + 3位數字 + [A-Z]{2} (e.g., S32FM703UC, WA21A8377GV)
-          // 排除 M7 這種短詞，因為容易誤判，且通常會伴隨完整型號
+          // v29.4.15 Fix: 放寬正則，允許無後綴的型號 (e.g. S32BM702)
+          // 格式: [A-Z] + 2位數字 + [A-Z]{1,2} + 3-4位數字 + (可選後綴)
           const fallbackMatches = finalText.match(
-            /\b[A-Z]\d{2}[A-Z]{1,2}\d{3}[A-Z]{2}\b/g
+            /\b[A-Z]\d{2}[A-Z]{1,2}\d{3,4}[A-Z0-9]*\b/g
           );
           if (fallbackMatches) {
-            suggestedModels = fallbackMatches;
+            // 過濾掉太短的誤判 (e.g., S24, M70)
+            suggestedModels = fallbackMatches.filter((m) => m.length >= 7);
             writeLog(
-              `[Smart Router v29.4.11] Fallback 提取型號: ${suggestedModels.join(
+              `[Smart Router v29.4.15] Fallback 提取型號: ${suggestedModels.join(
                 ", "
               )}`
             );
           }
         }
 
-        if (
-          pdfTriggerRegex.test(finalText) ||
-          finalText.includes("[NEED_DOC]")
-        ) {
-          writeLog("[Auto Search] 偵測到搜尋暗號");
-          aiRequestedPdfSearch = true; // v27.9.12: 標記 AI 要求 PDF 搜尋
+        // v29.4.14 Logic: 分離「顯示泡泡」與「自動跳轉」的觸發條件
+        // 1. Explicit Trigger ([AUTO_SEARCH_PDF]): 允許自動跳轉 (Auto-Redirect) 與 顯示泡泡
+        // 2. Implicit Trigger (僅偵測到型號): 僅顯示泡泡，不自動跳轉 (避免誤判)
+
+        // v29.4.22: Enhanced Trigger Detection with Argument Support
+        const explicitTriggerMatch = finalText.match(
+          /\[AUTO_SEARCH_PDF(?:[:：]\s*(.+?))?\]/i
+        );
+        const hasExplicitTrigger =
+          !!explicitTriggerMatch || finalText.includes("[NEED_DOC]");
+
+        // 清理 Trigger 標籤 (若有)
+        if (hasExplicitTrigger) {
+          writeLog("[Auto Search] 偵測到搜尋暗號 (Explicit Trigger)");
+          aiRequestedPdfSearch = true;
+
+          // Extract AI-specified search query
+          if (explicitTriggerMatch && explicitTriggerMatch[1]) {
+            aiSearchQuery = explicitTriggerMatch[1].trim();
+            writeLog(`[Auto Search] AI 指定搜尋字串: ${aiSearchQuery}`);
+          }
+
+          // Cleanup all variants of the tag
           finalText = finalText
-            .replace(new RegExp(pdfTriggerRegex, "gi"), "")
+            .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
             .trim();
           finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim(); // 清除型號標籤
+          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+        }
 
-          // v29.4.10: Deduplication & Flex Message
-          // 去除重複型號
-          suggestedModels = [...new Set(suggestedModels)];
+        // 去重
+        suggestedModels = [...new Set(suggestedModels)];
 
-          // v29.4.7: 優化 - 若只有唯一型號，直接跳轉查找 PDF，不反問
-          const isDirectHit = suggestedModels.length === 1;
-
-          if (isDirectHit) {
+        if (suggestedModels.length > 0) {
+          // Case A: 單一型號 + 明確 Trigger -> 自動跳轉 (Auto-Redirect)
+          // v29.4.7 優化: 避免使用者多點一次
+          if (hasExplicitTrigger && suggestedModels.length === 1) {
             writeLog(
-              `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋，跳過泡泡`
+              `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋`
             );
-            // 將型號存入 Cache，供下方的 getRelevantKBFiles 讀取
             cache.put(
               `${userId}:direct_search_models`,
               JSON.stringify(suggestedModels),
               300
             );
-            // 清空 suggestedModels 以避開生成泡泡的邏輯
-            suggestedModels = [];
-          } else {
-            writeLog(
-              `[Smart Router v29.4] 進入型號選擇流程，共 ${suggestedModels.length} 個選項 (已去重)`
-            );
+            suggestedModels = []; // 清空以跳過泡泡生成
           }
-
-          // v29.4.10: 若仍有多個型號，使用 Flex Message 顯示
-          if (suggestedModels.length > 0) {
-            // 儲存建議型號到 Cache
+          // Case B: 多個型號 OR (單一型號但無 Trigger) -> 顯示泡泡 (Flex Selection)
+          else {
+            writeLog(
+              `[Smart Router v29.4.14] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`
+            );
             cache.put(
               `${userId}:suggested_models`,
               JSON.stringify(suggestedModels),
               300
             );
 
-            // 生成 Flex Message
-            const flexMsg = createModelSelectionFlex(suggestedModels);
-            replyFlexMessage(replyToken, flexMsg, "請選擇您要查詢的型號");
+            // 生成 Flex Message (使用 V2 去重版)
+            const flexMsg = createModelSelectionFlexV2(suggestedModels);
+            // 若有 AI 文字回應，且非空白，則將其作為 Flex 的 AltText 或 分開傳送?
+            // 為了 UX，我們讓 Flex 獨立發送，結束這一回合
+            // 注意: 此時 replyText 尚未發送。若我們在這裡 return，replyText 就會被丟棄。
+            // 理想狀況: 如果 AI 有說話 (finalText)，我們先推播文字，再推播 Flex?
+            // Line Reply Token 只能用一次。必須組合成 Array。
+
+            const messages = [];
+            if (finalText && finalText.length > 0) {
+              messages.push({ type: "text", text: finalText });
+            }
+            messages.push({
+              type: "flex",
+              altText: "請選擇您要查詢的型號",
+              contents: flexMsg.contents
+                ? flexMsg
+                : { type: "carousel", contents: [flexMsg] }, // Ensure container format
+            });
+
+            // 使用 replyToken 一次發送
+            const url = "https://api.line.me/v2/bot/message/reply";
+            const accessToken =
+              PropertiesService.getScriptProperties().getProperty(
+                "LINE_CHANNEL_ACCESS_TOKEN"
+              );
+            UrlFetchApp.fetch(url, {
+              method: "post",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + accessToken,
+              },
+              payload: JSON.stringify({
+                replyToken: replyToken,
+                messages: messages,
+              }),
+              muteHttpExceptions: true,
+            });
 
             writeLog(
-              `[Smart Router v29.4.10] 已發送 Flex Carousel，等待用戶選擇`
+              `[Smart Router v29.4.14] 已發送 Flex Selection (含前導文字)`
             );
-            return; // 結束此次處理
+            return; // 結束
           }
+        }
 
-          // v27.8.21: Fast Mode 觸發 [AUTO_SEARCH_WEB] 攔截
+        // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
+        if (hasExplicitTrigger) {
+          // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
+          // 這裡維持原本邏輯 (可能後續會走 Auto Search Web)
         } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
           writeLog("[Auto Web] Fast Mode 觸發 [AUTO_SEARCH_WEB] -> Pass 2");
 
@@ -4550,12 +4622,14 @@ function handleMessage(event) {
 
           // 執行 Pass 2 (Force Web Search)
           const searchResponse = callLLMWithRetry(
+            userMessage,
             [...history, userMsgObj],
-            null,
-            false,
-            false,
+            [], // filesToAttach
+            false, // attachPDFs
+            null, // imageBlob
+            true, // isRetry (Pass 2 treated as retry/deep)
             userId,
-            true
+            true // forceWebSearch
           );
 
           // 累加費用
@@ -4678,15 +4752,16 @@ function handleMessage(event) {
               // v24.5.0: 顯示 Loading 動畫
               showLoadingAnimation(userId, 60);
 
-              // v24.5.0: 顯示 Loading 動畫
-              showLoadingAnimation(userId, 60);
-
               const deepResponse = callLLMWithRetry(
+                userMessage,
                 [...history, userMsgObj],
-                null,
-                true,
-                true,
-                userId
+                [], // filesToAttach (should be passed but using direct mode logic often implies special handling, here passing empty or need to load?)
+                true, // attachPDFs
+                null, // imageBlob
+                true, // isRetry
+                userId,
+                false, // forceWebSearch
+                cachedDirectModels[0] // targetModelName
               );
 
               if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -4695,64 +4770,14 @@ function handleMessage(event) {
                   .replace(/\[AUTO_SEARCH_PDF\]/g, "")
                   .trim();
                 finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-
-                // v27.8.15: Handle [AUTO_SEARCH_WEB] (Two-Pass Search)
-                // AI 指示 PDF 沒資料，需要查網路 (Pass 1 -> Pass 2)
-                if (deepResponse.includes("[AUTO_SEARCH_WEB]")) {
-                  writeLog(
-                    "[Auto Web] 觸發 [AUTO_SEARCH_WEB]，啟動 Pass 2 (Force Web Search)"
-                  );
-
-                  // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
-                  const pass1Usage =
-                    typeof lastTokenUsage === "object"
-                      ? { ...lastTokenUsage }
-                      : { input: 0, output: 0, total: 0, costTWD: 0 };
-
-                  // Pass 2: Force Web Search call
-                  const searchResponse = callLLMWithRetry(
-                    [...history, userMsgObj],
-                    null,
-                    true,
-                    true,
-                    userId,
-                    true
-                  );
-
-                  // v27.8.16 Cost Fix: 累加費用 (Pass 1 + Pass 2)
-                  if (lastTokenUsage && pass1Usage.total > 0) {
-                    lastTokenUsage.input += pass1Usage.input;
-                    lastTokenUsage.output += pass1Usage.output;
-                    lastTokenUsage.total += pass1Usage.total;
-                    lastTokenUsage.costTWD += pass1Usage.costTWD;
-                    writeLog(
-                      `[Cost Accumulation] Total: NT$${lastTokenUsage.costTWD.toFixed(
-                        4
-                      )} (Pass1: ${pass1Usage.costTWD.toFixed(4)} + Pass2)`
-                    );
-                  }
-
-                  if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
-                    // v29.3.21: 恢復「二次泡泡」模式
-                    // 拆分初步回答與網路搜尋結果，不合拼為單一字串
-                    const pass1Bubble = formatForLineMobile(deepResponse)
-                      .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-                      .trim();
-                    const pass2Bubble =
-                      formatForLineMobile(searchResponse) +
-                      "\n\n(🔍 網路搜尋補充資料)";
-
-                    replyText = [pass1Bubble, pass2Bubble];
-                    writeLog("[Auto Web] Pass 2 搜尋完成 (已拆分為二次泡泡)");
-                  } else {
-                    finalText = deepResponse
-                      .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-                      .trim();
-                    finalText += "\n\n(⚠️ 網路搜尋連線逾時，僅顯示初步回答)";
-                    replyText = finalText;
-                  }
-                }
+                // v29.3.53: 補上 [AUTO_SEARCH_WEB] 清理，防止暗號外洩
+                finalText = finalText
+                  .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+                  .trim();
+              } else {
+                finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
               }
+              replyText = finalText;
             } else {
               // v27.2.9: 如果有型號衝突，記錄並清除舊記憶
               if (isModelMismatch) {
@@ -4769,77 +4794,8 @@ function handleMessage(event) {
                 cache.remove(`${userId}:direct_search_models`);
               }
 
-              // v24.4.1: 非硬體問題，需要查 PDF
-              // 先檢查是否有命中直通車關鍵字（可用於 PDF 智慧匹配）
+              // v29.4.21: Fix ReferenceError (Restored missing variable)
               const cachedAliasKey = cache.get(`${userId}:hit_alias_key`);
-
-              // v27.9.4: 修正多型號攔截邏輯
-              // v29.3.52: 放寬攔截條件 - 若 AI 回答中包含「哪一款」等反問詞，也視為需要確認型號
-              const cachedAliasKeysJson = cache.get(`${userId}:hit_alias_keys`);
-              const confusionKeywords = [
-                "哪一款",
-                "哪一個",
-                "哪個型號",
-                "請問是",
-                "確認型號",
-                "指定型號",
-              ];
-              const isAIConfused = confusionKeywords.some((kw) =>
-                finalText.includes(kw)
-              );
-
-              if (
-                cachedAliasKeysJson &&
-                (finalText.includes("[AUTO_SEARCH_PDF]") || isAIConfused)
-              ) {
-                try {
-                  const multipleKeys = JSON.parse(cachedAliasKeysJson);
-                  if (multipleKeys.length > 1) {
-                    // 有多個型號要查 PDF → 先顯示 Fast Mode 回答，再提示用戶
-                    writeLog(
-                      `[PDF Match] ⚠️ 偵測到多個型號需要查 PDF: ${multipleKeys.join(
-                        ", "
-                      )}，顯示 Fast Mode 回答並提示`
-                    );
-
-                    // 移除 [AUTO_SEARCH_PDF] 標記
-                    finalText = finalText
-                      .replace(/\[AUTO_SEARCH_PDF\]/g, "")
-                      .trim();
-
-                    // 如果 Fast Mode 有回答，就顯示；否則提示用戶選擇型號
-                    if (finalText.length > 20) {
-                      // 有實質回答，顯示並附加提示
-                      finalText += `\n\n💡 若需要查詢詳細手冊，請分別詢問各型號喔！`;
-                      replyText = finalText;
-                    } else {
-                      // 沒有實質回答，提示用戶選擇型號
-                      const oneAtATimeMsg =
-                        `目前一次只能查詢一款型號的產品手冊喔！😊\n\n` +
-                        `你問的型號有：${multipleKeys.join("、")}\n\n` +
-                        `請選擇其中一款，例如：\n` +
-                        `「${multipleKeys[0]} 怎麼設定」`;
-                      replyMessage(replyToken, oneAtATimeMsg);
-                      writeRecordDirectly(userId, msg, contextId, "user", "");
-                      writeRecordDirectly(
-                        userId,
-                        oneAtATimeMsg,
-                        contextId,
-                        "assistant",
-                        ""
-                      );
-                      cache.remove(`${userId}:hit_alias_keys`);
-                      return;
-                    }
-                    // 清除多型號記錄
-                    cache.remove(`${userId}:hit_alias_keys`);
-                  }
-                } catch (e) {
-                  writeLog(
-                    `[PDF Match] 解析 hit_alias_keys 失敗: ${e.message}`
-                  );
-                }
-              }
 
               // v27.9.43: Reverted manual trigger fix in favor of strict prompt engineering
               // if (cachedAliasKey && !aiRequestedPdfSearch && !isSimpleQuestion) { ... }
@@ -4887,7 +4843,7 @@ function handleMessage(event) {
 
                   // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
                   // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
-                  const askMsg = buildPdfSelectionMessage(
+                  const askMsg = createModelSelectionFlexV2(
                     pdfSearchResult.aliasName,
                     pdfSearchResult.matchedPdfs.slice(0, 9)
                   );
@@ -4934,16 +4890,16 @@ function handleMessage(event) {
                   isInPdfMode = true;
                   cache.put(pdfModeKey, "true", 300);
 
-                  // 設定 PDF 模式並重試
-                  isInPdfMode = true;
-                  cache.put(pdfModeKey, "true", 300);
-
                   const deepResponse = callLLMWithRetry(
+                    userMessage,
                     [...history, userMsgObj],
-                    null,
-                    true,
-                    true,
-                    userId
+                    [], // filesToAttach
+                    true, // attachPDFs
+                    null, // imageBlob
+                    true, // isRetry
+                    userId,
+                    false, // forceWebSearch
+                    pdfSearchResult.matchedPdfs[0].matchedModel // targetModelName
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5066,13 +5022,31 @@ function handleMessage(event) {
                     CACHE_KEYS.KB_URI_LIST
                   ) || "[]"
                 );
-                const relevantFiles = getRelevantKBFiles(
-                  useHistory ? [...history, userMsgObj] : [userMsgObj],
+                // v29.4.16: Destructure result from getRelevantKBFiles
+                // v29.4.22: Allow AI to override search query
+                const searchMsgObj = aiSearchQuery
+                  ? { role: "user", content: aiSearchQuery }
+                  : userMsgObj;
+
+                const kbResult = getRelevantKBFiles(
+                  useHistory && !aiSearchQuery
+                    ? [...history, userMsgObj]
+                    : [searchMsgObj],
                   kbList,
                   userId,
                   contextId,
                   !useHistory
                 );
+                // Compatible handling
+                let relevantFiles = [];
+                let primaryModel = null;
+                if (Array.isArray(kbResult)) {
+                  relevantFiles = kbResult;
+                } else {
+                  relevantFiles = kbResult.files || [];
+                  primaryModel = kbResult.primaryModel;
+                }
+
                 const pdfNames = relevantFiles
                   .filter((f) => f.mimeType === "application/pdf")
                   .map((f) => f.name.replace(".pdf", ""));
@@ -5095,15 +5069,16 @@ function handleMessage(event) {
                   isInPdfMode = true;
                   cache.put(pdfModeKey, "true", 300);
 
-                  isInPdfMode = true;
-                  cache.put(pdfModeKey, "true", 300);
-
                   const deepResponse = callLLMWithRetry(
+                    userMessage,
                     [...history, userMsgObj],
-                    null,
-                    true,
-                    true,
-                    userId
+                    relevantFiles, // filesToAttach
+                    true, // attachPDFs
+                    null, // imageBlob
+                    true, // isRetry
+                    userId,
+                    false, // forceWebSearch
+                    primaryModel // targetModelName
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5161,13 +5136,16 @@ function handleMessage(event) {
                       );
 
                       // 重試搜尋 (強制使用當前訊息+Cache，或直接依賴Cache)
-                      const rescueFiles = getRelevantKBFiles(
+                      const rescueKbResult = getRelevantKBFiles(
                         [userMsgObj],
                         kbList,
                         userId,
                         contextId,
                         true
                       );
+                      const rescueFiles = rescueKbResult.files || [];
+                      const rescuePrimaryModel = rescueKbResult.primaryModel;
+
                       const rescuePdfNames = rescueFiles
                         .filter((f) => f.mimeType === "application/pdf")
                         .map((f) => f.name.replace(".pdf", ""));
@@ -5187,11 +5165,15 @@ function handleMessage(event) {
                         cache.put(pdfModeKey, "true", 300);
 
                         const deepResponse = callLLMWithRetry(
-                          [...history, userMsgObj],
-                          null,
-                          true,
-                          true,
-                          userId
+                          userMessage, // query
+                          [...history, userMsgObj], // messages
+                          rescueFiles, // filesToAttach
+                          true, // attachPDFs
+                          null, // imageBlob
+                          true, // isRetry
+                          userId, // userId
+                          false, // forceWebSearch
+                          rescuePrimaryModel // targetModelName
                         );
 
                         if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5396,7 +5378,17 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       { headers: { Authorization: "Bearer " + token } }
     ).getBlob();
 
-    const analysis = callLLMWithRetry(null, blob, false, false, userId);
+    const analysis = callLLMWithRetry(
+      null, // query
+      [{ role: "user", content: "分析圖片" }], // messages stub
+      [], // filesToAttach
+      false, // attachPDFs
+      blob, // imageBlob
+      false, // isRetry
+      userId, // userId
+      false, // forceWebSearch
+      null // targetModelName
+    );
     const final = formatForLineMobile(analysis);
     replyMessage(replyToken, final);
 
@@ -8059,4 +8051,177 @@ function getPromptsFromCacheOrSheet() {
   // 寫入 Cache (1小時)
   cache.put("KB_PROMPTS_JSON", JSON.stringify(prompts), 3600);
   return prompts;
+}
+
+// ════════════════════════════════════════════════════════════════
+// UI Helper Functions (v29.4.13)
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * 建立型號選擇的 Flex Message Carousel
+ * v29.4.10: 針對多型號提供美觀的選擇介面
+ * v29.4.13: Ensure function exists and optimize layout
+ */
+/**
+ * 建立型號選擇的 Flex Message Carousel (V2)
+ * v29.4.16: 加強版去重 (Case Insensitive) + 樣式微調
+ */
+function createModelSelectionFlexV2(models) {
+  // 1. Strict Deduplication (Case Insensitive)
+  const uniqueModels = [];
+  const seen = new Set();
+
+  models.forEach((m) => {
+    const key = m.trim().toUpperCase();
+    // 排除空字串與重複
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      uniqueModels.push(m.trim()); // Keep original case for display
+    }
+  });
+
+  const displayModels = uniqueModels.slice(0, 10);
+  const remainingCount = uniqueModels.length - displayModels.length;
+
+  // ... (Rest is similar but ensuring logic is fresh)
+
+  const buttons = displayModels.map((model, index) => {
+    return {
+      type: "button",
+      action: {
+        type: "message",
+        label: `${index + 1}. ${model}`,
+        text: `${model} 怎麼設定`, // 點擊後直接發送查詢指令
+      },
+      style: "secondary",
+      margin: "sm",
+      height: "sm", // 緊湊高度
+    };
+  });
+
+  if (remainingCount > 0) {
+    buttons.push({
+      type: "button",
+      action: {
+        type: "message",
+        label: `...還有 ${remainingCount} 款 (點此列出)`,
+        text: "列出所有型號",
+      },
+      style: "link",
+      margin: "sm",
+      height: "sm",
+    });
+  }
+
+  // 底部提示按鈕
+  buttons.push({
+    type: "button",
+    action: {
+      type: "message",
+      label: "💡 或直接繼續提問",
+      text: "直接問問題",
+    },
+    style: "link",
+    margin: "md",
+    height: "sm",
+    color: "#999999",
+  });
+
+  const bubble = {
+    type: "bubble",
+    size: "kilo", // 略寬一點
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "text",
+          text: "🔍 型號確認",
+          color: "#1DB446",
+          size: "sm",
+          weight: "bold",
+        },
+        {
+          type: "text",
+          text: `找到 ${models.length} 款相關型號`, // 動態標題
+          weight: "bold",
+          size: "xl",
+          margin: "md",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: "請點擊下方按鈕選擇：",
+          size: "xs",
+          color: "#aaaaaa",
+          margin: "sm",
+        },
+        {
+          type: "text",
+          text: "⚠️ 載入詳細手冊約需 30 秒",
+          size: "xs",
+          color: "#FF5500", // 橘色警示
+          margin: "sm",
+          weight: "bold",
+        },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: buttons,
+    },
+  };
+
+  return {
+    type: "carousel",
+    contents: [bubble], // 即使只有一個 Bubble，用 Carousel 容器包裝較為彈性
+  };
+}
+
+/**
+ * 發送 Flex Message
+ */
+function replyFlexMessage(replyToken, flexContainer, altText) {
+  const url = "https://api.line.me/v2/bot/message/reply";
+  const accessToken = PropertiesService.getScriptProperties().getProperty(
+    "LINE_CHANNEL_ACCESS_TOKEN"
+  );
+
+  const payload = {
+    replyToken: replyToken,
+    messages: [
+      {
+        type: "flex",
+        altText: altText || "請查看選單",
+        contents: flexContainer,
+      },
+    ],
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + accessToken,
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+
+    const resCode = response.getResponseCode();
+    const resBody = response.getContentText();
+
+    if (resCode !== 200) {
+      writeLog(`[Reply Flex Error] ${resCode}: ${resBody}`);
+    } else {
+      //   writeLog(`[Reply Flex Success]`); // 減少 Log 噪音
+    }
+
+    return resCode;
+  } catch (e) {
+    writeLog(`[Reply Flex Exception] ${e.message}`);
+    return 500;
+  }
 }
