@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.9";
-const BUILD_TIMESTAMP = "2026-01-15 15:25:00Z"; // Smart Router v29.4.9: Fix empty bubble API 400 error
+const GAS_VERSION = "v29.4.10";
+const BUILD_TIMESTAMP = "2026-01-15 15:35:00Z"; // Smart Router v29.4.10: Flex Message for Model Selection
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4473,53 +4473,48 @@ function handleMessage(event) {
           finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim(); // 清除型號標籤
 
-          // v29.4.0: 二段式 AI - 如果有建議型號，生成泡泡選項讓用戶選擇
+          // v29.4.10: Deduplication & Flex Message
+          // 去除重複型號
+          suggestedModels = [...new Set(suggestedModels)];
+
+          // v29.4.7: 優化 - 若只有唯一型號，直接跳轉查找 PDF，不反問
+          const isDirectHit = suggestedModels.length === 1;
+
+          if (isDirectHit) {
+            writeLog(
+              `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋，跳過泡泡`
+            );
+            // 將型號存入 Cache，供下方的 getRelevantKBFiles 讀取
+            cache.put(
+              `${userId}:direct_search_models`,
+              JSON.stringify(suggestedModels),
+              300
+            );
+            // 清空 suggestedModels 以避開生成泡泡的邏輯
+            suggestedModels = [];
+          } else {
+            writeLog(
+              `[Smart Router v29.4] 進入型號選擇流程，共 ${suggestedModels.length} 個選項 (已去重)`
+            );
+          }
+
+          // v29.4.10: 若仍有多個型號，使用 Flex Message 顯示
           if (suggestedModels.length > 0) {
-            // v29.4.7: 優化 - 若只有唯一型號，直接跳轉查找 PDF，不反問
-            const isDirectHit = suggestedModels.length === 1;
-
-            if (isDirectHit) {
-              writeLog(
-                `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋，跳過泡泡`
-              );
-              // 將型號存入 Cache，供下方的 getRelevantKBFiles 讀取
-              cache.put(
-                `${userId}:direct_search_models`,
-                JSON.stringify(suggestedModels),
-                300
-              );
-              // 清空 suggestedModels 以避開生成泡泡的邏輯
-              suggestedModels = [];
-            } else {
-              writeLog(
-                `[Smart Router v29.4] 進入型號選擇流程，共 ${suggestedModels.length} 個選項`
-              );
-            }
-
-            // 生成 Quick Reply 選項
-            const modelQuickReplies = suggestedModels
-              .slice(0, 10)
-              .map((model, idx) => ({
-                type: "action",
-                action: {
-                  type: "message",
-                  label: `${idx + 1}. ${model}`,
-                  text: model,
-                },
-              }));
-
-            // 儲存建議型號到 Cache，供後續選擇使用
+            // 儲存建議型號到 Cache
             cache.put(
               `${userId}:suggested_models`,
               JSON.stringify(suggestedModels),
               300
             );
 
-            // 回覆用戶，附帶泡泡選項
-            const selectPrompt = finalText || "請選擇你要查詢的型號：";
-            replyMessage(replyToken, selectPrompt, null, modelQuickReplies);
-            writeLog(`[Smart Router v29.4] 已發送型號選擇泡泡，等待用戶選擇`);
-            return; // 結束此次處理，等待用戶選擇
+            // 生成 Flex Message
+            const flexMsg = createModelSelectionFlex(suggestedModels);
+            replyFlexMessage(replyToken, flexMsg, "請選擇您要查詢的型號");
+
+            writeLog(
+              `[Smart Router v29.4.10] 已發送 Flex Carousel，等待用戶選擇`
+            );
+            return; // 結束此次處理
           }
 
           // v27.8.21: Fast Mode 觸發 [AUTO_SEARCH_WEB] 攔截
