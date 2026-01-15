@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.23"; // 2026-01-15 Prompt Fix
-const BUILD_TIMESTAMP = "2026-01-15 17:10:00Z"; // v29.4.23: Prompt Fix
+const GAS_VERSION = "v29.4.25"; // 2026-01-15 Compliant Save
+const BUILD_TIMESTAMP = "2026-01-15 17:38";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3009,9 +3009,9 @@ function getRelevantKBFiles(
   // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
   // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
   // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
-  // ⚠️ 不包含 ODYSSEY HUB、3D 等術語 - 這些只用於觸發直通車，不用於 PDF 匹配
+  // v29.4.24: Broaden Regex to support Appliances (WA/WD/VR) and full range
   const MODEL_REGEX =
-    /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+    /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
 
   // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
   // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
@@ -3028,10 +3028,20 @@ function getRelevantKBFiles(
         const mappedValue = keywordMap[key].toUpperCase();
         extendedQuery += " " + mappedValue;
 
-        // 提取型號（包括 LS 型號和 M/G 系列型號代碼）
-        const modelMatch = mappedValue.match(MODEL_REGEX);
-        if (modelMatch) {
-          exactModels = exactModels.concat(modelMatch);
+        // v29.4.24: Enhanced Mapping Logic for Series Descriptions
+        // If mapped value is a Model Code (e.g. "S32BM801"), use it.
+        // If mapped value is a Description (e.g. "系列_洗衣機...WA21..."), extract models from it.
+
+        const mapped = keywordMap[key];
+        // Check if mapped value looks like a single model code
+        if (mapped.match(new RegExp("^" + MODEL_REGEX.source + "$"))) {
+          if (!exactModels.includes(mapped)) exactModels.push(mapped);
+        } else {
+          // It's likely a description string, extract models from it
+          const potentialModels = mapped.match(MODEL_REGEX) || [];
+          potentialModels.forEach((m) => {
+            if (!exactModels.includes(m)) exactModels.push(m);
+          });
         }
 
         // 提取 LS 系列完整型號 (如 LS27DG602SCXZW → S27DG602SC)
