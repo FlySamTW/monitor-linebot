@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.1";
-const BUILD_TIMESTAMP = "2026-01-15 13:50:00Z"; // Smart Router v29.4.1: Fix Spec Layer Injection
+const GAS_VERSION = "v29.4.2";
+const BUILD_TIMESTAMP = "2026-01-15 14:05:00Z"; // Smart Router v29.4.2: Fix Cache Key Definitions
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2062,6 +2062,9 @@ const CACHE_KEYS = {
   PDF_MODE_PREFIX: "pdf_mode_",
   // v24.4.0: PDF 型號選擇機制
   PENDING_PDF_SELECTION: "pending_pdf_sel_", // 等待用戶選擇 PDF 型號
+  // v29.4.0: 分層知識庫 Cache Keys
+  KB_RULES_LIGHT_PREFIX: "KB_RULES_LIGHT_",
+  KB_RULES_SPEC_PREFIX: "KB_RULES_SPEC_",
 };
 
 const CONFIG = {
@@ -2466,7 +2469,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     const lightChunks = chunkString(definitionsContent, 25000);
     cache.put("KB_RULES_LIGHT_COUNT", lightChunks.length.toString(), 21600);
     lightChunks.forEach((chunk, index) => {
-      cache.put(`KB_RULES_LIGHT_${index}`, chunk, 21600);
+      cache.put(`${CACHE_KEYS.KB_RULES_LIGHT_PREFIX}${index}`, chunk, 21600);
     });
     writeLog(
       `[Sync] 輕量層儲存完成: ${lightChunks.length} 塊, ${definitionsContent.length} 字元`
@@ -2476,7 +2479,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     const specChunks = chunkString(specsContent, 25000);
     cache.put("KB_RULES_SPEC_COUNT", specChunks.length.toString(), 21600);
     specChunks.forEach((chunk, index) => {
-      cache.put(`KB_RULES_SPEC_${index}`, chunk, 21600);
+      cache.put(`${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${index}`, chunk, 21600);
     });
     writeLog(
       `[Sync] 規格層儲存完成: ${specChunks.length} 塊, ${specsContent.length} 字元`
