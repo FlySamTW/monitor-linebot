@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.5";
-const BUILD_TIMESTAMP = "2026-01-15 14:30:00Z"; // Smart Router v29.4.5: Revert to Clean Fast Mode (QA+Light only)
+const GAS_VERSION = "v29.4.6";
+const BUILD_TIMESTAMP = "2026-01-15 14:38:00Z"; // Smart Router v29.4.6: Implement Smart Spec Retrieval (Weighted Search)
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1945,12 +1945,96 @@ function buildDynamicContext(messages, userId) {
       );
     }
 
-    // 3️⃣ 規格層 (Spec Layer) - 原始規劃不注入，交由輕量層判斷型號
-    // 若 AI 無法回答，會輸出 [AUTO_SEARCH_PDF]，屆時才查 PDF (Deep Mode)
-    // 這裡保持乾淨，不進行預篩選，避免雜訊與變數錯誤
-    writeLog(
-      `[DynamicContext v29.4.5] 保持 Fast Mode 純淨: 僅 QA + Light Rules`
-    );
+    // 3️⃣ 規格層智慧檢索 (Spec Layer Smart Retrieval) v29.4.6
+    // 核心目標：針對 "40吋", "144Hz" 等屬性查詢，進行加權關鍵字檢索，避免簡單篩選的雜訊
+    let specContext = "";
+    let fullSpecRules = "";
+    let chunkIndex = 0;
+    while (true) {
+      const chunk = cache.get(
+        `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`
+      );
+      if (!chunk) break;
+      fullSpecRules += chunk;
+      chunkIndex++;
+    }
+
+    if (fullSpecRules) {
+      const specLines = fullSpecRules.split("\n");
+
+      // 1. Tokenizer: 識別單位與關鍵字
+      // 優先匹配帶單位的屬性 (Score: 10)：\d+(吋|寸|inch|Hz|hz|ms|nits|cd|K|k|MP|mp)
+      const unitRegex = /\d+(?:吋|寸|inch|Hz|hz|ms|nits|cd|K|k|MP|mp)/gi;
+      // 其次匹配中文或英數單詞 (Score: 1)：[a-zA-Z0-9]+|[\u4e00-\u9fa5]{2,}
+      const wordRegex = /[a-zA-Z0-9]+|[\u4e00-\u9fa5]{2,}/g;
+
+      // A. 提取高權重 Token (單位)
+      const highValTokens = latestUserMsg.match(unitRegex) || [];
+
+      // B. 提取一般 Token (去除已匹配的高權重 Token，避免重複)
+      let remainingMsg = latestUserMsg;
+      highValTokens.forEach(
+        (t) => (remainingMsg = remainingMsg.replace(t, ""))
+      );
+      const normalTokens = remainingMsg.match(wordRegex) || [];
+
+      // 僅保留長度 >= 2 的一般 Token (過濾掉純數字單個字元，避免 "40" 匹配到 "40000")
+      const validNormalTokens = normalTokens.filter(
+        (t) => t.length >= 2 && !/^\d+$/.test(t)
+      );
+
+      writeLog(
+        `[SmartRetrieval] HighTokens: ${JSON.stringify(
+          highValTokens
+        )}, NormalTokens: ${JSON.stringify(validNormalTokens)}`
+      );
+
+      if (highValTokens.length > 0 || validNormalTokens.length > 0) {
+        // 2. Scorer: 評分機制
+        const scoredLines = specLines.map((line) => {
+          let score = 0;
+          const lowerLine = line.toLowerCase();
+
+          // 單位命中 (+10分)
+          highValTokens.forEach((token) => {
+            if (lowerLine.includes(token.toLowerCase())) score += 10;
+          });
+
+          // 一般命中 (+1分)
+          validNormalTokens.forEach((token) => {
+            if (lowerLine.includes(token.toLowerCase())) score += 1;
+          });
+
+          return { line, score };
+        });
+
+        // 3. Injector: 擇優錄取 Top 20
+        // 過濾掉 0 分的，並按分數排序，取前 20 筆
+        const topLines = scoredLines
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 20)
+          .map((item) => item.line);
+
+        if (topLines.length > 0) {
+          specContext +=
+            "=== 🖥️ 產品型號詳細規格 (Spec Rules - Smart Filtered) ===\n";
+          specContext += topLines.join("\n") + "\n\n";
+          relevantContext += specContext;
+          writeLog(
+            `[SmartRetrieval] 注入 Top-${topLines.length} 規格行 (Max Score: ${
+              scoredLines.sort((a, b) => b.score - a.score)[0].score
+            })`
+          );
+        } else {
+          writeLog(`[SmartRetrieval] ⚠️ 無任何規格行命中關鍵字`);
+        }
+      } else {
+        writeLog(`[SmartRetrieval] ⚠️ 無有效搜索 Token，跳過規格檢索`);
+      }
+    } else {
+      writeLog(`[SmartRetrieval] ⚠️ 無法讀取 Spec Rules Cache`);
+    }
 
     // 3️⃣ 注入 Guide (型號識別指南)
     if (guide) {
