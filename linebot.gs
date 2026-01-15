@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.32"; // 2026-01-16 History Sanitization
-const BUILD_TIMESTAMP = "2026-01-16 00:05";
+const GAS_VERSION = "v29.4.33"; // 2026-01-16 PDF Flow Optimization (History Truncate + Escalation)
+const BUILD_TIMESTAMP = "2026-01-16 00:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3364,31 +3364,29 @@ function callLLMWithRetry(
 
   // v24.0.0: 根據模式動態調整歷史長度，控制 Token 成本
   // - Fast Mode: 保留 10 對 (20 則)
-  // - PDF Mode: 縮減至 6 對 (12 則)，節省約 800 Tokens 給 PDF
+  // - PDF Mode: v29.4.33 縮減至 2 對 (4 則)，大幅節省 Token 給 PDF
   let effectiveMessages = messages;
-  if (attachPDFs && messages.length > CONFIG.PDF_HISTORY_LIMIT * 2) {
-    // PDF 模式：只保留最近 6 對
-    // v24.1.12 修復：若有摘要 (Summary)，必須保留摘要訊息，否則 AI 會失憶
-    // 摘要通常在 index 0 (User) 和 1 (Assistant)
+  if (attachPDFs && messages.length > 4) {
+    // PDF 模式：只保留最近 2 對 (4 則) - v29.4.33 優化
+    // 更激進的截斷，因為 PDF 本身已經提供足夠上下文
     const hasSummary =
       messages.length > 0 && messages[0].content.includes("【系統自動摘要】");
 
     if (hasSummary && messages.length > 2) {
       const summaryMsgs = messages.slice(0, 2); // 保留摘要對
-      const recentMsgs = messages.slice(-(CONFIG.PDF_HISTORY_LIMIT * 2)); // 最近 6 對
-      // 避免重複 (如果 recent 已經包含了 summary)
+      const recentMsgs = messages.slice(-4); // 最近 2 對
       if (recentMsgs[0] === summaryMsgs[0]) {
         effectiveMessages = recentMsgs;
       } else {
         effectiveMessages = [...summaryMsgs, ...recentMsgs];
       }
       writeLog(
-        `[Token Control] PDF Mode: 保留摘要 + 最近歷史 (${effectiveMessages.length} 則)`
+        `[Token Control v29.4.33] PDF Mode: 保留摘要 + 最近 2 對 (${effectiveMessages.length} 則)`
       );
     } else {
-      effectiveMessages = messages.slice(-(CONFIG.PDF_HISTORY_LIMIT * 2));
+      effectiveMessages = messages.slice(-4); // 只保最近 2 對
       writeLog(
-        `[Token Control] PDF Mode: 歷史縮減 ${messages.length} -> ${effectiveMessages.length}`
+        `[Token Control v29.4.33] PDF Mode: 歷史截斷 ${messages.length} -> ${effectiveMessages.length} (省 Token)`
       );
     }
   }
@@ -4613,20 +4611,38 @@ function handleMessage(event) {
         // 清理 Trigger 標籤 (若有)
         if (hasExplicitTrigger) {
           writeLog("[Auto Search] 偵測到搜尋暗號 (Explicit Trigger)");
-          aiRequestedPdfSearch = true;
 
-          // Extract AI-specified search query
-          if (explicitTriggerMatch && explicitTriggerMatch[1]) {
-            aiSearchQuery = explicitTriggerMatch[1].trim();
-            writeLog(`[Auto Search] AI 指定搜尋字串: ${aiSearchQuery}`);
+          // v29.4.33: PDF 升級邏輯 - 追蹤是否已查過 PDF
+          // 如果本對話已經查過 PDF，則強制改為 Web Search
+          const pdfConsultedKey = `${userId}:pdf_consulted`;
+          const hasPdfConsulted = cache.get(pdfConsultedKey) === "true";
+
+          if (hasPdfConsulted) {
+            writeLog("[Auto Search v29.4.33] 本對話已查過 PDF，升級至網路搜尋");
+            // 將 [AUTO_SEARCH_PDF] 替換為 [AUTO_SEARCH_WEB]
+            finalText = finalText
+              .replace(
+                /\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi,
+                "[AUTO_SEARCH_WEB]"
+              )
+              .replace(/\[NEED_DOC\]/gi, "[AUTO_SEARCH_WEB]");
+            // 跳過 aiRequestedPdfSearch，讓後續 Web Search 邏輯接手
+          } else {
+            aiRequestedPdfSearch = true;
+
+            // Extract AI-specified search query
+            if (explicitTriggerMatch && explicitTriggerMatch[1]) {
+              aiSearchQuery = explicitTriggerMatch[1].trim();
+              writeLog(`[Auto Search] AI 指定搜尋字串: ${aiSearchQuery}`);
+            }
+
+            // Cleanup all variants of the tag
+            finalText = finalText
+              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
+              .trim();
+            finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+            finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
           }
-
-          // Cleanup all variants of the tag
-          finalText = finalText
-            .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
-            .trim();
-          finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
         }
 
         // 去重
@@ -4870,6 +4886,10 @@ function handleMessage(event) {
                 finalText = finalText
                   .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                   .trim();
+
+                // v29.4.33: 設置 PDF 已查詢標記
+                cache.put(`${userId}:pdf_consulted`, "true", 600);
+                writeLog("[PDF v29.4.33] 已設置 pdf_consulted 標記");
               } else {
                 finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
               }
@@ -5008,6 +5028,12 @@ function handleMessage(event) {
                     finalText = finalText
                       .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                       .trim();
+
+                    // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
+                    cache.put(`${userId}:pdf_consulted`, "true", 600); // 10 分鐘有效
+                    writeLog(
+                      "[PDF v29.4.33] 已設置 pdf_consulted 標記，後續追問將升級至 Web Search"
+                    );
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
                   }
