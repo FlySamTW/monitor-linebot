@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.10";
-const BUILD_TIMESTAMP = "2026-01-15 15:35:00Z"; // Smart Router v29.4.10: Flex Message for Model Selection
+const GAS_VERSION = "v29.4.11";
+const BUILD_TIMESTAMP = "2026-01-15 16:03:00Z"; // Smart Router v29.4.11: Fallback Model Extraction
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4459,6 +4459,22 @@ function handleMessage(event) {
           writeLog(
             `[Smart Router v29.4] AI 建議型號: ${suggestedModels.join(", ")}`
           );
+        } else {
+          // v29.4.11: Fallback Extraction (若 AI 忘了打標籤，嘗試從內文中提取)
+          // 匹配常見三星型號格式: S32... or M7... (需嚴謹，避免匹配到雜訊)
+          // 格式: [A-Z] + 2位數字 + [A-Z]{1,2} + 3位數字 + [A-Z]{2} (e.g., S32FM703UC, WA21A8377GV)
+          // 排除 M7 這種短詞，因為容易誤判，且通常會伴隨完整型號
+          const fallbackMatches = finalText.match(
+            /\b[A-Z]\d{2}[A-Z]{1,2}\d{3}[A-Z]{2}\b/g
+          );
+          if (fallbackMatches) {
+            suggestedModels = fallbackMatches;
+            writeLog(
+              `[Smart Router v29.4.11] Fallback 提取型號: ${suggestedModels.join(
+                ", "
+              )}`
+            );
+          }
         }
 
         if (
