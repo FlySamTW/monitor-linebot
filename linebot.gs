@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.26"; // 2026-01-15 Fix forceCurrentOnly model clearing
-const BUILD_TIMESTAMP = "2026-01-15 17:45";
+const GAS_VERSION = "v29.4.27"; // 2026-01-15 Fix ReferenceError aiSearchQuery
+const BUILD_TIMESTAMP = "2026-01-15 17:51";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2915,7 +2915,8 @@ function getRelevantKBFiles(
   kbList,
   userId = null,
   contextId = null,
-  forceCurrentOnly = false
+  forceCurrentOnly = false,
+  aiSearchQuery = null // v29.4.27: Added explicit aiSearchQuery param
 ) {
   const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
   const MAX_TIER1_COUNT = 2; // 精準匹配上限
@@ -5099,7 +5100,8 @@ function handleMessage(event) {
                   kbList,
                   userId,
                   contextId,
-                  !useHistory
+                  !useHistory,
+                  aiSearchQuery // v29.4.27: Pass aiSearchQuery explicitly
                 );
                 // Compatible handling
                 let relevantFiles = [];
