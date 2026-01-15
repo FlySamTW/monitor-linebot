@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.27"; // 2026-01-15 Fix ReferenceError aiSearchQuery
-const BUILD_TIMESTAMP = "2026-01-15 17:51";
+const GAS_VERSION = "v29.4.28"; // 2026-01-15 Force Auto-Search for Direct Keywords
+const BUILD_TIMESTAMP = "2026-01-15 17:58";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4413,21 +4413,33 @@ function handleMessage(event) {
       if (directSearchResult.hit) {
         // v27.9.1: 不再攔截 tooMany，讓 Fast Mode 先嘗試回答
         // 型號比較問題通常用 CLASS_RULES 就能回答
-        hitAliasKeys = directSearchResult.keys;
+        const hitKeys = directSearchResult.keys;
+        hitAliasKeys = hitKeys;
         writeLog(
-          `[Direct Search] 命中直通車關鍵字: ${hitAliasKeys.join(
+          `[Direct Search] 命中直通車關鍵字: ${hitKeys.join(
             ", "
-          )}，先走 Fast Mode`
+          )}，將強制 AI 進行 PDF 搜索 (Fast Mode Hint)`
         );
 
+        // v29.4.28: Force AI to trigger Auto-Search for Direct Keywords
+        // "M7" should behave like "Search M7"
+        // We append a System Hint to the message content passed to LLM (but not to User Log/Record?)
+        // Actually, callLLMWithRetry formatting might expose it if we aren't careful?
+        // No, callLLMWithRetry constructs the prompt. We can modify `userMessage` here?
+        // But `userMessage` is used for caching and recording.
+        // Better to handle this inside the prompt construction or just append here and record the raw message.
+        // Let's rely on the prompt's ability to see this hint.
+
+        // Note: We don't change `msg` (which is used for logic), but `userMessage` (passed to LLM).
+        // BUT wait, `userMessage` is passed to `callLLMWithRetry` as the first arg.
+
+        // We will append a hidden hint.
+        userMessage += `\n\n[System Hint: User mentioned keyword '${hitKeys[0]}'. You MUST output [AUTO_SEARCH_PDF: ${hitKeys[0]}] to check manuals.]`;
+
         // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
-        cache.put(`${userId}:hit_alias_key`, hitAliasKeys[0], 300); // 相容舊邏輯
-        if (hitAliasKeys.length > 1) {
-          cache.put(
-            `${userId}:hit_alias_keys`,
-            JSON.stringify(hitAliasKeys),
-            300
-          );
+        cache.put(`${userId}:hit_alias_key`, hitKeys[0], 300); // 相容舊邏輯
+        if (hitKeys.length > 1) {
+          cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
         }
       }
     }
