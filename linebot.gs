@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.6";
-const BUILD_TIMESTAMP = "2026-01-15 14:38:00Z"; // Smart Router v29.4.6: Implement Smart Spec Retrieval (Weighted Search)
+const GAS_VERSION = "v29.4.9";
+const BUILD_TIMESTAMP = "2026-01-15 15:25:00Z"; // Smart Router v29.4.9: Fix empty bubble API 400 error
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1989,7 +1989,41 @@ function buildDynamicContext(messages, userId) {
         )}, NormalTokens: ${JSON.stringify(validNormalTokens)}`
       );
 
+      // v29.4.8: 上下文回補機制 (Context Recovery)
+      // 若當前對話無任何關鍵字 (如「它規格是？」)，嘗試讀取上一輪的 Tokens
+      const lastTokensKey = `${CACHE_KEYS.LAST_SMART_TOKENS}${userId}`;
+      let usingFallback = false;
+
+      if (highValTokens.length === 0 && validNormalTokens.length === 0) {
+        const cachedTokensJson = cache.get(lastTokensKey);
+        if (cachedTokensJson) {
+          try {
+            const cachedTokens = JSON.parse(cachedTokensJson);
+            if (Array.isArray(cachedTokens) && cachedTokens.length > 0) {
+              cachedTokens.forEach((t) => validNormalTokens.push(t)); // 視為一般權重回補
+              usingFallback = true;
+              writeLog(
+                `[SmartRetrieval] ⚠️ 當前無關鍵字，回補上一輪 Tokens: ${JSON.stringify(
+                  cachedTokens
+                )}`
+              );
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
       if (highValTokens.length > 0 || validNormalTokens.length > 0) {
+        // 若有命中任何 Token (且非 Fallback 模式)，則更新 Cache 供下一輪使用
+        // 僅當這是一次「新的有效搜尋」時才更新，避免連續廢話導致 Cache 被空值覆蓋
+        if (!usingFallback) {
+          const allTokens = [...highValTokens, ...validNormalTokens];
+          // 僅保留前 5 個關鍵字，避免 Cache 爆炸
+          cache.put(lastTokensKey, JSON.stringify(allTokens.slice(0, 5)), 600);
+        }
+
+        // 2. Scorer: 評分機制
         // 2. Scorer: 評分機制
         const scoredLines = specLines.map((line) => {
           let score = 0;
@@ -2085,6 +2119,7 @@ const CACHE_KEYS = {
   // v29.4.0: 分層知識庫 Cache Keys
   KB_RULES_LIGHT_PREFIX: "KB_RULES_LIGHT_",
   KB_RULES_SPEC_PREFIX: "KB_RULES_SPEC_",
+  LAST_SMART_TOKENS: "last_smart_tokens_", // v29.4.8: 保存 Smart Retrieval 關鍵字
 };
 
 const CONFIG = {
@@ -4440,9 +4475,26 @@ function handleMessage(event) {
 
           // v29.4.0: 二段式 AI - 如果有建議型號，生成泡泡選項讓用戶選擇
           if (suggestedModels.length > 0) {
-            writeLog(
-              `[Smart Router v29.4] 進入型號選擇流程，共 ${suggestedModels.length} 個選項`
-            );
+            // v29.4.7: 優化 - 若只有唯一型號，直接跳轉查找 PDF，不反問
+            const isDirectHit = suggestedModels.length === 1;
+
+            if (isDirectHit) {
+              writeLog(
+                `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋，跳過泡泡`
+              );
+              // 將型號存入 Cache，供下方的 getRelevantKBFiles 讀取
+              cache.put(
+                `${userId}:direct_search_models`,
+                JSON.stringify(suggestedModels),
+                300
+              );
+              // 清空 suggestedModels 以避開生成泡泡的邏輯
+              suggestedModels = [];
+            } else {
+              writeLog(
+                `[Smart Router v29.4] 進入型號選擇流程，共 ${suggestedModels.length} 個選項`
+              );
+            }
 
             // 生成 Quick Reply 選項
             const modelQuickReplies = suggestedModels
@@ -4504,14 +4556,22 @@ function handleMessage(event) {
           }
 
           if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
-            // v29.3.24: Fast Mode 也要支援二次泡泡
-            const pass1Bubble = formatForLineMobile(rawResponse)
-              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-              .trim();
+            // v29.4.9: Fast Mode 也要支援二次泡泡
+            // Fix: 若 Pass 1 僅包含標籤 (replace 後為空)，則只發送 Pass 2，避免 LINE API 400 Error
             const pass2Bubble =
               formatForLineMobile(searchResponse) + "\n\n(🔍 網路搜尋補充資料)";
 
-            replyText = [pass1Bubble, pass2Bubble];
+            let pass1Bubble = formatForLineMobile(rawResponse)
+              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+              .trim();
+
+            if (pass1Bubble.length > 0) {
+              replyText = [pass1Bubble, pass2Bubble];
+            } else {
+              replyText = pass2Bubble;
+              writeLog("[Auto Web] Pass 1 為空，僅發送 Pass 2");
+            }
+
             isDualBubbleComplete = true; // v29.3.29: 標記已完成雙泡泡賦值
             writeLog("[Auto Web] Fast Mode 二次泡泡賦值成功");
           } else {
