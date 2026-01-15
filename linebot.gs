@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.2";
-const BUILD_TIMESTAMP = "2026-01-15 14:05:00Z"; // Smart Router v29.4.2: Fix Cache Key Definitions
+const GAS_VERSION = "v29.4.3";
+const BUILD_TIMESTAMP = "2026-01-15 14:08:00Z"; // Smart Router v29.4.3: Fix normalizedMsg undefined
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1965,7 +1965,7 @@ function buildDynamicContext(messages, userId) {
       // 寬鬆分詞：抓取所有 英數字串 (40, G7, M7) 和 中文詞 (2字以上)
       // v29.4.1: 特別允許純數字，以便匹配尺寸 (如 40)
       const tokens =
-        normalizedMsg.match(/[a-zA-Z0-9]+|[\u4e00-\u9fa5]{2,}/g) || [];
+        latestUserMsg.match(/[a-zA-Z0-9]+|[\u4e00-\u9fa5]{2,}/g) || [];
 
       // 去除太短的無意義數字 (如 1, 2)，但保留可能的型號簡稱或尺寸
       const validTokens = tokens.filter((t) => {
