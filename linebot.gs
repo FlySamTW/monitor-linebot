@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.11";
-const BUILD_TIMESTAMP = "2026-01-15 16:03:00Z"; // Smart Router v29.4.11: Fallback Model Extraction
+const GAS_VERSION = "v29.4.12";
+const BUILD_TIMESTAMP = "2026-01-15 16:15:00Z"; // Smart Router v29.4.12: Replace Token Warning with Model Count Info
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2374,6 +2374,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       });
       writeLog(
         `[Sync] 知識庫初始化完成，從 CLASS_RULES 發現 ${allExistModels.length} 個實體型號`
+      );
+      // v29.4.12: Save model count for info display
+      PropertiesService.getScriptProperties().setProperty(
+        "TOTAL_MODEL_COUNT",
+        allExistModels.length.toString()
       );
 
       allRows.forEach((row) => {
@@ -5288,7 +5293,12 @@ function handleMessage(event) {
           const tokenThreshold = isWebSearchPhase ? 40000 : 20000;
 
           if (lastTokenUsage.input > tokenThreshold) {
-            const warning = `\n\n⚠️ 知識庫超載警告：輸入 Token 已達 ${lastTokenUsage.input}，請聯繫 Sam 優化 QA/CLASS_RULES 資料量。`;
+            // v29.4.12: Replace Warning with Model Count Info
+            const modelCount =
+              PropertiesService.getScriptProperties().getProperty(
+                "TOTAL_MODEL_COUNT"
+              ) || "?";
+            const warning = `\n\n(資料庫內有${modelCount}筆型號)`;
             if (Array.isArray(replyText)) {
               replyText[replyText.length - 1] += warning;
             } else {
