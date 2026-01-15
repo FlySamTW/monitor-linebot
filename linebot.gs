@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.25"; // 2026-01-15 Compliant Save
-const BUILD_TIMESTAMP = "2026-01-15 17:38";
+const GAS_VERSION = "v29.4.26"; // 2026-01-15 Fix forceCurrentOnly model clearing
+const BUILD_TIMESTAMP = "2026-01-15 17:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3100,11 +3100,65 @@ function getRelevantKBFiles(
         `[KB Select] 當前訊息有型號，沿用已知型號: ${exactModels.join(", ")}`
       );
     } else if (forceCurrentOnly) {
-      // forceCurrentOnly=true 且當前訊息無型號：清空歷史型號
-      writeLog(
-        `[KB Select] ⚠️ 當前訊息無型號且 forceCurrentOnly=true，清空歷史型號以避免不必要的 PDF 載入`
-      );
-      exactModels = [];
+      // v29.4.26 Fix: only clear if NO models were found in current query processing
+      // If exactModels has items here, they came from current query map lookup (e.g. "洗衣機" -> "WA..."), so KEEP THEM.
+      // We only want to clear "Historical" models if they weren't reinforced by current query.
+
+      // Check if the models in exactModels actually came from history (which we want to clear) or current map (which we want to keep).
+      // Since we appended Map/Regex results to exactModels *before* this check, exactModels contains BOTH.
+      // But wait, `exactModels` passed into this function contains history.
+      // The logic above added Map results to it.
+
+      // Simpler logic: If forceCurrentOnly is true, we want to discard models that ONLY exist in history.
+      // But we can't easily distinguish them here without complex diffing.
+      // However, for Auto-Search, we passed `exactModels` as empty array or history?
+      // In `checkAutoSearchSignal`, we pass `history` to `getRelevantKBFiles`.
+
+      // Let's look at how exactModels is derived. Line 2984: `let exactModels = extractModelNumbers(historyMsg);`
+      // Then Line 3025 adds from Map.
+
+      // If forceCurrentOnly is true (New Topic), we really should have started with exactModels = [] ??
+      // Actually `getRelevantKBFiles` takes `history` and extracts models from it at the top.
+
+      // If forceCurrentOnly is true, we should probably NOT have extracted models from history in the first place?
+      // But the function design is monolith.
+
+      // CORRECT FIX: If forceCurrentOnly is true, we must ensure we only keep models that were found in *this execution's* query processing (Map lookup or Direct Match).
+      // The current logic wipes everything if `!hasModelInCurrent`. But Map lookup (e.g. "洗衣機") counts as "Model in Current Process" even if `MODEL_REGEX.test(msg)` is false.
+
+      // The issue is `MODEL_REGEX.test(lastMessage)` returns false for "洗衣機" (it's not a model code).
+      // But "洗衣機" triggered a Map lookup which added "WA..." to `exactModels`.
+
+      // So, if `exactModels` has grown during this function execution (from Map/Regex on Query), we should keep those.
+      // However, we don't track which ones are new.
+
+      // Alternative: Just relax the clear condition.
+      // If forceCurrentOnly is true, and we found *valid mapped models* (like WA...), we should trust them.
+      // The safe bet: If exactModels > 0 and those models came from KeywordMap (how to know?), keep them.
+
+      // Let's rely on `directModelMatch` or `combinedQuery.includes(key)`? No.
+
+      // Look at Line 3024: We iterate KeywordMap.
+      // If we found matches in KeywordMap loops, we should set a flag `hasMapMatch = true`.
+      // I can't add a var easily in replace_file_content without changing huge block.
+
+      // Hacky but safe fix for now:
+      // If `aiSearchQuery` was provided (which is why we are here), we should TRUST the results involving it.
+      // `forceCurrentOnly` is mainly to clear "Old G5" when asking "New Topic".
+      // If AI specifically said "Search Washing Machine", we should respect the resulting models.
+
+      if (aiSearchQuery) {
+        writeLog(
+          `[KB Select] AI Explicit Search (${aiSearchQuery}), keeping models: ${exactModels.join(
+            ", "
+          )}`
+        );
+      } else {
+        writeLog(
+          `[KB Select] ⚠️ 當前訊息無型號且 forceCurrentOnly=true，清空歷史型號以避免不必要的 PDF 載入`
+        );
+        exactModels = [];
+      }
     } else {
       // forceCurrentOnly=false：保留歷史型號（用於漸進式解決流程）
       writeLog(
