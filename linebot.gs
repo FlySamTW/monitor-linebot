@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.31"; // 2026-01-15 Fix Function Name Conflict
-const BUILD_TIMESTAMP = "2026-01-15 19:18";
+const GAS_VERSION = "v29.4.32"; // 2026-01-16 History Sanitization
+const BUILD_TIMESTAMP = "2026-01-16 00:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -7139,13 +7139,60 @@ function extractContextFromHistory(userId, contextId) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// v29.4.32: History Sanitization - Clean system tags and Flex objects
+// ════════════════════════════════════════════════════════════════
+function sanitizeHistoryContent(content) {
+  // 1. If not a string (e.g., Flex object), extract altText or fallback
+  if (typeof content !== "string") {
+    if (content && content.altText) {
+      content = `[選單] ${content.altText}`;
+    } else if (content && content.type === "flex") {
+      content = "[選單] 型號選擇";
+    } else if (content && typeof content === "object") {
+      content = "[系統訊息]";
+    } else {
+      content = String(content || "");
+    }
+  }
+
+  // 2. Remove System Hint tags (injected for Direct Search)
+  content = content.replace(/\[System Hint:[^\]]*\]/gi, "");
+
+  // 3. Remove Auto-Search tags (internal signals)
+  content = content.replace(/\[AUTO_SEARCH_PDF(?::[^\]]+)?\]/gi, "");
+  content = content.replace(/\[AUTO_SEARCH_WEB\]/gi, "");
+  content = content.replace(/\[NEED_DOC\]/gi, "");
+  content = content.replace(/\[型號:[^\]]+\]/gi, "");
+  content = content.replace(/\[KB_EXPIRED\]/gi, "");
+
+  // 4. Clean up [object Object] artifacts
+  content = content.replace(/\[object Object\]/g, "");
+
+  // 5. Trim excessive whitespace
+  content = content.replace(/\n{3,}/g, "\n\n").trim();
+
+  return content;
+}
+
+function sanitizeHistoryArray(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .map((msg) => ({
+      ...msg,
+      content: sanitizeHistoryContent(msg.content),
+    }))
+    .filter((msg) => msg.content && msg.content.length > 0);
+}
+
 function getHistoryFromCacheOrSheet(cid) {
   const c = CacheService.getScriptCache();
   const k = `${CACHE_KEYS.HISTORY_PREFIX}${cid}`;
   const v = c.get(k);
   if (v) {
     try {
-      return JSON.parse(v);
+      // v29.4.32: Sanitize history on read
+      return sanitizeHistoryArray(JSON.parse(v));
     } catch (e) {}
   }
   try {
@@ -7161,7 +7208,10 @@ function getHistoryFromCacheOrSheet(cid) {
       .matchEntireCell(true)
       .findNext();
     if (f) {
-      return JSON.parse(s.getRange(f.getRow(), 2).getValue());
+      // v29.4.32: Sanitize history on read
+      return sanitizeHistoryArray(
+        JSON.parse(s.getRange(f.getRow(), 2).getValue())
+      );
     }
   } catch (e) {}
   return [];
@@ -7169,6 +7219,10 @@ function getHistoryFromCacheOrSheet(cid) {
 
 function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
   try {
+    // v29.4.32: Sanitize content before storage
+    uMsg = { ...uMsg, content: sanitizeHistoryContent(uMsg.content) };
+    aMsg = { ...aMsg, content: sanitizeHistoryContent(aMsg.content) };
+
     let base = Array.isArray(prev) ? prev.slice() : [];
     if (base.length % 2 !== 0) {
       base.shift();
