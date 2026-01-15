@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.28"; // 2026-01-15 Force Auto-Search for Direct Keywords
-const BUILD_TIMESTAMP = "2026-01-15 17:58";
+const GAS_VERSION = "v29.4.29"; // 2026-01-15 Fix Hint Injection (Update userMsgObj)
+const BUILD_TIMESTAMP = "2026-01-15 18:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4434,7 +4434,11 @@ function handleMessage(event) {
         // BUT wait, `userMessage` is passed to `callLLMWithRetry` as the first arg.
 
         // We will append a hidden hint.
+        // We will append a hidden hint.
         userMessage += `\n\n[System Hint: User mentioned keyword '${hitKeys[0]}'. You MUST output [AUTO_SEARCH_PDF: ${hitKeys[0]}] to check manuals.]`;
+
+        // v29.4.29 Fix: Update userMsgObj so LLM actually sees the hint!
+        userMsgObj.content = userMessage;
 
         // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
         cache.put(`${userId}:hit_alias_key`, hitKeys[0], 300); // 相容舊邏輯
