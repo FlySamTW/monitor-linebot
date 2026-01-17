@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.19"; // 2026-01-17 Fix Flow: Fast->PDF->Web
-const BUILD_TIMESTAMP = "2026-01-17 22:07";
+const GAS_VERSION = "v29.5.20"; // 2026-01-17 Fix Single Model Bubble & Footer Text
+const BUILD_TIMESTAMP = "2026-01-17 22:16";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4735,8 +4735,9 @@ function handleMessage(event) {
             // 如果 AI 認為需要 PDF，會自己輸出 [AUTO_SEARCH_PDF]
             suggestedModels = []; // 清空以跳過泡泡生成
           }
-          // Case B: 多個型號 OR (單一型號但無 Trigger) -> 顯示泡泡 (Flex Selection)
-          else {
+          // Case B: 多個型號 -> 顯示泡泡 (Flex Selection)
+          // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
+          else if (suggestedModels.length > 1) {
             writeLog(
               `[Smart Router v29.4.14] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`
             );
@@ -8552,10 +8553,19 @@ function createModelSelectionFlexV3(models) {
       contents: [
         {
           type: "text",
-          text: "ℹ️ 點選後載入手冊約30秒",
+          text: "選擇型號後將查詢使用手冊，可能需要30秒",
+          size: "xxs",
+          color: "#888888",
+          align: "center",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: "或也可以不點選，輸入其他問題繼續",
           size: "xxs",
           color: "#AAAAAA",
           align: "center",
+          margin: "xs",
         },
       ],
       paddingAll: "8px",
