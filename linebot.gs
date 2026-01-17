@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.29"; // 2026-01-17 Fix getClassRules ReferenceError
-const BUILD_TIMESTAMP = "2026-01-17 22:52";
+const GAS_VERSION = "v29.5.30"; // 2026-01-17 Smart Router Auto-Lock Logic
+const BUILD_TIMESTAMP = "2026-01-17 22:58";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4797,9 +4797,28 @@ function handleMessage(event) {
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
         
+        // v29.5.13: 訊息中偵測到具體型號 Detection
+        // 如果訊息本身包含具體型號 (例如 "G5 怎麼設定")，且該型號在建議列表中
+        // 則自動鎖定該型號，不顯示列表
+        let matchedInMsg = [];
+        if (suggestedModels.length > 0) {
+             const userMsgUpper = userMsgObj.content.toUpperCase();
+             matchedInMsg = suggestedModels.filter(m => userMsgUpper.includes(m.toUpperCase()));
+        }
+        
+        let autoLocked = false;
+        if (matchedInMsg.length > 0) {
+          writeLog(
+            `[Smart Router v29.5.13] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`
+          );
+          suggestedModels = matchedInMsg;
+          autoLocked = true; // 標記為自動鎖定，後續流程會根據此變數決定是否直接跳轉
+        }
+
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
-        let autoLocked = false; // v29.5.15: 追蹤是否自動鎖定
-        if (suggestedModels.length > 1) {
+        // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
+        // autoLocked 已經在上面定義並賦值了，這裡直接沿用逻辑，并补充额外的检测逻辑 (如果上面没检测到)
+        if (!autoLocked && suggestedModels.length > 1) {
           // 1. Auto-Lock: 若用戶訊息已包含某個具體型號，直接鎖定該型號
           const userMsgUpper = userMessage.toUpperCase();
           const matchedModel = suggestedModels.find(m => 
