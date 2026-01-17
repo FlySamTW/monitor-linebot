@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.16"; // 2026-01-17 Compact Bubble Design
-const BUILD_TIMESTAMP = "2026-01-17 21:52";
+const GAS_VERSION = "v29.5.17"; // 2026-01-17 Fix Smart Router PDF Trigger
+const BUILD_TIMESTAMP = "2026-01-17 21:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4713,15 +4713,19 @@ function handleMessage(event) {
         if (suggestedModels.length > 0) {
           // Case A: 單一型號 + (明確 Trigger OR 自動鎖定) -> 自動跳轉 (Auto-Redirect)
           // v29.5.15: 加入 autoLocked 條件，使自動鎖定的單一型號也能跳轉
+          // v29.5.17: 修復！必須設置 aiRequestedPdfSearch = true 才能真正觸發 PDF 搜尋
           if ((hasExplicitTrigger || autoLocked) && suggestedModels.length === 1) {
             writeLog(
-              `[Smart Router v29.5.15] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋`
+              `[Smart Router v29.5.17] 命中唯一型號 ${suggestedModels[0]}，觸發 PDF 搜尋`
             );
             cache.put(
               `${userId}:direct_search_models`,
               JSON.stringify(suggestedModels),
               300
             );
+            // v29.5.17: 關鍵修復！設置 PDF 搜尋標記
+            aiRequestedPdfSearch = true;
+            aiSearchQuery = suggestedModels[0]; // 使用鎖定的型號作為搜尋關鍵字
             suggestedModels = []; // 清空以跳過泡泡生成
           }
           // Case B: 多個型號 OR (單一型號但無 Trigger) -> 顯示泡泡 (Flex Selection)
