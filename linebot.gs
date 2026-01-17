@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.37"; // 2026-01-17 Fix: KB Reverse Alias Lookup (Allow G5 pdf for S27...)
-const BUILD_TIMESTAMP = "2026-01-17 23:55";
+const GAS_VERSION = "v29.5.38"; // 2026-01-18 Fix: Limit PDF to 1 max to avoid 50k token timeout
+const BUILD_TIMESTAMP = "2026-01-18 00:25";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2986,8 +2986,8 @@ function getRelevantKBFiles(
   forceCurrentOnly = false,
   aiSearchQuery = null // v29.4.27: Added explicit aiSearchQuery param
 ) {
-  const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
-  const MAX_TIER1_COUNT = 2; // 精準匹配上限
+  const MAX_PDF_COUNT = 1; // PDF 硬上限（不含 Tier 0）- 降低以加速回應 (v29.5.38 fix)
+  const MAX_TIER1_COUNT = 1; // 精準匹配上限
 
   let combinedQuery = "";
   let userCount = 0;
