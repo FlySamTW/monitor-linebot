@@ -5813,14 +5813,18 @@ function handleCommand(c, u, cid) {
     }
 
     // 執行搜尋
+    // v29.5.22: 修正參數順序
     writeLog(`[Command] 啟動 Pass 2 (Force Web Search), 次數: ${count}`);
     const searchResponse = callLLMWithRetry(
-      history,
-      null,
-      true, // forceWebSearch
-      false,
-      u,
-      true // isRetry
+      userMsg,      // query
+      history,      // messages
+      [],           // filesToAttach
+      false,        // attachPDFs
+      null,         // imageBlob
+      true,         // isRetry
+      u,            // userId
+      true,         // forceWebSearch
+      ""            // targetModelName
     );
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
