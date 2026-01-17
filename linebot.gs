@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.33"; // 2026-01-17 Fix: Resolve infinite loop & Expand Search TypeError
+const GAS_VERSION = "v29.5.34"; // 2026-01-17 Fix: Resolve infinite loop & Expand Search Logic
 const BUILD_TIMESTAMP = "2026-01-17 23:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
