@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.31"; // 2026-01-17 Unified Smart Router Logic
-const BUILD_TIMESTAMP = "2026-01-17 23:05";
+const GAS_VERSION = "v29.5.32"; // 2026-01-17 User Applied Fixes
+const BUILD_TIMESTAMP = "2026-01-17 23:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4797,24 +4797,31 @@ function handleMessage(event) {
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
         
-        // v29.5.13: 訊息中偵測到具體型號 Detection
-        // 如果訊息本身包含具體型號 (例如 "G5 怎麼設定")，且該型號在建議列表中
-        // 則自動鎖定該型號，不顯示列表
-        // v29.5.31: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
+        // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
         let autoLocked = false;
+
         // Step 1: Filter out short aliases if specific models exist
-        // 若存在具體長型號，優先保留它們，移除像 "G5", "M7" 這種模糊短代碼
         const specificModels = suggestedModels.filter((m) => m.length > 3);
         if (specificModels.length > 0) {
           suggestedModels = specificModels;
         }
 
         // Step 2: Auto-Lock if user message contains the model
-        // 若用戶訊息本身就包含該型號（例如點擊了選單按鈕），則強制鎖定，不再跳選單
         const normalizedMsg = userMessage.toUpperCase().replace(/\s+/g, "");
         const matchedInMsg = suggestedModels.filter((m) =>
           normalizedMsg.includes(m.toUpperCase().replace(/\s+/g, ""))
         );
+
+        if (matchedInMsg.length > 0) {
+          writeLog(
+            `[Smart Router v29.5.13] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`
+          );
+          suggestedModels = matchedInMsg;
+          autoLocked = true;
+        }
+
+        // Step 2: Auto-Lock if user message contains the model
+        // 若用戶訊息本身就包含該型號（例如點擊了選單按鈕），則強制鎖定，不再跳選單
         if (matchedInMsg.length > 0) {
           writeLog(
             `[Smart Router v29.5.31] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`
@@ -5943,14 +5950,16 @@ function handleCommand(c, u, cid) {
     if (!pdfConsulted && count <= 2) {
        // 重新執行關鍵字提取與 PDF 匹配
        // 為了簡單，直接用 CLASS_RULES 匹配 userMsg
-       const { extractModelKeywords } = getClassRules();
-       const models = extractModelKeywords(userMsg);
-       if (models.length > 0) {
-           const kbResult = getRelevantKBFiles(userMsg, models);
-           if (kbResult.files.length > 0) {
-               triggerPDF = true;
-               filesToAttach = kbResult.files;
-               writeLog(`[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`);
+       const ruleObj = getClassRules();
+       if (ruleObj && ruleObj.extractModelKeywords) {
+           const models = ruleObj.extractModelKeywords(userMsg);
+           if (models.length > 0) {
+               const kbResult = getRelevantKBFiles([ { role: 'user', content: userMsg } ], models, u);
+               if (kbResult.files.length > 0) {
+                   triggerPDF = true;
+                   filesToAttach = kbResult.files;
+                   writeLog(`[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`);
+               }
            }
        }
     }
