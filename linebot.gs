@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.34"; // 2026-01-17 Fix Direct Search Regression for Series Keywords
-const BUILD_TIMESTAMP = "2026-01-17 16:05";
+const GAS_VERSION = "v29.4.35"; // 2026-01-17 Fix Series Keyword PDF Matching (洗衣機)
+const BUILD_TIMESTAMP = "2026-01-17 16:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -991,9 +991,9 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
 
     for (const row of data) {
       const firstCol = String(row[0] || "").toUpperCase();
-      // 檢查是否為別稱行且包含此關鍵字
+      // v29.4.35: 檢查「別稱_」或「系列_」行，修復洗衣機等系列關鍵字
       if (
-        firstCol.startsWith("別稱_") &&
+        (firstCol.startsWith("別稱_") || firstCol.startsWith("系列_")) &&
         firstCol.includes(aliasKey.toUpperCase())
       ) {
         const content = String(row[0] || "") + "," + String(row[1] || "");
