@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.13"; // 2026-01-17 Fix Infinite Loop & Font
-const BUILD_TIMESTAMP = "2026-01-17 21:07";
+const GAS_VERSION = "v29.5.14"; // 2026-01-17 Beautiful Flex Message Redesign
+const BUILD_TIMESTAMP = "2026-01-17 21:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -8443,12 +8443,10 @@ function getPromptsFromCacheOrSheet() {
 
 /**
  * 建立型號選擇的 Flex Message Carousel
- * v29.4.10: 針對多型號提供美觀的選擇介面
- * v29.4.13: Ensure function exists and optimize layout
- */
-/**
- * 建立型號選擇的 Flex Message Carousel (V2)
- * v29.4.16: 加強版去重 (Case Insensitive) + 樣式微調
+ * v29.5.14: 全新設計 - 基於 LINE 最佳實踐
+ * - 使用 Hero 區塊作為視覺焦點
+ * - 現代化配色與間距
+ * - 清晰的按鈕層次結構
  */
 function createModelSelectionFlexV3(models) {
   // 1. Strict Deduplication (Case Insensitive)
@@ -8457,111 +8455,145 @@ function createModelSelectionFlexV3(models) {
 
   models.forEach((m) => {
     const key = m.trim().toUpperCase();
-    // 排除空字串與重複
     if (key && !seen.has(key)) {
       seen.add(key);
-      uniqueModels.push(m.trim()); // Keep original case for display
+      uniqueModels.push(m.trim());
     }
   });
 
   const displayModels = uniqueModels.slice(0, 10);
   const remainingCount = uniqueModels.length - displayModels.length;
 
-  // ... (Rest is similar but ensuring logic is fresh)
-
+  // 建立型號按鈕 - 使用 primary 風格
   const buttons = displayModels.map((model, index) => {
-    // v29.5.05: Truncate label to 20 chars to prevent LINE rejection
-    const label = `${index + 1}. ${model}`.substring(0, 20);
+    const label = `${model}`.substring(0, 20);
     return {
       type: "button",
       action: {
         type: "message",
         label: label,
-        text: `${model} 怎麼設定`, // 點擊後直接發送查詢指令
+        text: `${model} 怎麼設定`,
       },
-      style: "secondary",
+      style: "primary",
+      color: "#5B8DEF", // 柔和的藍色
       margin: "sm",
-      height: "sm", // 緊湊高度
+      height: "sm",
     };
   });
 
+  // 若有更多型號
   if (remainingCount > 0) {
     buttons.push({
       type: "button",
       action: {
         type: "message",
-        label: `...還有 ${remainingCount} 款 (點此列出)`,
+        label: `還有 ${remainingCount} 款...`,
         text: "列出所有型號",
       },
-      style: "link",
+      style: "secondary",
       margin: "sm",
       height: "sm",
     });
   }
 
-  // 底部提示按鈕
-  buttons.push({
-    type: "button",
-    action: {
-      type: "message",
-      label: "💡 或直接繼續提問",
-      text: "直接問問題",
-    },
-    style: "link",
-    margin: "md",
-    height: "sm",
-    color: "#999999",
-  });
-
   const bubble = {
     type: "bubble",
-    size: "kilo", // 略寬一點
-    header: {
+    size: "kilo",
+    // Hero 區塊 - 漸層背景色
+    hero: {
       type: "box",
       layout: "vertical",
       contents: [
         {
           type: "text",
-          text: "🔍 型號確認",
-          color: "#1DB446",
-          size: "sm",
-          weight: "bold",
-        },
-        {
-          type: "text",
-          text: `找到 ${models.length} 款相關型號`, // 動態標題
-          weight: "bold",
+          text: "🔍 請選擇型號",
+          color: "#FFFFFF",
           size: "xl",
-          margin: "md",
-          wrap: true,
-        },
-        {
-          type: "text",
-          text: "請點擊下方按鈕選擇：",
-          size: "xs",
-          color: "#aaaaaa",
-          margin: "sm",
-        },
-        {
-          type: "text",
-          text: "⚠️ 載入詳細手冊約需 30 秒",
-          size: "xs",
-          color: "#FF5500", // 橘色警示
-          margin: "sm",
           weight: "bold",
+          align: "center",
+        },
+        {
+          type: "text",
+          text: `找到 ${displayModels.length} 款相關產品`,
+          color: "#E8E8E8",
+          size: "sm",
+          align: "center",
+          margin: "sm",
         },
       ],
+      paddingAll: "25px",
+      backgroundColor: "#2C3E50", // 深藍灰色背景
+      justifyContent: "center",
+      alignItems: "center",
     },
+    // Body 區塊 - 按鈕列表
     body: {
       type: "box",
       layout: "vertical",
-      contents: buttons,
+      contents: [
+        {
+          type: "text",
+          text: "點選查看詳細資訊",
+          size: "xs",
+          color: "#888888",
+          align: "center",
+          margin: "none",
+        },
+        {
+          type: "separator",
+          margin: "lg",
+          color: "#EEEEEE",
+        },
+        ...buttons,
+      ],
+      spacing: "sm",
+      paddingAll: "15px",
+      backgroundColor: "#FAFAFA",
+    },
+    // Footer 區塊 - 提示資訊
+    footer: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "button",
+          action: {
+            type: "message",
+            label: "💬 或直接描述問題",
+            text: "直接問問題",
+          },
+          style: "link",
+          height: "sm",
+          color: "#888888",
+        },
+        {
+          type: "text",
+          text: "⏱ 載入手冊約需 30 秒",
+          size: "xxs",
+          color: "#AAAAAA",
+          align: "center",
+          margin: "sm",
+        },
+      ],
+      paddingAll: "10px",
+      backgroundColor: "#FFFFFF",
+    },
+    styles: {
+      hero: {
+        separator: false,
+      },
+      body: {
+        separator: false,
+      },
+      footer: {
+        separator: true,
+      },
     },
   };
 
   return {
     type: "carousel",
-    contents: [bubble], // 即使只有一個 Bubble，用 Carousel 容器包裝較為彈性
+    contents: [bubble],
   };
 }
 
