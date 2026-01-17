@@ -3584,6 +3584,7 @@ function callLLMWithRetry(
     tools = [{ googleSearch: {} }];
     // 強制追加指令到 Prompt，確保 AI 知道可以用工具
     dynamicPrompt += "\n\n【系統強制指令】你現在擁有 Google 搜尋權限。請務必使用搜尋工具尋找答案，並整合搜尋結果回答用戶。";
+
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
