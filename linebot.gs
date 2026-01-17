@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.25"; // 2026-01-17 Final Fix: Graceful Web Search Failure
-const BUILD_TIMESTAMP = "2026-01-17 22:42";
+const GAS_VERSION = "v29.5.26"; // 2026-01-17 Fix Web Search Prompt
+const BUILD_TIMESTAMP = "2026-01-17 22:56";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3509,8 +3509,11 @@ function callLLMWithRetry(
   let tools = undefined;
   if (forceWebSearch) {
     // v29.4.43: Corrected API parameter from google_search to googleSearch (CamelCase required)
-    tools = [{ googleSearch: {} }];
+    // v29.5.26: 強制注入搜尋指令，避免 AI 沉默
     writeLog(`[Search Tool] 🌐 啟用 Google 本地搜尋 (Pass 2)`);
+    tools = [{ googleSearch: {} }];
+    // 強制追加指令到 Prompt，確保 AI 知道可以用工具
+    dynamicPrompt += "\n\n【系統強制指令】你現在擁有 Google 搜尋權限。請務必使用搜尋工具尋找答案，並整合搜尋結果回答用戶。";
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
