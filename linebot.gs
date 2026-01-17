@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.12"; // 2026-01-17 Correct LINE_TOKEN Key
-const BUILD_TIMESTAMP = "2026-01-17 20:52";
+const GAS_VERSION = "v29.5.13"; // 2026-01-17 Fix Infinite Loop & Font
+const BUILD_TIMESTAMP = "2026-01-17 21:07";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4684,6 +4684,29 @@ function handleMessage(event) {
 
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
+        
+        // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
+        if (suggestedModels.length > 1) {
+          // 1. Auto-Lock: 若用戶訊息已包含某個具體型號，直接鎖定該型號
+          const userMsgUpper = userMessage.toUpperCase();
+          const matchedModel = suggestedModels.find(m => 
+            m.length > 3 && userMsgUpper.includes(m.toUpperCase())
+          );
+          if (matchedModel) {
+            writeLog(`[Smart Filter] 自動鎖定型號: ${matchedModel} (打破迴圈)`);
+            suggestedModels = [matchedModel];
+          } else {
+            // 2. Remove Short Aliases: 若有長型號，移除短別稱 (如 G5, M7)
+            const hasLongModels = suggestedModels.some(m => m.length > 3);
+            if (hasLongModels) {
+              const filtered = suggestedModels.filter(m => m.length > 3);
+              if (filtered.length > 0) {
+                writeLog(`[Smart Filter] 移除短別稱，保留 ${filtered.length} 個具體型號`);
+                suggestedModels = filtered;
+              }
+            }
+          }
+        }
 
         if (suggestedModels.length > 0) {
           // Case A: 單一型號 + 明確 Trigger -> 自動跳轉 (Auto-Redirect)
