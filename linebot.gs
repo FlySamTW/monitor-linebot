@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.15"; // 2026-01-17 Fix Auto-Lock Loop
-const BUILD_TIMESTAMP = "2026-01-17 21:48";
+const GAS_VERSION = "v29.5.16"; // 2026-01-17 Compact Bubble Design
+const BUILD_TIMESTAMP = "2026-01-17 21:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -8477,8 +8477,8 @@ function createModelSelectionFlexV3(models) {
         text: `${model} 怎麼設定`,
       },
       style: "primary",
-      color: "#5B8DEF", // 柔和的藍色
-      margin: "sm",
+      color: "#4A90D9", // 清爲藍色
+      margin: "md", // v29.5.16: 增加間距
       height: "sm",
     };
   });
@@ -8500,96 +8500,55 @@ function createModelSelectionFlexV3(models) {
 
   const bubble = {
     type: "bubble",
-    size: "kilo",
-    // Hero 區塊 - 漸層背景色
-    hero: {
+    size: "nano", // v29.5.16: 縮小泡泡寬度
+    // Header 區塊 - 簡潔標題
+    header: {
       type: "box",
       layout: "vertical",
       contents: [
         {
           type: "text",
           text: "🔍 請選擇型號",
-          color: "#FFFFFF",
-          size: "xl",
+          color: "#333333",
+          size: "md",
           weight: "bold",
           align: "center",
         },
         {
           type: "text",
-          text: `找到 ${displayModels.length} 款相關產品`,
-          color: "#E8E8E8",
-          size: "sm",
+          text: `找到 ${displayModels.length} 款`,
+          color: "#888888",
+          size: "xs",
           align: "center",
-          margin: "sm",
+          margin: "xs",
         },
       ],
-      paddingAll: "25px",
-      backgroundColor: "#2C3E50", // 深藍灰色背景
-      justifyContent: "center",
-      alignItems: "center",
+      paddingAll: "15px",
+      backgroundColor: "#F5F5F5",
     },
     // Body 區塊 - 按鈕列表
     body: {
       type: "box",
       layout: "vertical",
-      contents: [
-        {
-          type: "text",
-          text: "點選查看詳細資訊",
-          size: "xs",
-          color: "#888888",
-          align: "center",
-          margin: "none",
-        },
-        {
-          type: "separator",
-          margin: "lg",
-          color: "#EEEEEE",
-        },
-        ...buttons,
-      ],
-      spacing: "sm",
-      paddingAll: "15px",
-      backgroundColor: "#FAFAFA",
+      contents: buttons,
+      spacing: "md", // v29.5.16: 增加按鈕間距
+      paddingAll: "12px",
     },
-    // Footer 區塊 - 提示資訊
+    // Footer 區塊 - 簡化
     footer: {
       type: "box",
       layout: "vertical",
       contents: [
         {
-          type: "button",
-          action: {
-            type: "message",
-            label: "💬 或直接描述問題",
-            text: "直接問問題",
-          },
-          style: "link",
-          height: "sm",
-          color: "#888888",
-        },
-        {
           type: "text",
-          text: "⏱ 載入手冊約需 30 秒",
+          text: "ℹ️ 點選後載入手冊約30秒",
           size: "xxs",
           color: "#AAAAAA",
           align: "center",
-          margin: "sm",
         },
       ],
-      paddingAll: "10px",
-      backgroundColor: "#FFFFFF",
-    },
-    styles: {
-      hero: {
-        separator: false,
-      },
-      body: {
-        separator: false,
-      },
-      footer: {
-        separator: true,
-      },
+      paddingAll: "8px",
+      backgroundColor: "#FAFAFA",
     },
   };
 
