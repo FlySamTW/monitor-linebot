@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.17"; // 2026-01-17 Fix Smart Router PDF Trigger
-const BUILD_TIMESTAMP = "2026-01-17 21:55";
+const GAS_VERSION = "v29.5.18"; // 2026-01-17 Fix Bubble Size (micro)
+const BUILD_TIMESTAMP = "2026-01-17 21:56";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -8504,7 +8504,7 @@ function createModelSelectionFlexV3(models) {
 
   const bubble = {
     type: "bubble",
-    size: "nano", // v29.5.16: 縮小泡泡寬度
+    size: "micro", // v29.5.18: 從 nano 改為 micro，確保型號完整顯示
     // Header 區塊 - 簡潔標題
     header: {
       type: "box",
