@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.18"; // 2026-01-17 Fix Bubble Size (micro)
-const BUILD_TIMESTAMP = "2026-01-17 21:56";
+const GAS_VERSION = "v29.5.19"; // 2026-01-17 Fix Flow: Fast->PDF->Web
+const BUILD_TIMESTAMP = "2026-01-17 22:07";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4710,22 +4710,29 @@ function handleMessage(event) {
           }
         }
 
+        // v29.5.19: 檢查是否已查過 PDF，若是則跳過 Smart Router，讓後續流程處理 Web Search
+        const pdfConsultedKey = `${userId}:pdf_consulted`;
+        const hasPdfConsultedForRouter = cache.get(pdfConsultedKey) === "true";
+        
+        if (hasPdfConsultedForRouter && suggestedModels.length > 0) {
+          writeLog(`[Smart Router v29.5.19] 已查過 PDF，跳過泡泡，等待 Web Search 升級`);
+          suggestedModels = []; // 清空以跳過泡泡生成
+        }
+
         if (suggestedModels.length > 0) {
-          // Case A: 單一型號 + (明確 Trigger OR 自動鎖定) -> 自動跳轉 (Auto-Redirect)
-          // v29.5.15: 加入 autoLocked 條件，使自動鎖定的單一型號也能跳轉
-          // v29.5.17: 修復！必須設置 aiRequestedPdfSearch = true 才能真正觸發 PDF 搜尋
+          // Case A: 單一型號 + (明確 Trigger OR 自動鎖定) -> 自動跳轉 (讓 Fast Mode 回答，不直接跳 PDF)
+          // v29.5.19: 回復正確流程 - 不設置 aiRequestedPdfSearch，讓 AI 先用規格表回答
           if ((hasExplicitTrigger || autoLocked) && suggestedModels.length === 1) {
             writeLog(
-              `[Smart Router v29.5.17] 命中唯一型號 ${suggestedModels[0]}，觸發 PDF 搜尋`
+              `[Smart Router v29.5.19] 命中唯一型號 ${suggestedModels[0]}，儲存到 Cache`
             );
             cache.put(
               `${userId}:direct_search_models`,
               JSON.stringify(suggestedModels),
               300
             );
-            // v29.5.17: 關鍵修復！設置 PDF 搜尋標記
-            aiRequestedPdfSearch = true;
-            aiSearchQuery = suggestedModels[0]; // 使用鎖定的型號作為搜尋關鍵字
+            // v29.5.19: 不設置 aiRequestedPdfSearch，讓 AI 繼續用 Fast Mode 回答
+            // 如果 AI 認為需要 PDF，會自己輸出 [AUTO_SEARCH_PDF]
             suggestedModels = []; // 清空以跳過泡泡生成
           }
           // Case B: 多個型號 OR (單一型號但無 Trigger) -> 顯示泡泡 (Flex Selection)
@@ -8504,7 +8511,7 @@ function createModelSelectionFlexV3(models) {
 
   const bubble = {
     type: "bubble",
-    size: "micro", // v29.5.18: 從 nano 改為 micro，確保型號完整顯示
+    // v29.5.19: 不指定 size，使用預設寬度 (約 300px)
     // Header 區塊 - 簡潔標題
     header: {
       type: "box",
