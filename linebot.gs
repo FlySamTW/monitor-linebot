@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.40"; // 2026-01-18 Fix: Optimize PDF Token Usage (Truncate Context)
-const BUILD_TIMESTAMP = "2026-01-18 00:32";
+const GAS_VERSION = "v29.5.41"; // 2026-01-18 Fix: Switch to 1.5 Flash + Clear Context for PDF
+const BUILD_TIMESTAMP = "2026-01-18 00:37";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -41,7 +41,8 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
+// ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 1.5 Flash (v29.5.41: User reported 2.0 instability with large PDFs)
+const GEMINI_MODEL_THINK = "models/gemini-1.5-flash";
 const PRICE_THINK_INPUT = 0.1;
 const PRICE_THINK_OUTPUT = 0.4;
 
@@ -2002,17 +2003,12 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
 
-    // v29.5.40: Optimization for PDF Mode to prevent Token Overflow (Save ~20k tokens)
+    // v29.5.40/41: Optimization for PDF Mode to prevent Token Overflow
+    // v29.5.41: Aggressively remove QA/Light to prevent redundancy and token overload
     if (isPDFMode) {
-      const TRUNCATE_LIMIT = 1500;
-      if (fullQA.length > TRUNCATE_LIMIT) {
-        fullQA = fullQA.substring(0, TRUNCATE_LIMIT) + "\n\n(QA資料過長已截斷，請以PDF手冊為準)...";
-        writeLog(`[DynamicContext] PDF Mode Enabled: QA Truncated to ${TRUNCATE_LIMIT} chars`);
-      }
-      if (lightRules.length > TRUNCATE_LIMIT) {
-        lightRules = lightRules.substring(0, TRUNCATE_LIMIT) + "\n\n(術語資料過長已截斷，請以PDF手冊為準)...";
-        writeLog(`[DynamicContext] PDF Mode Enabled: Light Rules Truncated to ${TRUNCATE_LIMIT} chars`);
-      }
+      fullQA = ""; // Cleared
+      lightRules = ""; // Cleared
+      writeLog(`[DynamicContext] PDF Mode Enabled: Context Cleared (QA/Light Removed)`);
     }
 
     let relevantContext = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
