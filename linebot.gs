@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.21"; // 2026-01-17 Polish Footer Text
-const BUILD_TIMESTAMP = "2026-01-17 22:17";
+const GAS_VERSION = "v29.5.22"; // 2026-01-17 Fix 擴大搜尋 Matching
+const BUILD_TIMESTAMP = "2026-01-17 22:21";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4341,7 +4341,8 @@ function handleMessage(event) {
 
     // v29.3.39: 攔截「不滿意...擴大搜尋」按鈕，強制觸發網路搜尋 (Pass 2)
     // 用戶明確指出：這顆按鈕是「網路搜尋」，不是 PDF 搜尋，也不是反問
-    if (msg.includes("不滿意") && msg.includes("擴大搜尋")) {
+    // v29.5.22: 修復匹配問題 - "不太滿意" 也要能匹配
+    if ((msg.includes("不滿意") || msg.includes("不太滿意")) && msg.includes("擴大搜尋")) {
       writeLog(`[Force Web] 收到擴大搜尋請求，強制切換至網路搜尋模式`);
       const cmdResult = handleCommand(
         "不滿意這回答請繼續擴大搜尋",
@@ -8560,7 +8561,7 @@ function createModelSelectionFlexV3(models) {
         },
         {
           type: "text",
-          text: "不確定？直接輸入問題也OK",
+          text: "也可以不選，直接輸入其他問題",
           size: "xxs",
           color: "#AAAAAA",
           align: "center",
