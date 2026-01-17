@@ -5954,7 +5954,13 @@ function handleCommand(c, u, cid) {
        if (ruleObj && ruleObj.extractModelKeywords) {
            const models = ruleObj.extractModelKeywords(userMsg);
            if (models.length > 0) {
-               const kbResult = getRelevantKBFiles([ { role: 'user', content: userMsg } ], models, u);
+               // 讀取 kbList (因為 getRelevantKBFiles 需要它)
+               const kbList = JSON.parse(
+                 PropertiesService.getScriptProperties().getProperty(
+                   CACHE_KEYS.KB_URI_LIST
+                 ) || "[]"
+               );
+               const kbResult = getRelevantKBFiles([ { role: 'user', content: userMsg } ], kbList, u); // 這裡需要傳入 kbList
                if (kbResult.files.length > 0) {
                    triggerPDF = true;
                    filesToAttach = kbResult.files;
