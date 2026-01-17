@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.36"; // 2026-01-17 Fix: const -> let for dynamicPrompt
-const BUILD_TIMESTAMP = "2026-01-17 23:48";
+const GAS_VERSION = "v29.5.37"; // 2026-01-17 Fix: KB Reverse Alias Lookup (Allow G5 pdf for S27...)
+const BUILD_TIMESTAMP = "2026-01-17 23:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3276,6 +3276,23 @@ function getRelevantKBFiles(
       shortModels.push(m.substring(0, 8));
     }
   });
+  // v29.5.37: Reverse Alias Lookup (Model -> Alias)
+  // 若我們有完整型號 (S27AG500NC)，但在 PDF 中找不到，可能是因為 PDF 檔名只寫了 "G5"
+  // 所以我們要反查 KeywordMap，把 "G5" 也加入 exactModels
+  if (keywordMap) {
+      Object.keys(keywordMap).forEach(alias => {
+          const targets = keywordMap[alias].toUpperCase();
+          // 如果別稱的目標包含我們目前鎖定的型號 (Reverse Check)
+          // 且別稱長度 >= 2 (避免匹配到雜訊)
+          if (alias.length >= 2 && exactModels.some(m => targets.includes(m))) {
+             if (!exactModels.includes(alias.toUpperCase())) {
+                exactModels.push(alias.toUpperCase());
+                // writeLog(`[KB Select] Reverse Lookup: ${alias} for ${targets}`); // Optional debug
+             }
+          }
+      });
+  }
+
   exactModels = [...new Set([...exactModels, ...shortModels])]; // 合併並去重
 
   // 4. 分級載入（只用精準匹配，不做模糊匹配）
