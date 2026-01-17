@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.39"; // 2026-01-18 Fix: Revert PDF limit to 2 (User Request)
-const BUILD_TIMESTAMP = "2026-01-18 00:27";
+const GAS_VERSION = "v29.5.40"; // 2026-01-18 Fix: Optimize PDF Token Usage (Truncate Context)
+const BUILD_TIMESTAMP = "2026-01-18 00:32";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1852,7 +1852,7 @@ function getClassRules() {
  * 建立動態上下文 (Dynamic Context)
  * 根據用戶訊息，從 Cache 中撈取相關的 QA 和 Rules
  */
-function buildDynamicContext(messages, userId) {
+function buildDynamicContext(messages, userId, isPDFMode = false) {
   try {
     const cache = CacheService.getScriptCache();
 
@@ -2001,6 +2001,19 @@ function buildDynamicContext(messages, userId) {
     // 2. 讓 AI 判斷能不能回答、需要哪些型號
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
+
+    // v29.5.40: Optimization for PDF Mode to prevent Token Overflow (Save ~20k tokens)
+    if (isPDFMode) {
+      const TRUNCATE_LIMIT = 1500;
+      if (fullQA.length > TRUNCATE_LIMIT) {
+        fullQA = fullQA.substring(0, TRUNCATE_LIMIT) + "\n\n(QA資料過長已截斷，請以PDF手冊為準)...";
+        writeLog(`[DynamicContext] PDF Mode Enabled: QA Truncated to ${TRUNCATE_LIMIT} chars`);
+      }
+      if (lightRules.length > TRUNCATE_LIMIT) {
+        lightRules = lightRules.substring(0, TRUNCATE_LIMIT) + "\n\n(術語資料過長已截斷，請以PDF手冊為準)...";
+        writeLog(`[DynamicContext] PDF Mode Enabled: Light Rules Truncated to ${TRUNCATE_LIMIT} chars`);
+      }
+    }
 
     let relevantContext = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
 
@@ -3392,7 +3405,8 @@ function constructDynamicPrompt(
 3. **來源標註**：請在回答末尾明確標註「[來源: 網路搜尋]」。`;
   } else {
     // Base Context (Rules + QA)
-    dynamicPrompt = buildDynamicContext(messages, userId);
+    // v29.5.40: Pass isPDFMode = true if kbFiles exist to truncate context
+    dynamicPrompt = buildDynamicContext(messages, userId, kbFiles.length > 0);
 
     // Append C3 Instruction if exists
     const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
