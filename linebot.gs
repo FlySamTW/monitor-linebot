@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.22"; // 2026-01-17 Fix 擴大搜尋 Matching
-const BUILD_TIMESTAMP = "2026-01-17 22:21";
+const GAS_VERSION = "v29.5.23"; // 2026-01-17 Sort Models Descending
+const BUILD_TIMESTAMP = "2026-01-17 22:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -8479,6 +8479,9 @@ function createModelSelectionFlexV3(models) {
       uniqueModels.push(m.trim());
     }
   });
+
+  // v29.5.23: 降冪排列（Z-A）
+  uniqueModels.sort((a, b) => b.localeCompare(a));
 
   const displayModels = uniqueModels.slice(0, 10);
   const remainingCount = uniqueModels.length - displayModels.length;
