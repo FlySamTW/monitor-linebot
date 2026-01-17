@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.28"; // 2026-01-17 Fix Sam Name
-const BUILD_TIMESTAMP = "2026-01-17 22:49";
+const GAS_VERSION = "v29.5.29"; // 2026-01-17 Fix getClassRules ReferenceError
+const BUILD_TIMESTAMP = "2026-01-17 22:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1776,6 +1776,76 @@ function chunkString(str, size) {
     chunks.push(str.substr(o, size));
   }
   return chunks;
+}
+
+/**
+ * 取得 CLASS_RULES 相關邏輯
+ * v29.5.29: 封裝 CLASS_RULES 邏輯，修復 ReferenceError，並提供統一的關鍵字提取功能
+ */
+function getClassRules() {
+  const cache = CacheService.getScriptCache();
+  
+  // 嘗試從 Cache 讀取 Rules (其實我們只需要關鍵字邏輯，Rules 本身太大可能不在 Cache)
+  // 但我們可以重新實作一個簡單的提取器，基於我們已知的規則
+  // 或者，我們可以讀取 KEYWORD_MAP (它比較小，且包含別稱)
+  
+  const getKeywordMap = () => {
+    try {
+      const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+      return mapJson ? JSON.parse(mapJson) : {};
+    } catch (e) {
+      writeLog(`[getClassRules] Error loading keyword map: ${e.message}`);
+      return {};
+    }
+  };
+
+  /**
+   * 從訊息中提取型號關鍵字
+   * @param {string} msg 用戶訊息
+   * @returns {string[]} 匹配到的型號列表 (例如 ["G5", "S27AG500NC"])
+   */
+  const extractModelKeywords = (msg) => {
+    if (!msg) return [];
+    
+    // 1. 基於正則表達式的粗篩 (符合 S27... G5... 等格式)
+    // 這裡我們必須要有一套 regex。這套 regex 應該跟 syncGeminiKnowledgeBase 裡的一致。
+    // 為了避免維護兩套，我們盡量用通用的 Pattern。
+    
+    const possibleModels = [];
+    const upperMsg = msg.toUpperCase();
+
+    // 通用型號 Regex (參考 syncGeminiKnowledgeBase)
+    const modelPatterns = [
+      /\b([A-Z]{1,2}\d{2}[A-Z]{0,2}\d{3}[A-Z]{0,2})\b/g, // 完整型號 ex: S32AG500PC
+      /(Odyssey\s?G\d{1,2})/gi, // Odyssey G5
+      /(Smart\s?Monitor\s?M\d{1,2})/gi, // Smart Monitor M7
+      /\b(G[5-9])\b/g, // G5, G7, G8, G9
+      /\b(M[578])\b/g // M5, M7, M8
+    ];
+
+    modelPatterns.forEach(regex => {
+        let match;
+        while ((match = regex.exec(msg)) !== null) {
+            // 清理並標準化
+            let raw = match[0].trim().toUpperCase().replace(/\s+/g, "");
+            // 排除太短的誤判 (如 "M2" 雖然不會被上面 match 到，但以防萬一)
+            if (raw.length >= 2) {
+                possibleModels.push(raw); 
+            }
+        }
+    });
+
+    // 2. 使用 KEYWORD_MAP 進行精確匹配與別稱轉換
+    // (如果需要更精確的匹配，可以載入 map。但在 handleCommand 這種快速場景，Regex 可能夠用)
+    // 不過，為了要能查到正確的 PDF，我們最好能拿到 "標準型號"
+    
+    // 去重
+    return [...new Set(possibleModels)];
+  };
+
+  return {
+    extractModelKeywords
+  };
 }
 
 /**
