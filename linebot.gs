@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.38"; // 2026-01-17 Fix Web Search Loop + Log Clean
-const BUILD_TIMESTAMP = "2026-01-17 17:00";
+const GAS_VERSION = "v29.4.39"; // 2026-01-17 Consolidate Sync Logs
+const BUILD_TIMESTAMP = "2026-01-17 17:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2383,6 +2383,8 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         uniqueCount.toString()
       );
 
+      let resolvedPatternCount = 0;
+
       allRows.forEach((row) => {
         if (!row[0]) return;
         const text = row[0].toString();
@@ -2464,9 +2466,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               resolvedModelsText = ` (⚠️ 注意！此系列包含實體型號如下，請優先引導用戶確認型號：${matchedModels.join(
                 "、"
               )})`;
-              writeLog(
-                `[Sync] ✅ 模式 [${rawKey}] 成功窮舉: ${matchedModels.length} 個型號`
-              );
+              resolvedPatternCount++;
             }
           }
 
@@ -2486,6 +2486,12 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           keywordMap[key] = text;
         }
       });
+
+      if (resolvedPatternCount > 0) {
+        writeLog(
+          `[Sync] ✅ 已解析並擴展 ${resolvedPatternCount} 個系列的型號模式`
+        );
+      }
     }
 
     // v27.9.86: 強制清理舊索引
