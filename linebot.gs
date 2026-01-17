@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.39"; // 2026-01-17 Consolidate Sync Logs
-const BUILD_TIMESTAMP = "2026-01-17 17:10";
+const GAS_VERSION = "v29.4.43"; // 2026-01-17 Fix Web Search Hallucination (Exclusive Prompt)
+const BUILD_TIMESTAMP = "2026-01-17 18:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3277,28 +3277,36 @@ function constructDynamicPrompt(
   const cache = CacheService.getScriptCache();
   const userId = messages.length > 0 ? messages[0].userId : "unknown"; // Assuming userId is available in messages or passed
 
-  // Base Context (Rules + QA)
-  let dynamicPrompt = buildDynamicContext(messages, userId);
+  // v29.4.43: Split Prompt Logic - Web Search gets exclusive context to prevent hallucinations
+  let dynamicPrompt = "";
 
-  // Append C3 Instruction if exists
-  const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
-  const c3Prompt = promptSheet.getRange("C3").getValue() || "";
-  if (c3Prompt) {
-    dynamicPrompt += `\n\n【Sheet C3 指令】\n${c3Prompt}\n`;
+  if (forceWebSearch) {
+    const searchTarget = targetModelName || "用戶詢問的產品";
+    dynamicPrompt = `【角色設定】
+你現在是一名「網路搜尋專家」。由於內部資料庫查無解答，系統已特別授權你使用 Google Search 尋找答案。
+
+【任務目標】
+針對「${searchTarget}」與用戶的問題，進行廣泛且深入的網路搜尋，並提供最具體的解決方案。
+
+【最高指令】
+1. **強制搜尋 (Must Search)**：你必須調用 \`googleSearch\` 工具。
+2. **禁止推託**：絕對禁止回答「手冊未提及」或「建議諮詢客服」。你必須給出實質建議。
+3. **來源標註**：請在回答末尾明確標註「[來源: 網路搜尋]」。`;
+  } else {
+    // Base Context (Rules + QA)
+    dynamicPrompt = buildDynamicContext(messages, userId);
+
+    // Append C3 Instruction if exists
+    const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+    const c3Prompt = promptSheet.getRange("C3").getValue() || "";
+    if (c3Prompt) {
+      dynamicPrompt += `\n\n【Sheet C3 指令】\n${c3Prompt}\n`;
+    }
   }
 
   // System Protocols
   dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
   dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
-
-  // v29.3.41: Inject Pass 2 Instructions (Must be appended last to override generalized instructions)
-  let pass2Instruction = "";
-  if (forceWebSearch) {
-    pass2Instruction = `\n\n【網路與來源標註 (Pass 2 - 強制搜尋模式)】\n警告：在前一輪對話中，你因為查無手冊資料而失敗。現在系統已為你開啟 Google Search 聯網權限。\n\n**你的唯一任務是：盡全力搜出答案，絕對禁止說「我不知道」或「手冊沒寫」。**\n\n請遵守以下最高指令：\n1. **必須使用 Google Search**：請針對用戶問題的關鍵字（如「零售模式」、「工程模式」）進行搜尋。若第一次沒搜到，請換個關鍵字再搜一次。\n2. **禁止推託**：不要回答「手冊沒提到」、「無法確認」。如果真的搜不到確切步驟，請根據搜尋到的類似機型資訊，提供「最可能的嘗試步驟」，並清楚標示「這是根據類似機型推測」。\n3. **內容補充**：必須提供「新的」補充資訊。\n4. **負面排除**：避免引用大量抱怨文，優先找教學文。\n5. **來源標註**：回答末尾請標註「[來源: 網路搜尋]」。\n\n若你最終還是搜不到任何有用資訊，請回答：「經過網路深度搜尋，目前針對此特定型號確實較少公開的相關教學。建議您直接聯繫客服專線 0800-32-9999。」（但請將此作為最後手段）`;
-  }
-  if (pass2Instruction) {
-    dynamicPrompt += pass2Instruction;
-  }
 
   // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
   // 僅注入當前系統狀態 (Fast Mode / Deep Mode)
@@ -3489,7 +3497,8 @@ function callLLMWithRetry(
   // 這樣可以兼顧「快速穩定」與「查網路的需求」，避免因網路搜尋導致的無回應。
   let tools = undefined;
   if (forceWebSearch) {
-    tools = [{ google_search: {} }];
+    // v29.4.43: Corrected API parameter from google_search to googleSearch (CamelCase required)
+    tools = [{ googleSearch: {} }];
     writeLog(`[Search Tool] 🌐 啟用 Google 本地搜尋 (Pass 2)`);
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
@@ -4853,7 +4862,12 @@ function handleMessage(event) {
             if (hadPdfModeMemory && hasSelectedPdf && !isModelMismatch) {
               if (hasConsultedPdf) {
                 writeLog(
-                  `[Auto Search v29.4.38] 本對話已查過 PDF，跳過 PDF 重試，強制升級至網路搜尋`
+                  `[Auto Search v29.4.43] 本對話已查過 PDF，跳過 PDF 重試，強制升級至網路搜尋`
+                );
+                writeLog(
+                  `[Upgrade Debug] cachedDirectModels: ${JSON.stringify(
+                    cachedDirectModels
+                  )}`
                 );
 
                 // 強制執行 Web Search (不掛載 PDF)
@@ -4878,6 +4892,8 @@ function handleMessage(event) {
                     .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                     .trim();
                   replyText = finalText;
+                  // v29.4.43: Prevent subsequent PDF search override
+                  aiRequestedPdfSearch = false;
                 } else {
                   replyText =
                     "很抱歉，即使透過網路搜尋也無法找到相關資訊。建議您聯繫三星客服。";
