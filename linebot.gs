@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.24"; // 2026-01-17 Fix Web Search Empty Response & Fallback
-const BUILD_TIMESTAMP = "2026-01-17 22:38";
+const GAS_VERSION = "v29.5.25"; // 2026-01-17 Final Fix: Graceful Web Search Failure
+const BUILD_TIMESTAMP = "2026-01-17 22:42";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3868,7 +3868,17 @@ function callLLMWithRetry(
       Utilities.sleep(1000 * Math.pow(2, retryCount));
     }
   }
-  return `⚠️ 系統忙碌中 (${lastError})，請稍後再試`;
+
+  // v29.5.25: Graceful Failure
+  if (lastError) {
+    writeLog(`[API Fail] 重試 3 次仍失敗，最後錯誤: ${lastError}`);
+    if (forceWebSearch) {
+       return "非常抱歉，網路搜尋服務暫時無法連線。您可以參考上方提供的資料，或稍後再試。";
+    }
+    return "⚠️ 系統忙碌中，請稍後再試。";
+  }
+
+  return "";
 }
 
 /**
