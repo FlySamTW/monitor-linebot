@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.37"; // 2026-01-17 Unified Flow + PDF Attach Fix
-const BUILD_TIMESTAMP = "2026-01-17 16:45";
+const GAS_VERSION = "v29.4.38"; // 2026-01-17 Fix Web Search Loop + Log Clean
+const BUILD_TIMESTAMP = "2026-01-17 17:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4841,82 +4841,118 @@ function handleMessage(event) {
               });
             }
 
+            // v29.4.38: 檢查是否已查過 PDF，避免鬼打牆重複查 PDF
+            const hasConsultedPdf = cache.get(`${userId}:pdf_consulted`);
+
             if (hadPdfModeMemory && hasSelectedPdf && !isModelMismatch) {
-              writeLog(
-                `[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`
-              );
+              if (hasConsultedPdf) {
+                writeLog(
+                  `[Auto Search v29.4.38] 本對話已查過 PDF，跳過 PDF 重試，強制升級至網路搜尋`
+                );
 
-              writeLog(
-                "[Auto Deep] 觸發 [AUTO_SEARCH_PDF]，啟動 PDF Mode 重試"
-              );
-              isInPdfMode = true;
-              cache.put(pdfModeKey, "true", 300);
+                // 強制執行 Web Search (不掛載 PDF)
+                const webResponse = callLLMWithRetry(
+                  userMessage,
+                  [...history, userMsgObj],
+                  [], // filesToAttach
+                  false, // attachPDFs
+                  null, // imageBlob
+                  true, // isRetry
+                  userId,
+                  true, // forceWebSearch
+                  cachedDirectModels[0] // targetModelName
+                );
 
-              // v24.5.0: 顯示 Loading 動畫
-              showLoadingAnimation(userId, 60);
-
-              // v29.4.37: 根據快取的型號找到對應的 PDF
-              let pdfToAttach = [];
-              try {
-                const kbListJson =
-                  PropertiesService.getScriptProperties().getProperty(
-                    CACHE_KEYS.KB_URI_LIST
-                  );
-                if (kbListJson) {
-                  const kbList = JSON.parse(kbListJson);
-                  const targetModel = cachedDirectModels[0].toUpperCase();
-                  const matchedPdf = kbList.find(
-                    (f) =>
-                      f.mimeType === "application/pdf" &&
-                      f.name.toUpperCase().includes(targetModel)
-                  );
-                  if (matchedPdf) {
-                    pdfToAttach = [
-                      {
-                        name: matchedPdf.name,
-                        uri: matchedPdf.uri,
-                        mimeType: "application/pdf",
-                      },
-                    ];
-                    writeLog(
-                      `[PDF Attach] 從快取型號找到 PDF: ${matchedPdf.name}`
-                    );
-                  }
+                if (webResponse && webResponse !== "[KB_EXPIRED]") {
+                  let finalText = formatForLineMobile(webResponse);
+                  finalText = finalText
+                    .replace(/\[AUTO_SEARCH_PDF\]/g, "")
+                    .trim();
+                  finalText = finalText
+                    .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+                    .trim();
+                  replyText = finalText;
+                } else {
+                  replyText =
+                    "很抱歉，即使透過網路搜尋也無法找到相關資訊。建議您聯繫三星客服。";
                 }
-              } catch (e) {
-                writeLog(`[PDF Attach Error] ${e.message}`);
-              }
-
-              const deepResponse = callLLMWithRetry(
-                userMessage,
-                [...history, userMsgObj],
-                pdfToAttach, // v29.4.37: 傳入找到的 PDF
-                true, // attachPDFs
-                null, // imageBlob
-                true, // isRetry
-                userId,
-                false, // forceWebSearch
-                cachedDirectModels[0] // targetModelName
-              );
-
-              if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                finalText = formatForLineMobile(deepResponse);
-                finalText = finalText
-                  .replace(/\[AUTO_SEARCH_PDF\]/g, "")
-                  .trim();
-                finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-                // v29.3.53: 補上 [AUTO_SEARCH_WEB] 清理，防止暗號外洩
-                finalText = finalText
-                  .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-                  .trim();
-
-                // v29.4.33: 設置 PDF 已查詢標記
-                cache.put(`${userId}:pdf_consulted`, "true", 600);
-                writeLog("[PDF v29.4.33] 已設置 pdf_consulted 標記");
               } else {
-                finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
+                writeLog(
+                  `[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`
+                );
+
+                writeLog(
+                  "[Auto Deep] 觸發 [AUTO_SEARCH_PDF]，啟動 PDF Mode 重試"
+                );
+                isInPdfMode = true;
+                cache.put(pdfModeKey, "true", 300);
+
+                // v24.5.0: 顯示 Loading 動畫
+                showLoadingAnimation(userId, 60);
+
+                // v29.4.37: 根據快取的型號找到對應的 PDF
+                let pdfToAttach = [];
+                try {
+                  const kbListJson =
+                    PropertiesService.getScriptProperties().getProperty(
+                      CACHE_KEYS.KB_URI_LIST
+                    );
+                  if (kbListJson) {
+                    const kbList = JSON.parse(kbListJson);
+                    const targetModel = cachedDirectModels[0].toUpperCase();
+                    const matchedPdf = kbList.find(
+                      (f) =>
+                        f.mimeType === "application/pdf" &&
+                        f.name.toUpperCase().includes(targetModel)
+                    );
+                    if (matchedPdf) {
+                      pdfToAttach = [
+                        {
+                          name: matchedPdf.name,
+                          uri: matchedPdf.uri,
+                          mimeType: "application/pdf",
+                        },
+                      ];
+                      writeLog(
+                        `[PDF Attach] 從快取型號找到 PDF: ${matchedPdf.name}`
+                      );
+                    }
+                  }
+                } catch (e) {
+                  writeLog(`[PDF Attach Error] ${e.message}`);
+                }
+
+                const deepResponse = callLLMWithRetry(
+                  userMessage,
+                  [...history, userMsgObj],
+                  pdfToAttach, // v29.4.37: 傳入找到的 PDF
+                  true, // attachPDFs
+                  null, // imageBlob
+                  true, // isRetry
+                  userId,
+                  false, // forceWebSearch
+                  cachedDirectModels[0] // targetModelName
+                );
+
+                if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
+                  finalText = formatForLineMobile(deepResponse);
+                  finalText = finalText
+                    .replace(/\[AUTO_SEARCH_PDF\]/g, "")
+                    .trim();
+                  finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+                  // v29.3.53: 補上 [AUTO_SEARCH_WEB] 清理，防止暗號外洩
+                  finalText = finalText
+                    .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+                    .trim();
+
+                  // v29.4.33: 設置 PDF 已查詢標記
+                  cache.put(`${userId}:pdf_consulted`, "true", 600);
+                  writeLog("[PDF v29.4.33] 已設置 pdf_consulted 標記");
+                  replyText = finalText;
+                } else {
+                  replyText = "⚠️ 自動查閱手冊失敗，請稍後再試";
+                }
               }
-              replyText = finalText;
             } else {
               // v27.2.9: 如果有型號衝突，記錄並清除舊記憶
               if (isModelMismatch) {
