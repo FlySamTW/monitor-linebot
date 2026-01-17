@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.33"; // 2026-01-16 PDF Flow Optimization (History Truncate + Escalation)
-const BUILD_TIMESTAMP = "2026-01-16 00:20";
+const GAS_VERSION = "v29.4.34"; // 2026-01-17 Fix Direct Search Regression for Series Keywords
+const BUILD_TIMESTAMP = "2026-01-17 16:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4511,14 +4511,52 @@ function handleMessage(event) {
       // If a Direct Keyword is hit, we MUST NOT rely on LLM to output the secret code.
       // We manually construct the secret code to FORCE the Auto-Search flow immediately.
       // This saves time (no LLM call) and ensures reliability (no hallucination/refusal).
+      //
+      // v29.4.34 FIX: Only bypass if the keyword has a "型號模式" in CLASS_RULES.
+      // Series keywords like "洗衣機" don't have model patterns, so Fast Mode is needed
+      // to let AI resolve them to actual models (e.g., WA系列).
+      let canBypassFastMode = false;
       if (hitAliasKeys.length > 0) {
+        // Check if this keyword has a model pattern defined
+        try {
+          const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+          if (sheet) {
+            const data = sheet.getDataRange().getValues();
+            for (const row of data) {
+              const firstCol = String(row[0] || "").toUpperCase();
+              if (
+                firstCol.startsWith("別稱_") &&
+                firstCol.includes(hitAliasKeys[0].toUpperCase())
+              ) {
+                const content =
+                  String(row[0] || "") + "," + String(row[1] || "");
+                if (/型號模式為[：:]/.test(content)) {
+                  canBypassFastMode = true;
+                  writeLog(`[Direct Search] ✅ 找到型號模式，可跳過 Fast Mode`);
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          writeLog(`[Direct Search] 型號模式檢查失敗: ${e.message}`);
+        }
+      }
+
+      if (hitAliasKeys.length > 0 && canBypassFastMode) {
         writeLog(
           `[Direct Search] 🚀 命中直通車 (${hitAliasKeys[0]})，強制跳過 Fast Mode，直接進入 Auto-Search`
         );
         // Construct the trigger that downstream logic expects
         rawResponse = `[AUTO_SEARCH_PDF: ${hitAliasKeys[0]}]`;
       } else {
-        // Normal Flow: Ask LLM
+        // v29.4.34: Either no Direct Keywords OR no model pattern found
+        // Normal Flow: Ask LLM to process and potentially output [AUTO_SEARCH_PDF]
+        if (hitAliasKeys.length > 0 && !canBypassFastMode) {
+          writeLog(
+            `[Direct Search] 命中直通車 (${hitAliasKeys[0]}) 但無型號模式，走 Fast Mode 讓 AI 解析`
+          );
+        }
         rawResponse = callLLMWithRetry(
           userMessage,
           [...history, userMsgObj],
