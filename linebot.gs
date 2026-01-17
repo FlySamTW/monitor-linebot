@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.4.36"; // 2026-01-17 Unified Flow (Remove Direct Keyword Bypass)
-const BUILD_TIMESTAMP = "2026-01-17 16:25";
+const GAS_VERSION = "v29.4.37"; // 2026-01-17 Unified Flow + PDF Attach Fix
+const BUILD_TIMESTAMP = "2026-01-17 16:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1832,11 +1832,7 @@ function buildDynamicContext(messages, userId) {
       for (let i = 0; i < qaCount; i++) {
         fullQA += cache.get(`KB_QA_${i}`) || "";
       }
-      writeLog(
-        `[DynamicContext Debug] Cache Hit: QA Count=${qaCount}, FullQA Length=${
-          fullQA.length
-        }, First 50 chars=${fullQA.substring(0, 50)}`
-      );
+      // writeLog(`[DynamicContext Debug] Cache Hit: QA Count=${qaCount}, FullQA Length=${fullQA.length}, First 50 chars=${fullQA.substring(0, 50)}`);
     } else {
       // v27.8.7 Fallback: 若 Cache 失效，強制讀取 Sheet (防呆機制)
       writeLog(
@@ -1991,11 +1987,7 @@ function buildDynamicContext(messages, userId) {
         (t) => t.length >= 2 && !/^\d+$/.test(t)
       );
 
-      writeLog(
-        `[SmartRetrieval] HighTokens: ${JSON.stringify(
-          highValTokens
-        )}, NormalTokens: ${JSON.stringify(validNormalTokens)}`
-      );
+      // writeLog(`[SmartRetrieval] HighTokens: ${JSON.stringify(highValTokens)}, NormalTokens: ${JSON.stringify(validNormalTokens)}`);
 
       // v29.4.8: 上下文回補機制 (Context Recovery)
       // 若當前對話無任何關鍵字 (如「它規格是？」)，嘗試讀取上一輪的 Tokens
@@ -4863,10 +4855,42 @@ function handleMessage(event) {
               // v24.5.0: 顯示 Loading 動畫
               showLoadingAnimation(userId, 60);
 
+              // v29.4.37: 根據快取的型號找到對應的 PDF
+              let pdfToAttach = [];
+              try {
+                const kbListJson =
+                  PropertiesService.getScriptProperties().getProperty(
+                    CACHE_KEYS.KB_URI_LIST
+                  );
+                if (kbListJson) {
+                  const kbList = JSON.parse(kbListJson);
+                  const targetModel = cachedDirectModels[0].toUpperCase();
+                  const matchedPdf = kbList.find(
+                    (f) =>
+                      f.mimeType === "application/pdf" &&
+                      f.name.toUpperCase().includes(targetModel)
+                  );
+                  if (matchedPdf) {
+                    pdfToAttach = [
+                      {
+                        name: matchedPdf.name,
+                        uri: matchedPdf.uri,
+                        mimeType: "application/pdf",
+                      },
+                    ];
+                    writeLog(
+                      `[PDF Attach] 從快取型號找到 PDF: ${matchedPdf.name}`
+                    );
+                  }
+                }
+              } catch (e) {
+                writeLog(`[PDF Attach Error] ${e.message}`);
+              }
+
               const deepResponse = callLLMWithRetry(
                 userMessage,
                 [...history, userMsgObj],
-                [], // filesToAttach (should be passed but using direct mode logic often implies special handling, here passing empty or need to load?)
+                pdfToAttach, // v29.4.37: 傳入找到的 PDF
                 true, // attachPDFs
                 null, // imageBlob
                 true, // isRetry
@@ -5005,16 +5029,31 @@ function handleMessage(event) {
                   isInPdfMode = true;
                   cache.put(pdfModeKey, "true", 300);
 
+                  // v29.4.37: 傳入找到的 PDF，而非空陣列
+                  const matchedPdf = pdfSearchResult.matchedPdfs[0];
+                  const pdfToAttach = [
+                    {
+                      name: matchedPdf.name,
+                      uri: matchedPdf.uri,
+                      mimeType: "application/pdf",
+                    },
+                  ];
+                  writeLog(
+                    `[PDF Attach] 掛載: ${matchedPdf.name} (URI: ${
+                      matchedPdf.uri ? "有" : "無"
+                    })`
+                  );
+
                   const deepResponse = callLLMWithRetry(
                     userMessage,
                     [...history, userMsgObj],
-                    [], // filesToAttach
+                    pdfToAttach, // v29.4.37: 傳入找到的 PDF
                     true, // attachPDFs
                     null, // imageBlob
                     true, // isRetry
                     userId,
                     false, // forceWebSearch
-                    pdfSearchResult.matchedPdfs[0].matchedModel // targetModelName
+                    matchedPdf.matchedModel // targetModelName
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -7579,11 +7618,7 @@ function replyMessage(tk, txt, options = {}) {
   try {
     const lineToken =
       PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
-    writeLog(
-      `[Reply Debug] LINE_TOKEN 前10字: ${
-        lineToken ? lineToken.substring(0, 10) : "NULL"
-      }`
-    );
+    // writeLog(`[Reply Debug] LINE_TOKEN 前10字: ${lineToken ? lineToken.substring(0, 10) : "NULL"}`);
 
     // v29.3.21: 升級支援多訊息泡泡 (Array)
     let messages = [];
