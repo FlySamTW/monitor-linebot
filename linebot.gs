@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.10"; // 2026-01-17 Log Consolidation
-const BUILD_TIMESTAMP = "2026-01-17 20:25";
+const GAS_VERSION = "v29.5.11"; // 2026-01-17 Fix 401 Flex Auth Error
+const BUILD_TIMESTAMP = "2026-01-17 20:38";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4732,10 +4732,13 @@ function handleMessage(event) {
 
             // 使用 replyToken 一次發送
             const url = "https://api.line.me/v2/bot/message/reply";
-            const accessToken =
-              PropertiesService.getScriptProperties().getProperty(
-                "LINE_CHANNEL_ACCESS_TOKEN"
-              );
+            // v29.5.11: Trim token and check presence to avoid 401
+            let accessToken = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_ACCESS_TOKEN");
+            if (accessToken) accessToken = accessToken.trim();
+            if (!accessToken) {
+              writeLog("[Fatal Error] 找不到 LINE_CHANNEL_ACCESS_TOKEN，Flex 發送中止");
+              return;
+            }
             const res = UrlFetchApp.fetch(url, {
               method: "post",
               headers: {
