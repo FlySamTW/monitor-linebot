@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.23"; // 2026-01-17 Sort Models Descending
-const BUILD_TIMESTAMP = "2026-01-17 22:30";
+const GAS_VERSION = "v29.5.24"; // 2026-01-17 Fix Web Search Empty Response & Fallback
+const BUILD_TIMESTAMP = "2026-01-17 22:38";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3592,6 +3592,13 @@ function callLLMWithRetry(
   while (retryCount < 3) {
     // 每 18 秒補發一次 Loading 動畫（20秒會消失，提前 2 秒補發）
     const now = new Date().getTime();
+
+    // v29.5.24: 最後一次重試時，強制移除 tools 以避免工具連線錯誤導致完全無回應
+    if (retryCount === 2 && payload.tools) {
+      writeLog(`[Retry Fallback] 最後一次重試，強制移除 Tools 以確保回答`);
+      delete payload.tools;
+    }
+
     if (userId && now - lastLoadingTime > 18000) {
       try {
         showLoadingAnimation(userId, 60);
@@ -3773,12 +3780,33 @@ function callLLMWithRetry(
             candidates[0].content.parts &&
             candidates[0].content.parts.length > 0
           ) {
-            return (candidates[0].content.parts[0].text || "").trim();
+            const firstPart = candidates[0].content.parts[0];
+            
+            // v29.5.24: Check for Function Call (Not supported in this loop, trigger retry)
+            if (firstPart.functionCall) {
+              writeLog(`[API Error] 收到 Function Call 但未實作客戶端執行: ${JSON.stringify(firstPart.functionCall)}`);
+              throw new Error("Received Function Call (Manual execution not implemented)");
+            }
+
+            const text = (firstPart.text || "").trim();
+            
+            // v29.5.24: Validate Text Content
+            // 如果啟用工具但回應空文本，視為失敗，拋出錯誤以觸發重試
+            if (text.length === 0) {
+              writeLog(`[API Error] 回應為空文本 (Empty Text), 可能工具執行失敗`);
+              throw new Error("Empty response text from API");
+            }
+
+            return text;
           }
-          return "";
+          
+          // No candidates or parts
+          throw new Error("No candidates or content parts in response");
+
         } catch (parseErr) {
           writeLog("[API Parse Error] " + parseErr.message);
-          return "";
+          // Don't return empty string here, throw to trigger retry loop
+          throw parseErr;
         }
       }
 
