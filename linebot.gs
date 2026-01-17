@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.26"; // 2026-01-17 Fix Web Search Prompt
-const BUILD_TIMESTAMP = "2026-01-17 22:56";
+const GAS_VERSION = "v29.5.27"; // 2026-01-17 Fix Reset & Trigger PDF First
+const BUILD_TIMESTAMP = "2026-01-17 22:46";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5807,7 +5807,10 @@ function handleCommand(c, u, cid) {
     clearHistorySheetAndCache(cid);
     // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
     const cache = CacheService.getScriptCache();
-    cache.remove(`anim_${u}`);
+    // v29.5.27: 清除不滿意計數器與 PDF 狀態，避免測試時卡住
+    cache.remove(`dissatisfied_count_${u}`);
+    cache.remove(`pdf_consulted_${u}`);
+
     // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
     // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
     // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
@@ -5853,20 +5856,53 @@ function handleCommand(c, u, cid) {
       return "抱歉，我已經嘗試多種角度搜尋但似乎仍未找到完美答案。😅 建議你可以將問題描述得更具體，或直接聯繫維修專員 Sam 協助喔！";
     }
 
+    // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
+    // 檢查是否已查過 PDF，若未查過且有型號，優先執行 PDF Search
+    const pdfConsulted = cache.get(`pdf_consulted_${u}`) === "true";
+    // 嘗試從 Cache 取得上次的型號列表 (需要 Smart Router 有寫入)
+    // 注意：cache key 必須與 Smart Router 一致。Smart Router 寫入的是 `last_models_json_${userId}` 嗎？
+    // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
+    // 實際上 Smart Router v29.4.14 寫入的是 `model_selection_${userId}` 的選項，但我們需要 raw models
+    // 讓我們改為嘗試從 userMsg 裡重新提取型號，這最保險
+    
+    let triggerPDF = false;
+    let filesToAttach = [];
+    
+    // 只有在第一次擴大搜尋時嘗試插入 PDF (避免無限 PDF loop)
+    if (!pdfConsulted && count <= 2) {
+       // 重新執行關鍵字提取與 PDF 匹配
+       // 為了簡單，直接用 CLASS_RULES 匹配 userMsg
+       const { extractModelKeywords } = getClassRules();
+       const models = extractModelKeywords(userMsg);
+       if (models.length > 0) {
+           const kbResult = getRelevantKBFiles(userMsg, models);
+           if (kbResult.files.length > 0) {
+               triggerPDF = true;
+               filesToAttach = kbResult.files;
+               writeLog(`[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`);
+           }
+       }
+    }
+
     // 執行搜尋
     // v29.5.22: 修正參數順序
-    writeLog(`[Command] 啟動 Pass 2 (Force Web Search), 次數: ${count}`);
+    // v29.5.27: 根據 triggerPDF 調整參數
+    writeLog(`[Command] 啟動 Pass ${triggerPDF ? "1.5 (PDF)" : "2 (Web)"}, 次數: ${count}`);
     const searchResponse = callLLMWithRetry(
       userMsg,      // query
       history,      // messages
-      [],           // filesToAttach
-      false,        // attachPDFs
+      triggerPDF ? filesToAttach : [],           // filesToAttach
+      triggerPDF,   // attachPDFs
       null,         // imageBlob
       true,         // isRetry
       u,            // userId
-      true,         // forceWebSearch
+      !triggerPDF,  // forceWebSearch (PDF 優先於 Web)
       ""            // targetModelName
     );
+
+    if (triggerPDF) {
+        cache.put(`pdf_consulted_${u}`, "true", 600);
+    }
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
       const result =
