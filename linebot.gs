@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.34"; // 2026-01-17 Fix: Resolve infinite loop & Expand Search Logic
-const BUILD_TIMESTAMP = "2026-01-17 23:20";
+const GAS_VERSION = "v29.5.36"; // 2026-01-17 Fix: const -> let for dynamicPrompt
+const BUILD_TIMESTAMP = "2026-01-17 23:48";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3479,7 +3479,7 @@ function callLLMWithRetry(
   }
 
   // 1. 建構 Prompt
-  const dynamicPrompt = constructDynamicPrompt(
+  let dynamicPrompt = constructDynamicPrompt(
     query,
     effectiveMessages,
     filesToAttach,
