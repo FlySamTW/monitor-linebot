@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.14"; // 2026-01-17 Beautiful Flex Message Redesign
-const BUILD_TIMESTAMP = "2026-01-17 21:45";
+const GAS_VERSION = "v29.5.15"; // 2026-01-17 Fix Auto-Lock Loop
+const BUILD_TIMESTAMP = "2026-01-17 21:48";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4686,6 +4686,7 @@ function handleMessage(event) {
         suggestedModels = [...new Set(suggestedModels)];
         
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
+        let autoLocked = false; // v29.5.15: 追蹤是否自動鎖定
         if (suggestedModels.length > 1) {
           // 1. Auto-Lock: 若用戶訊息已包含某個具體型號，直接鎖定該型號
           const userMsgUpper = userMessage.toUpperCase();
@@ -4695,6 +4696,7 @@ function handleMessage(event) {
           if (matchedModel) {
             writeLog(`[Smart Filter] 自動鎖定型號: ${matchedModel} (打破迴圈)`);
             suggestedModels = [matchedModel];
+            autoLocked = true; // 標記為自動鎖定
           } else {
             // 2. Remove Short Aliases: 若有長型號，移除短別稱 (如 G5, M7)
             const hasLongModels = suggestedModels.some(m => m.length > 3);
@@ -4709,11 +4711,11 @@ function handleMessage(event) {
         }
 
         if (suggestedModels.length > 0) {
-          // Case A: 單一型號 + 明確 Trigger -> 自動跳轉 (Auto-Redirect)
-          // v29.4.7 優化: 避免使用者多點一次
-          if (hasExplicitTrigger && suggestedModels.length === 1) {
+          // Case A: 單一型號 + (明確 Trigger OR 自動鎖定) -> 自動跳轉 (Auto-Redirect)
+          // v29.5.15: 加入 autoLocked 條件，使自動鎖定的單一型號也能跳轉
+          if ((hasExplicitTrigger || autoLocked) && suggestedModels.length === 1) {
             writeLog(
-              `[Smart Router v29.4.7] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋`
+              `[Smart Router v29.5.15] 命中唯一型號 ${suggestedModels[0]}，自動進入 PDF 搜尋`
             );
             cache.put(
               `${userId}:direct_search_models`,
