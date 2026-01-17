@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.20"; // 2026-01-17 Fix Single Model Bubble & Footer Text
-const BUILD_TIMESTAMP = "2026-01-17 22:16";
+const GAS_VERSION = "v29.5.21"; // 2026-01-17 Polish Footer Text
+const BUILD_TIMESTAMP = "2026-01-17 22:17";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -8553,15 +8553,14 @@ function createModelSelectionFlexV3(models) {
       contents: [
         {
           type: "text",
-          text: "選擇型號後將查詢使用手冊，可能需要30秒",
+          text: "點選型號後會載入手冊（約30秒）",
           size: "xxs",
           color: "#888888",
           align: "center",
-          wrap: true,
         },
         {
           type: "text",
-          text: "或也可以不點選，輸入其他問題繼續",
+          text: "不確定？直接輸入問題也OK",
           size: "xxs",
           color: "#AAAAAA",
           align: "center",
