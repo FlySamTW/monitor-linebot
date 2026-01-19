@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.45"; // 2026-01-19 Fix: Graduated Fallback & Dynamic Threshold
-const BUILD_TIMESTAMP = "2026-01-19 11:00";
+const GAS_VERSION = "v29.5.46"; // 2026-01-19 Fix: Ultimate Fallback (Drop ALL) & Strict 1-PDF
+const BUILD_TIMESTAMP = "2026-01-19 11:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3336,6 +3336,21 @@ function getRelevantKBFiles(
   //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
   //    （例如問 G90XF 不應該載到 G80SD 的手冊）
 
+  // v29.5.46: Strict PDF Limit Logic
+  // Default to MAX 1 file unless it's a comparison question.
+  let maxFiles = 1;
+  const isComparison = injectedModels && injectedModels.length > 1 && combinedQuery.match(/比較|比较|差異|差异|不同|區別|对比|vs|versus/i);
+  if (isComparison) {
+      maxFiles = 2;
+      writeLog(`[KB Select] 🔍 Comparison detected. Allowing up to 2 PDFs.`);
+  }
+
+  // Apply strict limit to Tier 1
+  if (tier1.length > maxFiles) {
+      tier1 = tier1.slice(0, maxFiles);
+      writeLog(`[KB Select] ✂️ Enforcing Strict Limit: ${maxFiles} file(s).`);
+  }
+
   // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
   let filesToAttach = [...tier0, ...tier1];
   
@@ -3713,12 +3728,6 @@ function callLLMWithRetry(
     // 每 18 秒補發一次 Loading 動畫（20秒會消失，提前 2 秒補發）
     const now = new Date().getTime();
 
-    // v29.5.24: 最後一次重試時，強制移除 tools 以避免工具連線錯誤導致完全無回應
-    if (retryCount === 2 && payload.tools) {
-      writeLog(`[Retry Fallback] 最後一次重試，強制移除 Tools 以確保回答`);
-      delete payload.tools;
-    }
-    
     // v29.5.44: Token Overload Fallback Strategy (Level 1: Drop 2nd PDF)
     // 如果是第一次重試 (retryCount=1) 且有 2 本 PDF，嘗試移除第 2 本以減少 Token
     if (retryCount === 1 && attachPDFs && filesToAttach.length > 1) {
@@ -3726,10 +3735,16 @@ function callLLMWithRetry(
         try {
             const userContent = payload.contents.find(c => c.role === 'user');
             if (userContent && userContent.parts) {
-                const lastFileIndex = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === filesToAttach[filesToAttach.length-1].uri);
-                if (lastFileIndex !== -1) {
-                        userContent.parts.splice(lastFileIndex, 1);
-                        writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF from payload.`);
+                // Find all file parts
+                const fileParts = userContent.parts.filter(p => p.file_data);
+                if (fileParts.length > 1) {
+                     // Remove the last one
+                     const lastFileURI = fileParts[fileParts.length-1].file_data.file_uri;
+                     const removeIdx = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === lastFileURI);
+                     if (removeIdx !== -1) {
+                        userContent.parts.splice(removeIdx, 1);
+                        writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF.`);
+                     }
                 }
             }
         } catch (e) {
@@ -3737,29 +3752,38 @@ function callLLMWithRetry(
         }
     }
 
-    // v29.5.45: Critical Error Fallback (Level 2: Drop ALL PDFs + System Note)
-    // 如果是最後一次重試 (retryCount=2) 且仍有 PDF，全部移除改為純文字回應
+    // v29.5.46: Ultimate Fallback (Level 2: Drop ALL PDFs + System Note)
+    // 如果是最後一次重試 (retryCount=2) 且原本有掛載 PDF，全部移除改為純文字回應
     if (retryCount === 2 && attachPDFs) {
-        writeLog(`[Retry Strategy L2] CRITICAL: Dropping ALL PDFs to ensure response.`);
+        writeLog(`[Fallback Strategy] 🚨 API 重試多次仍失敗 (含 PDF)。啟動終極降級：移除所有檔案，改為純文字模式。`);
         try {
+            // 1. Clean Payload: Remove all file_data and inline_data
+            if (payload.contents) {
+                payload.contents.forEach(content => {
+                    if (content.parts) {
+                        content.parts = content.parts.filter(p => !p.file_data && !p.inline_data);
+                    }
+                });
+            }
+
+            // 2. Append System Note
             const userContent = payload.contents.find(c => c.role === 'user');
             if (userContent && userContent.parts) {
-                // Remove all parts with file_data
-                userContent.parts = userContent.parts.filter(p => !p.file_data);
-                
-                // Add System Note
-                const systemNote = "\n\n(系統偵測：因參考文件過大導致讀取失敗，已自動切換為無文件模式回答，請依據您的知識庫回答)";
-                // Find existing text part or append new
+                const systemNote = "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據您的知識庫回答)";
                 const textPart = userContent.parts.find(p => p.text);
                 if (textPart) {
                     textPart.text += systemNote;
                 } else {
                     userContent.parts.push({ text: systemNote });
                 }
-                writeLog(`[Retry Strategy L2] All PDFs removed. System note injected.`);
             }
+            
+            // 3. Remove Tools
+            if (payload.tools) delete payload.tools;
+             writeLog(`[Fallback Strategy] Payload Cleaned. System note injected.`);
+
         } catch (e) {
-             writeLog(`[Retry Strategy L2 Error] ${e.message}`);
+             writeLog(`[Fallback Strategy Error] ${e.message}`);
         }
     }
 
