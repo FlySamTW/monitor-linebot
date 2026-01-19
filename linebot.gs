@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.59"; // 2026-01-19 Fix: SOP Skip PDF if not in index + Complete QR Text
+const GAS_VERSION = "v29.5.60"; // 2026-01-19 UI: Prettier Restart Message
 const BUILD_TIMESTAMP = "2026-01-19 14:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -2751,7 +2751,19 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       ? promptVersionMatch[1]
       : "unknown";
 
-    const statusMsg = `✓ 重啟與同步完成\n📦 GAS: ${GAS_VERSION}\n📝 Prompt: v${promptVersion}\n🌡️ Temp: ${tempSetting}\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個\n- PDF型號索引：${uniquePdfModels.length} 個`;
+    const statusMsg = [
+      "✅ 系統重啟與同步完成",
+      "━━━━━━━━━━━━━━━━",
+      `📦 系統版本：${GAS_VERSION}`,
+      `📝 指令版本：v${promptVersion}`,
+      `🌡️ 創意溫度：${tempSetting}`,
+      "────────────────",
+      `📁 PDF 索引：${uniquePdfModels.length} 本`,
+      `📄 規格型號：${allExistModels.length} 組`,
+      `📑 雲端手冊：${uploadCount + skipCount} 本`,
+      "━━━━━━━━━━━━━━━━",
+      "💡 對話記憶已清空，請重新開始詢問。"
+    ].join("\n");
     writeLog(`[Sync Summary] ${syncLogs.join(" | ")}`);
     // writeLog(statusMsg);
 
