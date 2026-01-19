@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.62"; // 2026-01-19 Fix: Quick Reply Label length limit (20 chars)
-const BUILD_TIMESTAMP = "2026-01-19 14:22";
+const GAS_VERSION = "v29.5.63"; // 2026-01-19 UI: Match QR Label to Text (Limit 20)
+const BUILD_TIMESTAMP = "2026-01-19 14:26";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -6079,17 +6079,17 @@ function handleMessage(event) {
             isInPdfMode ||
             (replyText.includes("[來源:") && replyText.includes("手冊]"));
 
-          let qrLabel = "不滿意，請搜尋網路";
           let qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
+          let qrLabel = qrText;
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
-            qrLabel = "換關鍵字再搜一次";
             qrText = "對以上網路搜尋結果不滿意，請用其他關鍵字再搜尋一次";
+            qrLabel = qrText;
           } else if (isPdfModePhase) {
             // 2. PDF Phase -> Go to Web
-            qrLabel = "不滿意，改搜尋網路";
             qrText = "對以上手冊內容不滿意，請改用網路搜尋其他資料";
+            qrLabel = qrText;
           } else {
             // 3. Fast Mode (Spec/QA)
             // v29.5.55: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
@@ -6123,12 +6123,12 @@ function handleMessage(event) {
                 intent.headerText.includes("查詢規格"))
             ) {
               // 有 PDF，建議查手冊
-              qrLabel = "不滿意，查詢產品手冊";
               qrText = "對以上回答不滿意，請繼續查詢使用手冊";
+              qrLabel = qrText; // v29.5.63: Logic handles length limit
             } else {
               // 無 PDF 或一般問題 -> Go to Web
-              qrLabel = "不滿意，搜尋網路資料";
               qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
+              qrLabel = qrText;
             }
           }
 
@@ -6138,7 +6138,8 @@ function handleMessage(event) {
                 type: "action",
                 action: {
                   type: "message",
-                  label: qrLabel,
+                  // v29.5.63: Force limit label to 20 chars but keep it same as text
+                  label: qrLabel.substring(0, 20),
                   text: qrText,
                 },
               },
