@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.56"; // 2026-01-19 UX: Show PDF Model Index in Restart Message
-const BUILD_TIMESTAMP = "2026-01-19 13:41";
+const GAS_VERSION = "v29.5.57"; // 2026-01-19 Critical Fix: Skip PDF if no dedicated file
+const BUILD_TIMESTAMP = "2026-01-19 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3364,6 +3364,20 @@ function getRelevantKBFiles(
     } catch (e) {
       // 靜默失敗
     }
+  }
+
+  // v29.5.57: 關鍵修復 - 若 primaryModel 沒有專屬 PDF，不載入任何 PDF
+  // 避免載入錯誤的 Alias PDF 導致 API 空回應
+  if (!hasDedicatedPdf && primaryModel) {
+    writeLog(
+      `[KB Select] 🚫 型號 ${primaryModel} 無專屬 PDF，跳過 PDF 載入，改用規格庫回答`,
+    );
+    // 直接返回空結果，不載入任何 PDF
+    return {
+      files: [],
+      exactModels: exactModels,
+      primaryModel: primaryModel,
+    };
   }
 
   // 4. 分級載入（只用精準匹配，不做模糊匹配）
