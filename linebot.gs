@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.79"; // 2026-01-19 Fix: Combined Query for Web Search
-const BUILD_TIMESTAMP = "2026-01-19 17:15";
+const GAS_VERSION = "v29.5.80"; // 2026-01-19 Fix: Simplified PDF Indexing (Regex Only)
+const BUILD_TIMESTAMP = "2026-01-19 17:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2731,13 +2731,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
 
         pdfModels = pdfModels.concat(sModels, gModels, mModels);
-
-        // v29.5.78: 自動衍生 Core Model (無尺寸)
-        // 針對 S32DG502 這種型號，自動存入 DG502 以便後續匹配
-        sModels.forEach((m) => {
-          const core = m.replace(/^S\d{2}/, ""); // S32DG502 -> DG502
-          if (core.length >= 4) pdfModels.push(core);
-        });
       }
     });
     const uniquePdfModels = [...new Set(pdfModels)];
