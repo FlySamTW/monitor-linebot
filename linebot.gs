@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.75"; // 2026-01-19 UI: Uniform Separators
-const BUILD_TIMESTAMP = "2026-01-19 16:50";
+const GAS_VERSION = "v29.5.76"; // 2026-01-19 UI: Uniform & Longer Separators
+const BUILD_TIMESTAMP = "2026-01-19 16:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2753,15 +2753,15 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     const statusMsg = [
       "✅ 系統重啟與同步完成",
-      "━━━━",
+      "━━━━━━━━",
       `📦 系統版本：${GAS_VERSION}`,
       `📝 指令版本：v${promptVersion}`,
       `🌡️ 創意溫度：${tempSetting}`,
-      "━━━━",
+      "━━━━━━━━",
       `📁 PDF 索引：${uniquePdfModels.length} 本`,
       `📄 規格型號：${allExistModels.length} 組`,
       `📑 雲端手冊：${uploadCount + skipCount} 本`,
-      "━━━━",
+      "━━━━━━━━",
       "💡 對話記憶已清空，請重新開始詢問。",
     ].join("\n");
     writeLog(`[Sync Summary] ${syncLogs.join(" | ")}`);
