@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.73"; // 2026-01-19 UI: Optimize Reboot Message Layout
-const BUILD_TIMESTAMP = "2026-01-19 16:25";
+const GAS_VERSION = "v29.5.74"; // 2026-01-19 Fix: Reject Lazy STOP response
+const BUILD_TIMESTAMP = "2026-01-19 16:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4137,7 +4137,17 @@ function callLLMWithRetry(
                 `[API Debug] 回應為空但 FinishReason 為: ${finishReason}`,
               );
               if (finishReason === "STOP") {
-                text = "🔍 搜尋任務已完成，結果已收錄於對話摘要中。";
+                // v29.5.74: 防止 Lazy STOP
+                if (
+                  hasToolCalls ||
+                  (grounding &&
+                    (grounding.searchEntryPoint || grounding.webSearchQueries))
+                ) {
+                  text = "🔍 搜尋任務已完成，請參考呈現之連結與摘要。";
+                } else {
+                  writeLog("[API Error] 偵測到 Lazy STOP (無內容)，視為失敗");
+                  throw new Error("Empty response text from API (Lazy STOP)");
+                }
               } else if (finishReason === "SAFETY") {
                 text = "⚠️ 回應因安全政策受限，請嘗試更換關鍵字或改述問題。";
               }
