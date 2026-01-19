@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.41"; // 2026-01-18 Fix: Switch to 1.5 Flash + Clear Context for PDF
-const BUILD_TIMESTAMP = "2026-01-18 00:37";
+const GAS_VERSION = "v29.5.42"; // 2026-01-18 Fix: PDF Mode Keep Rules, Clear QA
+const BUILD_TIMESTAMP = "2026-01-18 01:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2003,12 +2003,12 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
 
-    // v29.5.40/41: Optimization for PDF Mode to prevent Token Overflow
-    // v29.5.41: Aggressively remove QA/Light to prevent redundancy and token overload
+    // v29.5.42: Optimization for PDF Mode (Compromise Solution)
+    // Clear QA to save tokens, BUT Retain Light Rules (Definitions/Specs) to prevent "Spec Blindness"
     if (isPDFMode) {
-      fullQA = ""; // Cleared
-      lightRules = ""; // Cleared
-      writeLog(`[DynamicContext] PDF Mode Enabled: Context Cleared (QA/Light Removed)`);
+      fullQA = ""; // Cleared (Save ~6k chars)
+      // lightRules = ""; // RESTORED (Don't clear Rules!)
+      writeLog(`[DynamicContext] PDF Mode Enabled: QA Cleared. Rules Kept (${lightRules.length}c).`);
     }
 
     let relevantContext = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
