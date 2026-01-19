@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.43"; // 2026-01-18 Fix: Restore 2.0 Flash (Context Fixed)
-const BUILD_TIMESTAMP = "2026-01-18 01:25";
+const GAS_VERSION = "v29.5.44"; // 2026-01-18 Fix: PDF Fallback Strategy (Drop 2nd PDF)
+const BUILD_TIMESTAMP = "2026-01-18 01:50";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3698,6 +3698,44 @@ function callLLMWithRetry(
     if (retryCount === 2 && payload.tools) {
       writeLog(`[Retry Fallback] 最後一次重試，強制移除 Tools 以確保回答`);
       delete payload.tools;
+    }
+    
+    // v29.5.44: Token Overload Fallback Strategy
+    // 如果是第一次重試 (retryCount=1) 且有 2 本 PDF，嘗試移除第 2 本以減少 Token
+    if (retryCount === 1 && attachPDFs && filesToAttach.length > 1) {
+        writeLog(`[Retry Strategy] Token Overload Suspected? Dropping 2nd PDF to save space.`);
+        // 修改 payload 中的 contents
+        // Gemini API payload structure: contents[0].parts[0].file_data
+        // 我們必須重建 contents (因為它是 reference)
+        // 但這裡我們直接去改 filesToAttach 沒用，因為 payload 已建成
+        // 必須直接操作 payload.contents
+        // 遍歷尋找 file_data component 並移除最後一個
+        
+        // 簡單做法：重新建立 payload 太慢。我們直接操作 Object
+        // 假設 User Message 是第一個 (index 0 or 1 with System)
+        // parts array 中，files 是前面的 elements
+        
+        // 更安全的做法：不依賴 payload 操作，而是 "continue" this loop with modified state? 
+        // 但 loop 內沒有重建 payload 邏輯。payload 是 loop 外建的。
+        
+        // 修正：我們必須在 Loop *內* 更新 payload，或者直接修改 payload.contents 的 reference
+        // 讓我們找到含有 file_data 的 parts
+        try {
+            const userContent = payload.contents.find(c => c.role === 'user');
+            if (userContent && userContent.parts) {
+                const fileParts = userContent.parts.filter(p => p.file_data);
+                if (fileParts.length > 1) {
+                    // 找到最後一個 file_data 的 index
+                    const lastFileIndex = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === filesToAttach[filesToAttach.length-1].uri);
+                    if (lastFileIndex !== -1) {
+                         userContent.parts.splice(lastFileIndex, 1);
+                         writeLog(`[Retry Strategy] Successfully removed 2nd PDF from payload.`);
+                    }
+                }
+            }
+        } catch (e) {
+            writeLog(`[Retry Strategy Error] Failed to modify payload: ${e.message}`);
+        }
     }
 
     if (userId && now - lastLoadingTime > 18000) {
