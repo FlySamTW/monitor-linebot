@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.78"; // 2026-01-19 Fix: Robust PDF Indexing for Comma-Separated Files
-const BUILD_TIMESTAMP = "2026-01-19 17:05";
+const GAS_VERSION = "v29.5.79"; // 2026-01-19 Fix: Combined Query for Web Search
+const BUILD_TIMESTAMP = "2026-01-19 17:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -6370,10 +6370,30 @@ function handleCommand(c, u, cid) {
       return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
     }
 
-    // 取得最後一題
-    const userMsg = history[history.length - 2]
+    // 取得最後一題 (通常是 Assistant 前的 User Message)
+    // v29.5.79: 強話上下文組合。若上一題只是型號 (User 點選 Flex)，則必須再往前找問題內容
+    let userMsg = history[history.length - 2]
       ? history[history.length - 2].content
       : history[0].content;
+
+    // 簡單判斷：如果 userMsg 看起來像純型號 (長度<15 且含數字)
+    if (userMsg.length < 15 && /\d/.test(userMsg) && history.length >= 4) {
+      // 嘗試往前找上一則 User Message (History: U1(Q) -> A1 -> U2(Model) -> A2(Spec) -> Cmd)
+      // Cmd 觸發時，History 尚未包含 Cmd。
+      // A2 是 Spec Reply.
+      // U2 是 Model (history[history.length - 2])
+      // A1 是 Select Hint
+      // U1 是 Question (history[history.length - 4])
+      const prevUserMsg = history[history.length - 4]
+        ? history[history.length - 4].content
+        : "";
+      if (prevUserMsg) {
+        writeLog(
+          `[Command] 偵測到純型號上下文，組合前一題: ${prevUserMsg} + ${userMsg}`,
+        );
+        userMsg = `${userMsg} ${prevUserMsg}`; // S27AG500NC G5 怎麼設定
+      }
+    }
 
     // 處理計數器 (dissatisfied_count)
     const cache = CacheService.getScriptCache();
