@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.66"; // 2026-01-19 Emergency Fix: Stable Multi-Mode Parsing
-const BUILD_TIMESTAMP = "2026-01-19 14:34";
+const GAS_VERSION = "v29.5.67"; // 2026-01-19 Docs: Added G5 Workflow Example
+const BUILD_TIMESTAMP = "2026-01-19 14:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2762,7 +2762,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       `📄 規格型號：${allExistModels.length} 組`,
       `📑 雲端手冊：${uploadCount + skipCount} 本`,
       "━━━━━━━━━━━━━━━━",
-      "💡 對話記憶已清空，請重新開始詢問。"
+      "💡 對話記憶已清空，請重新開始詢問。",
     ].join("\n");
     writeLog(`[Sync Summary] ${syncLogs.join(" | ")}`);
     // writeLog(statusMsg);
@@ -5164,7 +5164,10 @@ function handleMessage(event) {
 
               // 生成 Flex Message (使用 V2 去重版)
               // v29.5.50: Determine Search Intent for Dynamic Bubble Text
-              const searchIntent = determineSearchIntent(userMessage, suggestedModels);
+              const searchIntent = determineSearchIntent(
+                userMessage,
+                suggestedModels,
+              );
               const flexMsg = createModelSelectionFlexV3(
                 suggestedModels,
                 searchIntent,
@@ -6104,15 +6107,13 @@ function handleMessage(event) {
                 : [];
               const lockedModel = cache.get(`${userId}:locked_model`);
               if (lockedModel) {
-                hasDedicatedPdf = pdfModelIndex.some(
-                  (m) => {
-                    // v29.5.59: Strict Dedicated Check
-                    if (m.startsWith("S") && m.length >= 7) {
-                      return m.includes(lockedModel) || lockedModel.includes(m);
-                    }
-                    return m === lockedModel;
+                hasDedicatedPdf = pdfModelIndex.some((m) => {
+                  // v29.5.59: Strict Dedicated Check
+                  if (m.startsWith("S") && m.length >= 7) {
+                    return m.includes(lockedModel) || lockedModel.includes(m);
                   }
-                );
+                  return m === lockedModel;
+                });
               }
             } catch (e) {}
 
@@ -6327,23 +6328,39 @@ function handleCommand(c, u, cid) {
         if (models.length > 0) {
           const primary = models[0];
           // 關鍵檢查：這型號真的有 PDF 嗎？
-          const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+          const pdfIndexJson =
+            PropertiesService.getScriptProperties().getProperty(
+              "PDF_MODEL_INDEX",
+            );
           const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
-          const hasManual = pdfModelIndex.some(m => {
-            if (m.startsWith("S") && m.length >= 7) return m.includes(primary) || primary.includes(m);
+          const hasManual = pdfModelIndex.some((m) => {
+            if (m.startsWith("S") && m.length >= 7)
+              return m.includes(primary) || primary.includes(m);
             return m === primary;
           });
 
           if (hasManual) {
-            const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]");
-            const kbResult = getRelevantKBFiles([{ role: "user", content: userMsg }], kbList, u);
+            const kbList = JSON.parse(
+              PropertiesService.getScriptProperties().getProperty(
+                CACHE_KEYS.KB_URI_LIST,
+              ) || "[]",
+            );
+            const kbResult = getRelevantKBFiles(
+              [{ role: "user", content: userMsg }],
+              kbList,
+              u,
+            );
             if (kbResult.files.length > 0) {
               triggerPDF = true;
               filesToAttach = kbResult.files;
-              writeLog(`[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`);
+              writeLog(
+                `[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`,
+              );
             }
           } else {
-            writeLog(`[SOP] 型號 ${primary} 無專屬手冊，跳過 Pass 1.5，直接 Web Search`);
+            writeLog(
+              `[SOP] 型號 ${primary} 無專屬手冊，跳過 Pass 1.5，直接 Web Search`,
+            );
           }
         }
       }
@@ -9026,11 +9043,15 @@ function determineSearchIntent(msg, models = []) {
     let allHaveManuals = false;
     if (models.length > 0) {
       try {
-        const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+        const pdfIndexJson =
+          PropertiesService.getScriptProperties().getProperty(
+            "PDF_MODEL_INDEX",
+          );
         const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
-        allHaveManuals = models.every(primary => {
-          return pdfModelIndex.some(m => {
-            if (m.startsWith("S") && m.length >= 7) return m.includes(primary) || primary.includes(m);
+        allHaveManuals = models.every((primary) => {
+          return pdfModelIndex.some((m) => {
+            if (m.startsWith("S") && m.length >= 7)
+              return m.includes(primary) || primary.includes(m);
             return m === primary;
           });
         });
