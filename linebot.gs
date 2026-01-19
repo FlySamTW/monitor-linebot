@@ -3002,6 +3002,7 @@ function getRelevantKBFiles(
   const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
   const MAX_TIER1_COUNT = 2; // 精準匹配上限
 
+  let primaryModel = null; // v29.5.49: Fix ReferenceError by lifting declaration
   let combinedQuery = "";
   let userCount = 0;
 
@@ -3304,6 +3305,17 @@ function getRelevantKBFiles(
   if (keywordMap) {
     Object.keys(keywordMap).forEach((alias) => {
       const targets = keywordMap[alias].toUpperCase();
+
+      // v29.5.49: Alias Optimization - If we already have a Specific Model (S\d{2}...), don't add broad aliases (like G5)
+      // This prevents "S27AG500NC" from being polluted by "G5" (which brings in G50D, G55C, etc.)
+      const hasSpecificModel = exactModels.some((m) =>
+        m.match(/^S\d{2}[A-Z]{2}\d{3}/),
+      );
+      if (hasSpecificModel && alias.length < 4) {
+        // Skip short aliases if we have a specific model
+        return;
+      }
+
       // 如果別稱的目標包含我們目前鎖定的型號 (Reverse Check)
       // 且別稱長度 >= 2 (避免匹配到雜訊)
       if (alias.length >= 2 && exactModels.some((m) => targets.includes(m))) {
@@ -3316,6 +3328,9 @@ function getRelevantKBFiles(
   }
 
   exactModels = [...new Set([...exactModels, ...shortModels])]; // 合併並去重
+
+  // v29.5.49: Assign primaryModel HERE (before filtering logic uses it)
+  primaryModel = exactModels.length > 0 ? exactModels[0] : null;
 
   // 4. 分級載入（只用精準匹配，不做模糊匹配）
   const tier0 = []; // 必載 (QA + CLASS_RULES)
@@ -3376,7 +3391,7 @@ function getRelevantKBFiles(
   let filesToAttach = [...tier0, ...tier1];
 
   // v29.4.16: Determine primary model name
-  const primaryModel = exactModels.length > 0 ? exactModels[0] : null;
+  // primaryModel = exactModels.length > 0 ? exactModels[0] : null; // v29.5.49: Moved up
 
   // v29.5.45: Optimization - If Primary Model matches the first PDF, force Single PDF
   // This solves the S27AG500NC issue where aliases (G5) pulled in a second unrelated PDF.
@@ -3409,7 +3424,7 @@ function getRelevantKBFiles(
   }
 
   const cache = CacheService.getScriptCache();
-  // v29.4.16: primaryModel already defined above
+  // v29.5.49: primaryModel defined at top
 
   cache.put(`${userId}:last_kb_files`, JSON.stringify(filesToAttach), 600);
   return {
@@ -8858,7 +8873,7 @@ function createModelSelectionFlexV3(models) {
       action: {
         type: "message",
         label: label,
-        text: `${model} 怎麼設定`,
+        text: `${model}`,
       },
       style: "primary",
       color: "#4A90D9", // 清爲藍色
