@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.70"; // 2026-01-19 Fix: Canonical Google Search Protocol
-const BUILD_TIMESTAMP = "2026-01-19 14:43";
+const GAS_VERSION = "v29.5.71"; // 2026-01-19 Fix: Exhaustive Grounding Detection
+const BUILD_TIMESTAMP = "2026-01-19 16:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4098,27 +4098,44 @@ function callLLMWithRetry(
             const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.70: Solidified Grounding Support
-            // 當啟用 Google Search 工具時，即使 text 為空，只要有 groundingMetadata 就算成功
+            // v29.5.71: Exhaustive Grounding and Tool Call Detection
+            // 當啟用 Google Search 工具時，即使 text 為空，只要有任何工具調用或 Grounding 信號就算成功
             const grounding = candidates[0].groundingMetadata;
+            const finishReason = candidates[0].finishReason;
+
             if (grounding && text.length === 0) {
               const hasEntryPoint = !!grounding.searchEntryPoint;
               const hasQueries =
                 grounding.webSearchQueries &&
                 grounding.webSearchQueries.length > 0;
+              const hasChunks =
+                grounding.groundingChunks &&
+                grounding.groundingChunks.length > 0;
 
-              if (hasEntryPoint || hasQueries) {
-                writeLog(`[API Grounding] 偵測到搜尋內容，注入導引文字。`);
+              if (hasEntryPoint || hasQueries || hasChunks) {
+                writeLog(
+                  `[API Grounding] 偵測到搜尋內容 (Entry:${hasEntryPoint}|Query:${hasQueries}|Chunks:${hasChunks}), 注入導引文字。`,
+                );
                 text =
-                  "🔍 搜尋建議已生成：對話中可能已整合部分搜尋結果，請參考下方摘要或連結。";
+                  "🔍 搜尋結果已生成：對話中已包含網路搜尋引用，請點擊下方建議連結或查看摘要。";
               }
             }
 
-            // v29.5.66: 檢查是否包含系統可能需要的標籤（如 AUTO_SEARCH_PDF）
+            // v29.5.71: 額外診斷 finishReason
+            if (text.length === 0 && finishReason) {
+              writeLog(
+                `[API Debug] 回應為空但 FinishReason 為: ${finishReason}`,
+              );
+              if (finishReason === "STOP" || finishReason === "SAFETY") {
+                text =
+                  "🔍 搜尋任務結果已收錄，或因安全過濾無法顯示全文，請參考下方搜尋入口。";
+              }
+            }
+
             // 如果連基本 text 或 grounding 都沒有，才拋出錯誤
             if (text.length === 0) {
               writeLog(
-                `[API Error] 回應全空 (No text/grounding), 可能工具執行失敗`,
+                `[API Error] 回應全空 (No text/grounding/finish), 可能工具執行失敗`,
               );
               throw new Error("Empty response text from API");
             }
