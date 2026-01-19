@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.55"; // 2026-01-19 UX: Better Quick Reply + PDF Index Check
-const BUILD_TIMESTAMP = "2026-01-19 13:38";
+const GAS_VERSION = "v29.5.56"; // 2026-01-19 UX: Show PDF Model Index in Restart Message
+const BUILD_TIMESTAMP = "2026-01-19 13:41";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2751,7 +2751,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       ? promptVersionMatch[1]
       : "unknown";
 
-    const statusMsg = `✓ 重啟與同步完成\n📦 GAS: ${GAS_VERSION}\n📝 Prompt: v${promptVersion}\n🌡️ Temp: ${tempSetting}\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個`;
+    const statusMsg = `✓ 重啟與同步完成\n📦 GAS: ${GAS_VERSION}\n📝 Prompt: v${promptVersion}\n🌡️ Temp: ${tempSetting}\n- 新增上傳：${uploadCount} 本\n- 沿用舊檔：${skipCount} 本\n- 發現型號：${allExistModels.length} 個\n- PDF型號索引：${uniquePdfModels.length} 個`;
     writeLog(`[Sync Summary] ${syncLogs.join(" | ")}`);
     // writeLog(statusMsg);
 
