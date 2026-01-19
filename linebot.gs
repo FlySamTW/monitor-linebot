@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.51"; // 2026-01-19 Fix: PDF Prioritization (Revert Alias Guard)
-const BUILD_TIMESTAMP = "2026-01-19 13:10";
+const GAS_VERSION = "v29.5.52"; // 2026-01-19 Feature: Dynamic Quick Reply Label
+const BUILD_TIMESTAMP = "2026-01-19 13:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5973,18 +5973,54 @@ function handleMessage(event) {
           }
         }
 
-        // v29.3.39: 標準流程補上 Quick Reply (修正文案)
+        // v29.5.52: Dynamic Quick Reply Text based on Search Context
         let responseOptions = {};
         if (!msg.startsWith("/") && replyText) {
+          // Determine Context
+          const isWebSearchPhase =
+            replyText.includes("[來源: 網路搜尋]") ||
+            replyText.includes("🔍 網路搜尋補充資料");
+          const isPdfModePhase =
+            isInPdfMode ||
+            (replyText.includes("[來源:") && replyText.includes("手冊]"));
+
+          let qrLabel = "不滿意 (搜網路)";
+          let qrText = "對以上回答不滿意，請網路搜尋";
+
+          if (isWebSearchPhase) {
+            // 1. Web Phase -> Continue Web
+            qrLabel = "不滿意 (繼續搜)";
+            qrText = "對以上網路搜尋不滿意，請再繼續搜尋";
+          } else if (isPdfModePhase) {
+            // 2. PDF Phase -> Go to Web
+            qrLabel = "不滿意 (搜網路)";
+            qrText = "對以上手冊回答不滿意，請搜尋網路";
+          } else {
+            // 3. Fast Mode (Spec/QA)
+            // Check if it was a Spec/Manual intent
+            const intent = determineSearchIntent(msg);
+            if (
+              intent.headerText.includes("查閱產品手冊") ||
+              intent.headerText.includes("查詢規格")
+            ) {
+              // Suggest Manual Search
+              qrLabel = "不滿意 (查手冊)";
+              qrText = "對以上規格回答不滿意，請搜尋產品手冊(將虛耗時30秒)";
+            } else {
+              // General/Price -> Go to Web
+              qrLabel = "不滿意 (搜網路)";
+              qrText = "對以上回答不滿意，請網路搜尋";
+            }
+          }
+
           responseOptions.quickReply = {
             items: [
               {
                 type: "action",
                 action: {
                   type: "message",
-                  // v29.5.02: User-specified label
-                  label: "不滿意以上回答，請再擴大搜尋",
-                  text: "對以上回答不太滿意，請再擴大搜尋",
+                  label: qrLabel,
+                  text: qrText,
                 },
               },
             ],
