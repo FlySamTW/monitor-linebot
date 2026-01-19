@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.42"; // 2026-01-18 Fix: PDF Mode Keep Rules, Clear QA
-const BUILD_TIMESTAMP = "2026-01-18 01:00";
+const GAS_VERSION = "v29.5.43"; // 2026-01-18 Fix: Restore 2.0 Flash (Context Fixed)
+const BUILD_TIMESTAMP = "2026-01-18 01:25";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -41,8 +41,8 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-// ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 1.5 Flash (v29.5.41: User reported 2.0 instability with large PDFs)
-const GEMINI_MODEL_THINK = "models/gemini-1.5-flash";
+// ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 2.0 Flash (v29.5.43: Context Optimized, 2.0 Safe now)
+const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
 const PRICE_THINK_INPUT = 0.1;
 const PRICE_THINK_OUTPUT = 0.4;
 
