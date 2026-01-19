@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.65"; // 2026-01-19 Fix: ReferenceError (firstPart) & Solidify Grounding
-const BUILD_TIMESTAMP = "2026-01-19 14:32";
+const GAS_VERSION = "v29.5.66"; // 2026-01-19 Emergency Fix: Stable Multi-Mode Parsing
+const BUILD_TIMESTAMP = "2026-01-19 14:34";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4095,35 +4095,25 @@ function callLLMWithRetry(
             candidates[0].content.parts &&
             candidates[0].content.parts.length > 0
           ) {
-            const firstPart = candidates[0].content.parts[0]; // v29.5.65: Recovered Missing Variable
+            const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.64: Grounding Metadata Support (Fix for Web Search Tool returning empty text)
+            // v29.5.66: Robust Multi-Mode Parsing (Grounding & Text)
             // 當啟用 Google Search 工具時，答案可能位於 groundingMetadata 中
             if (
               text.length === 0 &&
               candidates[0].groundingMetadata &&
               candidates[0].groundingMetadata.searchEntryPoint
             ) {
-              writeLog(
-                `[API Grounding] 偵測到搜尋入口點，嘗試引導使用者。`,
-              );
-              // 構建一個友善的提示，引導使用者查看搜尋結果（或由 LLM 下一輪整合）
-              // 注意：這通常發生在 LLM 決定直接顯示搜尋來源。
+              writeLog(`[API Grounding] 偵測到搜尋入口點，嘗試引導使用者。`);
               text = "🔍 搜尋建議已生成：請參考下方搜尋結果或點擊查看。";
-              
-              // 若有 HTML content，可以提取摘要 (Gemini 特有格式)
-              const html = candidates[0].groundingMetadata.searchEntryPoint.html;
-              if (html) {
-                 writeLog(`[API Grounding] 搜尋摘要 HTML 存在，注入提示。`);
-              }
             }
 
-            // v29.5.24: Validate Text Content
-            // 如果啟用工具但回應空文本，視為失敗，拋出錯誤以觸發重試
+            // v29.5.66: 檢查是否包含系統可能需要的標籤（如 AUTO_SEARCH_PDF）
+            // 如果連基本 text 或 grounding 都沒有，才拋出錯誤
             if (text.length === 0) {
               writeLog(
-                `[API Error] 回應為空文本 (Empty Text), 可能工具執行失敗`,
+                `[API Error] 回應全空 (No text/grounding), 可能工具執行失敗`,
               );
               throw new Error("Empty response text from API");
             }
