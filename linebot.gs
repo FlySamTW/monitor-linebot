@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.54"; // 2026-01-19 Fix: Web Search Trigger Keywords
-const BUILD_TIMESTAMP = "2026-01-19 13:35";
+const GAS_VERSION = "v29.5.55"; // 2026-01-19 UX: Better Quick Reply + PDF Index Check
+const BUILD_TIMESTAMP = "2026-01-19 13:38";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4668,14 +4668,22 @@ function handleMessage(event) {
     // 用戶明確指出：這顆按鈕是「網路搜尋」，不是 PDF 搜尋，也不是反問
     // v29.5.22: 修復匹配問題 - "不太滿意" 也要能匹配
     // v29.5.54: 修復匹配問題 - 支援「網路搜尋」和「擴大搜尋」兩種觸發詞
-    if (
+    // v29.5.55: 分離 Web Search 和 PDF Search 觸發邏輯
+    const isWebSearchRequest =
       (msg.includes("不滿意") || msg.includes("不太滿意")) &&
       (msg.includes("擴大搜尋") ||
         msg.includes("網路搜尋") ||
         msg.includes("繼續搜尋") ||
-        msg.includes("搜尋網路"))
-    ) {
-      writeLog(`[Force Web] 收到擴大搜尋請求，強制切換至網路搜尋模式`);
+        msg.includes("搜尋網路") ||
+        msg.includes("搜尋其他資料"));
+    const isPdfSearchRequest =
+      (msg.includes("不滿意") || msg.includes("不太滿意")) &&
+      (msg.includes("查詢使用手冊") ||
+        msg.includes("查閱產品手冊") ||
+        msg.includes("繼續查詢使用手冊"));
+
+    if (isWebSearchRequest) {
+      writeLog(`[Force Web] 收到網路搜尋請求，強制切換至網路搜尋模式`);
       const cmdResult = handleCommand(
         "不滿意這回答請繼續擴大搜尋",
         userId,
@@ -4683,6 +4691,15 @@ function handleMessage(event) {
       ); // Reuse existing command logic
       replyMessage(replyToken, cmdResult);
       return;
+    }
+
+    // v29.5.55: PDF Search Request - 強制觸發 PDF 模式
+    if (isPdfSearchRequest) {
+      writeLog(`[Force PDF] 收到手冊查詢請求，強制切換至 PDF 模式`);
+      // 設置 PDF Mode
+      const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+      cache.put(pdfModeKey, "true", 300);
+      // 不 return，讓流程繼續往下走，進入正常的 PDF 載入邏輯
     }
 
     // B. 指令
@@ -6034,27 +6051,45 @@ function handleMessage(event) {
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
-            qrLabel = "不滿意 (繼續搜)";
-            qrText = "對以上網路搜尋不滿意，請再繼續搜尋";
+            qrLabel = "換個關鍵字再搜";
+            qrText = "對以上網路搜尋結果不滿意，請用其他關鍵字再搜尋一次";
           } else if (isPdfModePhase) {
             // 2. PDF Phase -> Go to Web
-            qrLabel = "不滿意 (搜網路)";
-            qrText = "對以上手冊回答不滿意，請搜尋網路";
+            qrLabel = "手冊沒寫，查網路";
+            qrText = "對以上手冊內容不滿意，請改用網路搜尋其他資料";
           } else {
             // 3. Fast Mode (Spec/QA)
-            // Check if it was a Spec/Manual intent
+            // v29.5.55: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
+            let hasDedicatedPdf = false;
+            try {
+              const pdfIndexJson =
+                PropertiesService.getScriptProperties().getProperty(
+                  "PDF_MODEL_INDEX",
+                );
+              const pdfModelIndex = pdfIndexJson
+                ? JSON.parse(pdfIndexJson)
+                : [];
+              const lockedModel = cache.get(`${userId}:locked_model`);
+              if (lockedModel) {
+                hasDedicatedPdf = pdfModelIndex.some(
+                  (m) => m.includes(lockedModel) || lockedModel.includes(m),
+                );
+              }
+            } catch (e) {}
+
             const intent = determineSearchIntent(msg);
             if (
-              intent.headerText.includes("查閱產品手冊") ||
-              intent.headerText.includes("查詢規格")
+              hasDedicatedPdf &&
+              (intent.headerText.includes("查閱產品手冊") ||
+                intent.headerText.includes("查詢規格"))
             ) {
-              // Suggest Manual Search
-              qrLabel = "不滿意 (查手冊)";
-              qrText = "對以上規格回答不滿意，請搜尋產品手冊(將虛耗時30秒)";
+              // 有 PDF，建議查手冊
+              qrLabel = "查產品手冊 (約30秒)";
+              qrText = "對以上回答不滿意，請繼續查詢使用手冊";
             } else {
-              // General/Price -> Go to Web
-              qrLabel = "不滿意 (搜網路)";
-              qrText = "對以上回答不滿意，請網路搜尋";
+              // 無 PDF 或一般問題 -> Go to Web
+              qrLabel = "幫我搜尋網路";
+              qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
             }
           }
 
