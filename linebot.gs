@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.60"; // 2026-01-19 UI: Prettier Restart Message
-const BUILD_TIMESTAMP = "2026-01-19 14:10";
+const GAS_VERSION = "v29.5.61"; // 2026-01-19 UI: Dynamic Selection Bubble Title
+const BUILD_TIMESTAMP = "2026-01-19 14:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5164,7 +5164,7 @@ function handleMessage(event) {
 
               // 生成 Flex Message (使用 V2 去重版)
               // v29.5.50: Determine Search Intent for Dynamic Bubble Text
-              const searchIntent = determineSearchIntent(userMessage);
+              const searchIntent = determineSearchIntent(userMessage, suggestedModels);
               const flexMsg = createModelSelectionFlexV3(
                 suggestedModels,
                 searchIntent,
@@ -8998,9 +8998,11 @@ function getPromptsFromCacheOrSheet() {
 // ════════════════════════════════════════════════════════════════
 
 /**
- * v29.5.50: Determine Search Intent for Dynamic Bubble Text
+ * v29.5.61: Determine Search Intent for Dynamic Bubble Text
+ * @param {string} msg - User's message
+ * @param {string[]} models - List of models for manual availability check
  */
-function determineSearchIntent(msg) {
+function determineSearchIntent(msg, models = []) {
   if (!msg)
     return {
       headerText: "🔍 請選擇型號",
@@ -9013,10 +9015,33 @@ function determineSearchIntent(msg) {
   if (
     m.match(/設定|說明書|手冊|故障|error|安裝|reset|重置|亮燈|閃爍|無法|不能/)
   ) {
-    return {
-      headerText: "🔍 請選擇型號以查閱產品手冊",
-      footerText: "載入PDF約需 30 秒，請耐心等候",
-    };
+    // v29.5.61: Check if ALL models in the list have manuals
+    let allHaveManuals = false;
+    if (models.length > 0) {
+      try {
+        const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+        const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+        allHaveManuals = models.every(primary => {
+          return pdfModelIndex.some(m => {
+            if (m.startsWith("S") && m.length >= 7) return m.includes(primary) || primary.includes(m);
+            return m === primary;
+          });
+        });
+      } catch (e) {}
+    }
+
+    if (allHaveManuals) {
+      return {
+        headerText: "🔍 請選擇型號以查閱產品手冊",
+        footerText: "載入PDF約需 30 秒，請耐心等候",
+      };
+    } else {
+      // 若包含無手冊型號，標題降級
+      return {
+        headerText: "🔍 請選擇型號以查閱說明或規格",
+        footerText: "點選型號後AI將為您深入分析",
+      };
+    }
   }
 
   // 2. Price / Web Intent
