@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.67"; // 2026-01-19 Docs: Added G5 Workflow Example
-const BUILD_TIMESTAMP = "2026-01-19 14:35";
+const GAS_VERSION = "v29.5.69"; // 2026-01-19 Fix: Official Google Search Tool Params
+const BUILD_TIMESTAMP = "2026-01-19 14:41";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3757,13 +3757,21 @@ function callLLMWithRetry(
   // 這樣可以兼顧「快速穩定」與「查網路的需求」，避免因網路搜尋導致的無回應。
   let tools = undefined;
   if (forceWebSearch) {
-    // v29.4.43: Corrected API parameter from google_search to googleSearch (CamelCase required)
-    // v29.5.26: 強制注入搜尋指令，避免 AI 沉默
-    writeLog(`[Search Tool] 🌐 啟用 Google 本地搜尋 (Pass 2)`);
-    tools = [{ googleSearch: {} }];
+    // v29.5.69: Optimized Grounding with Google Search (Official V2 structure)
+    // 1. google_search: Modern recommended tool
+    // 2. google_search_retrieval: Support for dynamic mode (Fallback)
+    writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (Pass 2)`);
+    tools = [
+      { google_search: {} },
+      {
+        google_search_retrieval: {
+          dynamic_retrieval_config: { dynamic_threshold: 0.1 },
+        },
+      },
+    ];
     // 強制追加指令到 Prompt，確保 AI 知道可以用工具
     dynamicPrompt +=
-      "\n\n【系統強制指令】你現在擁有 Google 搜尋權限。請務必使用搜尋工具尋找答案，並整合搜尋結果回答用戶。";
+      "\n\n【系統強制指令】你現在擁有全權調用 Google 搜尋的權限。請務必使用 google_search 工具尋找答案。若找到相關資料，請詳細整合並回答。";
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
@@ -4098,15 +4106,22 @@ function callLLMWithRetry(
             const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.66: Robust Multi-Mode Parsing (Grounding & Text)
-            // 當啟用 Google Search 工具時，答案可能位於 groundingMetadata 中
-            if (
-              text.length === 0 &&
-              candidates[0].groundingMetadata &&
-              candidates[0].groundingMetadata.searchEntryPoint
-            ) {
-              writeLog(`[API Grounding] 偵測到搜尋入口點，嘗試引導使用者。`);
-              text = "🔍 搜尋建議已生成：請參考下方搜尋結果或點擊查看。";
+            // v29.5.69: Advanced Grounding & Search Result Support
+            // 當啟用 Google Search 工具時，檢查是否已執行搜尋
+            const grounding = candidates[0].groundingMetadata;
+            if (grounding) {
+              const hasQueries =
+                grounding.webSearchQueries &&
+                grounding.webSearchQueries.length > 0;
+              const hasEntryPoint = grounding.searchEntryPoint;
+
+              if (text.length === 0 && (hasQueries || hasEntryPoint)) {
+                writeLog(
+                  `[API Grounding] 偵測到搜尋內容 (Queries: ${hasQueries}), 嘗試生成引導文字。`,
+                );
+                text =
+                  "🔍 搜尋建議已生成：對話中可能已整合搜尋結果，或請點擊下方建議連結。";
+              }
             }
 
             // v29.5.66: 檢查是否包含系統可能需要的標籤（如 AUTO_SEARCH_PDF）
@@ -6082,20 +6097,20 @@ function handleMessage(event) {
             isInPdfMode ||
             (replyText.includes("[來源:") && replyText.includes("手冊]"));
 
-          let qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
+          let qrText = "回答不滿意，請改搜尋網路資料";
           let qrLabel = qrText;
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
-            qrText = "對以上網路搜尋結果不滿意，請用其他關鍵字再搜尋一次";
+            qrText = "答案不理想，換個關鍵字再搜";
             qrLabel = qrText;
           } else if (isPdfModePhase) {
             // 2. PDF Phase -> Go to Web
-            qrText = "對以上手冊內容不滿意，請改用網路搜尋其他資料";
+            qrText = "手冊沒解答，改搜尋網路資料";
             qrLabel = qrText;
           } else {
             // 3. Fast Mode (Spec/QA)
-            // v29.5.55: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
+            // v29.5.64: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
             let hasDedicatedPdf = false;
             try {
               const pdfIndexJson =
@@ -6124,11 +6139,11 @@ function handleMessage(event) {
                 intent.headerText.includes("查詢規格"))
             ) {
               // 有 PDF，建議查手冊
-              qrText = "對以上回答不滿意，請繼續查詢使用手冊";
-              qrLabel = qrText; // v29.5.63: Logic handles length limit
+              qrText = "回答不滿意，請繼續查詢手冊";
+              qrLabel = qrText; // v29.5.64: Logic handles length limit
             } else {
               // 無 PDF 或一般問題 -> Go to Web
-              qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
+              qrText = "回答不滿意，請改搜尋網路資料";
               qrLabel = qrText;
             }
           }
