@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.77"; // 2026-01-19 Fix: PDF Size-Agnostic Match & Web Search Force Answer
-const BUILD_TIMESTAMP = "2026-01-19 17:00";
+const GAS_VERSION = "v29.5.78"; // 2026-01-19 Fix: Robust PDF Indexing for Comma-Separated Files
+const BUILD_TIMESTAMP = "2026-01-19 17:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2719,13 +2719,25 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     newKbList.forEach((file) => {
       if (file.mimeType === "application/pdf") {
         const fileName = file.name.toUpperCase();
-        // 提取 S-models (e.g. S27AG500NC, S32DG802)
-        const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}/g) || [];
+
+        // v29.5.78: 改進 Regex 以支援逗號分隔與不定長度後綴
+        // 原本: /S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}/g (限制後綴最多2碼)
+        // 修正: /S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g (允許更長後綴，並確保逗號不會截斷識別)
+        const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g) || [];
+
         // 提取 G-models (e.g. G90XF, G80SD, G5)
-        const gModels = fileName.match(/G\d{1,2}[A-Z]{0,2}/g) || [];
+        const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
         // 提取 M-models (e.g. M70D, M50F)
-        const mModels = fileName.match(/M\d{1,2}[A-Z]?/g) || [];
+        const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
+
         pdfModels = pdfModels.concat(sModels, gModels, mModels);
+
+        // v29.5.78: 自動衍生 Core Model (無尺寸)
+        // 針對 S32DG502 這種型號，自動存入 DG502 以便後續匹配
+        sModels.forEach((m) => {
+          const core = m.replace(/^S\d{2}/, ""); // S32DG502 -> DG502
+          if (core.length >= 4) pdfModels.push(core);
+        });
       }
     });
     const uniquePdfModels = [...new Set(pdfModels)];
