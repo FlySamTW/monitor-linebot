@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.76"; // 2026-01-19 UI: Uniform & Longer Separators
-const BUILD_TIMESTAMP = "2026-01-19 16:55";
+const GAS_VERSION = "v29.5.77"; // 2026-01-19 Fix: PDF Size-Agnostic Match & Web Search Force Answer
+const BUILD_TIMESTAMP = "2026-01-19 17:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3369,6 +3369,19 @@ function getRelevantKBFiles(
         // v29.5.59: Strict Dedicated Check
         // 如果 m 是 S-model (長度足夠且 S 開頭)，則允許子字串匹配 (例如 S27FG502 匹配 S27FG502SC)
         if (m.startsWith("S") && m.length >= 7) {
+          // v29.5.77: Size-Agnostic Match (跨尺寸匹配)
+          // 將 S32DG502EC 簡化為 DG502EC，將 S27DG502EC 簡化為 DG502EC，然後比對
+          // 邏輯：移除前3碼 (S + 2碼數字)，比對後續核心型號
+          const corePrimary = primaryModel.replace(/^S\d{2}/, "");
+          const coreIndex = m.replace(/^S\d{2}/, "");
+          // 如果核心型號相同 (DG502EC === DG502EC)，視為命中
+          if (
+            coreIndex.includes(corePrimary) ||
+            corePrimary.includes(coreIndex)
+          ) {
+            // writeLog(`[KB Select] 🎯 跨尺寸命中: ${primaryModel} (Core: ${corePrimary}) matches ${m}`);
+            return true;
+          }
           return m.includes(primaryModel) || primaryModel.includes(m);
         }
         // 如果是像 G5 這種別稱，必須與鎖定的型號完全一致才算「專屬 PDF」
@@ -3538,16 +3551,16 @@ function constructDynamicPrompt(
 
 【搜尋策略 (Search Strategy)】
 1. **精確搜尋**：優先搜尋「${searchTarget} + 用戶問題關鍵字」。
-2. **泛化搜尋**：若精確搜尋無結果，**務必**嘗試搜尋「三星洗衣機 + 用戶問題」或更通用的「洗衣機 + 用戶問題」。
-3. **類推回答**：若網路上沒有針對該特定型號的討論，請引用類似機型或通用家電常識來回答。**用戶想知道的是「通則建議」，而不是聽你說「查無資料」。**
+2. **泛化搜尋**：若精確搜尋無結果，**務必**嘗試搜尋「三星螢幕 + 用戶問題」或此系列的通用設定。
+3. **類推回答**：若網路上沒有針對該特定型號的討論，請引用類似機型或通用常識來回答。**用戶想知道的是「通則建議」，而不是聽你說「查無資料」。**
 
 【最高指令】
-1. **強制搜尋**：你必須調用 \`googleSearch\` 工具。
+1. **強制搜尋**：你必須調用 \`google_search\` 工具。
 2. **絕對禁止推託**：
-   - ❌ **嚴禁**回答：「手冊未提及」、「建議查閱手冊」、「無法確認」。(我們就是查不到才找你)
-   - ❌ **嚴禁**回答：「建議聯繫客服」。(除非是明確的硬體故障代碼)
-   - ❌ **嚴禁**反問用戶：「要不要我幫你搜尋？」、「我幫你上網搜尋看看，這樣可以嗎？」(你已經有權限，直接搜！)
-   - ✅ **必須**回答：「雖然針對此特定型號的討論較少，但根據三星類似機型的經驗/通用建議是...」
+   - ❌ **嚴禁**回答：「手冊未提及」、「無法確認」、「請告訴我更多細節」。
+   - ❌ **嚴禁**反問用戶：「你想知道什麼功能？」、「這樣可以嗎？」(禁止反問！直接給出你能找到的最佳答案！)
+   - ✅ **必須**回答：「雖然針對此特定型號 ${searchTarget} 的具體設定較少，但通常三星螢幕的設定方式為...」
+   - ✅ **必須**回答：「根據網路搜尋結果，此系列 (G5/G7) 的操作步驟通常是...」
    - ✅ **最終手段**：若真的完全無解，請建議「直接詢問 Sam」。
    - ❌ **嚴禁**輸出 \`[AUTO_SEARCH_WEB]\` 或 \`[AUTO_SEARCH_PDF]\` 等系統標籤。直接回答問題！
 3. **來源標註**：請在回答末尾明確標註「[來源: 網路搜尋]」。`;
