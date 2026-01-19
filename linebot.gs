@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.57"; // 2026-01-19 Critical Fix: Skip PDF if no dedicated file
-const BUILD_TIMESTAMP = "2026-01-19 13:44";
+const GAS_VERSION = "v29.5.59"; // 2026-01-19 Critical Fix: Strict PDF Index Match + Unified QR
+const BUILD_TIMESTAMP = "2026-01-19 13:58";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3353,12 +3353,19 @@ function getRelevantKBFiles(
       const pdfIndexJson =
         PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
       const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
-      hasDedicatedPdf = pdfModelIndex.some(
-        (m) => m.includes(primaryModel) || primaryModel.includes(m),
-      );
+      hasDedicatedPdf = pdfModelIndex.some((m) => {
+        // v29.5.59: Strict Dedicated Check
+        // 如果 m 是 S-model (長度足夠且 S 開頭)，則允許子字串匹配 (例如 S27FG502 匹配 S27FG502SC)
+        if (m.startsWith("S") && m.length >= 7) {
+          return m.includes(primaryModel) || primaryModel.includes(m);
+        }
+        // 如果是像 G5 這種別稱，必須與鎖定的型號完全一致才算「專屬 PDF」
+        // (這能防止 S27AG500NC 誤判含有 G5 而載入手冊)
+        return m === primaryModel;
+      });
       if (!hasDedicatedPdf) {
         writeLog(
-          `[KB Select] ⚠️ 型號 ${primaryModel} 無專屬 PDF，將使用 Alias 匹配`,
+          `[KB Select] ⚠️ 型號 ${primaryModel} 無專屬 PDF (Index Match Failed)`,
         );
       }
     } catch (e) {
@@ -6065,11 +6072,11 @@ function handleMessage(event) {
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
-            qrLabel = "換個關鍵字再搜";
+            qrLabel = "對以上網路搜尋結果不滿意，請用其他關鍵字再搜尋一次";
             qrText = "對以上網路搜尋結果不滿意，請用其他關鍵字再搜尋一次";
           } else if (isPdfModePhase) {
             // 2. PDF Phase -> Go to Web
-            qrLabel = "手冊沒寫，查網路";
+            qrLabel = "對以上手冊內容不滿意，請改用網路搜尋其他資料";
             qrText = "對以上手冊內容不滿意，請改用網路搜尋其他資料";
           } else {
             // 3. Fast Mode (Spec/QA)
@@ -6098,11 +6105,11 @@ function handleMessage(event) {
                 intent.headerText.includes("查詢規格"))
             ) {
               // 有 PDF，建議查手冊
-              qrLabel = "查產品手冊 (約30秒)";
+              qrLabel = "對以上回答不滿意，請繼續查詢使用手冊";
               qrText = "對以上回答不滿意，請繼續查詢使用手冊";
             } else {
               // 無 PDF 或一般問題 -> Go to Web
-              qrLabel = "幫我搜尋網路";
+              qrLabel = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
               qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
             }
           }
