@@ -1,11 +1,13 @@
 # AGENTS.md - Samsung LINE Bot Development Guide
 
 ## 📋 Project Overview
+
 Google Apps Script (GAS) LINE Bot providing AI customer service for Samsung computer monitors in Taiwan. Uses Gemini 2.5 Flash + LINE Messaging API with Brain-First Architecture.
 
 ## 🔧 Build & Deployment Commands
 
 ### Main Commands
+
 ```bash
 # Deploy to GAS (Primary)
 ./deploy.bat                     # Windows batch deployment
@@ -20,6 +22,7 @@ git push origin main
 ```
 
 ### Test Commands
+
 ```bash
 # Run end-to-end test via Puppeteer
 cd test_runner
@@ -31,6 +34,7 @@ node verify_linebot.js
 ```
 
 ### Development Utilities
+
 ```bash
 # Check logs
 cat logs/*.txt
@@ -41,6 +45,7 @@ python pdf_keyword_extractor.py
 ```
 
 ## 📁 File Structure & Responsibilities
+
 ```
 linebot.gs          # Main application (single file, ~4000 lines)
 ├── CONFIG          # Global constants & settings
@@ -61,6 +66,7 @@ TestUI.html         # Web testing interface
 ## 🎯 Code Style & Conventions
 
 ### JavaScript Style (GAS Environment)
+
 ```javascript
 // ✅ Correct: Block style, explicit braces
 if (condition) {
@@ -72,7 +78,8 @@ if (condition) {
 if (condition) return doSomething();
 
 // ✅ Correct: GAS-specific APIs
-const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+const apiKey =
+  PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
 const cache = CacheService.getScriptCache();
 const lock = LockService.getScriptLock();
 
@@ -89,15 +96,16 @@ async function callAPI() {
 ```
 
 ### Naming Conventions
+
 ```javascript
 // Constants: UPPER_SNAKE_CASE
 const SHEET_NAMES = { QA: "QA", LOG: "LOG" };
 const CACHE_KEYS = { KB_URI_LIST: "kb_list_v15_0" };
 
 // Functions: camelCase with descriptive names
-function handleMessage(userId, msg) { }
-function getRelevantKBFiles(query, exactModels) { }
-function callLLMWithRetry(params) { }
+function handleMessage(userId, msg) {}
+function getRelevantKBFiles(query, exactModels) {}
+function callLLMWithRetry(params) {}
 
 // Variables: camelCase
 let userMessage = "";
@@ -105,6 +113,7 @@ const filteredFiles = [];
 ```
 
 ### Error Handling & Logging
+
 ```javascript
 // ✅ Structured logging with tags
 writeLog(`[KB Select] 🎯 Found models: ${models.join(", ")}`);
@@ -127,15 +136,17 @@ if (apiError) {
 ```
 
 ### Version Management
+
 ```javascript
 // ✅ Always update version after code changes
-const GAS_VERSION = "v29.5.47"; // Format: vMajor.Minor.Patch
+const GAS_VERSION = "v29.5.87"; // Format: vMajor.Minor.Patch
 const BUILD_TIMESTAMP = "2026-01-19 11:30";
 ```
 
 ## 🧠 AI Logic & Prompt Guidelines
 
 ### System Architecture
+
 ```
 User Message → Direct Search Check → Fast Mode (QA+Rules)
                                         ↓
@@ -149,6 +160,7 @@ User Message → Direct Search Check → Fast Mode (QA+Rules)
 ```
 
 ### Prompt Engineering Rules
+
 ```javascript
 // ✅ Use structured system instructions
 const systemPrompt = `
@@ -167,31 +179,34 @@ function buildDynamicContext(query, userId) {
 ```
 
 ### Response Format Standards
+
 ```javascript
 // ✅ Consistent response formatting
 function formatForLineMobile(text) {
   return text
-    .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove markdown
-    .replace(/\->/g, '→')              // Arrow conversion
-    .replace(/([。！？])/g, '$1\n\n'); // Line breaks
+    .replace(/\*\*(.*?)\*\*/g, "$1") // Remove markdown
+    .replace(/\->/g, "→") // Arrow conversion
+    .replace(/([。！？])/g, "$1\n\n"); // Line breaks
 }
 ```
 
 ## 🔐 Security & Configuration
 
 ### Required Script Properties
+
 ```javascript
 // Set in GAS Editor → Project Settings → Script Properties
-GEMINI_API_KEY     // Gemini AI API key (Required)
-TOKEN              // LINE Channel Access Token (Required)
-DRIVE_FOLDER_ID    // PDF storage folder (Optional)
-ADMIN_USER_ID      // Admin LINE ID (Optional)
+GEMINI_API_KEY; // Gemini AI API key (Required)
+TOKEN; // LINE Channel Access Token (Required)
+DRIVE_FOLDER_ID; // PDF storage folder (Optional)
+ADMIN_USER_ID; // Admin LINE ID (Optional)
 ```
 
 ### Cache Strategy
+
 ```javascript
 // Short-term: ScriptCache (6 hours max)
-cache.put("user_state", data, 3600);  // 1 hour TTL
+cache.put("user_state", data, 3600); // 1 hour TTL
 
 // Medium-term: Sheet storage
 writeRecordDirectly(userId, message, contextId, role, flag);
@@ -203,6 +218,7 @@ PropertiesService.getScriptProperties().setProperty(key, value);
 ## 🚨 Critical Development Rules
 
 ### Deployment Protocol (MANDATORY)
+
 1. **Update version number** in `linebot.gs` (GAS_VERSION)
 2. **Update prompt version** in `Prompt.csv` if changed
 3. **Test locally** via TestUI if possible
@@ -212,29 +228,32 @@ PropertiesService.getScriptProperties().setProperty(key, value);
 7. **Commit to git**: `git add . && git commit -m "version" && git push`
 
 ### Code Modification Guidelines
+
 ```javascript
 // ✅ Safe to modify: Utility functions, formatting, logging
-function formatMessage(text) { }
+function formatMessage(text) {}
 
 // ⚠️ Modify with caution: Core business logic
-function handleMessage(userId, msg) { }
+function handleMessage(userId, msg) {}
 
 // 🚨 Modify very carefully: AI routing & PDF selection
-function getRelevantKBFiles(query, exactModels) { }
+function getRelevantKBFiles(query, exactModels) {}
 ```
 
 ### Knowledge Base Management
+
 ```csv
 # CLASS_RULES.csv format
 "關鍵字,定義/類型,備註,完整說明"
 "Odyssey3D,型號辨識,裸視3D電競螢幕(G90XF),..."
 
-# QA.csv format  
+# QA.csv format
 "問題 / 答案內容"
 "M8 和 M9 有陀螺儀嗎？ / A：是的，M8 和 M9 有陀螺儀和 HAS..."
 ```
 
 ### Testing Strategy
+
 ```javascript
 // ✅ Always test critical flows
 1. Direct keyword triggers (G5, M8, Odyssey3D)
@@ -246,11 +265,13 @@ function getRelevantKBFiles(query, exactModels) { }
 ## 📊 Performance & Monitoring
 
 ### Token Management
+
 - Fast Mode: <25K tokens (QA + Rules only)
 - Deep Mode: <50K tokens (with 1-2 PDFs max)
 - Emergency fallback: Strip all PDFs if API fails
 
 ### Logging Standards
+
 ```javascript
 writeLog(`[Stage] Action: details`);
 // Examples:
@@ -261,4 +282,4 @@ writeLog(`[Fatal] ${error.message}`);
 
 ---
 
-*This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability.*
+_This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability._
