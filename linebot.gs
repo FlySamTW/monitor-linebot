@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.69"; // 2026-01-19 Fix: Official Google Search Tool Params
-const BUILD_TIMESTAMP = "2026-01-19 14:41";
+const GAS_VERSION = "v29.5.70"; // 2026-01-19 Fix: Canonical Google Search Protocol
+const BUILD_TIMESTAMP = "2026-01-19 14:43";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3757,21 +3757,13 @@ function callLLMWithRetry(
   // 這樣可以兼顧「快速穩定」與「查網路的需求」，避免因網路搜尋導致的無回應。
   let tools = undefined;
   if (forceWebSearch) {
-    // v29.5.69: Optimized Grounding with Google Search (Official V2 structure)
-    // 1. google_search: Modern recommended tool
-    // 2. google_search_retrieval: Support for dynamic mode (Fallback)
-    writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (Pass 2)`);
-    tools = [
-      { google_search: {} },
-      {
-        google_search_retrieval: {
-          dynamic_retrieval_config: { dynamic_threshold: 0.1 },
-        },
-      },
-    ];
+    // v29.5.70: Canonical Google Search Protocol (Official 2.0+ Structure)
+    // 官方規範：Google Search 工具在 Gemini 2.0+ 應宣告為 google_search
+    writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.70)`);
+    tools = [{ google_search: {} }];
     // 強制追加指令到 Prompt，確保 AI 知道可以用工具
     dynamicPrompt +=
-      "\n\n【系統強制指令】你現在擁有全權調用 Google 搜尋的權限。請務必使用 google_search 工具尋找答案。若找到相關資料，請詳細整合並回答。";
+      "\n\n【系統強制指令】你目前擁有 Google 搜尋權限。請調用 google_search 工具尋找答案並整合回答。";
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
@@ -4106,21 +4098,19 @@ function callLLMWithRetry(
             const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.69: Advanced Grounding & Search Result Support
-            // 當啟用 Google Search 工具時，檢查是否已執行搜尋
+            // v29.5.70: Solidified Grounding Support
+            // 當啟用 Google Search 工具時，即使 text 為空，只要有 groundingMetadata 就算成功
             const grounding = candidates[0].groundingMetadata;
-            if (grounding) {
+            if (grounding && text.length === 0) {
+              const hasEntryPoint = !!grounding.searchEntryPoint;
               const hasQueries =
                 grounding.webSearchQueries &&
                 grounding.webSearchQueries.length > 0;
-              const hasEntryPoint = grounding.searchEntryPoint;
 
-              if (text.length === 0 && (hasQueries || hasEntryPoint)) {
-                writeLog(
-                  `[API Grounding] 偵測到搜尋內容 (Queries: ${hasQueries}), 嘗試生成引導文字。`,
-                );
+              if (hasEntryPoint || hasQueries) {
+                writeLog(`[API Grounding] 偵測到搜尋內容，注入導引文字。`);
                 text =
-                  "🔍 搜尋建議已生成：對話中可能已整合搜尋結果，或請點擊下方建議連結。";
+                  "🔍 搜尋建議已生成：對話中可能已整合部分搜尋結果，請參考下方摘要或連結。";
               }
             }
 
