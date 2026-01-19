@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.80"; // 2026-01-19 Fix: Simplified PDF Indexing (Regex Only)
-const BUILD_TIMESTAMP = "2026-01-19 17:20";
+const GAS_VERSION = "v29.5.81"; // 2026-01-19 Fix: Inject Combined Query into API Payload
+const BUILD_TIMESTAMP = "2026-01-19 17:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -6463,9 +6463,14 @@ function handleCommand(c, u, cid) {
     writeLog(
       `[Command] 啟動 Pass ${triggerPDF ? "1.5 (PDF)" : "2 (Web)"}, 次數: ${count}`,
     );
+
+    // v29.5.81: Critical Fix - 必須將 userMsg (組合後的查詢) 加入 history，API 才會真的收到
+    // 否則 LLM 只會看到舊的 history，看不到我們剛組合好的 "S27AG500NC G5 怎麼設定"
+    const searchHistory = [...history, { role: "user", content: userMsg }];
+
     const searchResponse = callLLMWithRetry(
-      userMsg, // query
-      history, // messages
+      userMsg, // query (for Prompt injection)
+      searchHistory, // messages (for API payload, now includes the combined query)
       triggerPDF ? filesToAttach : [], // filesToAttach
       triggerPDF, // attachPDFs
       null, // imageBlob
