@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.52"; // 2026-01-19 Feature: Dynamic Quick Reply Label
-const BUILD_TIMESTAMP = "2026-01-19 13:15";
+const GAS_VERSION = "v29.5.53"; // 2026-01-19 Feature: PDF Model Index
+const BUILD_TIMESTAMP = "2026-01-19 13:25";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -2714,6 +2714,27 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       }
     }
 
+    // v29.5.53: PDF Model Index - 從 PDF 檔名提取型號建立索引
+    let pdfModels = [];
+    newKbList.forEach((file) => {
+      if (file.mimeType === "application/pdf") {
+        const fileName = file.name.toUpperCase();
+        // 提取 S-models (e.g. S27AG500NC, S32DG802)
+        const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}/g) || [];
+        // 提取 G-models (e.g. G90XF, G80SD, G5)
+        const gModels = fileName.match(/G\d{1,2}[A-Z]{0,2}/g) || [];
+        // 提取 M-models (e.g. M70D, M50F)
+        const mModels = fileName.match(/M\d{1,2}[A-Z]?/g) || [];
+        pdfModels = pdfModels.concat(sModels, gModels, mModels);
+      }
+    });
+    const uniquePdfModels = [...new Set(pdfModels)];
+    PropertiesService.getScriptProperties().setProperty(
+      "PDF_MODEL_INDEX",
+      JSON.stringify(uniquePdfModels),
+    );
+    syncLogs.push(`PDF索引: ${uniquePdfModels.length}`);
+
     // 更新 Cache
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.KB_URI_LIST,
@@ -3324,6 +3345,26 @@ function getRelevantKBFiles(
 
   // v29.5.49: Assign primaryModel HERE (before filtering logic uses it)
   primaryModel = exactModels.length > 0 ? exactModels[0] : null;
+
+  // v29.5.53: PDF Model Index Check - 確認型號是否有專屬 PDF
+  let hasDedicatedPdf = false;
+  if (primaryModel) {
+    try {
+      const pdfIndexJson =
+        PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+      const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+      hasDedicatedPdf = pdfModelIndex.some(
+        (m) => m.includes(primaryModel) || primaryModel.includes(m),
+      );
+      if (!hasDedicatedPdf) {
+        writeLog(
+          `[KB Select] ⚠️ 型號 ${primaryModel} 無專屬 PDF，將使用 Alias 匹配`,
+        );
+      }
+    } catch (e) {
+      // 靜默失敗
+    }
+  }
 
   // 4. 分級載入（只用精準匹配，不做模糊匹配）
   const tier0 = []; // 必載 (QA + CLASS_RULES)
