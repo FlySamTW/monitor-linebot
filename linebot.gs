@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.44"; // 2026-01-18 Fix: PDF Fallback Strategy (Drop 2nd PDF)
-const BUILD_TIMESTAMP = "2026-01-18 01:50";
+const GAS_VERSION = "v29.5.45"; // 2026-01-19 Fix: Graduated Fallback & Dynamic Threshold
+const BUILD_TIMESTAMP = "2026-01-19 11:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3276,6 +3276,13 @@ function getRelevantKBFiles(
     }
   }
 
+    // v29.5.45: Dynamic Threshold Optimization (Pre-emptively force 1 file if model confidence is high)
+    // If we have a single exact model match from "Direct Deep" or "Smart Router"
+    if (exactModels.length === 1) {
+        writeLog("[KB Select] ⚡ Single Model Lock Detected. Enforcing Single PDF Load.");
+        // We handle this implicitly downstream, but explicit log helps debugging.
+    }
+
   // 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
   // 許多 PDF 檔名不包含最後兩碼後綴 (SC, XC, EC...)
   const shortModels = [];
@@ -3330,7 +3337,20 @@ function getRelevantKBFiles(
   //    （例如問 G90XF 不應該載到 G80SD 的手冊）
 
   // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
-  const filesToAttach = [...tier0, ...tier1];
+  let filesToAttach = [...tier0, ...tier1];
+  
+  // v29.4.16: Determine primary model name
+  const primaryModel = exactModels.length > 0 ? exactModels[0] : null;
+
+  // v29.5.45: Optimization - If Primary Model matches the first PDF, force Single PDF
+  // This solves the S27AG500NC issue where aliases (G5) pulled in a second unrelated PDF.
+  if (primaryModel && filesToAttach.length > 1) {
+     const firstMatch = filesToAttach.find(f => f.name.toUpperCase().includes(primaryModel.toUpperCase()));
+     if (firstMatch) {
+         writeLog(`[KB Select] ⚡ Found Primary Model (${primaryModel}) in PDF. Enforcing Single File: ${firstMatch.name}`);
+         filesToAttach = [firstMatch];
+     }
+  }
 
   // 📝 詳細紀錄找到的 PDF
   if (tier1.length > 0) {
@@ -3349,8 +3369,7 @@ function getRelevantKBFiles(
   }
 
   const cache = CacheService.getScriptCache();
-  // v29.4.16: Return primary model name for citation
-  const primaryModel = exactModels.length > 0 ? exactModels[0] : null;
+  // v29.4.16: primaryModel already defined above
 
   cache.put(`${userId}:last_kb_files`, JSON.stringify(filesToAttach), 600);
   return {
@@ -3700,41 +3719,47 @@ function callLLMWithRetry(
       delete payload.tools;
     }
     
-    // v29.5.44: Token Overload Fallback Strategy
+    // v29.5.44: Token Overload Fallback Strategy (Level 1: Drop 2nd PDF)
     // 如果是第一次重試 (retryCount=1) 且有 2 本 PDF，嘗試移除第 2 本以減少 Token
     if (retryCount === 1 && attachPDFs && filesToAttach.length > 1) {
-        writeLog(`[Retry Strategy] Token Overload Suspected? Dropping 2nd PDF to save space.`);
-        // 修改 payload 中的 contents
-        // Gemini API payload structure: contents[0].parts[0].file_data
-        // 我們必須重建 contents (因為它是 reference)
-        // 但這裡我們直接去改 filesToAttach 沒用，因為 payload 已建成
-        // 必須直接操作 payload.contents
-        // 遍歷尋找 file_data component 並移除最後一個
-        
-        // 簡單做法：重新建立 payload 太慢。我們直接操作 Object
-        // 假設 User Message 是第一個 (index 0 or 1 with System)
-        // parts array 中，files 是前面的 elements
-        
-        // 更安全的做法：不依賴 payload 操作，而是 "continue" this loop with modified state? 
-        // 但 loop 內沒有重建 payload 邏輯。payload 是 loop 外建的。
-        
-        // 修正：我們必須在 Loop *內* 更新 payload，或者直接修改 payload.contents 的 reference
-        // 讓我們找到含有 file_data 的 parts
+        writeLog(`[Retry Strategy L1] Token Overload Suspected? Dropping 2nd PDF to save space.`);
         try {
             const userContent = payload.contents.find(c => c.role === 'user');
             if (userContent && userContent.parts) {
-                const fileParts = userContent.parts.filter(p => p.file_data);
-                if (fileParts.length > 1) {
-                    // 找到最後一個 file_data 的 index
-                    const lastFileIndex = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === filesToAttach[filesToAttach.length-1].uri);
-                    if (lastFileIndex !== -1) {
-                         userContent.parts.splice(lastFileIndex, 1);
-                         writeLog(`[Retry Strategy] Successfully removed 2nd PDF from payload.`);
-                    }
+                const lastFileIndex = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === filesToAttach[filesToAttach.length-1].uri);
+                if (lastFileIndex !== -1) {
+                        userContent.parts.splice(lastFileIndex, 1);
+                        writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF from payload.`);
                 }
             }
         } catch (e) {
-            writeLog(`[Retry Strategy Error] Failed to modify payload: ${e.message}`);
+            writeLog(`[Retry Strategy L1 Error] ${e.message}`);
+        }
+    }
+
+    // v29.5.45: Critical Error Fallback (Level 2: Drop ALL PDFs + System Note)
+    // 如果是最後一次重試 (retryCount=2) 且仍有 PDF，全部移除改為純文字回應
+    if (retryCount === 2 && attachPDFs) {
+        writeLog(`[Retry Strategy L2] CRITICAL: Dropping ALL PDFs to ensure response.`);
+        try {
+            const userContent = payload.contents.find(c => c.role === 'user');
+            if (userContent && userContent.parts) {
+                // Remove all parts with file_data
+                userContent.parts = userContent.parts.filter(p => !p.file_data);
+                
+                // Add System Note
+                const systemNote = "\n\n(系統偵測：因參考文件過大導致讀取失敗，已自動切換為無文件模式回答，請依據您的知識庫回答)";
+                // Find existing text part or append new
+                const textPart = userContent.parts.find(p => p.text);
+                if (textPart) {
+                    textPart.text += systemNote;
+                } else {
+                    userContent.parts.push({ text: systemNote });
+                }
+                writeLog(`[Retry Strategy L2] All PDFs removed. System note injected.`);
+            }
+        } catch (e) {
+             writeLog(`[Retry Strategy L2 Error] ${e.message}`);
         }
     }
 
