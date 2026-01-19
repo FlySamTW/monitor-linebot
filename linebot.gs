@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.49"; // 2026-01-19 Fix: Flex Button & ReferenceError
-const BUILD_TIMESTAMP = "2026-01-19 12:55";
+const GAS_VERSION = "v29.5.51"; // 2026-01-19 Fix: PDF Prioritization (Revert Alias Guard)
+const BUILD_TIMESTAMP = "2026-01-19 13:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3306,15 +3306,8 @@ function getRelevantKBFiles(
     Object.keys(keywordMap).forEach((alias) => {
       const targets = keywordMap[alias].toUpperCase();
 
-      // v29.5.49: Alias Optimization - If we already have a Specific Model (S\d{2}...), don't add broad aliases (like G5)
-      // This prevents "S27AG500NC" from being polluted by "G5" (which brings in G50D, G55C, etc.)
-      const hasSpecificModel = exactModels.some((m) =>
-        m.match(/^S\d{2}[A-Z]{2}\d{3}/),
-      );
-      if (hasSpecificModel && alias.length < 4) {
-        // Skip short aliases if we have a specific model
-        return;
-      }
+      // v29.5.51: Reverted Alias Guard - We NEED aliases like G5 to find files like "G5_Manual.pdf"
+      // Smart Prioritization in Tier 1 will handle the preference for Specific Models.
 
       // 如果別稱的目標包含我們目前鎖定的型號 (Reverse Check)
       // 且別稱長度 >= 2 (避免匹配到雜訊)
@@ -3346,12 +3339,34 @@ function getRelevantKBFiles(
     const fileName = file.name.toUpperCase();
 
     // Tier 1: 精準匹配 (完整型號如 G90XF, G80SD)
+    // v29.5.51: Remove limit here, collect ALL candidates first, then Sort & Slice
     const isTier1 = exactModels.some((model) => fileName.includes(model));
-    if (isTier1 && tier1.length < MAX_TIER1_COUNT) {
+    if (isTier1) {
       tier1.push(file);
       return;
     }
   });
+
+  // v29.5.51: Smart Prioritization (Sorting)
+  // Ensure that if "S27AG500NC" exists in filename, it comes before "G5"
+  if (tier1.length > 1) {
+    tier1.sort((a, b) => {
+      const getScore = (f) => {
+        const name = f.name.toUpperCase();
+        // Priority 1: Primary Model (Detailed)
+        if (primaryModel && name.includes(primaryModel)) return 100;
+        // Priority 2: Any "S-Model" in exactModels
+        if (exactModels.some((m) => m.match(/^S\d{2}/) && name.includes(m)))
+          return 50;
+        // Priority 3: Alias (G5, M7)
+        return 10;
+      };
+      return getScore(b) - getScore(a);
+    });
+    writeLog(
+      `[KB Select] 📊 Sorted Tier 1: ${tier1.map((f) => f.name).join(", ")}`,
+    );
+  }
 
   // 5. 純精準匹配策略：不啟用模糊匹配
   //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
@@ -3371,18 +3386,7 @@ function getRelevantKBFiles(
 
   // Apply strict limit to Tier 1
   if (tier1.length > maxFiles) {
-    // v29.5.47: Re-prioritize: Prefer Primary Model if available
-    // Check if primaryModel exists in the excess files
-    if (primaryModel && tier1.length > 1) {
-      const primaryFile = tier1.find((f) =>
-        f.name.toUpperCase().includes(primaryModel.toUpperCase()),
-      );
-      if (primaryFile) {
-        // Put primary file first
-        tier1 = [primaryFile, ...tier1.filter((f) => f !== primaryFile)];
-      }
-    }
-
+    // v29.5.51: Sorting already handled prioritization. Just slice.
     tier1 = tier1.slice(0, maxFiles);
     writeLog(`[KB Select] ✂️ Enforcing Strict Limit: ${maxFiles} file(s).`);
   }
@@ -5064,7 +5068,12 @@ function handleMessage(event) {
               );
 
               // 生成 Flex Message (使用 V2 去重版)
-              const flexMsg = createModelSelectionFlexV3(suggestedModels);
+              // v29.5.50: Determine Search Intent for Dynamic Bubble Text
+              const searchIntent = determineSearchIntent(userMessage);
+              const flexMsg = createModelSelectionFlexV3(
+                suggestedModels,
+                searchIntent,
+              );
               // 若有 AI 文字回應，且非空白，則將其作為 Flex 的 AltText 或 分開傳送?
               // 為了 UX，我們讓 Flex 獨立發送，結束這一回合
               // 注意: 此時 replyText 尚未發送。若我們在這裡 return，replyText 就會被丟棄。
@@ -8840,13 +8849,59 @@ function getPromptsFromCacheOrSheet() {
 // ════════════════════════════════════════════════════════════════
 
 /**
+ * v29.5.50: Determine Search Intent for Dynamic Bubble Text
+ */
+function determineSearchIntent(msg) {
+  if (!msg)
+    return {
+      headerText: "🔍 請選擇型號",
+      footerText: "點選型號後AI將協助查詢",
+    };
+
+  const m = msg.toLowerCase();
+
+  // 1. Manual / PDF Intent
+  if (
+    m.match(/設定|說明書|手冊|故障|error|安裝|reset|重置|亮燈|閃爍|無法|不能/)
+  ) {
+    return {
+      headerText: "🔍 請選擇型號以查閱產品手冊",
+      footerText: "載入PDF約需 30 秒，請耐心等候",
+    };
+  }
+
+  // 2. Price / Web Intent
+  if (m.match(/多少錢|價格|價錢|售價|哪裡買|costco|pchome|momo|通路/)) {
+    return {
+      headerText: "🔍 請選擇型號以查詢價格/通路",
+      footerText: "將為您搜尋網路公開資訊",
+    };
+  }
+
+  // 3. Spec / QA Intent
+  if (m.match(/規格|尺寸|面板|hz|更新率|接孔|hdmi|dp|壁掛|重量|寬度|高度/)) {
+    return {
+      headerText: "🔍 請選擇型號以查詢規格數據",
+      footerText: "將從規格庫快速查詢",
+    };
+  }
+
+  // Default
+  return {
+    headerText: "🔍 請選擇型號以查詢詳細資訊",
+    footerText: "點選型號後AI將協助查詢",
+  };
+}
+
+/**
  * 建立型號選擇的 Flex Message Carousel
  * v29.5.14: 全新設計 - 基於 LINE 最佳實踐
  * - 使用 Hero 區塊作為視覺焦點
  * - 現代化配色與間距
  * - 清晰的按鈕層次結構
+ * v29.5.50: Support dynamic intentConfig
  */
-function createModelSelectionFlexV3(models) {
+function createModelSelectionFlexV3(models, intentConfig = null) {
   // 1. Strict Deduplication (Case Insensitive)
   const uniqueModels = [];
   const seen = new Set();
@@ -8907,7 +8962,7 @@ function createModelSelectionFlexV3(models) {
       contents: [
         {
           type: "text",
-          text: "🔍 請選擇型號",
+          text: intentConfig ? intentConfig.headerText : "🔍 請選擇型號",
           color: "#333333",
           size: "md",
           weight: "bold",
@@ -8940,7 +8995,9 @@ function createModelSelectionFlexV3(models) {
       contents: [
         {
           type: "text",
-          text: "點選型號後會載入手冊（約30秒）",
+          text: intentConfig
+            ? intentConfig.footerText
+            : "點選型號後會載入手冊（約30秒）",
           size: "xxs",
           color: "#888888",
           align: "center",
