@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.71"; // 2026-01-19 Fix: Exhaustive Grounding Detection
-const BUILD_TIMESTAMP = "2026-01-19 16:10";
+const GAS_VERSION = "v29.5.72"; // 2026-01-19 Fix: Global API Stability & Safety Relax
+const BUILD_TIMESTAMP = "2026-01-19 16:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3818,6 +3818,7 @@ function callLLMWithRetry(
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }, // v29.5.72: Added new category
     ],
     tools: tools,
   };
@@ -4098,10 +4099,11 @@ function callLLMWithRetry(
             const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.71: Exhaustive Grounding and Tool Call Detection
-            // 當啟用 Google Search 工具時，即使 text 為空，只要有任何工具調用或 Grounding 信號就算成功
+            // v29.5.72: Exhaustive Grounding and Tool Call Detection
+            // 當啟用工具時，即使 text 為空，只要有任何工具調用、Grounding 或正常結算信號就算成功
             const grounding = candidates[0].groundingMetadata;
             const finishReason = candidates[0].finishReason;
+            const hasToolCalls = firstPart && firstPart.functionCall;
 
             if (grounding && text.length === 0) {
               const hasEntryPoint = !!grounding.searchEntryPoint;
@@ -4117,19 +4119,38 @@ function callLLMWithRetry(
                   `[API Grounding] 偵測到搜尋內容 (Entry:${hasEntryPoint}|Query:${hasQueries}|Chunks:${hasChunks}), 注入導引文字。`,
                 );
                 text =
-                  "🔍 搜尋結果已生成：對話中已包含網路搜尋引用，請點擊下方建議連結或查看摘要。";
+                  "🔍 搜尋結果已生成：對話中已包含網路搜尋引用內容，請確認下方建議連結或摘要。";
               }
             }
 
-            // v29.5.71: 額外診斷 finishReason
+            // v29.5.72: 偵測工具調用 (functionCall)
+            if (hasToolCalls && text.length === 0) {
+              writeLog(
+                `[API ToolCall] 偵測到工具調用: ${JSON.stringify(firstPart.functionCall)}`,
+              );
+              text = "🔍 已啟動工具檢索，請參考最終呈現之搜尋結果。";
+            }
+
+            // v29.5.72: 額外診斷 finishReason (如被封鎖或停止)
             if (text.length === 0 && finishReason) {
               writeLog(
                 `[API Debug] 回應為空但 FinishReason 為: ${finishReason}`,
               );
-              if (finishReason === "STOP" || finishReason === "SAFETY") {
-                text =
-                  "🔍 搜尋任務結果已收錄，或因安全過濾無法顯示全文，請參考下方搜尋入口。";
+              if (finishReason === "STOP") {
+                text = "🔍 搜尋任務已完成，結果已收錄於對話摘要中。";
+              } else if (finishReason === "SAFETY") {
+                text = "⚠️ 回應因安全政策受限，請嘗試更換關鍵字或改述問題。";
               }
+            }
+
+            // 如果連基本 text 或 grounding 或 finishReason 都沒有，才拋出錯誤
+            if (text.length === 0) {
+              writeLog(
+                `[API Error] 回應全空 (No text/grounding/tool/finish), 可能工具執行失敗`,
+              );
+              throw new Error(
+                `Empty response text from API (Reason: ${finishReason || "UNKNOWN"})`,
+              );
             }
 
             // 如果連基本 text 或 grounding 都沒有，才拋出錯誤
