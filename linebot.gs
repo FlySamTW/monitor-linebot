@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.64"; // 2026-01-19 Fix: Grounding Support for Web Search
-const BUILD_TIMESTAMP = "2026-01-19 14:30";
+const GAS_VERSION = "v29.5.65"; // 2026-01-19 Fix: ReferenceError (firstPart) & Solidify Grounding
+const BUILD_TIMESTAMP = "2026-01-19 14:32";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4095,6 +4095,7 @@ function callLLMWithRetry(
             candidates[0].content.parts &&
             candidates[0].content.parts.length > 0
           ) {
+            const firstPart = candidates[0].content.parts[0]; // v29.5.65: Recovered Missing Variable
             let text = (firstPart.text || "").trim();
 
             // v29.5.64: Grounding Metadata Support (Fix for Web Search Tool returning empty text)
