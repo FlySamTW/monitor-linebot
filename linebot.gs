@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.46"; // 2026-01-19 Fix: Ultimate Fallback (Drop ALL) & Strict 1-PDF
-const BUILD_TIMESTAMP = "2026-01-19 11:20";
+const GAS_VERSION = "v29.5.47"; // 2026-01-19 Fix: Resolve TypeError (const tier1)
+const BUILD_TIMESTAMP = "2026-01-19 11:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3313,7 +3313,7 @@ function getRelevantKBFiles(
 
   // 4. 分級載入（只用精準匹配，不做模糊匹配）
   const tier0 = []; // 必載 (QA + CLASS_RULES)
-  const tier1 = []; // 精準匹配 (完整型號)
+  let tier1 = []; // 精準匹配 (完整型號) -> Changed to let for slicing
 
   kbList.forEach((file) => {
     // Tier 0: 必載
