@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.59"; // 2026-01-19 Critical Fix: Strict PDF Index Match + Unified QR
-const BUILD_TIMESTAMP = "2026-01-19 13:58";
+const GAS_VERSION = "v29.5.59"; // 2026-01-19 Fix: SOP Skip PDF if not in index + Complete QR Text
+const BUILD_TIMESTAMP = "2026-01-19 14:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -6067,8 +6067,8 @@ function handleMessage(event) {
             isInPdfMode ||
             (replyText.includes("[來源:") && replyText.includes("手冊]"));
 
-          let qrLabel = "不滿意 (搜網路)";
-          let qrText = "對以上回答不滿意，請網路搜尋";
+          let qrLabel = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
+          let qrText = "對以上回答不滿意，請幫我搜尋網路上的其他資料";
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
@@ -6300,31 +6300,31 @@ function handleCommand(c, u, cid) {
     let triggerPDF = false;
     let filesToAttach = [];
 
-    // 只有在第一次擴大搜尋時嘗試插入 PDF (避免無限 PDF loop)
+    // v29.5.59: SOP Enforcement (Check PDF Index first!)
     if (!pdfConsulted && count <= 2) {
-      // 重新執行關鍵字提取與 PDF 匹配
-      // 為了簡單，直接用 CLASS_RULES 匹配 userMsg
       const ruleObj = getClassRules();
       if (ruleObj && ruleObj.extractModelKeywords) {
         const models = ruleObj.extractModelKeywords(userMsg);
         if (models.length > 0) {
-          // 讀取 kbList (因為 getRelevantKBFiles 需要它)
-          const kbList = JSON.parse(
-            PropertiesService.getScriptProperties().getProperty(
-              CACHE_KEYS.KB_URI_LIST,
-            ) || "[]",
-          );
-          const kbResult = getRelevantKBFiles(
-            [{ role: "user", content: userMsg }],
-            kbList,
-            u,
-          ); // 這裡需要傳入 kbList
-          if (kbResult.files.length > 0) {
-            triggerPDF = true;
-            filesToAttach = kbResult.files;
-            writeLog(
-              `[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`,
-            );
+          const primary = models[0];
+          // 關鍵檢查：這型號真的有 PDF 嗎？
+          const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+          const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+          const hasManual = pdfModelIndex.some(m => {
+            if (m.startsWith("S") && m.length >= 7) return m.includes(primary) || primary.includes(m);
+            return m === primary;
+          });
+
+          if (hasManual) {
+            const kbList = JSON.parse(PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]");
+            const kbResult = getRelevantKBFiles([{ role: "user", content: userMsg }], kbList, u);
+            if (kbResult.files.length > 0) {
+              triggerPDF = true;
+              filesToAttach = kbResult.files;
+              writeLog(`[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`);
+            }
+          } else {
+            writeLog(`[SOP] 型號 ${primary} 無專屬手冊，跳過 Pass 1.5，直接 Web Search`);
           }
         }
       }
