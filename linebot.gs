@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.47"; // 2026-01-19 Fix: Resolve TypeError (const tier1)
-const BUILD_TIMESTAMP = "2026-01-19 11:30";
+const GAS_VERSION = "v29.5.48"; // 2026-01-19 Fix: UX - Skip Smart Router for General Questions
+const BUILD_TIMESTAMP = "2026-01-19 11:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -760,7 +760,7 @@ function checkDirectDeepSearch(msg, userId) {
     // 1. 檢查 CLASS_RULES 的直通車關鍵字 (如果有的話)
     // 這些通常是「系列名」或「特殊術語」，用戶定義這些詞需要深度搜尋
     const listJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.STRONG_KEYWORDS
+      CACHE_KEYS.STRONG_KEYWORDS,
     );
     if (listJson) {
       const strongKeywords = JSON.parse(listJson);
@@ -785,14 +785,14 @@ function checkDirectDeepSearch(msg, userId) {
 
       if (hitKey) {
         writeLog(
-          `[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKey} (長度: ${hitKey.length})`
+          `[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKey} (長度: ${hitKey.length})`,
         );
 
         // v24.1.9 新增：從 KEYWORD_MAP 提取該關鍵字對應的所有型號
         // 讓 getRelevantKBFiles() 能夠匹配相關 PDF
         try {
           const mapJson = PropertiesService.getScriptProperties().getProperty(
-            CACHE_KEYS.KEYWORD_MAP
+            CACHE_KEYS.KEYWORD_MAP,
           );
           if (mapJson) {
             const keywordMap = JSON.parse(mapJson);
@@ -800,7 +800,7 @@ function checkDirectDeepSearch(msg, userId) {
             writeLog(
               `[DirectDeep] 查詢 KEYWORD_MAP[${hitKey}] = ${
                 mappedValue ? mappedValue.substring(0, 50) + "..." : "NOT FOUND"
-              }`
+              }`,
             );
 
             if (mappedValue) {
@@ -818,7 +818,7 @@ function checkDirectDeepSearch(msg, userId) {
               writeLog(
                 `[DirectDeep] 從映射值提取型號: ${
                   models.length > 0 ? models.join(", ") : "NONE"
-                }`
+                }`,
               );
 
               // 注入到 Cache，讓 getRelevantKBFiles() 使用
@@ -830,16 +830,16 @@ function checkDirectDeepSearch(msg, userId) {
                 cache.put(
                   `${userId}:direct_search_models`,
                   JSON.stringify(models),
-                  300
+                  300,
                 );
                 writeLog(
                   `[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${models.join(
-                    ", "
-                  )}`
+                    ", ",
+                  )}`,
                 );
               } else {
                 writeLog(
-                  `[DirectDeep] ⚠️  無法從映射值提取型號（術語無型號），跳過注入`
+                  `[DirectDeep] ⚠️  無法從映射值提取型號（術語無型號），跳過注入`,
                 );
               }
             }
@@ -878,7 +878,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
     const upperMsgNoSpace = upperMsg.replace(/\s+/g, "");
 
     const listJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.STRONG_KEYWORDS
+      CACHE_KEYS.STRONG_KEYWORDS,
     );
     if (listJson) {
       const strongKeywords = JSON.parse(listJson);
@@ -900,15 +900,15 @@ function checkDirectDeepSearchWithKey(msg, userId) {
       if (hitKeys.length > 0) {
         writeLog(
           `[DirectDeep] 命中 CLASS_RULES 直通車關鍵字: ${hitKeys.join(
-            ", "
-          )} (共 ${hitKeys.length} 個)`
+            ", ",
+          )} (共 ${hitKeys.length} 個)`,
         );
 
         // 從 KEYWORD_MAP 提取所有命中關鍵字對應的型號
         const allModels = [];
         try {
           const mapJson = PropertiesService.getScriptProperties().getProperty(
-            CACHE_KEYS.KEYWORD_MAP
+            CACHE_KEYS.KEYWORD_MAP,
           );
           if (mapJson) {
             const keywordMap = JSON.parse(mapJson);
@@ -931,7 +931,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
             writeLog(
               `[DirectDeep] 從所有關鍵字提取型號: ${
                 allModels.length > 0 ? allModels.join(", ") : "NONE"
-              } (共 ${allModels.length} 個)`
+              } (共 ${allModels.length} 個)`,
             );
           }
         } catch (e) {
@@ -945,12 +945,12 @@ function checkDirectDeepSearchWithKey(msg, userId) {
           cache.put(
             `${userId}:direct_search_models`,
             JSON.stringify(allModels),
-            300
+            300,
           );
           writeLog(
             `[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${allModels.join(
-              ", "
-            )}`
+              ", ",
+            )}`,
           );
         }
 
@@ -975,7 +975,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
 function searchPdfByAliasPattern(aliasKey, originalQuery) {
   try {
     const kbListJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.KB_URI_LIST
+      CACHE_KEYS.KB_URI_LIST,
     );
     if (!kbListJson) return { pattern: null, matchedPdfs: [], needAsk: false };
 
@@ -1008,7 +1008,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
             aliasName = nameMatch[1].split("，")[0].split("。")[0].trim();
           }
           writeLog(
-            `[PDF Search] 從 CLASS_RULES 提取模式: ${aliasKey} → ${pdfPattern}`
+            `[PDF Search] 從 CLASS_RULES 提取模式: ${aliasKey} → ${pdfPattern}`,
           );
           break;
         }
@@ -1044,7 +1044,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
         const cleanModel = model.replace(/[\s-]/g, "");
         if (cleanModel.length > 3 && normalizedInput.includes(cleanModel)) {
           writeLog(
-            `[PDF Search] 🎯 發現精確型號匹配: ${model} (In query: ${exactMatchSource})`
+            `[PDF Search] 🎯 發現精確型號匹配: ${model} (In query: ${exactMatchSource})`,
           );
           return {
             pattern: pdfPattern,
@@ -1069,7 +1069,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
     if (userModelMatch) {
       const [, userSize, userSeries, userNumber] = userModelMatch;
       writeLog(
-        `[PDF Search] 嘗試模糊匹配: 尺寸=${userSize}, 系列=${userSeries}, 型號=${userNumber}`
+        `[PDF Search] 嘗試模糊匹配: 尺寸=${userSize}, 系列=${userSeries}, 型號=${userNumber}`,
       );
 
       let bestMatch = null;
@@ -1103,7 +1103,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
       // 分數 2 = 相同尺寸，或 相同系列+相同型號
       if (bestMatch && bestScore >= 2) {
         writeLog(
-          `[PDF Search] 🔍 模糊匹配成功: ${bestMatch.model} (相似度: ${bestScore}/4, 來自: ${bestMatch.pdf.name})`
+          `[PDF Search] 🔍 模糊匹配成功: ${bestMatch.model} (相似度: ${bestScore}/4, 來自: ${bestMatch.pdf.name})`,
         );
         return {
           pattern: pdfPattern,
@@ -1120,7 +1120,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
         };
       } else if (bestMatch) {
         writeLog(
-          `[PDF Search] ⚠️ 模糊匹配分數不足: ${bestMatch.model} (相似度: ${bestScore}/4), 繼續模式匹配`
+          `[PDF Search] ⚠️ 模糊匹配分數不足: ${bestMatch.model} (相似度: ${bestScore}/4), 繼續模式匹配`,
         );
       }
     }
@@ -1174,7 +1174,7 @@ function searchPdfByAliasPattern(aliasKey, originalQuery) {
     const needAsk = matchedPdfs.length > 1;
 
     writeLog(
-      `[PDF Search] 結果: ${matchedPdfs.length} 個匹配 (needAsk: ${needAsk})`
+      `[PDF Search] 結果: ${matchedPdfs.length} 個匹配 (needAsk: ${needAsk})`,
     );
 
     return {
@@ -1227,7 +1227,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         // 有效選擇
         const selected = pending.options[choice - 1];
         writeLog(
-          `[PDF Select] 用戶選擇 ${choice}: ${selected.prefix} → ${selected.name}`
+          `[PDF Select] 用戶選擇 ${choice}: ${selected.prefix} → ${selected.name}`,
         );
 
         // 清除等待狀態
@@ -1240,7 +1240,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         cache.put(
           `${userId}:direct_search_models`,
           JSON.stringify([selected.matchedModel]),
-          300
+          300,
         );
 
         // 設定 PDF Mode
@@ -1274,7 +1274,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             role: "assistant",
             content: createModelSelectionFlexV2(
               pending.aliasKey,
-              pending.options
+              pending.options,
             ),
           });
           cleanedHistory.push({ role: "user", content: msg });
@@ -1289,7 +1289,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         };
 
         writeLog(
-          `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (選擇: ${selected.matchedModel})`
+          `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (選擇: ${selected.matchedModel})`,
         );
         const response = callLLMWithRetry(
           pending.originalQuery,
@@ -1300,7 +1300,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           false, // isRetry
           userId,
           false, // forceWebSearch
-          selected.matchedModel // targetModelName
+          selected.matchedModel, // targetModelName
         );
 
         if (response) {
@@ -1316,7 +1316,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           let replyText = finalText;
           if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
             const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-              4
+              4,
             )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
               lastTokenUsage.total
             })`;
@@ -1329,14 +1329,14 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           writeLog(
             `[AI Reply] ${replyText.substring(0, 2000)}${
               replyText.length > 2000 ? "..." : ""
-            }`
+            }`,
           );
           writeLog(
             `[PDF Mode] 完成查詢手冊，花費 ${
               lastTokenUsage && lastTokenUsage.costTWD
                 ? "NT$" + lastTokenUsage.costTWD.toFixed(4)
                 : "未知成本"
-            }`
+            }`,
           );
 
           // v25.0.3: 用戶選擇「3」後，新增該選擇和回答到歷史
@@ -1346,7 +1346,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
             contextId,
             cleanedHistory,
             selectMsgObj,
-            asstMsgObj
+            asstMsgObj,
           );
           // v25.0.1 修復：記錄用戶選擇的「3」而非原始問題
           writeRecordDirectly(userId, msg, contextId, "user", "");
@@ -1377,7 +1377,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       cache.put(
         `${userId}:direct_search_models`,
         JSON.stringify([inputModel]),
-        300
+        300,
       );
 
       // 設定 PDF Mode
@@ -1402,7 +1402,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       const userMsgObj = { role: "user", content: pending.originalQuery };
 
       writeLog(
-        `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (完整型號: ${inputModel})`
+        `[PDF Mode] 開始查詢手冊，可能需要 60 秒 (完整型號: ${inputModel})`,
       );
       const response = callLLMWithRetry(
         pending.originalQuery,
@@ -1413,7 +1413,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         false,
         userId,
         false,
-        inputModel
+        inputModel,
       );
 
       if (response) {
@@ -1425,7 +1425,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
           const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-            4
+            4,
           )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
             lastTokenUsage.total
           })`;
@@ -1438,14 +1438,14 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         writeLog(
           `[AI Reply] ${replyText.substring(0, 2000)}${
             replyText.length > 2000 ? "..." : ""
-          }`
+          }`,
         );
         writeLog(
           `[PDF Mode] 完成查詢手冊，花費 ${
             lastTokenUsage && lastTokenUsage.costTWD
               ? "NT$" + lastTokenUsage.costTWD.toFixed(4)
               : "未知成本"
-          }`
+          }`,
         );
 
         // v24.4.3 修復：正確的參數順序 (cid, prev, uMsg, aMsg)
@@ -1454,14 +1454,14 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           contextId,
           cleanedHistory,
           userMsgObj,
-          asstMsgObj
+          asstMsgObj,
         );
         writeRecordDirectly(
           userId,
           pending.originalQuery,
           contextId,
           "user",
-          ""
+          "",
         );
         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
       } else {
@@ -1619,13 +1619,13 @@ function checkAndClearPdfModeOnModelChange(msg, currentHistory) {
     // 比對：如果型號不同，清除 PDF Mode
     if (previousModels.length > 0 && currentModels.length > 0) {
       const isSameModel = previousModels.some((pm) =>
-        currentModels.some((cm) => pm === cm)
+        currentModels.some((cm) => pm === cm),
       );
       if (!isSameModel) {
         writeLog(
           `[ModelChange] 偵測到型號變化：${previousModels.join(
-            ","
-          )} → ${currentModels.join(",")}，清除 PDF Mode`
+            ",",
+          )} → ${currentModels.join(",")}，清除 PDF Mode`,
         );
         return true; // 表示需要清除 PDF Mode
       }
@@ -1710,7 +1710,7 @@ function getPdfProductName(pdfFileName) {
     let productMap = {};
     try {
       const mapJson = PropertiesService.getScriptProperties().getProperty(
-        CACHE_KEYS.KEYWORD_MAP
+        CACHE_KEYS.KEYWORD_MAP,
       );
       if (mapJson) {
         const keywordMap = JSON.parse(mapJson);
@@ -1785,14 +1785,16 @@ function chunkString(str, size) {
  */
 function getClassRules() {
   const cache = CacheService.getScriptCache();
-  
+
   // 嘗試從 Cache 讀取 Rules (其實我們只需要關鍵字邏輯，Rules 本身太大可能不在 Cache)
   // 但我們可以重新實作一個簡單的提取器，基於我們已知的規則
   // 或者，我們可以讀取 KEYWORD_MAP (它比較小，且包含別稱)
-  
+
   const getKeywordMap = () => {
     try {
-      const mapJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KEYWORD_MAP);
+      const mapJson = PropertiesService.getScriptProperties().getProperty(
+        CACHE_KEYS.KEYWORD_MAP,
+      );
       return mapJson ? JSON.parse(mapJson) : {};
     } catch (e) {
       writeLog(`[getClassRules] Error loading keyword map: ${e.message}`);
@@ -1807,11 +1809,11 @@ function getClassRules() {
    */
   const extractModelKeywords = (msg) => {
     if (!msg) return [];
-    
+
     // 1. 基於正則表達式的粗篩 (符合 S27... G5... 等格式)
     // 這裡我們必須要有一套 regex。這套 regex 應該跟 syncGeminiKnowledgeBase 裡的一致。
     // 為了避免維護兩套，我們盡量用通用的 Pattern。
-    
+
     const possibleModels = [];
     const upperMsg = msg.toUpperCase();
 
@@ -1821,31 +1823,31 @@ function getClassRules() {
       /(Odyssey\s?G\d{1,2})/gi, // Odyssey G5
       /(Smart\s?Monitor\s?M\d{1,2})/gi, // Smart Monitor M7
       /\b(G[5-9])\b/g, // G5, G7, G8, G9
-      /\b(M[578])\b/g // M5, M7, M8
+      /\b(M[578])\b/g, // M5, M7, M8
     ];
 
-    modelPatterns.forEach(regex => {
-        let match;
-        while ((match = regex.exec(msg)) !== null) {
-            // 清理並標準化
-            let raw = match[0].trim().toUpperCase().replace(/\s+/g, "");
-            // 排除太短的誤判 (如 "M2" 雖然不會被上面 match 到，但以防萬一)
-            if (raw.length >= 2) {
-                possibleModels.push(raw); 
-            }
+    modelPatterns.forEach((regex) => {
+      let match;
+      while ((match = regex.exec(msg)) !== null) {
+        // 清理並標準化
+        let raw = match[0].trim().toUpperCase().replace(/\s+/g, "");
+        // 排除太短的誤判 (如 "M2" 雖然不會被上面 match 到，但以防萬一)
+        if (raw.length >= 2) {
+          possibleModels.push(raw);
         }
+      }
     });
 
     // 2. 使用 KEYWORD_MAP 進行精確匹配與別稱轉換
     // (如果需要更精確的匹配，可以載入 map。但在 handleCommand 這種快速場景，Regex 可能夠用)
     // 不過，為了要能查到正確的 PDF，我們最好能拿到 "標準型號"
-    
+
     // 去重
     return [...new Set(possibleModels)];
   };
 
   return {
-    extractModelKeywords
+    extractModelKeywords,
   };
 }
 
@@ -1888,7 +1890,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
           const models = JSON.parse(cachedModels);
           if (models && models.length > 0) {
             inferredModelContext = `【系統偵測型號】用戶提及的型號（如 M8/M7）已在系統定義為：${models.join(
-              ", "
+              ", ",
             )}。請優先針對此型號回答，不要說「沒有精確定義」。\n`;
             writeLog(`[DynamicContext] 注入推斷型號: ${models.join(", ")}`);
           }
@@ -1907,7 +1909,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     } else {
       // v27.8.7 Fallback: 若 Cache 失效，強制讀取 Sheet (防呆機制)
       writeLog(
-        "[DynamicContext] ⚠️ QA Cache Miss - 啟動救援模式：直接讀取 Sheet"
+        "[DynamicContext] ⚠️ QA Cache Miss - 啟動救援模式：直接讀取 Sheet",
       );
       try {
         const qaSheet = ss.getSheetByName(SHEET_NAMES.QA);
@@ -1953,7 +1955,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
         // 簡單拆分：假設前 50 行是 Light? 難以精確，乾脆全當 Light (安全保底)
         lightRules = fullContent;
         writeLog(
-          "[DynamicContext] ⚠️ Light Cache Miss, Fallback to Legacy Full Cache"
+          "[DynamicContext] ⚠️ Light Cache Miss, Fallback to Legacy Full Cache",
         );
       } else {
         // Fallback: 讀取 Sheet (只讀前半部)
@@ -2008,7 +2010,9 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     if (isPDFMode) {
       fullQA = ""; // Cleared (Save ~6k chars)
       // lightRules = ""; // RESTORED (Don't clear Rules!)
-      writeLog(`[DynamicContext] PDF Mode Enabled: QA Cleared. Rules Kept (${lightRules.length}c).`);
+      writeLog(
+        `[DynamicContext] PDF Mode Enabled: QA Cleared. Rules Kept (${lightRules.length}c).`,
+      );
     }
 
     let relevantContext = "=== 💡 精選問答 (QA - 最優先參考) ===\n";
@@ -2037,7 +2041,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     let chunkIndex = 0;
     while (true) {
       const chunk = cache.get(
-        `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`
+        `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`,
       );
       if (!chunk) break;
       fullSpecRules += chunk;
@@ -2059,13 +2063,13 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       // B. 提取一般 Token (去除已匹配的高權重 Token，避免重複)
       let remainingMsg = latestUserMsg;
       highValTokens.forEach(
-        (t) => (remainingMsg = remainingMsg.replace(t, ""))
+        (t) => (remainingMsg = remainingMsg.replace(t, "")),
       );
       const normalTokens = remainingMsg.match(wordRegex) || [];
 
       // 僅保留長度 >= 2 的一般 Token (過濾掉純數字單個字元，避免 "40" 匹配到 "40000")
       const validNormalTokens = normalTokens.filter(
-        (t) => t.length >= 2 && !/^\d+$/.test(t)
+        (t) => t.length >= 2 && !/^\d+$/.test(t),
       );
 
       // writeLog(`[SmartRetrieval] HighTokens: ${JSON.stringify(highValTokens)}, NormalTokens: ${JSON.stringify(validNormalTokens)}`);
@@ -2085,8 +2089,8 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
               usingFallback = true;
               writeLog(
                 `[SmartRetrieval] ⚠️ 當前無關鍵字，回補上一輪 Tokens: ${JSON.stringify(
-                  cachedTokens
-                )}`
+                  cachedTokens,
+                )}`,
               );
             }
           } catch (e) {
@@ -2139,7 +2143,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
           writeLog(
             `[SmartRetrieval] 注入 Top-${topLines.length} 規格行 (Max Score: ${
               scoredLines.sort((a, b) => b.score - a.score)[0].score
-            })`
+            })`,
           );
         } else {
           writeLog(`[SmartRetrieval] ⚠️ 無任何規格行命中關鍵字`);
@@ -2167,7 +2171,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     writeLog(
       `[Ctx Info] QA: ${fullQA ? fullQA.length : 0}c | Light: ${
         lightRules ? lightRules.length : 0
-      }c | Total: ${relevantContext.length}c`
+      }c | Total: ${relevantContext.length}c`,
     );
 
     return relevantContext;
@@ -2274,7 +2278,7 @@ function getProductUrl(modelOrKeyword) {
   // 從 KEYWORD_MAP 查找對應的 LS 編號
   try {
     const mapJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.KEYWORD_MAP
+      CACHE_KEYS.KEYWORD_MAP,
     );
     if (mapJson) {
       const keywordMap = JSON.parse(mapJson);
@@ -2292,7 +2296,7 @@ function getProductUrl(modelOrKeyword) {
 
   // 找不到 LS 編號，使用原始關鍵字搜尋
   return `https://www.samsung.com/tw/search/?searchvalue=${encodeURIComponent(
-    upperKey
+    upperKey,
   )}`;
 }
 
@@ -2331,7 +2335,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // 讀取舊的快取清單
     let oldKbList = [];
     const oldJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.KB_URI_LIST
+      CACHE_KEYS.KB_URI_LIST,
     );
 
     // 如果強制重建，先清理 Gemini 上的舊檔案再清除本地快取
@@ -2339,7 +2343,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       writeLog("[Sync] 強制重建模式，先清理 Gemini 舊檔案...");
       cleanupOldGeminiFiles(apiKey);
       PropertiesService.getScriptProperties().deleteProperty(
-        CACHE_KEYS.KB_URI_LIST
+        CACHE_KEYS.KB_URI_LIST,
       );
       oldKbList = [];
     } else if (oldJson) {
@@ -2361,7 +2365,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     const newKbList = [];
     let keywordMap = {};
     let strongKeywords = [];
-    
+
     // v29.5.10 Log Consolidation
     const syncLogs = [];
 
@@ -2393,7 +2397,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       // v27.9.23: 防災機制 - 若 QA 異常空白 (讀取失敗?)，停止同步以保護 Diff
       if (qaRows.length === 0 && !forceRebuild) {
         writeLog(
-          "[Sync Safety] ⚠️ QA 讀取筆數為 0，且非強制重建。判定為讀取異常，中止同步以保護快取。"
+          "[Sync Safety] ⚠️ QA 讀取筆數為 0，且非強制重建。判定為讀取異常，中止同步以保護快取。",
         );
         if (hasLock) {
           try {
@@ -2468,7 +2472,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       syncLogs.push(`Init: ${uniqueCount} models`);
       PropertiesService.getScriptProperties().setProperty(
         "TOTAL_MODEL_COUNT",
-        uniqueCount.toString()
+        uniqueCount.toString(),
       );
 
       let resolvedPatternCount = 0;
@@ -2512,7 +2516,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
           const potentialAliases =
             text.match(
-              /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3})\b/g
+              /\b(G\d{2}[A-Z]{1,2}|M\d{2}[A-Z]|S\d{2}[A-Z]{2}\d{3}[A-Z]{2}|[CF]\d{2}[A-Z]\d{3})\b/g,
             ) || [];
 
           potentialAliases.forEach((alias) => {
@@ -2552,7 +2556,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
             if (matchedModels.length > 0) {
               resolvedModelsText = ` (⚠️ 注意！此系列包含實體型號如下，請優先引導用戶確認型號：${matchedModels.join(
-                "、"
+                "、",
               )})`;
               resolvedPatternCount++;
             }
@@ -2582,17 +2586,17 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     // v27.9.86: 強制清理舊索引
     PropertiesService.getScriptProperties().deleteProperty(
-      CACHE_KEYS.KEYWORD_MAP
+      CACHE_KEYS.KEYWORD_MAP,
     );
 
     // 儲存映射表
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.KEYWORD_MAP,
-      JSON.stringify(keywordMap)
+      JSON.stringify(keywordMap),
     );
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.STRONG_KEYWORDS,
-      JSON.stringify(strongKeywords)
+      JSON.stringify(strongKeywords),
     );
     syncLogs.push(`Keywords: ${Object.keys(keywordMap).length}`);
 
@@ -2685,7 +2689,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               apiKey,
               file.getBlob(),
               fileSize,
-              "application/pdf"
+              "application/pdf",
             );
 
             if (pdfUri) {
@@ -2713,7 +2717,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // 更新 Cache
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.KB_URI_LIST,
-      JSON.stringify(newKbList)
+      JSON.stringify(newKbList),
     );
 
     // Extract Prompt version and info
@@ -2794,7 +2798,7 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     while (state === "PROCESSING" && attempts < 30) {
       Utilities.sleep(1000);
       const check = UrlFetchApp.fetch(
-        `${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`
+        `${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`,
       );
       state = JSON.parse(check.getContentText()).state;
       attempts++;
@@ -2961,7 +2965,7 @@ function ensureSyncTriggerExists() {
 
     const triggers = ScriptApp.getProjectTriggers();
     const hasSyncTrigger = triggers.some(
-      (t) => t.getHandlerFunction() === "dailyKnowledgeRefresh"
+      (t) => t.getHandlerFunction() === "dailyKnowledgeRefresh",
     );
     if (!hasSyncTrigger) {
       // v24.2.0: 改為每日 04:00 重建
@@ -2993,7 +2997,7 @@ function getRelevantKBFiles(
   userId = null,
   contextId = null,
   forceCurrentOnly = false,
-  aiSearchQuery = null // v29.4.27: Added explicit aiSearchQuery param
+  aiSearchQuery = null, // v29.4.27: Added explicit aiSearchQuery param
 ) {
   const MAX_PDF_COUNT = 2; // PDF 硬上限（不含 Tier 0）- 降低以加速回應
   const MAX_TIER1_COUNT = 2; // 精準匹配上限
@@ -3021,7 +3025,7 @@ function getRelevantKBFiles(
   let keywordMap = {};
   try {
     const mapJson = PropertiesService.getScriptProperties().getProperty(
-      CACHE_KEYS.KEYWORD_MAP
+      CACHE_KEYS.KEYWORD_MAP,
     );
     if (mapJson) {
       keywordMap = JSON.parse(mapJson);
@@ -3055,8 +3059,8 @@ function getRelevantKBFiles(
       hasInjectedModels = true;
       writeLog(
         `[KB Select] 從對話歷史提取型號: ${contextFromHistory.models.join(
-          ", "
-        )} (將跳過 KEYWORD_MAP 擴展)`
+          ", ",
+        )} (將跳過 KEYWORD_MAP 擴展)`,
       );
     }
 
@@ -3071,8 +3075,8 @@ function getRelevantKBFiles(
           hasInjectedModels = true; // ← v25.0.0: 標記已讀到直通車型號
           writeLog(
             `[KB Select] 從 Cache 讀取直通車注入型號: ${injectedModels.join(
-              ", "
-            )}`
+              ", ",
+            )}`,
           );
           // 不刪除 Cache，保留給同一對話的其他步驟使用
         }
@@ -3175,7 +3179,7 @@ function getRelevantKBFiles(
     if (hasModelInCurrent) {
       // 當前訊息有型號：沿用歷史型號
       writeLog(
-        `[KB Select] 當前訊息有型號，沿用已知型號: ${exactModels.join(", ")}`
+        `[KB Select] 當前訊息有型號，沿用已知型號: ${exactModels.join(", ")}`,
       );
     } else if (forceCurrentOnly) {
       // v29.4.26 Fix: only clear if NO models were found in current query processing
@@ -3228,12 +3232,12 @@ function getRelevantKBFiles(
       if (aiSearchQuery) {
         writeLog(
           `[KB Select] AI Explicit Search (${aiSearchQuery}), keeping models: ${exactModels.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
       } else {
         writeLog(
-          `[KB Select] ⚠️ 當前訊息無型號且 forceCurrentOnly=true，清空歷史型號以避免不必要的 PDF 載入`
+          `[KB Select] ⚠️ 當前訊息無型號且 forceCurrentOnly=true，清空歷史型號以避免不必要的 PDF 載入`,
         );
         exactModels = [];
       }
@@ -3241,8 +3245,8 @@ function getRelevantKBFiles(
       // forceCurrentOnly=false：保留歷史型號（用於漸進式解決流程）
       writeLog(
         `[KB Select] 當前訊息無型號但 forceCurrentOnly=false，保留歷史型號: ${exactModels.join(
-          ", "
-        )}`
+          ", ",
+        )}`,
       );
     }
   }
@@ -3256,7 +3260,7 @@ function getRelevantKBFiles(
   // v27.9.3: 智慧型號鎖定 - 偵測比較意圖時允許多型號 PDF
   if (hasInjectedModels && injectedModels && injectedModels.length > 0) {
     const isComparison = /比較|比较|差異|差异|不同|區別|对比|vs|versus/i.test(
-      combinedQuery
+      combinedQuery,
     );
 
     if (isComparison && injectedModels.length > 1) {
@@ -3264,24 +3268,26 @@ function getRelevantKBFiles(
       exactModels = injectedModels.slice(0, 2);
       writeLog(
         `[KB Select] 🔍 偵測到比較意圖，保留多型號: ${exactModels.join(
-          ", "
-        )} (限制前 2 款以控制預算)`
+          ", ",
+        )} (限制前 2 款以控制預算)`,
       );
     } else {
       // 一般問題：鎖定第一個型號，節省成本
       exactModels = [injectedModels[0]];
       writeLog(
-        `[KB Select] 🔒 已鎖定直通車型號: ${exactModels[0]} (僅載入單一本 PDF)`
+        `[KB Select] 🔒 已鎖定直通車型號: ${exactModels[0]} (僅載入單一本 PDF)`,
       );
     }
   }
 
-    // v29.5.45: Dynamic Threshold Optimization (Pre-emptively force 1 file if model confidence is high)
-    // If we have a single exact model match from "Direct Deep" or "Smart Router"
-    if (exactModels.length === 1) {
-        writeLog("[KB Select] ⚡ Single Model Lock Detected. Enforcing Single PDF Load.");
-        // We handle this implicitly downstream, but explicit log helps debugging.
-    }
+  // v29.5.45: Dynamic Threshold Optimization (Pre-emptively force 1 file if model confidence is high)
+  // If we have a single exact model match from "Direct Deep" or "Smart Router"
+  if (exactModels.length === 1) {
+    writeLog(
+      "[KB Select] ⚡ Single Model Lock Detected. Enforcing Single PDF Load.",
+    );
+    // We handle this implicitly downstream, but explicit log helps debugging.
+  }
 
   // 自動產生短型號以匹配 PDF (S32DG802SC -> S32DG802)
   // 許多 PDF 檔名不包含最後兩碼後綴 (SC, XC, EC...)
@@ -3296,17 +3302,17 @@ function getRelevantKBFiles(
   // 若我們有完整型號 (S27AG500NC)，但在 PDF 中找不到，可能是因為 PDF 檔名只寫了 "G5"
   // 所以我們要反查 KeywordMap，把 "G5" 也加入 exactModels
   if (keywordMap) {
-      Object.keys(keywordMap).forEach(alias => {
-          const targets = keywordMap[alias].toUpperCase();
-          // 如果別稱的目標包含我們目前鎖定的型號 (Reverse Check)
-          // 且別稱長度 >= 2 (避免匹配到雜訊)
-          if (alias.length >= 2 && exactModels.some(m => targets.includes(m))) {
-             if (!exactModels.includes(alias.toUpperCase())) {
-                exactModels.push(alias.toUpperCase());
-                // writeLog(`[KB Select] Reverse Lookup: ${alias} for ${targets}`); // Optional debug
-             }
-          }
-      });
+    Object.keys(keywordMap).forEach((alias) => {
+      const targets = keywordMap[alias].toUpperCase();
+      // 如果別稱的目標包含我們目前鎖定的型號 (Reverse Check)
+      // 且別稱長度 >= 2 (避免匹配到雜訊)
+      if (alias.length >= 2 && exactModels.some((m) => targets.includes(m))) {
+        if (!exactModels.includes(alias.toUpperCase())) {
+          exactModels.push(alias.toUpperCase());
+          // writeLog(`[KB Select] Reverse Lookup: ${alias} for ${targets}`); // Optional debug
+        }
+      }
+    });
   }
 
   exactModels = [...new Set([...exactModels, ...shortModels])]; // 合併並去重
@@ -3336,35 +3342,54 @@ function getRelevantKBFiles(
   //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
   //    （例如問 G90XF 不應該載到 G80SD 的手冊）
 
-  // v29.5.46: Strict PDF Limit Logic
+  // v29.5.47: Strict PDF Limit Logic (Single-File Policy)
   // Default to MAX 1 file unless it's a comparison question.
   let maxFiles = 1;
-  const isComparison = injectedModels && injectedModels.length > 1 && combinedQuery.match(/比較|比较|差異|差异|不同|區別|对比|vs|versus/i);
+  const isComparison =
+    injectedModels &&
+    injectedModels.length > 1 &&
+    combinedQuery.match(/比較|比较|差異|差异|不同|區別|对比|vs|versus/i);
   if (isComparison) {
-      maxFiles = 2;
-      writeLog(`[KB Select] 🔍 Comparison detected. Allowing up to 2 PDFs.`);
+    maxFiles = 2;
+    writeLog(`[KB Select] 🔍 Comparison detected. Allowing up to 2 PDFs.`);
   }
 
   // Apply strict limit to Tier 1
   if (tier1.length > maxFiles) {
-      tier1 = tier1.slice(0, maxFiles);
-      writeLog(`[KB Select] ✂️ Enforcing Strict Limit: ${maxFiles} file(s).`);
+    // v29.5.47: Re-prioritize: Prefer Primary Model if available
+    // Check if primaryModel exists in the excess files
+    if (primaryModel && tier1.length > 1) {
+      const primaryFile = tier1.find((f) =>
+        f.name.toUpperCase().includes(primaryModel.toUpperCase()),
+      );
+      if (primaryFile) {
+        // Put primary file first
+        tier1 = [primaryFile, ...tier1.filter((f) => f !== primaryFile)];
+      }
+    }
+
+    tier1 = tier1.slice(0, maxFiles);
+    writeLog(`[KB Select] ✂️ Enforcing Strict Limit: ${maxFiles} file(s).`);
   }
 
   // 6. 組合結果：只有 Tier0（必載）+ Tier1（精準匹配）
   let filesToAttach = [...tier0, ...tier1];
-  
+
   // v29.4.16: Determine primary model name
   const primaryModel = exactModels.length > 0 ? exactModels[0] : null;
 
   // v29.5.45: Optimization - If Primary Model matches the first PDF, force Single PDF
   // This solves the S27AG500NC issue where aliases (G5) pulled in a second unrelated PDF.
   if (primaryModel && filesToAttach.length > 1) {
-     const firstMatch = filesToAttach.find(f => f.name.toUpperCase().includes(primaryModel.toUpperCase()));
-     if (firstMatch) {
-         writeLog(`[KB Select] ⚡ Found Primary Model (${primaryModel}) in PDF. Enforcing Single File: ${firstMatch.name}`);
-         filesToAttach = [firstMatch];
-     }
+    const firstMatch = filesToAttach.find((f) =>
+      f.name.toUpperCase().includes(primaryModel.toUpperCase()),
+    );
+    if (firstMatch) {
+      writeLog(
+        `[KB Select] ⚡ Found Primary Model (${primaryModel}) in PDF. Enforcing Single File: ${firstMatch.name}`,
+      );
+      filesToAttach = [firstMatch];
+    }
   }
 
   // 📝 詳細紀錄找到的 PDF
@@ -3372,14 +3397,14 @@ function getRelevantKBFiles(
     const foundFiles = tier1.map((f) => f.name).join(", ");
     writeLog(
       `[KB Select] 🎯 命中型號: ${exactModels.join(
-        ", "
-      )} → 載入 PDF: ${foundFiles}`
+        ", ",
+      )} → 載入 PDF: ${foundFiles}`,
     );
   } else {
     writeLog(
       `[KB Select] Tier0: ${tier0.length}, Tier1: 0 (No Match: ${
         exactModels.join(",") || "none"
-      }), Total: ${filesToAttach.length}`
+      }), Total: ${filesToAttach.length}`,
     );
   }
 
@@ -3402,7 +3427,7 @@ function constructDynamicPrompt(
   kbFiles = [], // 這裡現在只傳 files array (legacy) or we wrap it logic outside
   forceWebSearch = false,
   imageBlob = null,
-  targetModelName = null
+  targetModelName = null,
 ) {
   const cache = CacheService.getScriptCache();
   const userId = messages.length > 0 ? messages[0].userId : "unknown"; // Assuming userId is available in messages or passed
@@ -3490,7 +3515,7 @@ function callLLMWithRetry(
   isRetry = false,
   userId = null,
   forceWebSearch = false,
-  targetModelName = null
+  targetModelName = null,
 ) {
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
@@ -3507,7 +3532,7 @@ function callLLMWithRetry(
   // dynamicContext 則由 constructDynamicPrompt 決定
 
   writeLog(
-    `[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length}`
+    `[KB Load] AttachPDFs: ${attachPDFs}, isRetry: ${isRetry}, Files: ${filesToAttach.length}`,
   );
 
   // v24.0.0: 根據模式動態調整歷史長度，控制 Token 成本
@@ -3529,12 +3554,12 @@ function callLLMWithRetry(
         effectiveMessages = [...summaryMsgs, ...recentMsgs];
       }
       writeLog(
-        `[Token Control v29.4.33] PDF Mode: 保留摘要 + 最近 2 對 (${effectiveMessages.length} 則)`
+        `[Token Control v29.4.33] PDF Mode: 保留摘要 + 最近 2 對 (${effectiveMessages.length} 則)`,
       );
     } else {
       effectiveMessages = messages.slice(-4); // 只保最近 2 對
       writeLog(
-        `[Token Control v29.4.33] PDF Mode: 歷史截斷 ${messages.length} -> ${effectiveMessages.length} (省 Token)`
+        `[Token Control v29.4.33] PDF Mode: 歷史截斷 ${messages.length} -> ${effectiveMessages.length} (省 Token)`,
       );
     }
   }
@@ -3546,7 +3571,7 @@ function callLLMWithRetry(
     filesToAttach,
     forceWebSearch,
     imageBlob, // imageBlob is handled separately
-    targetModelName
+    targetModelName,
   );
 
   const geminiContents = [];
@@ -3644,8 +3669,8 @@ function callLLMWithRetry(
     writeLog(`[Search Tool] 🌐 啟用 Google 本地搜尋 (Pass 2)`);
     tools = [{ googleSearch: {} }];
     // 強制追加指令到 Prompt，確保 AI 知道可以用工具
-    dynamicPrompt += "\n\n【系統強制指令】你現在擁有 Google 搜尋權限。請務必使用搜尋工具尋找答案，並整合搜尋結果回答用戶。";
-
+    dynamicPrompt +=
+      "\n\n【系統強制指令】你現在擁有 Google 搜尋權限。請務必使用搜尋工具尋找答案，並整合搜尋結果回答用戶。";
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
@@ -3670,7 +3695,7 @@ function callLLMWithRetry(
   // 如果超過上限，裁切中間的歷史記錄
   if (totalTokens > MAX_SAFE_TOKENS) {
     writeLog(
-      `[Token Fuse] ⚠️ 預估 Token 超過上限 (${totalTokens} > ${MAX_SAFE_TOKENS})，啟動熔斷機制`
+      `[Token Fuse] ⚠️ 預估 Token 超過上限 (${totalTokens} > ${MAX_SAFE_TOKENS})，啟動熔斷機制`,
     );
 
     // 保留最新 2 對對話（4 則訊息）
@@ -3685,7 +3710,7 @@ function callLLMWithRetry(
 
     effectiveMessages = recentMessages;
     writeLog(
-      `[Token Fuse] 裁切後: ${effectiveMessages.length} 則訊息，預估 ${newTotal} Tokens`
+      `[Token Fuse] 裁切後: ${effectiveMessages.length} 則訊息，預估 ${newTotal} Tokens`,
     );
   }
 
@@ -3715,7 +3740,7 @@ function callLLMWithRetry(
   //          實際 Token 用量將在 [Tokens] 日誌中顯示（API 呼叫後）
   if (attachPDFs) {
     writeLog(
-      `[PDF Debug] 掛載 PDF 數量: ${filesToAttach.length}, 歷史: ${effectiveMessages.length} 則`
+      `[PDF Debug] 掛載 PDF 數量: ${filesToAttach.length}, 歷史: ${effectiveMessages.length} 則`,
     );
   }
 
@@ -3731,60 +3756,69 @@ function callLLMWithRetry(
     // v29.5.44: Token Overload Fallback Strategy (Level 1: Drop 2nd PDF)
     // 如果是第一次重試 (retryCount=1) 且有 2 本 PDF，嘗試移除第 2 本以減少 Token
     if (retryCount === 1 && attachPDFs && filesToAttach.length > 1) {
-        writeLog(`[Retry Strategy L1] Token Overload Suspected? Dropping 2nd PDF to save space.`);
-        try {
-            const userContent = payload.contents.find(c => c.role === 'user');
-            if (userContent && userContent.parts) {
-                // Find all file parts
-                const fileParts = userContent.parts.filter(p => p.file_data);
-                if (fileParts.length > 1) {
-                     // Remove the last one
-                     const lastFileURI = fileParts[fileParts.length-1].file_data.file_uri;
-                     const removeIdx = userContent.parts.findIndex(p => p.file_data && p.file_data.file_uri === lastFileURI);
-                     if (removeIdx !== -1) {
-                        userContent.parts.splice(removeIdx, 1);
-                        writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF.`);
-                     }
-                }
+      writeLog(
+        `[Retry Strategy L1] Token Overload Suspected? Dropping 2nd PDF to save space.`,
+      );
+      try {
+        const userContent = payload.contents.find((c) => c.role === "user");
+        if (userContent && userContent.parts) {
+          // Find all file parts
+          const fileParts = userContent.parts.filter((p) => p.file_data);
+          if (fileParts.length > 1) {
+            // Remove the last one
+            const lastFileURI =
+              fileParts[fileParts.length - 1].file_data.file_uri;
+            const removeIdx = userContent.parts.findIndex(
+              (p) => p.file_data && p.file_data.file_uri === lastFileURI,
+            );
+            if (removeIdx !== -1) {
+              userContent.parts.splice(removeIdx, 1);
+              writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF.`);
             }
-        } catch (e) {
-            writeLog(`[Retry Strategy L1 Error] ${e.message}`);
+          }
         }
+      } catch (e) {
+        writeLog(`[Retry Strategy L1 Error] ${e.message}`);
+      }
     }
 
     // v29.5.46: Ultimate Fallback (Level 2: Drop ALL PDFs + System Note)
     // 如果是最後一次重試 (retryCount=2) 且原本有掛載 PDF，全部移除改為純文字回應
     if (retryCount === 2 && attachPDFs) {
-        writeLog(`[Fallback Strategy] 🚨 API 重試多次仍失敗 (含 PDF)。啟動終極降級：移除所有檔案，改為純文字模式。`);
-        try {
-            // 1. Clean Payload: Remove all file_data and inline_data
-            if (payload.contents) {
-                payload.contents.forEach(content => {
-                    if (content.parts) {
-                        content.parts = content.parts.filter(p => !p.file_data && !p.inline_data);
-                    }
-                });
+      writeLog(
+        `[Fallback Strategy] 🚨 API 重試多次仍失敗 (含 PDF)。啟動終極降級：移除所有檔案，改為純文字模式。`,
+      );
+      try {
+        // 1. Clean Payload: Remove all file_data and inline_data
+        if (payload.contents) {
+          payload.contents.forEach((content) => {
+            if (content.parts) {
+              content.parts = content.parts.filter(
+                (p) => !p.file_data && !p.inline_data,
+              );
             }
-
-            // 2. Append System Note
-            const userContent = payload.contents.find(c => c.role === 'user');
-            if (userContent && userContent.parts) {
-                const systemNote = "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據您的知識庫回答)";
-                const textPart = userContent.parts.find(p => p.text);
-                if (textPart) {
-                    textPart.text += systemNote;
-                } else {
-                    userContent.parts.push({ text: systemNote });
-                }
-            }
-            
-            // 3. Remove Tools
-            if (payload.tools) delete payload.tools;
-             writeLog(`[Fallback Strategy] Payload Cleaned. System note injected.`);
-
-        } catch (e) {
-             writeLog(`[Fallback Strategy Error] ${e.message}`);
+          });
         }
+
+        // 2. Append System Note
+        const userContent = payload.contents.find((c) => c.role === "user");
+        if (userContent && userContent.parts) {
+          const systemNote =
+            "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據您的知識庫回答)";
+          const textPart = userContent.parts.find((p) => p.text);
+          if (textPart) {
+            textPart.text += systemNote;
+          } else {
+            userContent.parts.push({ text: systemNote });
+          }
+        }
+
+        // 3. Remove Tools
+        if (payload.tools) delete payload.tools;
+        writeLog(`[Fallback Strategy] Payload Cleaned. System note injected.`);
+      } catch (e) {
+        writeLog(`[Fallback Strategy Error] ${e.message}`);
+      }
     }
 
     if (userId && now - lastLoadingTime > 18000) {
@@ -3820,7 +3854,7 @@ function callLLMWithRetry(
             openRouterMessages,
             genConfig.temperature,
             undefined,
-            useOnline
+            useOnline,
           );
           return responseText;
         } catch (orErr) {
@@ -3875,7 +3909,7 @@ function callLLMWithRetry(
                 usage.promptTokenCount
               } / Out: ${
                 usage.candidatesTokenCount
-              } | Cost: NT$${costTWD.toFixed(4)}`
+              } | Cost: NT$${costTWD.toFixed(4)}`,
             );
 
             // v24.1.0: 儲存到全域變數，供測試模式顯示
@@ -3896,8 +3930,8 @@ function callLLMWithRetry(
           if (json && json.promptFeedback) {
             writeLog(
               `[API PromptFeedback] ${JSON.stringify(
-                json.promptFeedback
-              ).substring(0, 500)}`
+                json.promptFeedback,
+              ).substring(0, 500)}`,
             );
           }
           const candidates = json && json.candidates ? json.candidates : [];
@@ -3917,17 +3951,17 @@ function callLLMWithRetry(
               responseText.trim().length <= 3
             ) {
               writeLog(
-                `[PDF Mode ERROR] ⚠️ 異常短回應: In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Content: "${responseText}"`
+                `[PDF Mode ERROR] ⚠️ 異常短回應: In: ${usage.promptTokenCount}, Out: ${usage.candidatesTokenCount}, Content: "${responseText}"`,
               );
               if (candidates[0].safetyRatings) {
                 writeLog(
                   `[PDF Mode ERROR] Safety Ratings: ${JSON.stringify(
-                    candidates[0].safetyRatings
-                  ).substring(0, 500)}`
+                    candidates[0].safetyRatings,
+                  ).substring(0, 500)}`,
                 );
               }
               writeLog(
-                `[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 的安全阻擋或工具衝突`
+                `[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 的安全阻擋或工具衝突`,
               );
               return "⚠️ 讀取產品手冊時回覆異常，請再問一次或改述問題（PDF模式）";
             }
@@ -3938,16 +3972,16 @@ function callLLMWithRetry(
             writeLog(
               `[API Warning] 無候選回應: ${JSON.stringify(json).substring(
                 0,
-                500
-              )}`
+                500,
+              )}`,
             );
           } else if (candidates[0].content && candidates[0].content.parts) {
             const firstPart = candidates[0].content.parts[0];
             if (!firstPart.text || firstPart.text.trim().length === 0) {
               writeLog(
                 `[API Warning] 回應為空文本: parts=${JSON.stringify(
-                  candidates[0].content.parts
-                ).substring(0, 300)}`
+                  candidates[0].content.parts,
+                ).substring(0, 300)}`,
               );
             }
 
@@ -3957,7 +3991,7 @@ function callLLMWithRetry(
               writeLog(
                 `[API Short Response] Out: ${
                   usage.candidatesTokenCount
-                } tokens, Content: "${responseText.substring(0, 200)}"`
+                } tokens, Content: "${responseText.substring(0, 200)}"`,
               );
             }
           }
@@ -3969,28 +4003,33 @@ function callLLMWithRetry(
             candidates[0].content.parts.length > 0
           ) {
             const firstPart = candidates[0].content.parts[0];
-            
+
             // v29.5.24: Check for Function Call (Not supported in this loop, trigger retry)
             if (firstPart.functionCall) {
-              writeLog(`[API Error] 收到 Function Call 但未實作客戶端執行: ${JSON.stringify(firstPart.functionCall)}`);
-              throw new Error("Received Function Call (Manual execution not implemented)");
+              writeLog(
+                `[API Error] 收到 Function Call 但未實作客戶端執行: ${JSON.stringify(firstPart.functionCall)}`,
+              );
+              throw new Error(
+                "Received Function Call (Manual execution not implemented)",
+              );
             }
 
             const text = (firstPart.text || "").trim();
-            
+
             // v29.5.24: Validate Text Content
             // 如果啟用工具但回應空文本，視為失敗，拋出錯誤以觸發重試
             if (text.length === 0) {
-              writeLog(`[API Error] 回應為空文本 (Empty Text), 可能工具執行失敗`);
+              writeLog(
+                `[API Error] 回應為空文本 (Empty Text), 可能工具執行失敗`,
+              );
               throw new Error("Empty response text from API");
             }
 
             return text;
           }
-          
+
           // No candidates or parts
           throw new Error("No candidates or content parts in response");
-
         } catch (parseErr) {
           writeLog("[API Parse Error] " + parseErr.message);
           // Don't return empty string here, throw to trigger retry loop
@@ -4061,7 +4100,7 @@ function callLLMWithRetry(
   if (lastError) {
     writeLog(`[API Fail] 重試 3 次仍失敗，最後錯誤: ${lastError}`);
     if (forceWebSearch) {
-       return "非常抱歉，網路搜尋服務暫時無法連線。您可以參考上方提供的資料，或稍後再試。";
+      return "非常抱歉，網路搜尋服務暫時無法連線。您可以參考上方提供的資料，或稍後再試。";
     }
     return "⚠️ 系統忙碌中，請稍後再試。";
   }
@@ -4080,7 +4119,7 @@ function callOpenRouter(
   messages,
   temperature = 0.7,
   tools = undefined,
-  isOnline = false
+  isOnline = false,
 ) {
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
@@ -4114,7 +4153,7 @@ function callOpenRouter(
   const url = "https://openrouter.ai/api/v1/chat/completions";
 
   writeLog(
-    `[OpenRouter Call] Model: ${payload.model}, Temp: ${temperature}, Online: ${isOnline}`
+    `[OpenRouter Call] Model: ${payload.model}, Temp: ${temperature}, Online: ${isOnline}`,
   );
   const start = new Date().getTime();
 
@@ -4157,7 +4196,7 @@ function callOpenRouter(
         writeLog(
           `[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${
             json.usage.completion_tokens
-          }, Total: ${json.usage.total_tokens} (約 NT$${costTWD.toFixed(4)})`
+          }, Total: ${json.usage.total_tokens} (約 NT$${costTWD.toFixed(4)})`,
         );
       }
 
@@ -4166,7 +4205,7 @@ function callOpenRouter(
       }
     } else {
       writeLog(
-        `[OpenRouter Error] Code: ${code}, Body: ${text.substring(0, 300)}`
+        `[OpenRouter Error] Code: ${code}, Body: ${text.substring(0, 300)}`,
       );
       throw new Error(`OpenRouter API Error: ${code}`);
     }
@@ -4215,7 +4254,7 @@ function formatForLineMobile(text) {
   // 移除可能洩漏的內部思考 (Gemini 2.5 Flash Thinking Mode)
   processed = processed.replace(
     /SPECIAL INSTRUCTION:.*?(?=\n\n|\n[A-Z]|$)/gs,
-    ""
+    "",
   );
   processed = processed.replace(/\[INTERNAL\].*?(?=\n\n|$)/gs, "");
   processed = processed.replace(/\[THINKING\].*?(?=\n\n|$)/gs, "");
@@ -4327,7 +4366,7 @@ function handleMessage(event) {
     // 嚴格匹配：必須包含 "現在"、"幾點"、"幾號"、"今天" 且長度短，或是 "現在幾點" 這樣的組合
     if (
       /^(現在幾點|幾點了|現在時間|今天幾號|今天是幾號|今天日期|星期幾)$/.test(
-        timeQuery
+        timeQuery,
       ) ||
       (timeQuery.length < 10 && /(幾點|幾分|幾號|星期幾)/.test(timeQuery))
     ) {
@@ -4356,7 +4395,7 @@ function handleMessage(event) {
           contextId,
           msg,
           response + " [RealTime]",
-          "RealTime"
+          "RealTime",
         ); // 補上對話紀錄
         writeLog(`[RealTime] 實時資訊快速回答: ${response}`);
         return;
@@ -4377,7 +4416,7 @@ function handleMessage(event) {
       } else {
         dedupKey = `msg_${userId}_${Utilities.computeDigest(
           Utilities.DigestAlgorithm.MD5,
-          msg
+          msg,
         )
           .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
           .join("")}`;
@@ -4403,7 +4442,7 @@ function handleMessage(event) {
       const validContent = isValidTechContent(msg);
       if (validContent) {
         writeLog(
-          `[SmartEditor] 偵測到長文 (${msg.length} 字)，且包含相關關鍵字，啟動總編模式`
+          `[SmartEditor] 偵測到長文 (${msg.length} 字)，且包含相關關鍵字，啟動總編模式`,
         );
 
         // 1. 取得總編 Persona
@@ -4525,7 +4564,7 @@ function handleMessage(event) {
           writeLog(
             `[SmartEditor] 完成摘要，耗時 ${
               (new Date().getTime() - startTime) / 1000
-            }s, Cost: ${costStr}`
+            }s, Cost: ${costStr}`,
           );
 
           return; // 結束，不走後面的 RAG
@@ -4541,11 +4580,11 @@ function handleMessage(event) {
         // User v27.9.67 Requirement: 就算不符合也要回覆婉拒
         if (msg.length > 200) {
           writeLog(
-            "[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。"
+            "[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。",
           );
           replyMessage(
             replyToken,
-            "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️"
+            "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️",
           );
           // 這裡必須 Return，否則會繼續往下走 RAG
           return;
@@ -4568,12 +4607,15 @@ function handleMessage(event) {
     // v29.3.39: 攔截「不滿意...擴大搜尋」按鈕，強制觸發網路搜尋 (Pass 2)
     // 用戶明確指出：這顆按鈕是「網路搜尋」，不是 PDF 搜尋，也不是反問
     // v29.5.22: 修復匹配問題 - "不太滿意" 也要能匹配
-    if ((msg.includes("不滿意") || msg.includes("不太滿意")) && msg.includes("擴大搜尋")) {
+    if (
+      (msg.includes("不滿意") || msg.includes("不太滿意")) &&
+      msg.includes("擴大搜尋")
+    ) {
       writeLog(`[Force Web] 收到擴大搜尋請求，強制切換至網路搜尋模式`);
       const cmdResult = handleCommand(
         "不滿意這回答請繼續擴大搜尋",
         userId,
-        contextId
+        contextId,
       ); // Reuse existing command logic
       replyMessage(replyToken, cmdResult);
       return;
@@ -4662,8 +4704,8 @@ function handleMessage(event) {
         hitAliasKeys = hitKeys;
         writeLog(
           `[Direct Search] 命中直通車關鍵字: ${hitKeys.join(
-            ", "
-          )}，將強制 AI 進行 PDF 搜索 (Fast Mode Hint)`
+            ", ",
+          )}，將強制 AI 進行 PDF 搜索 (Fast Mode Hint)`,
         );
 
         // v29.4.28: Force AI to trigger Auto-Search for Direct Keywords
@@ -4743,7 +4785,7 @@ function handleMessage(event) {
       }
     } catch (e) {
       writeLog(
-        `[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`
+        `[Cache Parse Error] direct_search_models 轉換失敗: ${e.message}`,
       );
     }
 
@@ -4762,7 +4804,7 @@ function handleMessage(event) {
       // 好處：新增關鍵字只需編輯 CLASS_RULES，不需改程式碼
       if (hitAliasKeys.length > 0) {
         writeLog(
-          `[Direct Search v29.4.36] 命中直通車 (${hitAliasKeys[0]})，走統一流程 (Fast Mode + 完整上下文)`
+          `[Direct Search v29.4.36] 命中直通車 (${hitAliasKeys[0]})，走統一流程 (Fast Mode + 完整上下文)`,
         );
       }
 
@@ -4775,7 +4817,7 @@ function handleMessage(event) {
         false, // isRetry
         userId,
         false, // forceWebSearch
-        primaryModel // targetModelName
+        primaryModel, // targetModelName
       );
 
       // === [KB_EXPIRED] 攔截：PDF 過期，靜默處理，用戶無感 ===
@@ -4796,7 +4838,7 @@ function handleMessage(event) {
           true, // isRetry
           userId,
           false, // forceWebSearch
-          primaryModel // targetModelName
+          primaryModel, // targetModelName
         );
         // 不管成功失敗都不提示用戶「手冊更新中」，保持對話流暢
       }
@@ -4816,18 +4858,20 @@ function handleMessage(event) {
         // v29.4.0: 二段式 AI - 解析 [型號:xxx,yyy] 標籤
         const modelTagMatch = finalText.match(/\[型號[:：]([^\]]+)\]/);
         let suggestedModels = [];
-        
+
         // v29.5.06: Priority 1 - Read from checkDirectDeepSearch Cache
         const cachedModelsJson = cache.get(`${userId}:direct_search_models`);
         if (cachedModelsJson) {
           try {
             suggestedModels = JSON.parse(cachedModelsJson);
-            writeLog(`[Smart Router v29.5.06] 從 Cache 讀取型號: ${suggestedModels.join(", ")}`);
+            writeLog(
+              `[Smart Router v29.5.06] 從 Cache 讀取型號: ${suggestedModels.join(", ")}`,
+            );
           } catch (e) {
             writeLog(`[Smart Router] Cache 解析失敗: ${e.message}`);
           }
         }
-        
+
         // v29.5.06: Priority 2 - Parse AI [型號:xxx] tag (fallback)
         if (suggestedModels.length === 0 && modelTagMatch) {
           suggestedModels = modelTagMatch[1]
@@ -4835,10 +4879,10 @@ function handleMessage(event) {
             .map((m) => m.trim())
             .filter((m) => m);
           writeLog(
-            `[Smart Router v29.4] AI 建議型號: ${suggestedModels.join(", ")}`
+            `[Smart Router v29.4] AI 建議型號: ${suggestedModels.join(", ")}`,
           );
         }
-        
+
         // v29.5.06: Priority 3 - Fallback extraction from AI text
         if (suggestedModels.length === 0) {
           // v29.4.11: Fallback Extraction (若 AI 忘了打標籤，嘗試從內文中提取)
@@ -4846,15 +4890,15 @@ function handleMessage(event) {
           // v29.4.15 Fix: 放寬正則，允許無後綴的型號 (e.g. S32BM702)
           // 格式: [A-Z] + 2位數字 + [A-Z]{1,2} + 3-4位數字 + (可選後綴)
           const fallbackMatches = finalText.match(
-            /\b[A-Z]\d{2}[A-Z]{1,2}\d{3,4}[A-Z0-9]*\b/g
+            /\b[A-Z]\d{2}[A-Z]{1,2}\d{3,4}[A-Z0-9]*\b/g,
           );
           if (fallbackMatches) {
             // 過濾掉太短的誤判 (e.g., S24, M70)
             suggestedModels = fallbackMatches.filter((m) => m.length >= 7);
             writeLog(
               `[Smart Router v29.4.15] Fallback 提取型號: ${suggestedModels.join(
-                ", "
-              )}`
+                ", ",
+              )}`,
             );
           }
         }
@@ -4865,7 +4909,7 @@ function handleMessage(event) {
 
         // v29.4.22: Enhanced Trigger Detection with Argument Support
         const explicitTriggerMatch = finalText.match(
-          /\[AUTO_SEARCH_PDF(?:[:：]\s*(.+?))?\]/i
+          /\[AUTO_SEARCH_PDF(?:[:：]\s*(.+?))?\]/i,
         );
         const hasExplicitTrigger =
           !!explicitTriggerMatch || finalText.includes("[NEED_DOC]");
@@ -4886,7 +4930,7 @@ function handleMessage(event) {
             finalText = finalText
               .replace(
                 /\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi,
-                "[AUTO_SEARCH_WEB]"
+                "[AUTO_SEARCH_WEB]",
               )
               .replace(/\[NEED_DOC\]/gi, "[AUTO_SEARCH_WEB]");
             // 跳過 aiRequestedPdfSearch，讓後續 Web Search 邏輯接手
@@ -4911,7 +4955,7 @@ function handleMessage(event) {
 
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
-        
+
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
         let autoLocked = false;
 
@@ -4924,12 +4968,12 @@ function handleMessage(event) {
         // Step 2: Auto-Lock if user message contains the model
         const normalizedMsg = userMessage.toUpperCase().replace(/\s+/g, "");
         const matchedInMsg = suggestedModels.filter((m) =>
-          normalizedMsg.includes(m.toUpperCase().replace(/\s+/g, ""))
+          normalizedMsg.includes(m.toUpperCase().replace(/\s+/g, "")),
         );
 
         if (matchedInMsg.length > 0) {
           writeLog(
-            `[Smart Router v29.5.13] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`
+            `[Smart Router v29.5.13] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`,
           );
           suggestedModels = matchedInMsg;
           autoLocked = true;
@@ -4939,7 +4983,7 @@ function handleMessage(event) {
         // 若用戶訊息本身就包含該型號（例如點擊了選單按鈕），則強制鎖定，不再跳選單
         if (matchedInMsg.length > 0) {
           writeLog(
-            `[Smart Router v29.5.31] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`
+            `[Smart Router v29.5.31] 訊息中偵測到具體型號，鎖定目標: ${matchedInMsg.join(", ")}`,
           );
           suggestedModels = matchedInMsg;
           autoLocked = true; // 標記為自動鎖定
@@ -4948,23 +4992,28 @@ function handleMessage(event) {
         // v29.5.19: 檢查是否已查過 PDF，若是則跳過 Smart Router，讓後續流程處理 Web Search
         const pdfConsultedKey = `${userId}:pdf_consulted`;
         const hasPdfConsultedForRouter = cache.get(pdfConsultedKey) === "true";
-        
+
         if (hasPdfConsultedForRouter && suggestedModels.length > 0) {
-          writeLog(`[Smart Router v29.5.19] 已查過 PDF，跳過泡泡，等待 Web Search 升級`);
+          writeLog(
+            `[Smart Router v29.5.19] 已查過 PDF，跳過泡泡，等待 Web Search 升級`,
+          );
           suggestedModels = []; // 清空以跳過泡泡生成
         }
 
         if (suggestedModels.length > 0) {
           // Case A: 單一型號 + (明確 Trigger OR 自動鎖定) -> 自動跳轉 (讓 Fast Mode 回答，不直接跳 PDF)
           // v29.5.19: 回復正確流程 - 不設置 aiRequestedPdfSearch，讓 AI 先用規格表回答
-          if ((hasExplicitTrigger || autoLocked) && suggestedModels.length === 1) {
+          if (
+            (hasExplicitTrigger || autoLocked) &&
+            suggestedModels.length === 1
+          ) {
             writeLog(
-              `[Smart Router v29.5.19] 命中唯一型號 ${suggestedModels[0]}，儲存到 Cache`
+              `[Smart Router v29.5.19] 命中唯一型號 ${suggestedModels[0]}，儲存到 Cache`,
             );
             cache.put(
               `${userId}:direct_search_models`,
               JSON.stringify(suggestedModels),
-              300
+              300,
             );
             // v29.5.19: 不設置 aiRequestedPdfSearch，讓 AI 繼續用 Fast Mode 回答
             // 如果 AI 認為需要 PDF，會自己輸出 [AUTO_SEARCH_PDF]
@@ -4973,64 +5022,89 @@ function handleMessage(event) {
           // Case B: 多個型號 -> 顯示泡泡 (Flex Selection)
           // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
           else if (suggestedModels.length > 1) {
-            writeLog(
-              `[Smart Router v29.4.14] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`
-            );
-            cache.put(
-              `${userId}:suggested_models`,
-              JSON.stringify(suggestedModels),
-              300
-            );
+            // v29.5.48: UX Fix - 針對「通用/列表/推薦」類問題，跳過泡泡，讓 AI 直接列出
+            // 避免用戶問「哪一台有 Calman」卻被反問「請選擇型號」
+            const listIntent =
+              /(哪一台|推薦|介紹|有哪些|列表|清單|差異|比較|认证|認證|列出|整理|都有.*嗎|差別|選擇)/i.test(
+                userMessage,
+              );
+            const tooMany = suggestedModels.length > 10; // 如果超過 10 個，通常是類別查詢，跳泡泡比較好
 
-            // 生成 Flex Message (使用 V2 去重版)
-            const flexMsg = createModelSelectionFlexV3(suggestedModels);
-            // 若有 AI 文字回應，且非空白，則將其作為 Flex 的 AltText 或 分開傳送?
-            // 為了 UX，我們讓 Flex 獨立發送，結束這一回合
-            // 注意: 此時 replyText 尚未發送。若我們在這裡 return，replyText 就會被丟棄。
-            // 理想狀況: 如果 AI 有說話 (finalText)，我們先推播文字，再推播 Flex?
-            // Line Reply Token 只能用一次。必須組合成 Array。
-
-            const messages = [];
-            if (finalText && finalText.length > 0) {
-              messages.push({ type: "text", text: finalText });
+            if (listIntent || tooMany) {
+              writeLog(
+                `[Smart Router v29.5.48] 偵測到列表意圖/數量過多(${suggestedModels.length})，跳過選單泡泡，讓 AI 直接回答。`,
+              );
+              suggestedModels = []; // 清空以跳過泡泡生成
             }
-            messages.push({
-              type: "flex",
-              altText: "請選擇您要查詢的型號",
-              contents: flexMsg.contents
-                ? flexMsg
-                : { type: "carousel", contents: [flexMsg] }, // Ensure container format
-            });
 
-            // 使用 replyToken 一次發送
-            const url = "https://api.line.me/v2/bot/message/reply";
-            // v29.5.12: Correct key is LINE_TOKEN
-            let accessToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
-            if (accessToken) accessToken = accessToken.trim();
-            if (!accessToken) {
-              writeLog("[Fatal Error] 找不到 LINE_TOKEN，Flex 發送中止");
-              return;
-            }
-            const res = UrlFetchApp.fetch(url, {
-              method: "post",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: "Bearer " + accessToken,
-              },
-              payload: JSON.stringify({
-                replyToken: replyToken,
-                messages: messages,
-              }),
-              muteHttpExceptions: true,
-            });
+            // Re-check length (if cleared, this block won't run)
+            if (suggestedModels.length > 1) {
+              writeLog(
+                `[Smart Router v29.4.14] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
+              );
+              cache.put(
+                `${userId}:suggested_models`,
+                JSON.stringify(suggestedModels),
+                300,
+              );
 
-            // v29.5.05: Check response code to catch silent failures
-            if (res.getResponseCode() === 200) {
-              writeLog(`[Smart Router v29.4.14] 已發送 Flex Selection (含前導文字)`);
-            } else {
-              writeLog(`[Flex Error] 發送失敗 (${res.getResponseCode()}): ${res.getContentText()}`);
+              // 生成 Flex Message (使用 V2 去重版)
+              const flexMsg = createModelSelectionFlexV3(suggestedModels);
+              // 若有 AI 文字回應，且非空白，則將其作為 Flex 的 AltText 或 分開傳送?
+              // 為了 UX，我們讓 Flex 獨立發送，結束這一回合
+              // 注意: 此時 replyText 尚未發送。若我們在這裡 return，replyText 就會被丟棄。
+              // 理想狀況: 如果 AI 有說話 (finalText)，我們先推播文字，再推播 Flex?
+              // Line Reply Token 只能用一次。必須組合成 Array。
+
+              const messages = [];
+              if (finalText && finalText.length > 0) {
+                messages.push({ type: "text", text: finalText });
+              }
+              messages.push({
+                type: "flex",
+                altText: "請選擇您要查詢的型號",
+                contents: flexMsg.contents
+                  ? flexMsg
+                  : { type: "carousel", contents: [flexMsg] }, // Ensure container format
+              });
+
+              // 使用 replyToken 一次發送
+              const url = "https://api.line.me/v2/bot/message/reply";
+              // v29.5.12: Correct key is LINE_TOKEN
+              let accessToken =
+                PropertiesService.getScriptProperties().getProperty(
+                  "LINE_TOKEN",
+                );
+              if (accessToken) accessToken = accessToken.trim();
+              if (!accessToken) {
+                writeLog("[Fatal Error] 找不到 LINE_TOKEN，Flex 發送中止");
+                return;
+              }
+              const res = UrlFetchApp.fetch(url, {
+                method: "post",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: "Bearer " + accessToken,
+                },
+                payload: JSON.stringify({
+                  replyToken: replyToken,
+                  messages: messages,
+                }),
+                muteHttpExceptions: true,
+              });
+
+              // v29.5.05: Check response code to catch silent failures
+              if (res.getResponseCode() === 200) {
+                writeLog(
+                  `[Smart Router v29.4.14] 已發送 Flex Selection (含前導文字)`,
+                );
+              } else {
+                writeLog(
+                  `[Flex Error] 發送失敗 (${res.getResponseCode()}): ${res.getContentText()}`,
+                );
+              }
+              return; // 結束
             }
-            return; // 結束
           }
         }
 
@@ -5056,7 +5130,7 @@ function handleMessage(event) {
             null, // imageBlob
             true, // isRetry (Pass 2 treated as retry/deep)
             userId,
-            true // forceWebSearch
+            true, // forceWebSearch
           );
 
           // 累加費用
@@ -5067,8 +5141,8 @@ function handleMessage(event) {
             lastTokenUsage.costTWD += pass1Usage.costTWD;
             writeLog(
               `[Cost Accumulation] Total: NT$${lastTokenUsage.costTWD.toFixed(
-                4
-              )}`
+                4,
+              )}`,
             );
           }
 
@@ -5121,7 +5195,7 @@ function handleMessage(event) {
           if (isNonPdfQuestion) {
             // 不需要 PDF 的問題：使用 CLASS_RULES 或 LLM 通用知識回答
             writeLog(
-              "[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案"
+              "[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案",
             );
             // finalText 已經是極速模式的回答，直接用
             replyText = finalText;
@@ -5137,7 +5211,7 @@ function handleMessage(event) {
               // 取得別稱對應表 (供反向查詢)
               const mapJson =
                 PropertiesService.getScriptProperties().getProperty(
-                  CACHE_KEYS.KEYWORD_MAP
+                  CACHE_KEYS.KEYWORD_MAP,
                 );
               const keywordMap = mapJson ? JSON.parse(mapJson) : {};
 
@@ -5150,14 +5224,14 @@ function handleMessage(event) {
                 if (mappedRaw) {
                   // 簡單檢查映射字串是否包含已快取的型號
                   const isAliased = cachedDirectModels.some((old) =>
-                    mappedRaw.toUpperCase().includes(old.toUpperCase())
+                    mappedRaw.toUpperCase().includes(old.toUpperCase()),
                   );
                   if (isAliased) return false; // 命中別稱，非衝突
                 }
 
                 // 3. 檢查 m 是否包含在 cachedDirectModels 任何一個之中 (例如 "M8" 匹配 "S32BM801")
                 const isPartMatch = cachedDirectModels.some((old) =>
-                  old.toUpperCase().includes(m.toUpperCase())
+                  old.toUpperCase().includes(m.toUpperCase()),
                 );
                 if (isPartMatch) return false;
 
@@ -5176,7 +5250,7 @@ function handleMessage(event) {
 
                 if (webCount >= 2) {
                   writeLog(
-                    `[Auto Search] Web Search Limit Reached (${webCount}). Refusing to search again.`
+                    `[Auto Search] Web Search Limit Reached (${webCount}). Refusing to search again.`,
                   );
                   // Refusal Flow: Call LLM without tools, instructing it to refuse gracefully
                   const refusalResponse = callLLMWithRetry(
@@ -5189,7 +5263,7 @@ function handleMessage(event) {
                     true, // isRetry
                     userId,
                     false, // forceWebSearch = FALSE (Use Normal Mode to refuse)
-                    "" // targetModelName
+                    "", // targetModelName
                   );
                   replyText = formatForLineMobile(refusalResponse);
                 } else {
@@ -5199,12 +5273,12 @@ function handleMessage(event) {
                   writeLog(
                     `[Auto Search v29.4.45] 升級至網路搜尋 (Attempt ${
                       webCount + 1
-                    }/2)`
+                    }/2)`,
                   );
                   writeLog(
                     `[Upgrade Debug] cachedDirectModels: ${JSON.stringify(
-                      cachedDirectModels
-                    )}`
+                      cachedDirectModels,
+                    )}`,
                   );
 
                   // 強制執行 Web Search (不掛載 PDF)
@@ -5217,7 +5291,7 @@ function handleMessage(event) {
                     true, // isRetry
                     userId,
                     true, // forceWebSearch
-                    cachedDirectModels[0] // targetModelName
+                    cachedDirectModels[0], // targetModelName
                   );
 
                   if (webResponse && webResponse !== "[KB_EXPIRED]") {
@@ -5237,12 +5311,16 @@ function handleMessage(event) {
                       .trim();
                     // Remove "聯絡客服/0800" recommendations
                     finalText = finalText
-                      .replace(/[可以|建議|或許][^。]*[客服|0800][^。]*。?/g, "")
+                      .replace(
+                        /[可以|建議|或許][^。]*[客服|0800][^。]*。?/g,
+                        "",
+                      )
                       .replace(/直接問問三星[^。]*。?/g, "")
                       .trim();
                     // If response becomes empty after filtering, use fallback
                     if (!finalText || finalText.length < 20) {
-                      finalText = "哎呀，我搜遍了網路還是找不到確切資訊😓。這題可能比較難，建議你直接問問 Sam，他一定知道！";
+                      finalText =
+                        "哎呀，我搜遍了網路還是找不到確切資訊😓。這題可能比較難，建議你直接問問 Sam，他一定知道！";
                     }
                     replyText = finalText;
                     // v29.4.43: Prevent subsequent PDF search override
@@ -5254,11 +5332,11 @@ function handleMessage(event) {
                 }
               } else {
                 writeLog(
-                  `[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`
+                  `[Auto Search] 有 PDF 記憶且無型號衝突，直接使用已選的 PDF: ${cachedDirectModels}`,
                 );
 
                 writeLog(
-                  "[Auto Deep] 觸發 [AUTO_SEARCH_PDF]，啟動 PDF Mode 重試"
+                  "[Auto Deep] 觸發 [AUTO_SEARCH_PDF]，啟動 PDF Mode 重試",
                 );
                 isInPdfMode = true;
                 cache.put(pdfModeKey, "true", 300);
@@ -5271,7 +5349,7 @@ function handleMessage(event) {
                 try {
                   const kbListJson =
                     PropertiesService.getScriptProperties().getProperty(
-                      CACHE_KEYS.KB_URI_LIST
+                      CACHE_KEYS.KB_URI_LIST,
                     );
                   if (kbListJson) {
                     const kbList = JSON.parse(kbListJson);
@@ -5279,7 +5357,7 @@ function handleMessage(event) {
                     const matchedPdf = kbList.find(
                       (f) =>
                         f.mimeType === "application/pdf" &&
-                        f.name.toUpperCase().includes(targetModel)
+                        f.name.toUpperCase().includes(targetModel),
                     );
                     if (matchedPdf) {
                       pdfToAttach = [
@@ -5290,7 +5368,7 @@ function handleMessage(event) {
                         },
                       ];
                       writeLog(
-                        `[PDF Attach] 從快取型號找到 PDF: ${matchedPdf.name}`
+                        `[PDF Attach] 從快取型號找到 PDF: ${matchedPdf.name}`,
                       );
                     }
                   }
@@ -5307,7 +5385,7 @@ function handleMessage(event) {
                   true, // isRetry
                   userId,
                   false, // forceWebSearch
-                  cachedDirectModels[0] // targetModelName
+                  cachedDirectModels[0], // targetModelName
                 );
 
                 if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5334,10 +5412,10 @@ function handleMessage(event) {
               if (isModelMismatch) {
                 writeLog(
                   `[Auto Search] ⚠️ 偵測到型號衝突: 當前問題提到 ${currentMsgModels.join(
-                    ","
+                    ",",
                   )}，舊記憶是 ${cachedDirectModels.join(
-                    ","
-                  )}，將重新進行 PDF 匹配`
+                    ",",
+                  )}，將重新進行 PDF 匹配`,
                 );
                 cache.remove(pdfModeKey);
                 // v27.3.2: 關鍵修正 - 同時清除舊直通車關鍵字與型號，避免 M8 記憶污染 M9 查詢
@@ -5362,13 +5440,13 @@ function handleMessage(event) {
                 writeLog(
                   `[Auto Search] AI 要求 PDF 搜尋，使用直通車關鍵字進行 PDF 智慧匹配: ${cachedAliasKey} (原始訊息: ${msg.substring(
                     0,
-                    50
-                  )})`
+                    50,
+                  )})`,
                 );
 
                 const pdfSearchResult = searchPdfByAliasPattern(
                   cachedAliasKey,
-                  msg
+                  msg,
                 );
 
                 if (
@@ -5377,7 +5455,7 @@ function handleMessage(event) {
                 ) {
                   // 多個 PDF 匹配 → 反問用戶選擇
                   writeLog(
-                    `[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`
+                    `[PDF Match] 找到 ${pdfSearchResult.matchedPdfs.length} 個匹配，需要反問用戶`,
                   );
 
                   // 儲存等待選擇的狀態
@@ -5389,14 +5467,14 @@ function handleMessage(event) {
                   cache.put(
                     CACHE_KEYS.PENDING_PDF_SELECTION + userId,
                     JSON.stringify(pendingData),
-                    300
+                    300,
                   );
 
                   // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
                   // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
                   const askMsg = createModelSelectionFlexV2(
                     pdfSearchResult.aliasName,
-                    pdfSearchResult.matchedPdfs.slice(0, 9)
+                    pdfSearchResult.matchedPdfs.slice(0, 9),
                   );
 
                   replyMessage(replyToken, askMsg);
@@ -5411,7 +5489,7 @@ function handleMessage(event) {
                     askMsg,
                     contextId,
                     "assistant",
-                    ""
+                    "",
                   );
 
                   // v24.5.2: 更新對話歷史（關鍵修復！）
@@ -5420,21 +5498,21 @@ function handleMessage(event) {
                     contextId,
                     history,
                     userMsgObj,
-                    askMsgObj
+                    askMsgObj,
                   );
 
                   return; // 等待用戶回覆
                 } else if (pdfSearchResult.matchedPdfs.length === 1) {
                   // 只有一個 PDF → 直接使用
                   writeLog(
-                    `[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`
+                    `[PDF Match] 只有一個匹配: ${pdfSearchResult.matchedPdfs[0].name}，直接開啟 PDF Mode`,
                   );
                   cache.put(
                     `${userId}:direct_search_models`,
                     JSON.stringify([
                       pdfSearchResult.matchedPdfs[0].matchedModel,
                     ]),
-                    300
+                    300,
                   );
 
                   // 設定 PDF 模式並重試
@@ -5453,7 +5531,7 @@ function handleMessage(event) {
                   writeLog(
                     `[PDF Attach] 掛載: ${matchedPdf.name} (URI: ${
                       matchedPdf.uri ? "有" : "無"
-                    })`
+                    })`,
                   );
 
                   const deepResponse = callLLMWithRetry(
@@ -5465,7 +5543,7 @@ function handleMessage(event) {
                     true, // isRetry
                     userId,
                     false, // forceWebSearch
-                    matchedPdf.matchedModel // targetModelName
+                    matchedPdf.matchedModel, // targetModelName
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5482,7 +5560,7 @@ function handleMessage(event) {
                     // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
                     cache.put(`${userId}:pdf_consulted`, "true", 600); // 10 分鐘有效
                     writeLog(
-                      "[PDF v29.4.33] 已設置 pdf_consulted 標記，後續追問將升級至 Web Search"
+                      "[PDF v29.4.33] 已設置 pdf_consulted 標記，後續追問將升級至 Web Search",
                     );
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
@@ -5523,7 +5601,7 @@ function handleMessage(event) {
                     if (lastAssistantMsg) {
                       const apiKey =
                         PropertiesService.getScriptProperties().getProperty(
-                          "GEMINI_API_KEY"
+                          "GEMINI_API_KEY",
                         );
                       if (!apiKey) {
                         throw new Error("API Key not configured");
@@ -5531,7 +5609,7 @@ function handleMessage(event) {
 
                       const topicCheckPrompt = `上一輪對話：「${lastAssistantMsg.content.substring(
                         0,
-                        200
+                        200,
                       )}」\n當前用戶訊息：「${msg}」\n\n請判斷：用戶是在「繼續上一個話題（表示未解決或追問）」還是「換了新話題」？\n只回答：SAME（同一話題）或 NEW（新話題）`;
 
                       const topicCheckResponse = UrlFetchApp.fetch(
@@ -5552,11 +5630,11 @@ function handleMessage(event) {
                               temperature: 0,
                             },
                           }),
-                        }
+                        },
                       );
 
                       const topicResult = JSON.parse(
-                        topicCheckResponse.getContentText()
+                        topicCheckResponse.getContentText(),
                       );
                       const topicDecision =
                         topicResult.candidates?.[0]?.content?.parts?.[0]?.text
@@ -5565,13 +5643,13 @@ function handleMessage(event) {
                       useHistory = topicDecision.includes("SAME");
 
                       writeLog(
-                        `[Topic Check] LLM 判斷: ${topicDecision} -> useHistory=${useHistory}`
+                        `[Topic Check] LLM 判斷: ${topicDecision} -> useHistory=${useHistory}`,
                       );
                     }
                   } catch (e) {
                     // 如果 LLM 判斷失敗，fallback 到關鍵字匹配
                     writeLog(
-                      `[Topic Check] LLM 判斷失敗，使用關鍵字 fallback: ${e.message}`
+                      `[Topic Check] LLM 判斷失敗，使用關鍵字 fallback: ${e.message}`,
                     );
                     const unresolvedSignals =
                       /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓/i;
@@ -5581,19 +5659,19 @@ function handleMessage(event) {
 
                 if (useHistory) {
                   writeLog(
-                    "[Auto Search] 偵測到「同一話題」，使用對話歷史匹配 PDF"
+                    "[Auto Search] 偵測到「同一話題」，使用對話歷史匹配 PDF",
                   );
                 } else {
                   writeLog(
-                    "[Auto Search] 偵測到「新話題」或無歷史，強制只用當前訊息避免歷史污染"
+                    "[Auto Search] 偵測到「新話題」或無歷史，強制只用當前訊息避免歷史污染",
                   );
                 }
 
                 // 預測會用到哪些 PDF
                 const kbList = JSON.parse(
                   PropertiesService.getScriptProperties().getProperty(
-                    CACHE_KEYS.KB_URI_LIST
-                  ) || "[]"
+                    CACHE_KEYS.KB_URI_LIST,
+                  ) || "[]",
                 );
                 // v29.4.16: Destructure result from getRelevantKBFiles
                 // v29.4.22: Allow AI to override search query
@@ -5609,7 +5687,7 @@ function handleMessage(event) {
                   userId,
                   contextId,
                   !useHistory,
-                  aiSearchQuery // v29.4.27: Pass aiSearchQuery explicitly
+                  aiSearchQuery, // v29.4.27: Pass aiSearchQuery explicitly
                 );
                 // Compatible handling
                 let relevantFiles = [];
@@ -5636,8 +5714,8 @@ function handleMessage(event) {
                 if (productNames.length > 0) {
                   writeLog(
                     `[Auto Deep] 找到相關手冊: ${productNames.join(
-                      "、"
-                    )}，開始重試...`
+                      "、",
+                    )}，開始重試...`,
                   );
 
                   isInPdfMode = true;
@@ -5652,7 +5730,7 @@ function handleMessage(event) {
                     true, // isRetry
                     userId,
                     false, // forceWebSearch
-                    primaryModel // targetModelName
+                    primaryModel, // targetModelName
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5668,7 +5746,7 @@ function handleMessage(event) {
                     if (finalText.startsWith("根據我的資料庫")) {
                       finalText = finalText.replace(
                         /^根據我的資料庫/,
-                        "根據產品手冊"
+                        "根據產品手冊",
                       );
                     }
 
@@ -5693,20 +5771,20 @@ function handleMessage(event) {
                   try {
                     const cache = CacheService.getScriptCache();
                     const cachedReverseModel = cache.get(
-                      `REVERSE_LOOKUP_MODEL:${userId}`
+                      `REVERSE_LOOKUP_MODEL:${userId}`,
                     );
                     if (cachedReverseModel) {
                       // v27.9.65: 觸發 Rescue Mode，再次顯示 Loading 動畫
                       showLoadingAnimation(userId, 60);
 
                       writeLog(
-                        `[Auto Search] 找不到 PDF，嘗試使用反查型號救援: ${cachedReverseModel}`
+                        `[Auto Search] 找不到 PDF，嘗試使用反查型號救援: ${cachedReverseModel}`,
                       );
                       // 注入直通車 Cache，讓 getRelevantKBFiles 能讀到
                       cache.put(
                         `${userId}:direct_search_models`,
                         JSON.stringify([cachedReverseModel]),
-                        300
+                        300,
                       );
 
                       // 重試搜尋 (強制使用當前訊息+Cache，或直接依賴Cache)
@@ -5715,7 +5793,7 @@ function handleMessage(event) {
                         kbList,
                         userId,
                         contextId,
-                        true
+                        true,
                       );
                       const rescueFiles = rescueKbResult.files || [];
                       const rescuePrimaryModel = rescueKbResult.primaryModel;
@@ -5730,8 +5808,8 @@ function handleMessage(event) {
                       if (rescueProductNames.length > 0) {
                         writeLog(
                           `[Auto Search] 救援成功! 找到: ${rescueProductNames.join(
-                            "、"
-                          )}，開始重試...`
+                            "、",
+                          )}，開始重試...`,
                         );
                         rescueSuccess = true;
 
@@ -5747,7 +5825,7 @@ function handleMessage(event) {
                           true, // isRetry
                           userId, // userId
                           false, // forceWebSearch
-                          rescuePrimaryModel // targetModelName
+                          rescuePrimaryModel, // targetModelName
                         );
 
                         if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
@@ -5765,7 +5843,7 @@ function handleMessage(event) {
                           if (finalText.startsWith("根據我的資料庫")) {
                             finalText = finalText.replace(
                               /^根據我的資料庫/,
-                              "根據產品手冊"
+                              "根據產品手冊",
                             );
                           }
                         } else {
@@ -5780,7 +5858,7 @@ function handleMessage(event) {
 
                   if (!rescueSuccess) {
                     writeLog(
-                      "[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案"
+                      "[Auto Search] 找不到相關 PDF，使用 Fast Mode 答案",
                     );
 
                     // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
@@ -5818,7 +5896,7 @@ function handleMessage(event) {
           ];
           // v29.5.03: 若回覆來自網路搜尋，不要退出 PDF 模式，保持 web_search_count
           const isWebSearchResponse = /\[來源[：:]\s*網路搜尋\]/i.test(
-            finalText
+            finalText,
           );
           const shouldExit =
             !isWebSearchResponse && exitPatterns.some((p) => p.test(finalText));
@@ -5832,7 +5910,7 @@ function handleMessage(event) {
         // v27.0.0: 修復費用顯示邏輯（確保費用正確對應當前查詢）
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
           const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-            4
+            4,
           )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
             lastTokenUsage.total
           })`;
@@ -5857,7 +5935,7 @@ function handleMessage(event) {
             // v29.4.12: Replace Warning with Model Count Info
             const modelCount =
               PropertiesService.getScriptProperties().getProperty(
-                "TOTAL_MODEL_COUNT"
+                "TOTAL_MODEL_COUNT",
               ) || "?";
             const warning = `\n\n(資料庫內有${modelCount}筆型號)`;
             if (Array.isArray(replyText)) {
@@ -5866,7 +5944,7 @@ function handleMessage(event) {
               replyText += warning;
             }
             writeLog(
-              `[Token Warning] Input tokens (${lastTokenUsage.input}) exceeded ${tokenThreshold} threshold`
+              `[Token Warning] Input tokens (${lastTokenUsage.input}) exceeded ${tokenThreshold} threshold`,
             );
           }
         }
@@ -5903,7 +5981,7 @@ function handleMessage(event) {
         writeLog(
           `[AI Reply] ${replyForLog.substring(0, 2000)}${
             replyForLog.length > 2000 ? "..." : ""
-          }`
+          }`,
         );
 
         updateHistorySheetAndCache(contextId, history, userMsgObj, {
@@ -5931,7 +6009,7 @@ function handleMessage(event) {
 // 保留函數殼層以防有其他地方呼叫，但內容已清空或轉向
 function handleDeepSearch(originalQuery, userId, replyToken, contextId) {
   writeLog(
-    "[Deprecated] handleDeepSearch 被呼叫，但此功能已廢棄 (改為 Auto Deep Search)"
+    "[Deprecated] handleDeepSearch 被呼叫，但此功能已廢棄 (改為 Auto Deep Search)",
   );
   // 這裡不應該再被執行到，因為 PENDING_QUERY 邏輯已被移除
 }
@@ -5955,7 +6033,7 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
     const blob = UrlFetchApp.fetch(
       `https://api-data.line.me/v2/bot/message/${msgId}/content`,
-      { headers: { Authorization: "Bearer " + token } }
+      { headers: { Authorization: "Bearer " + token } },
     ).getBlob();
 
     const analysis = callLLMWithRetry(
@@ -5967,7 +6045,7 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       false, // isRetry
       userId, // userId
       false, // forceWebSearch
-      null // targetModelName
+      null, // targetModelName
     );
     const final = formatForLineMobile(analysis);
     replyMessage(replyToken, final);
@@ -5979,7 +6057,7 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       contextId,
       history,
       { role: "user", content: "[使用者傳送了一張圖片]" },
-      { role: "assistant", content: `(針對圖片的分析結果) ${final}` }
+      { role: "assistant", content: `(針對圖片的分析結果) ${final}` },
     );
   } catch (e) {
     writeLog(`[Image Error] ${e.message}`);
@@ -6008,7 +6086,7 @@ function handleCommand(c, u, cid) {
     // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
     // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
     const resultMsg = syncGeminiKnowledgeBase(false);
-    writeLog(`[Command] 重啟完成: ${resultMsg.split('\n')[0]}`);
+    writeLog(`[Command] 重啟完成: ${resultMsg.split("\n")[0]}`);
     return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
   }
 
@@ -6057,52 +6135,60 @@ function handleCommand(c, u, cid) {
     // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
     // 實際上 Smart Router v29.4.14 寫入的是 `model_selection_${userId}` 的選項，但我們需要 raw models
     // 讓我們改為嘗試從 userMsg 裡重新提取型號，這最保險
-    
+
     let triggerPDF = false;
     let filesToAttach = [];
-    
+
     // 只有在第一次擴大搜尋時嘗試插入 PDF (避免無限 PDF loop)
     if (!pdfConsulted && count <= 2) {
-       // 重新執行關鍵字提取與 PDF 匹配
-       // 為了簡單，直接用 CLASS_RULES 匹配 userMsg
-       const ruleObj = getClassRules();
-       if (ruleObj && ruleObj.extractModelKeywords) {
-           const models = ruleObj.extractModelKeywords(userMsg);
-           if (models.length > 0) {
-               // 讀取 kbList (因為 getRelevantKBFiles 需要它)
-               const kbList = JSON.parse(
-                 PropertiesService.getScriptProperties().getProperty(
-                   CACHE_KEYS.KB_URI_LIST
-                 ) || "[]"
-               );
-               const kbResult = getRelevantKBFiles([ { role: 'user', content: userMsg } ], kbList, u); // 這裡需要傳入 kbList
-               if (kbResult.files.length > 0) {
-                   triggerPDF = true;
-                   filesToAttach = kbResult.files;
-                   writeLog(`[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`);
-               }
-           }
-       }
+      // 重新執行關鍵字提取與 PDF 匹配
+      // 為了簡單，直接用 CLASS_RULES 匹配 userMsg
+      const ruleObj = getClassRules();
+      if (ruleObj && ruleObj.extractModelKeywords) {
+        const models = ruleObj.extractModelKeywords(userMsg);
+        if (models.length > 0) {
+          // 讀取 kbList (因為 getRelevantKBFiles 需要它)
+          const kbList = JSON.parse(
+            PropertiesService.getScriptProperties().getProperty(
+              CACHE_KEYS.KB_URI_LIST,
+            ) || "[]",
+          );
+          const kbResult = getRelevantKBFiles(
+            [{ role: "user", content: userMsg }],
+            kbList,
+            u,
+          ); // 這裡需要傳入 kbList
+          if (kbResult.files.length > 0) {
+            triggerPDF = true;
+            filesToAttach = kbResult.files;
+            writeLog(
+              `[SOP] 偵測到尚未查閱 PDF，優先執行 PDF Search (Pass 1.5), Model: ${models[0]}`,
+            );
+          }
+        }
+      }
     }
 
     // 執行搜尋
     // v29.5.22: 修正參數順序
     // v29.5.27: 根據 triggerPDF 調整參數
-    writeLog(`[Command] 啟動 Pass ${triggerPDF ? "1.5 (PDF)" : "2 (Web)"}, 次數: ${count}`);
+    writeLog(
+      `[Command] 啟動 Pass ${triggerPDF ? "1.5 (PDF)" : "2 (Web)"}, 次數: ${count}`,
+    );
     const searchResponse = callLLMWithRetry(
-      userMsg,      // query
-      history,      // messages
-      triggerPDF ? filesToAttach : [],           // filesToAttach
-      triggerPDF,   // attachPDFs
-      null,         // imageBlob
-      true,         // isRetry
-      u,            // userId
-      !triggerPDF,  // forceWebSearch (PDF 優先於 Web)
-      ""            // targetModelName
+      userMsg, // query
+      history, // messages
+      triggerPDF ? filesToAttach : [], // filesToAttach
+      triggerPDF, // attachPDFs
+      null, // imageBlob
+      true, // isRetry
+      u, // userId
+      !triggerPDF, // forceWebSearch (PDF 優先於 Web)
+      "", // targetModelName
     );
 
     if (triggerPDF) {
-        cache.put(`pdf_consulted_${u}`, "true", 600);
+      cache.put(`pdf_consulted_${u}`, "true", 600);
     }
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
@@ -6113,7 +6199,7 @@ function handleCommand(c, u, cid) {
         cid,
         history,
         { role: "user", content: cmd },
-        { role: "assistant", content: searchResponse }
+        { role: "assistant", content: searchResponse },
       );
       return result;
     } else {
@@ -6129,7 +6215,7 @@ function startNewEntryDraft(content, userId) {
     writeLog(
       userId,
       "UserRecord",
-      `[NewDraft] 開始建檔: ${content.substring(0, 150)}`
+      `[NewDraft] 開始建檔: ${content.substring(0, 150)}`,
     );
 
     // v27.9.16: 累計費用追蹤
@@ -6143,7 +6229,7 @@ function startNewEntryDraft(content, userId) {
     writeLog(
       userId,
       "UserRecord",
-      `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`
+      `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`,
     );
 
     // 累計費用
@@ -6168,18 +6254,18 @@ function startNewEntryDraft(content, userId) {
       writeLog(
         userId,
         "UserRecord",
-        `[NewDraft] 找到相似 QA: 行 ${similarResult.matchedRows.join(",")}`
+        `[NewDraft] 找到相似 QA: 行 ${similarResult.matchedRows.join(",")}`,
       );
 
       // Step 3: LLM 合併產出合併版
       const mergedQA = callGeminiToMergeQA(
         similarResult.matchedQAs,
-        polishedText
+        polishedText,
       );
       writeLog(
         userId,
         "UserRecord",
-        `[NewDraft] 合併版 QA: ${mergedQA.substring(0, 150)}`
+        `[NewDraft] 合併版 QA: ${mergedQA.substring(0, 150)}`,
       );
 
       // 累計費用
@@ -6204,7 +6290,7 @@ function startNewEntryDraft(content, userId) {
       CacheService.getScriptCache().put(
         CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
         JSON.stringify(draft),
-        CONFIG.DRAFT_TTL_SEC
+        CONFIG.DRAFT_TTL_SEC,
       );
 
       // 組裝回覆訊息
@@ -6223,7 +6309,7 @@ function startNewEntryDraft(content, userId) {
       // v27.9.16: 附加費用資訊
       if (totalCostTWD > 0) {
         replyMsg += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
-          4
+          4,
         )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
       }
 
@@ -6242,7 +6328,7 @@ function startNewEntryDraft(content, userId) {
     CacheService.getScriptCache().put(
       CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
       JSON.stringify(draft),
-      CONFIG.DRAFT_TTL_SEC
+      CONFIG.DRAFT_TTL_SEC,
     );
 
     var alertMsg =
@@ -6255,14 +6341,14 @@ function startNewEntryDraft(content, userId) {
     // v27.9.16: 附加費用資訊
     if (totalCostTWD > 0) {
       preview += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
-        4
+        4,
       )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
     }
 
     writeLog(
       userId,
       "UserRecord",
-      `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`
+      `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`,
     );
     return alertMsg + preview;
   } catch (e) {
@@ -6294,7 +6380,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         CacheService.getScriptCache().put(
           CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
           JSON.stringify(newDraft),
-          CONFIG.DRAFT_TTL_SEC
+          CONFIG.DRAFT_TTL_SEC,
         );
 
         var preview =
@@ -6318,7 +6404,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         CacheService.getScriptCache().put(
           CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
           JSON.stringify(newDraft),
-          CONFIG.DRAFT_TTL_SEC
+          CONFIG.DRAFT_TTL_SEC,
         );
 
         var preview =
@@ -6344,7 +6430,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         CacheService.getScriptCache().put(
           CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
           JSON.stringify(newDraft),
-          CONFIG.DRAFT_TTL_SEC
+          CONFIG.DRAFT_TTL_SEC,
         );
 
         var preview =
@@ -6358,7 +6444,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         // 不是 1, 2 或 3，提醒用戶
         replyMessage(
           replyToken,
-          "請輸入 1, 2 或 3 選擇：\n1️⃣ 採用合併版（刪除舊的）\n2️⃣ 另開新條（保留舊的）\n3️⃣ 取代舊 QA（刪除舊的，用新的）"
+          "請輸入 1, 2 或 3 選擇：\n1️⃣ 採用合併版（刪除舊的）\n2️⃣ 另開新條（保留舊的）\n3️⃣ 取代舊 QA（刪除舊的，用新的）",
         );
         writeLog(`[DraftMod Reply] 提醒用戶選擇 1/2`);
         return;
@@ -6369,11 +6455,11 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     writeLog(
       `[DraftMod] 原始內容: ${(currentDraft.originalContent || "").substring(
         0,
-        500
-      )}`
+        500,
+      )}`,
     );
     writeLog(
-      `[DraftMod] 目前 QA: ${(currentDraft.currentQA || "").substring(0, 500)}`
+      `[DraftMod] 目前 QA: ${(currentDraft.currentQA || "").substring(0, 500)}`,
     );
 
     // 累積對話歷史
@@ -6384,7 +6470,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     var newQA = callGeminiToRefineQA(
       currentDraft.originalContent,
       currentDraft.currentQA,
-      conversation
+      conversation,
     );
 
     writeLog(`[DraftMod] 新 QA: ${newQA.substring(0, 500)}`);
@@ -6400,7 +6486,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     CacheService.getScriptCache().put(
       CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
       JSON.stringify(newDraft),
-      CONFIG.DRAFT_TTL_SEC
+      CONFIG.DRAFT_TTL_SEC,
     );
 
     var preview =
@@ -6411,7 +6497,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     // v27.9.17: 附加費用資訊
     if (lastTokenUsage && lastTokenUsage.costTWD) {
       preview += `\n\n---\n本次修改預估花費：NT$${lastTokenUsage.costTWD.toFixed(
-        4
+        4,
       )} (In:${lastTokenUsage.input}/Out:${lastTokenUsage.output})`;
     }
 
@@ -6488,13 +6574,13 @@ function findSimilarQA(newContent, polishedQA) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     var code = res.getResponseCode();
     var body = res.getContentText();
     writeLog(
-      "[FindSimilar API] Code: " + code + ", Body: " + body.substring(0, 300)
+      "[FindSimilar API] Code: " + code + ", Body: " + body.substring(0, 300),
     );
 
     if (code !== 200) return null;
@@ -6525,7 +6611,7 @@ function findSimilarQA(newContent, polishedQA) {
           "=Total:" +
           totalTokens +
           ", Cost:NT$" +
-          costTWD.toFixed(4)
+          costTWD.toFixed(4),
       );
     }
 
@@ -6635,13 +6721,13 @@ function callGeminiToMergeQA(existingQAs, newQA) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     var code = res.getResponseCode();
     var body = res.getContentText();
     writeLog(
-      "[MergeQA API] Code: " + code + ", Body: " + body.substring(0, 500)
+      "[MergeQA API] Code: " + code + ", Body: " + body.substring(0, 500),
     );
 
     if (code !== 200) {
@@ -6668,7 +6754,7 @@ function callGeminiToMergeQA(existingQAs, newQA) {
       writeLog(
         `[MergeQA Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
-        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`
+        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
       );
     } else {
       lastTokenUsage = null;
@@ -6782,7 +6868,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     const code = res.getResponseCode();
@@ -6794,7 +6880,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
       // 降級：簡單合併
       return simpleModifyFallback(
         currentQA,
-        conversation[conversation.length - 1]
+        conversation[conversation.length - 1],
       );
     }
 
@@ -6805,7 +6891,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
       writeLog(`[RefineQA Parse Error] ${parseErr.message}`);
       return simpleModifyFallback(
         currentQA,
-        conversation[conversation.length - 1]
+        conversation[conversation.length - 1],
       );
     }
 
@@ -6826,7 +6912,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
       writeLog(
         `[RefineQA Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
-        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`
+        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
       );
     } else {
       lastTokenUsage = null;
@@ -6839,7 +6925,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
         ? firstCandidate.finishReason
         : "UNKNOWN";
     writeLog(
-      `[RefineQA] finishReason: ${finishReason}, candidates: ${candidates.length}`
+      `[RefineQA] finishReason: ${finishReason}, candidates: ${candidates.length}`,
     );
 
     let rawText = "";
@@ -6858,7 +6944,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
       writeLog(`[RefineQA] AI 回傳為空`);
       return simpleModifyFallback(
         currentQA,
-        conversation[conversation.length - 1]
+        conversation[conversation.length - 1],
       );
     }
 
@@ -6867,7 +6953,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
     writeLog(`[RefineQA Error] ${e.message}`);
     return simpleModifyFallback(
       currentQA,
-      conversation[conversation.length - 1]
+      conversation[conversation.length - 1],
     );
   }
 }
@@ -6917,7 +7003,7 @@ function callGeminiToPolish(input, userId = null) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     // v27.9.45: 模型回滾機制 (Model Fallback Strategy)
@@ -6928,7 +7014,7 @@ function callGeminiToPolish(input, userId = null) {
     if (res.getResponseCode() === 404 || res.getResponseCode() === 400) {
       const errBody = res.getContentText();
       writeLog(
-        `[Polish Warning] ${GEMINI_MODEL_POLISH} 失效 (${res.getResponseCode()})，嘗試回滾... Err: ${errBody}`
+        `[Polish Warning] ${GEMINI_MODEL_POLISH} 失效 (${res.getResponseCode()})，嘗試回滾... Err: ${errBody}`,
       );
 
       // 準備警告文字，將隨返還內容一起顯示
@@ -6943,7 +7029,7 @@ function callGeminiToPolish(input, userId = null) {
           headers: { "Content-Type": "application/json" },
           payload: JSON.stringify(payload), // payload 通用
           muteHttpExceptions: true,
-        }
+        },
       );
     }
 
@@ -6982,8 +7068,8 @@ function callGeminiToPolish(input, userId = null) {
         `[Polish Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
         }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(
-          4
-        )} | Gemini 3 Flash)`
+          4,
+        )} | Gemini 3 Flash)`,
       );
     } else {
       // 清除舊的 lastTokenUsage
@@ -6998,7 +7084,7 @@ function callGeminiToPolish(input, userId = null) {
         ? firstCandidate.finishReason
         : "UNKNOWN";
     writeLog(
-      `[Polish] finishReason: ${finishReason}, candidates: ${candidates.length}`
+      `[Polish] finishReason: ${finishReason}, candidates: ${candidates.length}`,
     );
 
     let rawText = "";
@@ -7015,7 +7101,7 @@ function callGeminiToPolish(input, userId = null) {
 
     if (!rawText || typeof rawText !== "string") {
       writeLog(
-        `[Polish] AI 回傳為空，Body 前 300 字: ${body.substring(0, 300)}`
+        `[Polish] AI 回傳為空，Body 前 300 字: ${body.substring(0, 300)}`,
       );
       return simplePolishFallback(input);
     }
@@ -7061,7 +7147,7 @@ function callGeminiToModify(currentText, instruction) {
         return responseText.trim().replace(/[\r\n]+/g, " ");
       } catch (orErr) {
         writeLog(
-          `[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`
+          `[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`,
         );
       }
     }
@@ -7074,7 +7160,7 @@ function callGeminiToModify(currentText, instruction) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     const code = res.getResponseCode();
@@ -7111,7 +7197,7 @@ function callGeminiToModify(currentText, instruction) {
       writeLog(
         `[Modify Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
-        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`
+        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
       );
     }
 
@@ -7123,7 +7209,7 @@ function callGeminiToModify(currentText, instruction) {
         ? firstCandidate.finishReason
         : "UNKNOWN";
     writeLog(
-      `[Modify] finishReason: ${finishReason}, candidates: ${candidates.length}`
+      `[Modify] finishReason: ${finishReason}, candidates: ${candidates.length}`,
     );
 
     let rawText = "";
@@ -7140,7 +7226,7 @@ function callGeminiToModify(currentText, instruction) {
 
     if (!rawText || typeof rawText !== "string") {
       writeLog(
-        `[Modify] AI 回傳為空，Body 前 300 字: ${body.substring(0, 300)}`
+        `[Modify] AI 回傳為空，Body 前 300 字: ${body.substring(0, 300)}`,
       );
       return simpleModifyFallback(currentText, instruction);
     }
@@ -7182,7 +7268,7 @@ function simpleModifyFallback(currentText, instruction) {
     "[Fallback] 降級合併: base=" +
       base.substring(0, 50) +
       ", ins=" +
-      ins.substring(0, 50)
+      ins.substring(0, 50),
   );
 
   // 分析用戶指令類型
@@ -7247,21 +7333,21 @@ function saveDraftToSheet(draft) {
 
     // 清除快取並同步知識庫
     CacheService.getScriptCache().remove(
-      CACHE_KEYS.ENTRY_DRAFT_PREFIX + draft.userId
+      CACHE_KEYS.ENTRY_DRAFT_PREFIX + draft.userId,
     );
     syncGeminiKnowledgeBase();
 
     writeLog(
       draft.userId || "UNKNOWN",
       "UserRecord",
-      `[Draft Saved to QA] ${qaText.substring(0, 50)}...`
+      `[Draft Saved to QA] ${qaText.substring(0, 50)}...`,
     );
     return `✅ 已寫入 QA 並更新知識庫！\n\n寫入內容：${qaText}`;
   } catch (e) {
     writeLog(
       draft.userId || "UNKNOWN",
       "Error",
-      `[SaveDraft Error] ${e.message}`
+      `[SaveDraft Error] ${e.message}`,
     );
     return `❌ 寫入失敗：${e.message}`;
   } finally {
@@ -7353,7 +7439,7 @@ function handleAutoQA(u, cid) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     let qaLine = "";
@@ -7379,7 +7465,7 @@ function handleAutoQA(u, cid) {
           writeLog(
             `[AutoQA Tokens] In: ${usage.promptTokenCount}, Out: ${
               usage.candidatesTokenCount
-            }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`
+            }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
           );
           costInfo = `\n\n---\n本次整理預估花費：NT$${costTWD.toFixed(4)} (In:${
             usage.promptTokenCount
@@ -7463,7 +7549,7 @@ function writeQA(l, s, p, a, n) {
     const cleanN = sanitizeForSheet(n);
     sheet.appendRow([
       [new Date().toLocaleDateString(), l, s, cleanP, cleanA, cleanN].join(
-        ", "
+        ", ",
       ),
     ]);
     SpreadsheetApp.flush();
@@ -7520,7 +7606,7 @@ function writeLog(a, b, c) {
   var timestamp = Utilities.formatDate(
     new Date(),
     "Asia/Taipei",
-    "HH:mm:ss.SSS"
+    "HH:mm:ss.SSS",
   );
   var msgForLog = `[${type}] ${content}`;
 
@@ -7741,7 +7827,7 @@ function getHistoryFromCacheOrSheet(cid) {
     if (f) {
       // v29.4.32: Sanitize history on read
       return sanitizeHistoryArray(
-        JSON.parse(s.getRange(f.getRow(), 2).getValue())
+        JSON.parse(s.getRange(f.getRow(), 2).getValue()),
       );
     }
   } catch (e) {}
@@ -7769,7 +7855,7 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
 
     if (newHist.length > SUMMARY_THRESHOLD) {
       writeLog(
-        `[History] 超長對話 (${newHist.length} > ${SUMMARY_THRESHOLD})，啟動摘要...`
+        `[History] 超長對話 (${newHist.length} > ${SUMMARY_THRESHOLD})，啟動摘要...`,
       );
 
       const splitIndex = Math.floor(newHist.length / 2);
@@ -7802,7 +7888,7 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
     CacheService.getScriptCache().put(
       `${CACHE_KEYS.HISTORY_PREFIX}${cid}`,
       json,
-      CONFIG.CACHE_TTL_SEC
+      CONFIG.CACHE_TTL_SEC,
     );
 
     // 2025-12-05: 恢復 Sheet 寫入 (長期記憶備份)
@@ -7813,7 +7899,7 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
         s = ss.insertSheet(SHEET_NAMES.LAST_CONVERSATION);
         s.appendRow(["ContextID", "HistoryJSON", "LastUpdated"]); // 補標題
         writeLog(
-          `[AutoCreate] 已自動重建 ${SHEET_NAMES.LAST_CONVERSATION} 工作表`
+          `[AutoCreate] 已自動重建 ${SHEET_NAMES.LAST_CONVERSATION} 工作表`,
         );
       }
 
@@ -7879,7 +7965,7 @@ function callGeminiToSummarize(messages) {
         return responseText.trim().replace(/[\r\n]+/g, " ");
       } catch (orErr) {
         writeLog(
-          `[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`
+          `[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`,
         );
       }
     }
@@ -7892,7 +7978,7 @@ function callGeminiToSummarize(messages) {
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     if (res.getResponseCode() !== 200) return null;
@@ -7943,7 +8029,7 @@ function clearHistorySheetAndCache(cid) {
     cache.remove(`${cid}:pdf_consulted`);
 
     writeLog(
-      `[ClearHistory] ✅ 完全清除了 ${cid} 的對話記憶 (Sheet + Cache + PDF Mode)`
+      `[ClearHistory] ✅ 完全清除了 ${cid} 的對話記憶 (Sheet + Cache + PDF Mode)`,
     );
   } catch (e) {
     writeLog(`[ClearHistory Error] ${e.message}`);
@@ -7992,7 +8078,7 @@ function doPost(e) {
                 cleanedText = cleanedText
                   .replace(
                     cleanedText.substring(m.index, m.index + m.length),
-                    ""
+                    "",
                   )
                   .trim();
               }
@@ -8010,7 +8096,7 @@ function doPost(e) {
                 event.message.id,
                 userId,
                 replyToken,
-                contextId
+                contextId,
               );
             }
           }
@@ -8024,11 +8110,11 @@ function doPost(e) {
       }
     });
     return ContentService.createTextOutput(
-      JSON.stringify({ status: "ok" })
+      JSON.stringify({ status: "ok" }),
     ).setMimeType(ContentService.MimeType.JSON);
   } catch (e) {
     return ContentService.createTextOutput(
-      JSON.stringify({ status: "error" })
+      JSON.stringify({ status: "error" }),
     ).setMimeType(ContentService.MimeType.JSON);
   } finally {
     flushLogs(); // 確保 Log 寫入 Sheet
@@ -8054,7 +8140,7 @@ function getHistoryModels(userId) {
         const text = msg.content;
         // 使用與 getRelevantKBFiles 相同的正則 (複製自上方)
         const match = text.match(
-          /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g
+          /\b(G\d{2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3})\b/g,
         );
         if (match) {
           match.forEach((m) => {
@@ -8148,7 +8234,7 @@ function replyMessage(tk, txt, options = {}) {
           messages: messages,
         }),
         muteHttpExceptions: true,
-      }
+      },
     );
 
     const code = response.getResponseCode();
@@ -8182,12 +8268,12 @@ function showLoadingAnimation(uid, sec) {
         },
         payload: JSON.stringify({ chatId: uid, loadingSeconds: sec }),
         muteHttpExceptions: true,
-      }
+      },
     );
     const code = res.getResponseCode();
     if (code !== 202) {
       writeLog(
-        `[Animation Warning] LINE API 回傳 ${code}: ${res.getContentText()}`
+        `[Animation Warning] LINE API 回傳 ${code}: ${res.getContentText()}`,
       );
     }
   } catch (e) {
@@ -8335,13 +8421,13 @@ function doGet(e) {
       .setTitle("LINE Bot 測試模擬器 v2.3")
       .addMetaTag(
         "viewport",
-        "width=device-width, initial-scale=1, user-scalable=no"
+        "width=device-width, initial-scale=1, user-scalable=no",
       );
   }
 
   // 預設：返回健康檢查（給 LINE Verify 用）
   return ContentService.createTextOutput(
-    "OK - Current Version: " + GAS_VERSION + " [" + BUILD_TIMESTAMP + "]"
+    "OK - Current Version: " + GAS_VERSION + " [" + BUILD_TIMESTAMP + "]",
   ).setMimeType(ContentService.MimeType.TEXT);
 }
 
@@ -8397,7 +8483,7 @@ function testMessage(msg, userId) {
     if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
       var content = parseLogContent(
         log,
-        log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]"
+        log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]",
       );
       if (content && !seenContent.has(content)) {
         botResponses.push(content);
@@ -8412,7 +8498,7 @@ function testMessage(msg, userId) {
     var hasPdfSelectLog = TEST_LOGS.some(
       (l) =>
         l.indexOf("[PDF Select] 用戶選擇") > -1 ||
-        l.indexOf("[PDF Select] 用戶輸入完整型號") > -1
+        l.indexOf("[PDF Select] 用戶輸入完整型號") > -1,
     );
     if (hasPdfSelectLog) {
       // 表示已經觸發 PDF 查詢，但結果未被正確記錄
@@ -8442,7 +8528,7 @@ function testMessage(msg, userId) {
   // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
   if (!hasOfficialReply) {
     var hasPdfQuestion = TEST_LOGS.some(
-      (l) => l.indexOf("已發送型號選擇反問") > -1
+      (l) => l.indexOf("已發送型號選擇反問") > -1,
     );
     if (hasPdfQuestion) {
       // 從 Cache 中還原型號選擇訊息（handleMessage 已存入 PENDING_PDF_SELECTION）
@@ -8456,7 +8542,7 @@ function testMessage(msg, userId) {
             // 重新生成選項訊息（與 LINE 一致）
             var selectionMsg = buildPdfSelectionMessage(
               pending.aliasKey,
-              pending.options
+              pending.options,
             );
             botResponses.push(selectionMsg);
             hasOfficialReply = true;
@@ -8870,7 +8956,8 @@ function createModelSelectionFlexV3(models) {
 function replyFlexMessage(replyToken, flexContainer, altText) {
   const url = "https://api.line.me/v2/bot/message/reply";
   // v29.5.12: Correct key is LINE_TOKEN
-  const accessToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
+  const accessToken =
+    PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
 
   const payload = {
     replyToken: replyToken,
