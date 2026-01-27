@@ -1,425 +1,1124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-TW">
-<head>
-  <base target="_top">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-  <title>LINE Debugger Pro v3.6 (雲端歷史 + 快速回覆)</title>
-  
-  <!-- 強制 Mock 機制 -->
-  <script>
-    (function() {
-      if (window.google && window.google.script && window.google.script.run) return;
-      console.warn("🚨 [系統] 啟用 Mock 模式");
-      window.isMockMode = true;
-      window.google = {
-        script: {
-          run: {
-            withSuccessHandler: function(fn) { this.success = fn; return this; },
-            withFailureHandler: function(fn) { this.failure = fn; return this; },
-            testMessage: function(msg) {
-              setTimeout(() => { if(this.success) this.success({success:true, replies:[`[Mock] ${msg}`], logs:[`[Mock Log] ${msg}`]}); }, 500);
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no"
+    />
+    <title>LINE Debugger Pro v3.6 (雲端歷史 + 快速回覆)</title>
+
+    <!-- 強制 Mock 機制 -->
+    <script>
+      (function () {
+        if (window.google && window.google.script && window.google.script.run)
+          return;
+        console.warn("🚨 [系統] 啟用 Mock 模式");
+        window.isMockMode = true;
+        window.google = {
+          script: {
+            run: {
+              withSuccessHandler: function (fn) {
+                this.success = fn;
+                return this;
+              },
+              withFailureHandler: function (fn) {
+                this.failure = fn;
+                return this;
+              },
+              testMessage: function (msg) {
+                setTimeout(() => {
+                  if (this.success)
+                    this.success({
+                      success: true,
+                      replies: [`[Mock] ${msg}`],
+                      logs: [`[Mock Log] ${msg}`],
+                    });
+                }, 500);
+              },
+              clearTestSession: function () {
+                setTimeout(() => {
+                  if (this.success) this.success({ success: true });
+                }, 500);
+              },
+              getCloudHistory: function () {
+                setTimeout(() => {
+                  if (this.success) this.success(["Mock1", "Mock2"]);
+                }, 300);
+              },
+              saveCloudHistory: function () {
+                // Mock save, do nothing
+              },
             },
-            clearTestSession: function() {
-              setTimeout(() => { if(this.success) this.success({success:true}); }, 500);
-            },
-            getCloudHistory: function() {
-               setTimeout(() => { if(this.success) this.success(["Mock1", "Mock2"]); }, 300);
-            },
-            saveCloudHistory: function() {
-               // Mock save, do nothing
-            }
-          }
+          },
+        };
+      })();
+    </script>
+
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <style>
+      :root {
+        --line-bg: #8c9daf;
+        --user-msg: #95ec69;
+        --bot-msg: #ffffff;
+        --send-btn: #1e6be5;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #202023;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: sans-serif;
+        overflow: hidden;
+      }
+      .layout-container {
+        display: flex;
+        gap: 30px;
+        height: 850px;
+        max-height: 95vh;
+        align-items: center;
+      }
+
+      /* 手機 */
+      .phone-wrapper {
+        width: 390px;
+        height: 844px;
+        background: #000;
+        border-radius: 50px;
+        padding: 12px;
+        box-shadow: 0 0 0 2px #333;
+        position: relative;
+        flex-shrink: 0;
+      }
+      .notch {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 150px;
+        height: 30px;
+        background: #000;
+        border-radius: 0 0 16px 16px;
+        z-index: 100;
+      }
+      .screen {
+        width: 100%;
+        height: 100%;
+        background: var(--line-bg);
+        border-radius: 40px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .line-header {
+        background: rgba(245, 245, 245, 0.95);
+        padding: 45px 15px 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #dcdcdc;
+        z-index: 10;
+      }
+      .header-title {
+        font-weight: bold;
+        color: #333;
+      }
+      .mock-badge {
+        background: #f44;
+        color: #fff;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        display: none;
+        margin-left: 5px;
+      }
+
+      #chat-box {
+        flex: 1;
+        padding: 20px 10px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        scroll-behavior: smooth;
+      }
+
+      .msg-row {
+        display: flex;
+        align-items: flex-end;
+        max-width: 100%;
+        margin-bottom: 10px;
+      }
+      .msg-row.user {
+        justify-content: flex-end;
+      }
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #ddd
+          url("https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg")
+          center/cover;
+        margin-right: 8px;
+        flex-shrink: 0;
+      }
+      .msg-bubble {
+        max-width: 70%;
+        padding: 10px 14px;
+        border-radius: 20px;
+        font-size: 15px;
+        line-height: 1.5;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+      }
+      .msg-row.bot .msg-bubble {
+        background: var(--bot-msg);
+        border-top-left-radius: 4px;
+        color: #000;
+      }
+      .msg-row.user .msg-bubble {
+        background: var(--user-msg);
+        border-top-right-radius: 4px;
+        color: #000;
+      }
+
+      /* 快速回覆按鈕群組 */
+      .quick-reply-group {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        max-width: 100%;
+      }
+      .quick-reply-btn {
+        background: #007aff;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: 0.2s;
+      }
+      .quick-reply-btn:hover {
+        background: #0051d5;
+      }
+      .msg-row.bot .quick-reply-group {
+        margin-left: 48px;
+      }
+
+      #queue-bar {
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        padding: 6px 15px;
+        font-size: 11px;
+        display: none;
+        align-items: center;
+        gap: 10px;
+      }
+      #queue-list {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        flex: 1;
+      }
+      .queue-chip {
+        background: #444;
+        border-radius: 10px;
+        padding: 2px 8px;
+        white-space: nowrap;
+        border: 1px solid #666;
+      }
+
+      .input-area {
+        background: #fff;
+        padding: 10px 15px 25px;
+        display: flex;
+        gap: 10px;
+        border-top: 1px solid #eee;
+      }
+      #msg-input {
+        flex: 1;
+        padding: 10px 15px;
+        border-radius: 20px;
+        border: 1px solid #ddd;
+        background: #f7f7f7;
+        outline: none;
+        font-size: 16px;
+      }
+      #send-btn {
+        border: none;
+        background: none;
+        color: var(--send-btn);
+        font-size: 24px;
+        cursor: pointer;
+      }
+
+      /* 控制面板 */
+      .control-panel {
+        width: 450px;
+        height: 100%;
+        background: #1e1e1e;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid #444;
+        color: #ccc;
+      }
+      .panel-header {
+        padding: 12px 15px;
+        background: #252526;
+        border-bottom: 1px solid #333;
+        display: flex;
+        justify-content: space-between;
+        font-weight: bold;
+      }
+      .log-box {
+        flex: 1;
+        padding: 10px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        color: #d4d4d4;
+      }
+      .log-line {
+        border-bottom: 1px solid #333;
+        padding-bottom: 2px;
+        margin-bottom: 4px;
+      }
+
+      .history-panel {
+        height: 250px;
+        background: #252526;
+        border-top: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+      }
+      .history-content {
+        padding: 10px;
+        overflow-y: auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-content: flex-start;
+      }
+      .history-chip {
+        background: #333;
+        border: 1px solid #555;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      .history-chip:hover {
+        background: #444;
+        color: #fff;
+      }
+      .history-chip.active {
+        border-color: #06c755;
+        color: #06c755;
+      }
+
+      .btn {
+        background: #333;
+        border: 1px solid #555;
+        color: #ccc;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .btn:hover {
+        background: #444;
+        color: #fff;
+      }
+      .btn-danger {
+        background: #5a1e1e;
+        border-color: #a00;
+        color: #faa;
+      }
+
+      @media (max-width: 900px) {
+        .layout-container {
+          flex-direction: column;
+          height: auto;
         }
-      };
-    })();
-  </script>
-
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    :root { --line-bg:#8C9DAF; --user-msg:#95EC69; --bot-msg:#FFFFFF; --send-btn:#1E6BE5; }
-    * { box-sizing: border-box; }
-    body { margin:0; padding:0; background-color:#202023; height:100vh; display:flex; justify-content:center; align-items:center; font-family:sans-serif; overflow:hidden; }
-    .layout-container { display:flex; gap:30px; height:850px; max-height:95vh; align-items:center; }
+        .phone-wrapper {
+          width: 100%;
+          height: 100vh;
+          border-radius: 0;
+        }
+        .control-panel {
+          width: 100%;
+          height: 500px;
+          border-radius: 0;
+        }
+      }
     
-    /* 手機 */
-    .phone-wrapper { width:390px; height:844px; background:#000; border-radius:50px; padding:12px; box-shadow:0 0 0 2px #333; position:relative; flex-shrink:0; }
-    .notch { position:absolute; top:12px; left:50%; transform:translateX(-50%); width:150px; height:30px; background:#000; border-radius:0 0 16px 16px; z-index:100; }
-    .screen { width:100%; height:100%; background:var(--line-bg); border-radius:40px; overflow:hidden; display:flex; flex-direction:column; position:relative; }
-    .line-header { background:rgba(245,245,245,0.95); padding:45px 15px 15px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #dcdcdc; z-index:10; }
-    .header-title { font-weight:bold; color:#333; }
-    .mock-badge { background:#f44; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px; display:none; margin-left:5px; }
-    
-    #chat-box { flex:1; padding:20px 10px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth; }
-    
-    .msg-row { display:flex; align-items:flex-end; max-width:100%; margin-bottom:10px; }
-    .msg-row.user { justify-content:flex-end; }
-    .avatar { width:40px; height:40px; border-radius:50%; background:#ddd url('https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg') center/cover; margin-right:8px; flex-shrink:0; }
-    .msg-bubble { max-width:70%; padding:10px 14px; border-radius:20px; font-size:15px; line-height:1.5; word-wrap:break-word; white-space:pre-wrap; box-shadow:0 1px 1px rgba(0,0,0,0.05); }
-    .msg-row.bot .msg-bubble { background:var(--bot-msg); border-top-left-radius:4px; color:#000; }
-    .msg-row.user .msg-bubble { background:var(--user-msg); border-top-right-radius:4px; color:#000; }
-    
-    /* 快速回覆按鈕群組 */
-    .quick-reply-group { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; max-width:100%; }
-    .quick-reply-btn { background:#007AFF; color:#fff; border:none; padding:8px 12px; border-radius:20px; font-size:12px; cursor:pointer; white-space:nowrap; transition:0.2s; }
-    .quick-reply-btn:hover { background:#0051D5; }
-    .msg-row.bot .quick-reply-group { margin-left:48px; }
-    
-    #queue-bar { background:rgba(0,0,0,0.6); color:#fff; padding:6px 15px; font-size:11px; display:none; align-items:center; gap:10px; }
-    #queue-list { display:flex; gap:6px; overflow-x:auto; flex:1; }
-    .queue-chip { background:#444; border-radius:10px; padding:2px 8px; white-space:nowrap; border:1px solid #666; }
-    
-    .input-area { background:#fff; padding:10px 15px 25px; display:flex; gap:10px; border-top:1px solid #eee; }
-    #msg-input { flex:1; padding:10px 15px; border-radius:20px; border:1px solid #ddd; background:#f7f7f7; outline:none; font-size:16px; }
-    #send-btn { border:none; background:none; color:var(--send-btn); font-size:24px; cursor:pointer; }
-
-    /* 控制面板 */
-    .control-panel { width:450px; height:100%; background:#1e1e1e; border-radius:16px; display:flex; flex-direction:column; overflow:hidden; border:1px solid #444; color:#ccc; }
-    .panel-header { padding:12px 15px; background:#252526; border-bottom:1px solid #333; display:flex; justify-content:space-between; font-weight:bold; }
-    .log-box { flex:1; padding:10px; overflow-y:auto; font-family:monospace; font-size:12px; color:#d4d4d4; }
-    .log-line { border-bottom:1px solid #333; padding-bottom:2px; margin-bottom:4px; }
-    
-    .history-panel { height:250px; background:#252526; border-top:1px solid #333; display:flex; flex-direction:column; }
-    .history-content { padding:10px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:8px; align-content:flex-start; }
-    .history-chip { background:#333; border:1px solid #555; padding:6px 12px; border-radius:20px; font-size:13px; cursor:pointer; transition:0.2s; }
-    .history-chip:hover { background:#444; color:#fff; }
-    .history-chip.active { border-color:#06c755; color:#06c755; }
-    
-    .btn { background:#333; border:1px solid #555; color:#ccc; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:12px; }
-    .btn:hover { background:#444; color:#fff; }
-    .btn-danger { background:#5a1e1e; border-color:#a00; color:#faa; }
-
-    @media(max-width:900px){ .layout-container{flex-direction:column;height:auto;} .phone-wrapper{width:100%;height:100vh;border-radius:0;} .control-panel{width:100%;height:500px;border-radius:0;} }
+    /* Cost Guard Modal */
+    .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999; display:none; justify-content:center; align-items:center; }
+    .modal-box { background:#252526; border:2px solid #ff4444; color:#fff; padding:20px; border-radius:10px; width:320px; text-align:center; box-shadow:0 0 20px rgba(255,0,0,0.2); }
+    .modal-title { font-size:18px; font-weight:bold; color:#ff4444; margin-bottom:10px; }
+    .modal-desc { font-size:14px; color:#ccc; margin-bottom:15px; background:#333; padding:10px; border-radius:5px; word-break:break-all; }
+    .modal-timer { font-size:24px; font-weight:bold; color:#fff; margin:15px 0; }
+    .modal-btns { display:flex; gap:10px; justify-content:center; }
+    .modal-btn { padding:8px 20px; border:none; border-radius:5px; font-weight:bold; cursor:pointer; font-size:14px; }
+    .btn-skip { background:#555; color:#ccc; }
+    .btn-agree { background:#ff4444; color:#fff; }
   </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="layout-container">
+      <div class="phone-wrapper">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="line-header">
+            <div class="header-title">
+              三星螢幕小幫手
+              <span id="mock-badge" class="mock-badge">MOCK</span>
+            </div>
+          </div>
+          <div id="chat-box"></div>
+          <div id="queue-bar">
+            <i class="fas fa-hourglass-half"></i>
+            <div id="queue-list"></div>
+          </div>
+          <div class="input-area">
+            <input
+              type="text"
+              id="msg-input"
+              placeholder="Aa"
+              onkeydown="checkEnter(event)"
+            />
+            <button id="send-btn" onclick="sendMessage()">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
 
-<div class="layout-container">
-  <div class="phone-wrapper">
-    <div class="notch"></div>
-    <div class="screen">
-      <div class="line-header">
-        <div class="header-title">三星螢幕小幫手 <span id="mock-badge" class="mock-badge">MOCK</span></div>
-      </div>
-      <div id="chat-box"></div>
-      <div id="queue-bar">
-        <i class="fas fa-hourglass-half"></i>
-        <div id="queue-list"></div>
-      </div>
-      <div class="input-area">
-        <input type="text" id="msg-input" placeholder="Aa" onkeydown="checkEnter(event)">
-        <button id="send-btn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
-      </div>
-    </div>
-  </div>
+      <div class="control-panel">
+        <div class="panel-header">
+          <span>SYSTEM LOGS</span>
+          <div style="display: flex; gap: 5px">
+            <button class="btn" style="background:#0066cc;color:white;" onclick="loadBulkTest()">📥 載入/指定</button>
+            <button class="btn" style="background:#cc6600;color:white;" onclick="stopQueue()">⏸ 暫停</button>
+            <button class="btn btn-danger" onclick="addToQueue('/重啟')">🔄 重啟</button>
+            <button class="btn" onclick="copyLogs()">複製</button>
+            <button class="btn" onclick="clearLogUI()">清空</button>
+            <button class="btn btn-danger" onclick="clearSession()">
+              重置
+            </button>
+          </div>
+        </div>
+        <div id="log-box" class="log-box"></div>
 
-  <div class="control-panel">
-    <div class="panel-header">
-      <span>SYSTEM LOGS</span>
-      <div style="display:flex;gap:5px">
-        <button class="btn" onclick="copyLogs()">複製</button>
-        <button class="btn" onclick="clearLogUI()">清空</button>
-        <button class="btn btn-danger" onclick="clearSession()">重置</button>
+        <div
+          class="panel-header"
+          style="border-top: 1px solid #333; margin-top: 0"
+        >
+          <span>雲端歷史 (自動同步)</span>
+          <button class="btn" onclick="clearHistory()">清空歷史</button>
+        </div>
+        <div class="history-panel">
+          <div id="history-list" class="history-content"></div>
+        </div>
       </div>
     </div>
-    <div id="log-box" class="log-box"></div>
-    
-    <div class="panel-header" style="border-top:1px solid #333; margin-top:0;">
-      <span>雲端歷史 (自動同步)</span>
-      <button class="btn" onclick="clearHistory()">清空歷史</button>
-    </div>
-    <div class="history-panel">
-      <div id="history-list" class="history-content"></div>
+
+<!-- Cost Guard Modal -->
+<div id="cost-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">⚠️ 高成本操作警告</div>
+    <div class="modal-desc" id="modal-msg">...</div>
+    <div>即將讀取 PDF (約 NT$1.5)</div>
+    <div class="modal-timer" id="modal-countdown">5</div>
+    <div class="modal-btns">
+      <button class="modal-btn btn-skip" onclick="resolveCostCheck(false)">跳過 (Skip)</button>
+      <button class="modal-btn btn-agree" onclick="resolveCostCheck(true)">同意 (Run)</button>
     </div>
   </div>
 </div>
 
-<script>
-  // --- 變數 ---
-  var messageQueue = [];
-  var isBotProcessing = false;
-  var defaultCmds = ["/重啟", "/紀錄 測試", "M8有視訊鏡頭嗎", "那M9呢", "M8怎麼用", "3"];
-  var historyData = [];
-  var currentQuickReplies = []; // 存儲當前快速回覆選項
+<!-- Input Modal for Bulk Test -->
+<div id="input-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">📥 載入壓力測試</div>
+    <div class="modal-desc">請輸入起始題號 (1 - <span id="max-q">223</span>)</div>
+    <input type="number" id="start-idx-input" value="1" style="width:80%;padding:10px;border-radius:5px;border:none;margin-bottom:15px;text-align:center;font-size:18px;">
+    <div class="modal-btns">
+      <button class="modal-btn btn-skip" onclick="closeInputModal()">取消</button>
+      <button class="modal-btn btn-agree" onclick="confirmBulkTest()">開始</button>
+    </div>
+  </div>
+</div>
 
-  // --- 初始化 ---
-  window.onload = function() {
-    if(window.isMockMode) document.getElementById('mock-badge').style.display='inline-block';
-    
-    // 1. 從後端載入歷史紀錄
-    loadCloudHistory();
-    
-    // 2. 自動重啟
-    addToQueue("/重啟");
-  };
+    <script>
+      // --- 變數 ---
+      var messageQueue = [];
+      var isBotProcessing = false;
+      var defaultCmds = [
+        "/重啟",
+        "/紀錄 測試",
+        "M8有視訊鏡頭嗎",
+        "那M9呢",
+        "M8怎麼用",
+        "3",
+        "/loadBulkTest",
+      ];
+      var historyData = [];
+      var currentQuickReplies = []; // 存儲當前快速回覆選項
 
-  // --- 雲端歷史系統 ---
-  function loadCloudHistory() {
-    // 顯示載入中...
-    document.getElementById("history-list").innerHTML = '<div style="color:#888;font-size:12px;">載入雲端紀錄中...</div>';
+      // 🔥 223 題壓力測試題庫
+      const PRESET_QUESTIONS = [
+        "G9沒有智慧聯網的機型是？",
+        "我們有HD340HZ，4K200Hz的螢幕嗎",
+        "請問s3有喇叭嗎",
+        "S27d300 gac",
+        "S27f612 s27b610差別",
+        "給我s27b610 規格",
+        "請問有新的s8嗎？",
+        "請問G5有那些",
+        "請問G5哪一台比較好",
+        "請問S37D802 有智慧嗎",
+        "請問有G9的資訊嗎？",
+        "請問有S37D802 特色嗎",
+        "S27f532是s27dg502更新版嗎",
+        "目前最新的型號是哪款螢幕",
+        "你可以告訴我G7的型號有哪些",
+        "你可以告訴我G5的型號有哪些嗎",
+        "32吋曲面螢幕有那些",
+        "請問M7的面板是甚麼",
+        "請問有2026新機型嗎？",
+        "G8可以壁掛嗎",
+        "G8目前的價格",
+        "s34dg8目前的價格",
+        "M8多少錢",
+        "G9多少錢",
+        "G5規格如何",
+        "還有其他的g5嗎",
+        "g5有支援4K嗎",
+        "哪一款g5是4K我不相信",
+        "S32FG502特色",
+        "你們40吋那台",
+        "我忘了，你們有一台是40吋的",
+        "你們40吋那台是什麼面板",
+        "它基本規格是？",
+        "給我G6所有型號",
+        "市面上銷售的三星QD OLED與LG新一代的W OLED面板的最大差別在哪？ 優缺點各在哪？",
+        "我的MAC電腦到底應該選用4K螢幕還是5K螢幕？ 傳輸線接口該如何選？",
+        "市面上出現許多雙模的顯示器與主流的顯示器差別明顯嗎？ 有什麼優缺點嗎？",
+        "什麼是HDR",
+        "HDR10的優點有什麼？",
+        "請問智慧顯示器有甚麼特色",
+        "smart monitor 的M9和M8最主要差異是什麼",
+        "m7和s7有什麼不同",
+        "oled文字會不好看",
+        "我買的三星G6是嗎",
+        "s27fg602sc",
+        "但是它文字顯示不好看",
+        "m7和m8有什麼差別",
+        "m7也支援iot控制吧",
+        "我用odyssey hub點選遊戲後，遊戲被開在後方並且沒有呈現3D，但我看影片是可以的",
+        "請問PIN忘記怎麼半",
+        "smart螢幕內建的瀏覽器可以一直全螢幕顯示網頁內容嗎",
+        "三星smart的瀏覽器可以開啟時就是全螢幕嗎",
+        "三星螢幕瀏覽器如何設定全螢幕？",
+        "M7裡的瀏覽器可以全螢幕顯示嗎",
+        "那Smart 螢幕呢",
+        "請問s27fg532 為什麼客人的顯示卡5090接dp他的更新率只有60",
+        "我用Odyssey Hub開啟遊戲但遊戲視窗會開在背景並且沒有顯示3D耶？我看影片是可以3D的",
+        "遊戲似乎一直被開在odyssey hub之下",
+        "要怎麼開啟呢",
+        "LS27C900 5K這台能接thunderbolt 4到5K嗎？",
+        "可是我接上去只有到4K怎麼辦？",
+        "手冊裡有寫到這台螢幕有限定什麼規格以上的mac才能5K嗎？",
+        "能不能進一步查詢什麼是你口中的較舊的mac、部分舊款mac，到底是哪些或是規格上的分水嶺",
+        "它要怎麼開啟遊戲模式",
+        "要怎麼調整144Hz",
+        "它的電競模式要怎麼開呢",
+        "m7會閃屏怎麼辦",
+        "我是用type c接的",
+        "它的smart 操控要怎麼使用呢",
+        "我下載了但要怎麼用呢",
+        "m7如何連接macbook顯示",
+        "可是它現在無法顯示耶！",
+        "我m8的視訊鏡頭要怎麼使用才能讓電腦的google meet有它的畫面",
+        "G6背後有氛圍燈環嗎？",
+        "那fg606呢",
+        "fg602呢",
+        "那 dg612呢",
+        "G6有Infinity Core Lighting嗎？",
+        "ark的孔距是多少",
+        "可以400x400嗎",
+        "G6有背後環型燈嗎",
+        "4有環型嗎",
+        "快速清洗是什麼意思",
+        "洗衣機的強力洗淨和一般洗有什麼不一樣",
+        "它的強力洗淨和一般洗有什麼不一樣",
+        "我每次洗完衣服，上蓋是不是該開著一晚第二天再關，比較不容易滋生黴菌",
+        "我洗衣機洗好後上蓋應該開一晚讓它洗衣槽風乾嗎",
+        "請問m7 43吋耗電量多大",
+        "請問服務時間是幾點",
+        "請問台中哪裡有followme 的展示",
+        "請問有雙12優惠嗎？",
+        "雙11優惠呢",
+        "今天黑五有特價嗎",
+        "請問最近有活動嗎",
+        "請問有教育訓練嗎？",
+        "請問目前銷售通路有那些",
+        "請問這季有甚麼活動嗎？",
+        "請問有滿額抽獎嗎？",
+        "延長保固的部分",
+        "請問今天有12月的活動資訊嗎",
+        "本月有促銷優惠嗎",
+        "請問今天有營業嗎？",
+        "客戶反應43吋follow me Pro的支架有我們有保固嗎",
+        "請問G8 加2年 亮點也有保固嗎",
+        "請問有12月的促銷訊息嗎？",
+        "順發通路有販售27吋oLED的螢幕嗎",
+        "smart的零售模式的epop怎麼更新",
+        "它展示模式的epop怎麼更新",
+        "S43FM703UCX如何開啟零售模式",
+        "網路查一下最近三星ces展的",
+        "螢幕的部分呢",
+        "有吧！6K3D款都出來了！",
+        "會有第二代3D螢幕嗎",
+        "台灣會上市嗎",
+        "只針對這點幫我應對，有憑有據，不要攻擊LG 2026 OLED",
+        "今年想採購Galaxy Watch 主要看上支付方式的方便性，那想請問跟智慧銀幕關聯的部分",
+        "台灣屬於中國的嗎",
+        "網路搜尋今日台灣新聞頭條",
+        "我的主機搭配了5060的顯卡如果採用27吋螢幕。 你會推薦三星哪款的螢幕？ 為什麼？",
+        "我想幫我的蘋果MAC電腦選購一台27吋的螢幕，你會建議購買S27C900PAC 5K還是S27FG602SC 4K OLED？ 為什麼？",
+        "以表格excel方式列出，市售華碩、技嘉及微星32吋顯示器具備高刷新率及高解析度，且具備Type-C 影像數據傳輸介面的機型有那幾款，目前售價為多少。",
+        "Odyssey Ark 第二代 G97NC 有支援 KVM 切換功能嗎",
+        "請問 S55CG970NC 的座艙模式要怎麼旋轉才不會撞到桌面",
+        "Odyssey OLED G9 S49CG954SC 的螢幕比例是三十二比九嗎",
+        "請問 57 吋的 Neo G9 G95NC 支援雙 4K 輸出嗎",
+        "我的 Odyssey G8 S34DG852SC 接上 PS5 為什麼沒辦法開啟 120Hz",
+        "請問 S32DG802SC 這款 32 吋 OLED G8 有內建智慧電視功能嗎",
+        "Odyssey G7 G70B 的遙控器要怎麼跟螢幕重新配對",
+        "請問 S27DG602SC 的反應時間 0.03ms 是指哪種規格",
+        "Odyssey G5 S32CG552EC 的 1000R 曲率是什麼意思",
+        "我的 S27CG512NC 更新率最高可以調整到 165Hz 嗎",
+        "請問 Odyssey Ark 的轉盤控制器 Ark Dial 要怎麼充電",
+        "OLED G9 的防燒屏機制能在選單的哪裡調整",
+        "請問 S49DG952SC 支援三星的 AI 影像增強技術嗎",
+        "Odyssey G6 S27BG650EC 內建的揚聲器是多少瓦數的",
+        "請問 G5 系列的 S27CG552EC 有支援 AMD FreeSync Premium 嗎",
+        "為什麼我的 Odyssey 螢幕背面燈環不會亮",
+        "請問 S57CG952NC 隨機附贈的線材有哪些",
+        "Odyssey Ark 支援多重視窗功能同時顯示幾個訊號源",
+        "請問 S32BG850NC 具備量子點矩陣技術嗎",
+        "Odyssey G3 S24AG320NC 的支架可以調整高度嗎",
+        "請問 S27DG602SC 支援 VESA 壁掛標準嗎",
+        "我的 OLED G9 畫面出現殘影要怎麼執行像素重新整理",
+        "請問 Odyssey G7 支援 NVIDIA G-Sync 相容技術嗎",
+        "Odyssey Ark 的一對多控制器可以操作其他三星產品嗎",
+        "請問 S49CG954SC 有內建藍牙功能嗎",
+        "Smart Monitor M8 S32DM801UC 有附贈 SlimFit 視訊鏡頭嗎",
+        "請問 M7 S43DM702UC 支援智慧手錶關聯顯示功能嗎",
+        "我的 M5 S27CM501EC 可以不用接電腦直接看 Disney+ 嗎",
+        "Smart Monitor 內建的 Bixby 語音助手現在支援中文了嗎",
+        "請問 M80D 與 M80C 的主要規格差異在哪裡",
+        "S32BM703UC 的 USB C 接口可以幫我的筆電進行 65W 充電嗎",
+        "為什麼我的智慧螢幕使用 AirPlay 連線時畫面會延遲",
+        "請問 Smart Monitor 系列可以安裝安卓專用的 APK 檔案嗎",
+        "我的 S32DM803UC 出現自動來源切換功能要怎麼關閉",
+        "請問 M7 系列有 32 吋的型號可以選擇嗎",
+        "Smart Monitor 的遙控器如果是太陽能版本要怎麼蓄電",
+        "請問智慧螢幕可以當作 SmartThings 的中控樞紐嗎",
+        "我的 M8 鏡頭吸上去後視訊軟體抓不到畫面怎麼排解",
+        "請問 M5 系列有支援遠端桌面連接 MacBook 的功能嗎",
+        "智慧螢幕忘記四位數 PIN 碼要怎麼遠端重設",
+        "請問 S32DM801UC 支援 HDR10+ 規格嗎",
+        "Smart Monitor 內建的網際網路瀏覽器可以外接鍵盤滑鼠嗎",
+        "請問 M7 S32DM702UC 有內建數位電視調諧器嗎",
+        "為什麼我的智慧螢幕在關機後 USB 接口還在供電",
+        "請問 M8 的底座可以調整上下高度與傾斜角度嗎",
+        "ViewFinity S9 S27C900PAC 的螢幕解析度是 5K 嗎",
+        "請問 S27C900PAC 接 Windows 電腦可以跑到滿解析度嗎",
+        "ViewFinity S8 S32B800PXC 的顯色有通過 Pantone 認證嗎",
+        "請問 S27B800PXC 適合用來做專業校色或印刷排版嗎",
+        "ViewFinity S6 S34C650UCC 這台曲面螢幕有支援網路孔嗎",
+        "請問 Essential S3 S24C310EAC 這款螢幕有不閃屏技術嗎",
+        "ViewFinity 系列的螢幕有沒有內建喇叭或是耳機孔",
+        "請問 S32A700NW 支援 USB C 一線連接影像傳輸嗎",
+        "ViewFinity S9 的校色功能要搭配哪一款手機 App 使用",
+        "請問 S27C900PAC 的螢幕表面是亮面還是霧面加工",
+        "ViewFinity S5 S34C500GAC 的超寬螢幕支援 PBP 畫面分割嗎",
+        "請問 S32B800PXC 的支架可以旋轉成直立方向嗎",
+        "我的 ViewFinity 螢幕出現細微殘影這屬於面板異常嗎",
+        "請問三星專業螢幕的護眼模式要在哪裡開啟",
+        "Essential 系列的 S27C310EAC 更新率最高是多少",
+        "請問三星螢幕的保固期一般是幾年",
+        "三星螢幕的亮點保固規範是怎麼定義的",
+        "請問哪些型號的三星螢幕有支援自動訊號源切換功能",
+        "我的筆電只有 HDMI 接口可以接到 240Hz 螢幕上嗎",
+        "三星螢幕的遊戲列 Game Bar 3.0 要怎麼叫出來",
+        "請問 VESA 壁掛孔距 100x100 與 200x200 怎麼區分",
+        "什麼是超寬遊戲視野 Ultrawide Game View 功能",
+        "我的智慧螢幕 WiFi 訊號不穩要怎麼重置網路設定",
+        "請問螢幕韌體更新一定要使用 USB 隨身碟嗎",
+        "三星電競螢幕的 1ms GtG 與 1ms MPRT 有什麼差別",
+        "請問哪些三星螢幕有內建減少藍光閃爍的認證",
+        "我的螢幕接上 PS5 後 HDR 選項打不開是什麼原因",
+        "三星曲面螢幕 1000R 跟 1800R 哪一個彎曲程度比較大",
+        "請問 S27DG602SC 的原生重新整理頻率是多少",
+        "為什麼我的螢幕邊框有一層薄膜可以撕掉嗎",
+        "請問三星螢幕有沒有支援黑平衡動態調整功能",
+        "螢幕選單裡的回應時間分級設定代表什麼意思",
+        "請問三星螢幕支援 HDR400 跟 HDR1000 效果差很多嗎",
+        "我的螢幕畫面顏色看起來黃黃的是不是設定到了護眼模式",
+        "請問三星有出 24 吋並且支援 144Hz 的電競螢幕嗎",
+        "現在買 Odyssey OLED G9 有送什麼限定贈品嗎",
+        "請問三星官網的教育優惠專案電腦螢幕有折扣嗎",
+        "台中哪裡有實體店面可以看 Odyssey Ark 的展示機",
+        "請問現在還有雙 11 的優惠促銷價格嗎",
+        "三星螢幕如果過了保固期維修費大約是多少錢",
+        "請問三星官網買螢幕有包含桌上基本安裝服務嗎",
+        "在燦坤或順發買的三星螢幕保固也是找原廠嗎",
+        "請問這季的星學力活動有哪些螢幕參加特價",
+        "滿額抽獎活動的發票登錄網址在哪裡",
+        "請問三星電腦螢幕有提供延長保固的加購服務嗎",
+        "請問三星 Galaxy S24 Ultra 手機現在空機多少錢",
+        "我的三星洗衣機脫水時聲音很大該怎麼解決",
+        "請問這台螢幕可以接三星的冰箱看裡面的食材嗎",
+        "你覺得三星的手機比較好還是蘋果的手機比較好",
+        "幫我查詢今天台北到高雄的高鐵時刻表",
+        "請問三星電視 QN90D 的腳架跟電腦螢幕是一樣的嗎",
+        "我的三星筆電鍵盤壞了請問要去哪裡維修",
+        "請問三星的廚具系列在台灣有正式販售嗎",
+        "台灣現在的總統是誰",
+        "幫我搜尋最近有什麼好看的韓劇或是熱門電影推薦",
+      ];
+
+      // --- 初始化 ---
+      window.onload = function () {
+        if (window.isMockMode)
+          document.getElementById("mock-badge").style.display = "inline-block";
+
+        // 1. 從後端載入歷史紀錄
+        loadCloudHistory();
+
+        // 2. 自動重啟
+        addToQueue("/重啟");
+      };
+
+      // --- 雲端歷史系統 ---
+      function loadCloudHistory() {
+        // 顯示載入中...
+        document.getElementById("history-list").innerHTML =
+          '<div style="color:#888;font-size:12px;">載入雲端紀錄中...</div>';
+
+        google.script.run
+          .withSuccessHandler(function (data) {
+            if (data && data.length > 0) {
+              historyData = data;
+            } else {
+              historyData = [...defaultCmds];
+            }
+            renderHistory();
+          })
+          .withFailureHandler(function (err) {
+            console.error("無法載入歷史:", err);
+            historyData = [...defaultCmds]; // 失敗則用預設值
+            renderHistory();
+          })
+          .getCloudHistory();
+      }
+
+      function saveCloudHistory() {
+        // 為了效能，不要每次打字都存，前端先更新 UI
+        // 後端非同步儲存
+        google.script.run.saveCloudHistory(historyData);
+        renderHistory();
+      }
+
+      function addToHistory(text) {
+        // 避免重複，移到最前
+        historyData = historyData.filter((item) => item !== text);
+        historyData.unshift(text);
+        if (historyData.length > 30) historyData.pop();
+
+        renderHistory();
+        saveCloudHistory(); // 觸發雲端儲存
+      }
+
+      function clearHistory() {
+        if (!confirm("清除所有雲端歷史紀錄？")) return;
+        historyData = [...defaultCmds];
+        renderHistory();
+        saveCloudHistory();
+      }
+
+      function renderHistory() {
+        var container = document.getElementById("history-list");
+        container.innerHTML = "";
+        historyData.forEach((text) => {
+          var chip = document.createElement("div");
+          chip.className = "history-chip";
+          chip.innerText = text;
+          chip.onclick = function () {
+            chip.classList.add("active");
+            setTimeout(() => chip.classList.remove("active"), 200);
+            addToQueue(text);
+          };
+          container.appendChild(chip);
+        });
+      }
+
+      function loadBulkTest() {
+        // Update Max Count UI
+        document.getElementById("max-q").innerText = PRESET_QUESTIONS.length;
+        document.getElementById("start-idx-input").value = "1";
+        document.getElementById("input-modal").style.display = "flex";
+      }
+
+      function closeInputModal() {
+        document.getElementById("input-modal").style.display = "none";
+      }
+
+      function confirmBulkTest() {
+        var input = document.getElementById("start-idx-input").value;
+        var idx = parseInt(input);
+        
+        if (isNaN(idx) || idx < 1 || idx > PRESET_QUESTIONS.length) {
+          alert("請輸入有效的數字 (1-" + PRESET_QUESTIONS.length + ")");
+          return;
+        }
+        
+        closeInputModal(); // Close modal first
+
+        if(!confirm("確定要從第 " + idx + " 題開始，載入 " + (PRESET_QUESTIONS.length - idx + 1) + " 題嗎？\n(將花費費用)")) return;
+        
+        // Add sliced questions to queue
+        var questions = PRESET_QUESTIONS.slice(idx - 1);
+        questions.forEach(q => {
+          messageQueue.push(q);
+        });
+        
+        renderQueue();
+        if (!isBotProcessing) processQueue();
+      }
+
+      function stopQueue() {
+        if(messageQueue.length === 0) return;
+        if(!confirm("確定要暫停並清空剩餘的 " + messageQueue.length + " 題排程嗎？")) return;
+        messageQueue = [];
+        renderQueue();
+        // Note: The CURRENTLY processing message will still finish/reply.
+      }
+
+      // --- 訊息發送 ---
+      function sendMessage() {
+        var input = document.getElementById("msg-input");
+        var text = input.value.trim();
+        if (!text) return;
+        addToQueue(text);
+        addToHistory(text); // 存入歷史
+        currentQuickReplies = []; // 清除舊快速回覆
+        input.value = "";
+      }
+
+      function addToQueue(text) {
+        if (!text) return;
+        messageQueue.push(text);
+        renderQueue();
+        processQueue();
+      }
+
+      function processQueue() {
+    if (isBotProcessing || messageQueue.length === 0) return;
+    var nextMsg = messageQueue[0]; // Peek first, remove only if processed/skipped
+    
+    // Check cost first
+    checkAndSend(nextMsg);
+  }
+  
+  // --- Cost Guard Logic ---
+  var costCheckTimer = null;
+  
+  function checkAndSend(text) {
+    isBotProcessing = true; // Lock queue
     
     google.script.run
-      .withSuccessHandler(function(data) {
-        if (data && data.length > 0) {
-          historyData = data;
+      .withSuccessHandler(function(result) {
+        if (!result.isHighCost) {
+           // Safe to send
+           messageQueue.shift(); // Remove from queue
+           renderQueue();
+           doSendMessage(text);
         } else {
-          historyData = [...defaultCmds];
+           // High Cost -> Show Guard
+           showCostModal(text, result.reason);
         }
-        renderHistory();
       })
-      .withFailureHandler(function(err) {
-        console.error("無法載入歷史:", err);
-        historyData = [...defaultCmds]; // 失敗則用預設值
-        renderHistory();
+      .withFailureHandler(function(e) {
+         console.error("Cost Check Failed", e);
+         // Fallback: Proceed anyway or Skip? Proceed for now.
+         messageQueue.shift();
+         renderQueue();
+         doSendMessage(text); 
       })
-      .getCloudHistory();
+      .checkPdfCost(text);
   }
 
-  function saveCloudHistory() {
-    // 為了效能，不要每次打字都存，前端先更新 UI
-    // 後端非同步儲存
-    google.script.run.saveCloudHistory(historyData);
-    renderHistory();
-  }
-
-  function addToHistory(text) {
-    // 避免重複，移到最前
-    historyData = historyData.filter(item => item !== text);
-    historyData.unshift(text);
-    if (historyData.length > 30) historyData.pop(); 
+  function showCostModal(text, reason) {
+    var modal = document.getElementById("cost-modal");
+    var msg = document.getElementById("modal-msg");
+    var timer = document.getElementById("modal-countdown");
     
-    renderHistory();
-    saveCloudHistory(); // 觸發雲端儲存
+    msg.innerText = text.substring(0, 50) + (text.length>50?"...":"");
+    timer.innerText = "5";
+    modal.style.display = "flex";
+    
+    var count = 5;
+    costCheckTimer = setInterval(() => {
+      count--;
+      timer.innerText = count;
+      if (count <= 0) {
+        resolveCostCheck(false); // Auto Skip
+      }
+    }, 1000);
   }
 
-  function clearHistory() {
-    if(!confirm("清除所有雲端歷史紀錄？")) return;
-    historyData = [...defaultCmds];
-    renderHistory();
-    saveCloudHistory();
-  }
-
-  function renderHistory() {
-    var container = document.getElementById("history-list");
-    container.innerHTML = "";
-    historyData.forEach(text => {
-      var chip = document.createElement("div");
-      chip.className = "history-chip";
-      chip.innerText = text;
-      chip.onclick = function() {
-        chip.classList.add("active");
-        setTimeout(() => chip.classList.remove("active"), 200);
-        addToQueue(text);
-      };
-      container.appendChild(chip);
-    });
-  }
-
-  // --- 訊息發送 ---
-  function sendMessage() {
-    var input = document.getElementById("msg-input");
-    var text = input.value.trim();
-    if (!text) return;
-    addToQueue(text);
-    addToHistory(text); // 存入歷史
-    currentQuickReplies = []; // 清除舊快速回覆
-    input.value = "";
-  }
-
-  function addToQueue(text) {
-    if(!text) return;
-    messageQueue.push(text);
+  function resolveCostCheck(isAgree) {
+    clearInterval(costCheckTimer);
+    document.getElementById("cost-modal").style.display = "none";
+    
+    var currentMsg = messageQueue.shift(); // Remove pending msg
     renderQueue();
-    processQueue();
-  }
-
-  function processQueue() {
-    if (isBotProcessing || messageQueue.length === 0) return;
-    var nextMsg = messageQueue.shift();
-    renderQueue();
-    doSendMessage(nextMsg);
-  }
-
-  function renderQueue() {
-    var bar = document.getElementById("queue-bar");
-    var list = document.getElementById("queue-list");
-    if (messageQueue.length === 0) {
-      bar.style.display = "none";
-      return;
-    }
-    bar.style.display = "flex";
-    list.innerHTML = messageQueue.map((t, i) => `<div class="queue-chip">${i+1}. ${t}</div>`).join("");
-  }
-
-  function doSendMessage(text) {
-    isBotProcessing = true;
-    addMsg("user", text);
     
-    // 🔥 先寫入一條「準備發送」的日誌
-    var logBoxId = Math.random().toString(36).substr(2, 9);
-    updateLogs([`[${new Date().toLocaleTimeString()}] [HTML] 發送: "${text}"`]);
-    
-    var loadingId = addMsg("bot", "Reading...");
-
-    try {
-      google.script.run
-        .withSuccessHandler(function(res) {
-          isBotProcessing = false;
-          removeMsg(loadingId);
-          if (res.logs && res.logs.length > 0) updateLogs(res.logs);
-          
-          if (res.replies && res.replies.length > 0) {
-            res.replies.forEach((reply, idx) => {
-              setTimeout(() => {
-                addMsg("bot", reply);
-              }, idx * 300);
-            });
-          } else {
-            addMsg("bot", "(無回覆)");
-          }
-          setTimeout(processQueue, 1000);
-        })
-        .withFailureHandler(function(err) {
-          isBotProcessing = false;
-          removeMsg(loadingId);
-          addMsg("bot", "❌ Error: " + err);
-          setTimeout(processQueue, 1000);
-        })
-        .testMessage(text, "TEST_DEV_001");
-    } catch(e) {
-      console.error(e);
+    if (isAgree) {
+      doSendMessage(currentMsg);
+    } else {
+      updateLogs([`[Cost Guard] 🚫 自動跳過 ($$$): "${currentMsg}"`]);
+      // Trigger next immediately
       isBotProcessing = false;
+      setTimeout(processQueue, 500);
     }
   }
-
-  // --- 快速回覆解析 ---
-  function extractQuickReplies(msgText) {
-    // 檢查是否包含型號選擇標記 (如 「請選擇型號」或「1️⃣ S27...」)
-    var quickReplies = [];
-    
-    // 模式 1: 數字 emoji 標記的選項 (如 1️⃣ 2️⃣ 3️⃣)
-    var emojiPattern = /^([1-9]️⃣|[\d])[\s\.]*(.+)$/gm;
-    var match;
-    while ((match = emojiPattern.exec(msgText)) !== null) {
-      var label = match[2].trim();
-      if (label.length > 0 && label.length < 50) {
-        quickReplies.push(label);
+      function renderQueue() {
+        var bar = document.getElementById("queue-bar");
+        var list = document.getElementById("queue-list");
+        if (messageQueue.length === 0) {
+          bar.style.display = "none";
+          return;
+        }
+        bar.style.display = "flex";
+        list.innerHTML = messageQueue
+          .map((t, i) => `<div class="queue-chip">${i + 1}. ${t}</div>`)
+          .join("");
       }
-    }
-    
-    // 模式 2: 以「1. 2. 3.」開頭的選項
-    if (quickReplies.length === 0) {
-      var numPattern = /^(\d+)\.\s*(.+)$/gm;
-      while ((match = numPattern.exec(msgText)) !== null) {
-        var label = match[2].trim();
-        if (label.length > 0 && label.length < 50) {
-          quickReplies.push(label);
+
+      function doSendMessage(text) {
+        isBotProcessing = true;
+        addMsg("user", text);
+
+        // 🔥 先寫入一條「準備發送」的日誌
+        var logBoxId = Math.random().toString(36).substr(2, 9);
+        updateLogs([
+          `[${new Date().toLocaleTimeString()}] [HTML] 發送: "${text}"`,
+        ]);
+
+        var loadingId = addMsg("bot", "Reading...");
+
+        try {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              isBotProcessing = false;
+              removeMsg(loadingId);
+              if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+
+              if (res.replies && res.replies.length > 0) {
+                res.replies.forEach((reply, idx) => {
+                  setTimeout(() => {
+                    addMsg("bot", reply);
+                  }, idx * 300);
+                });
+              } else {
+                addMsg("bot", "(無回覆)");
+              }
+              setTimeout(processQueue, 1000);
+            })
+            .withFailureHandler(function (err) {
+              isBotProcessing = false;
+              removeMsg(loadingId);
+              addMsg("bot", "❌ Error: " + err);
+              setTimeout(processQueue, 1000);
+            })
+            .testMessage(text, "TEST_DEV_001");
+        } catch (e) {
+          console.error(e);
+          isBotProcessing = false;
         }
       }
-    }
-    
-    // 只有在有多個選項才返回快速回覆
-    return quickReplies.length > 1 ? quickReplies : [];
-  }
 
-  // --- UI ---
-  function addMsg(role, text) {
-    var chatBox = document.getElementById("chat-box");
-    var id = "msg-" + new Date().getTime();
-    var html = `<div class="msg-row ${role}" id="${id}">
-      ${role==='bot'?'<div class="avatar"></div>':''}
+      // --- 快速回覆解析 ---
+      function extractQuickReplies(msgText) {
+        // 檢查是否包含型號選擇標記 (如 「請選擇型號」或「1️⃣ S27...」)
+        var quickReplies = [];
+
+        // 模式 1: 數字 emoji 標記的選項 (如 1️⃣ 2️⃣ 3️⃣)
+        var emojiPattern = /^([1-9]️⃣|[\d])[\s\.]*(.+)$/gm;
+        var match;
+        while ((match = emojiPattern.exec(msgText)) !== null) {
+          var label = match[2].trim();
+          if (label.length > 0 && label.length < 50) {
+            quickReplies.push(label);
+          }
+        }
+
+        // 模式 2: 以「1. 2. 3.」開頭的選項
+        if (quickReplies.length === 0) {
+          var numPattern = /^(\d+)\.\s*(.+)$/gm;
+          while ((match = numPattern.exec(msgText)) !== null) {
+            var label = match[2].trim();
+            if (label.length > 0 && label.length < 50) {
+              quickReplies.push(label);
+            }
+          }
+        }
+
+        // 只有在有多個選項才返回快速回覆
+        return quickReplies.length > 1 ? quickReplies : [];
+      }
+
+      // --- UI ---
+      function addMsg(role, text) {
+        var chatBox = document.getElementById("chat-box");
+        var id = "msg-" + new Date().getTime();
+        var html = `<div class="msg-row ${role}" id="${id}">
+      ${role === "bot" ? '<div class="avatar"></div>' : ""}
       <div class="msg-bubble">${text}</div>
     </div>`;
-    chatBox.insertAdjacentHTML('beforeend', html);
-    chatBox.scrollTop = chatBox.scrollHeight;
-    return id;
-  }
+        chatBox.insertAdjacentHTML("beforeend", html);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return id;
+      }
 
-  function addMsgWithQuickReplies(role, text, quickReplies) {
-    var chatBox = document.getElementById("chat-box");
-    var id = "msg-" + new Date().getTime();
-    var html = `<div class="msg-row ${role}" id="${id}">
-      ${role==='bot'?'<div class="avatar"></div>':''}
+      function addMsgWithQuickReplies(role, text, quickReplies) {
+        var chatBox = document.getElementById("chat-box");
+        var id = "msg-" + new Date().getTime();
+        var html = `<div class="msg-row ${role}" id="${id}">
+      ${role === "bot" ? '<div class="avatar"></div>' : ""}
       <div>
         <div class="msg-bubble">${text}</div>
-        ${quickReplies.length > 0 ? '<div class="quick-reply-group">' + quickReplies.map(label => 
-          `<button class="quick-reply-btn" onclick="sendMessage_Direct('${label.replace(/'/g, "\\'")}')">${label}</button>`
-        ).join('') + '</div>' : ''}
+        ${
+          quickReplies.length > 0
+            ? '<div class="quick-reply-group">' +
+              quickReplies
+                .map(
+                  (label) =>
+                    `<button class="quick-reply-btn" onclick="sendMessage_Direct('${label.replace(/'/g, "\\'")}')">${label}</button>`,
+                )
+                .join("") +
+              "</div>"
+            : ""
+        }
       </div>
     </div>`;
-    chatBox.insertAdjacentHTML('beforeend', html);
-    chatBox.scrollTop = chatBox.scrollHeight;
-    return id;
-  }
+        chatBox.insertAdjacentHTML("beforeend", html);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return id;
+      }
 
-  function sendMessage_Direct(text) {
-    var chatBox = document.getElementById("chat-box");
-    addMsg("user", text);
-    addToHistory(text);
-    currentQuickReplies = [];
-    
-    // 🔥 先寫入一條「準備發送」的日誌
-    updateLogs([`[${new Date().toLocaleTimeString()}] [HTML] 發送 (快速回覆): "${text}"`]);
-    
-    var loadingId = addMsg("bot", "Reading...");
-    
-    isBotProcessing = true;
-    google.script.run
-      .withSuccessHandler(function(res) {
+      function sendMessage_Direct(text) {
+        var chatBox = document.getElementById("chat-box");
+        addMsg("user", text);
+        addToHistory(text);
+        currentQuickReplies = [];
+
+        // 🔥 先寫入一條「準備發送」的日誌
+        updateLogs([
+          `[${new Date().toLocaleTimeString()}] [HTML] 發送 (快速回覆): "${text}"`,
+        ]);
+
+        var loadingId = addMsg("bot", "Reading...");
+
+        isBotProcessing = true;
+        google.script.run
+          .withSuccessHandler(function (res) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+
+            if (res.replies && res.replies.length > 0) {
+              res.replies.forEach((reply, idx) => {
+                setTimeout(() => {
+                  addMsg("bot", reply);
+                }, idx * 300);
+              });
+            } else {
+              addMsg("bot", "(無回覆)");
+            }
+            setTimeout(processQueue, 1000);
+          })
+          .withFailureHandler(function (err) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            addMsg("bot", "❌ Error: " + err);
+            setTimeout(processQueue, 1000);
+          })
+          .testMessage(text, "TEST_DEV_001");
+      }
+
+      function removeMsg(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
+      }
+
+      function updateLogs(logs) {
+        var logBox = document.getElementById("log-box");
+        logs.forEach((line) => {
+          logBox.insertAdjacentHTML(
+            "beforeend",
+            `<div class="log-line">${line}</div>`,
+          );
+        });
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      function clearSession() {
+        if (!confirm("重置模擬器？")) return;
+        document.getElementById("chat-box").innerHTML = "";
+        document.getElementById("log-box").innerHTML = "";
+        messageQueue = [];
+        currentQuickReplies = [];
+        renderQueue();
         isBotProcessing = false;
-        removeMsg(loadingId);
-        if (res.logs && res.logs.length > 0) updateLogs(res.logs);
-        
-        if (res.replies && res.replies.length > 0) {
-          res.replies.forEach((reply, idx) => {
-            setTimeout(() => {
-              addMsg("bot", reply);
-            }, idx * 300);
-          });
-        } else {
-          addMsg("bot", "(無回覆)");
-        }
-        setTimeout(processQueue, 1000);
-      })
-      .withFailureHandler(function(err) {
-        isBotProcessing = false;
-        removeMsg(loadingId);
-        addMsg("bot", "❌ Error: " + err);
-        setTimeout(processQueue, 1000);
-      })
-      .testMessage(text, "TEST_DEV_001");
-  }
+        google.script.run.clearTestSession("TEST_DEV_001");
+      }
 
-  function removeMsg(id) {
-    var el = document.getElementById(id);
-    if(el) el.remove();
-  }
-
-  function updateLogs(logs) {
-    var logBox = document.getElementById("log-box");
-    logs.forEach(line => {
-      logBox.insertAdjacentHTML('beforeend', `<div class="log-line">${line}</div>`);
-    });
-    logBox.scrollTop = logBox.scrollHeight;
-  }
-
-  function clearSession() {
-    if(!confirm("重置模擬器？")) return;
-    document.getElementById("chat-box").innerHTML = "";
-    document.getElementById("log-box").innerHTML = "";
-    messageQueue = [];
-    currentQuickReplies = [];
-    renderQueue();
-    isBotProcessing = false;
-    google.script.run.clearTestSession("TEST_DEV_001");
-  }
-
-  function copyLogs() {
-    navigator.clipboard.writeText(document.getElementById("log-box").innerText);
-    alert("Copied");
-  }
-  function clearLogUI() { document.getElementById("log-box").innerHTML = ""; }
-  function checkEnter(e) { if(e.key==="Enter") sendMessage(); }
-</script>
-</body>
+      function copyLogs() {
+        navigator.clipboard.writeText(
+          document.getElementById("log-box").innerText,
+        );
+        alert("Copied");
+      }
+      function clearLogUI() {
+        document.getElementById("log-box").innerHTML = "";
+      }
+      function checkEnter(e) {
+        if (e.key === "Enter") sendMessage();
+      }
+    </script>
+  </body>
 </html>

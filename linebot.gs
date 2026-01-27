@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.89"; // 2026-01-19 Fix: Log Visibility & Strict Numbered Lists
-const BUILD_TIMESTAMP = "2026-01-19 20:30";
+const GAS_VERSION = "v29.5.98"; // 2026-01-20 Fix: Flex Message Mock (400 Error)
+const BUILD_TIMESTAMP = "2026-01-20 18:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3559,6 +3559,10 @@ function constructDynamicPrompt(
 2. **泛化搜尋**：若精確搜尋無結果，**務必**嘗試搜尋「三星螢幕 + 用戶問題」或此系列的通用設定。
 3. **類推回答**：若網路上沒有針對該特定型號的討論，請引用類似機型或通用常識來回答。**用戶想知道的是「通則建議」，而不是聽你說「查無資料」。**
 
+【回答格式修正 (Format Enforcement)】
+1. **強制數字列表**：若你需要提供多個選項、步驟或檢查項目，**一律必須使用數字列表 (1., 2., 3., 4.)**，**嚴禁使用圓點 (•) 或其他符號**。
+2. **來源標註**：請在回答末尾明確標註「[來源: 網路搜尋]」。
+
 【最高指令】
 1. **強制搜尋**：你必須調用 \`google_search\` 工具。
 2. **絕對禁止推託**：
@@ -4707,7 +4711,7 @@ function handleMessage(event) {
                   type: "action",
                   action: {
                     type: "message",
-                    label: "不滿意..擴大搜尋",
+                    label: "對以上回答不滿意",
                     text: "不滿意這回答請繼續擴大搜尋",
                   },
                 },
@@ -6157,16 +6161,16 @@ function handleMessage(event) {
             (replyText.includes("[來源:") && replyText.includes("手冊]"));
 
           let qrText = "對以上回答不滿意，請改搜尋網路資料";
-          let qrLabel = qrText;
+          let qrLabel = "對以上回答不滿意"; // Standardized Label
 
           if (isWebSearchPhase) {
             // 1. Web Phase -> Continue Web
             qrText = "對以上答案不理想，換個關鍵字再搜";
-            qrLabel = qrText;
+            qrLabel = "對以上回答不滿意";
           } else if (isPdfModePhase) {
             // 2. PDF Phase -> Go to Web
-            qrText = "手冊沒解答，改搜尋網路資料"; // 這句保留原意，因強調手冊
-            qrLabel = qrText;
+            qrText = "手冊沒解答，改搜尋網路資料";
+            qrLabel = "對以上回答不滿意";
           } else {
             // 3. Fast Mode (Spec/QA)
             // v29.5.64: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
@@ -6199,11 +6203,11 @@ function handleMessage(event) {
             ) {
               // 有 PDF，建議查手冊
               qrText = "對以上回答不滿意，請繼續查詢手冊";
-              qrLabel = "對以上不滿意 (搜手冊)"; // 11 chars, safe
+              qrLabel = "對以上回答不滿意";
             } else {
               // 無 PDF 或一般問題 -> Go to Web
               qrText = "對以上回答不滿意，請改搜尋網路資料";
-              qrLabel = "對以上不滿意 (搜網路)"; // 11 chars, safe
+              qrLabel = "對以上回答不滿意";
             }
           }
 
@@ -6386,9 +6390,23 @@ function handleCommand(c, u, cid) {
       // U2 是 Model (history[history.length - 2])
       // A1 是 Select Hint
       // U1 是 Question (history[history.length - 4])
-      const prevUserMsg = history[history.length - 4]
-        ? history[history.length - 4].content
-        : "";
+      // v29.5.91: Use iterative search for previous user message instead of hardcoded index
+      let prevUserMsg = "";
+      // Start from index -3 (skip current U2, A2) -> Look for U1
+      for (let i = history.length - 3; i >= 0; i--) {
+        const h = history[i];
+        // v29.5.93: Context Repair Hardening
+        // Ignore messages with brackets [] (likely logs/tags) or non-user roles
+        if (
+          h.role === "user" &&
+          !h.content.includes("[") &&
+          !h.content.includes("]")
+        ) {
+          prevUserMsg = h.content;
+          break;
+        }
+      }
+
       if (prevUserMsg) {
         writeLog(
           `[Command] 偵測到純型號上下文，組合前一題: ${prevUserMsg} + ${userMsg}`,
@@ -8801,6 +8819,21 @@ function testMessage(msg, userId) {
         hasOfficialReply = true;
       }
     }
+    // v29.5.98: Capture Flex Replies
+    if (log.indexOf("[Flex Reply]") > -1) {
+       // Extract Alt Text
+       var match = log.match(/Alt: (.*?), JSON:/);
+       if (match && match[1]) {
+         var alt = match[1];
+         // Append a hint that it was a Flex Message
+         var content = `[Flex Message] ${alt} (查看日誌以見詳情)`;
+         if (!seenContent.has(content)) {
+            botResponses.push(content);
+            seenContent.add(content);
+            hasOfficialReply = true;
+         }
+       }
+    }
   }
 
   // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
@@ -9341,6 +9374,13 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
  * 發送 Flex Message
  */
 function replyFlexMessage(replyToken, flexContainer, altText) {
+  // 🧪 TEST MODE START (v29.5.98 Fixed)
+  if ((typeof IS_TEST_MODE !== 'undefined' && IS_TEST_MODE) || replyToken === "TEST_REPLY_TOKEN") {
+    writeLog(`[Flex Reply] Alt: ${altText}, JSON: ${JSON.stringify(flexContainer)}`);
+    return 200;
+  }
+  // 🧪 TEST MODE END
+
   const url = "https://api.line.me/v2/bot/message/reply";
   // v29.5.12: Correct key is LINE_TOKEN
   const accessToken =
@@ -9395,4 +9435,47 @@ function toHalfWidth(str) {
       return String.fromCharCode(ch.charCodeAt(0) - 0xfee0);
     })
     .replace(/\u3000/g, " ");
+}
+
+/**
+ * [Cost Guard] 檢查是否為高成本 PDF 操作 (v29.5.96)
+ * @param {string} userMsg
+ */
+function checkPdfCost(userMsg) {
+  if (!userMsg) return { isHighCost: false, reason: "Empty message" };
+
+  // 1. Check for PDF Keywords
+  const m = userMsg.toLowerCase();
+  const pdfKeywords = [
+    "手冊",
+    "設定",
+    "說明書",
+    "故障",
+    "error",
+    "安裝",
+    "reset",
+    "重置",
+    "亮燈",
+    "閃爍",
+    "無法",
+    "不能",
+  ];
+  const isPdfIntent = pdfKeywords.some((k) => m.includes(k));
+
+  // 2. Check strict model format (S27... G5...)
+  // Simple regex for Samsung model-like strings
+  const isModelLike = /[a-z0-9]{5,}/.test(m);
+
+  if (isPdfIntent) {
+    return {
+      isHighCost: true,
+      reason: "Detected PDF Keywords (e.g. 手冊/設定)",
+    };
+  }
+
+  if (isModelLike && m.length < 20) {
+    return { isHighCost: true, reason: "Potential Model Number (Loads PDF)" };
+  }
+
+  return { isHighCost: false, reason: "General Conversation" };
 }
