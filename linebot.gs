@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.99"; // 2026-01-27 Fix: QA回答格式化，增強分段邏輯
+const GAS_VERSION = "v29.5.100"; // 2026-01-27 Fix: 移除formatForLineMobile的"A："處理邏輯
 const BUILD_TIMESTAMP = "2026-01-27 21:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -4454,10 +4454,7 @@ function formatForLineMobile(text) {
   // 4. 數字列表項前強制換行
   processed = processed.replace(/(\n|^)(\d+\.)/g, "\n\n$2");
   
-  // 5. 特殊格式：「A：」開頭的回答需要換行
-  processed = processed.replace(/(\/\s*A[：:])\s*/g, "\n\n$1 ");
-  
-  // 6. 移除多餘換行 (3個以上換行合併為2個)
+  // 5. 移除多餘換行 (3個以上換行合併為2個)
   processed = processed.replace(/\n{3,}/g, "\n\n");
 
   processed = formatListSpacing(processed);
