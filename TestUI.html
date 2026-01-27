@@ -291,14 +291,31 @@
         flex: 1;
         padding: 10px;
         overflow-y: auto;
+        overflow-x: auto;
         font-family: monospace;
         font-size: 12px;
         color: #d4d4d4;
+        word-break: break-all;
+        white-space: pre-wrap;
       }
       .log-line {
         border-bottom: 1px solid #333;
         padding-bottom: 2px;
         margin-bottom: 4px;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+        max-width: 100%;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .log-line:hover {
+        background-color: #2a2a2a;
+      }
+      .log-line.expanded {
+        background-color: #1a1a1a;
+        border-left: 3px solid #0078d4;
+        padding-left: 7px;
       }
 
       .history-panel {
@@ -419,6 +436,7 @@
             <button class="btn" style="background:#0066cc;color:white;" onclick="loadBulkTest()">📥 載入/指定</button>
             <button class="btn" style="background:#cc6600;color:white;" onclick="stopQueue()">⏸ 暫停</button>
             <button class="btn btn-danger" onclick="addToQueue('/重啟')">🔄 重啟</button>
+            <button class="btn" onclick="toggleDetailMode()" id="detail-btn">📝 詳細</button>
             <button class="btn" onclick="copyLogs()">複製</button>
             <button class="btn" onclick="clearLogUI()">清空</button>
             <button class="btn btn-danger" onclick="clearSession()">
@@ -1088,10 +1106,38 @@
       function updateLogs(logs) {
         var logBox = document.getElementById("log-box");
         logs.forEach((line) => {
-          logBox.insertAdjacentHTML(
-            "beforeend",
-            `<div class="log-line">${line}</div>`,
-          );
+          // 確保完整顯示長文字，不截斷
+          var logText = typeof line === 'string' ? line : String(line);
+          var logDiv = document.createElement('div');
+          logDiv.className = 'log-line';
+          logDiv.title = logText; // 保存原始完整文字
+          
+          // 根據詳細模式決定顯示內容
+          if (isDetailMode) {
+            logDiv.innerHTML = logText;
+          } else {
+            // 簡潔模式：截斷長文字
+            logDiv.innerHTML = logText.length > 80 ? logText.substring(0, 80) + '...' : logText;
+          }
+          
+          // 點擊展開/收合功能
+          logDiv.onclick = function() {
+            this.classList.toggle('expanded');
+            if (this.classList.contains('expanded')) {
+              this.innerHTML = this.title; // 顯示完整文字
+              this.style.whiteSpace = 'pre-wrap';
+              this.style.wordBreak = 'break-all';
+            } else {
+              // 恢復原來的顯示模式
+              if (isDetailMode) {
+                this.innerHTML = this.title;
+              } else {
+                this.innerHTML = this.title.length > 80 ? this.title.substring(0, 80) + '...' : this.title;
+              }
+            }
+          };
+          
+          logBox.appendChild(logDiv);
         });
         logBox.scrollTop = logBox.scrollHeight;
       }
@@ -1118,6 +1164,42 @@
       }
       function checkEnter(e) {
         if (e.key === "Enter") sendMessage();
+      }
+
+      // 詳細模式控制
+      var isDetailMode = true; // 預設開啟詳細模式
+      function toggleDetailMode() {
+        isDetailMode = !isDetailMode;
+        var btn = document.getElementById('detail-btn');
+        var logBox = document.getElementById('log-box');
+        
+        if (isDetailMode) {
+          btn.innerHTML = '📝 詳細';
+          btn.style.background = '#0066cc';
+          btn.style.color = 'white';
+          logBox.style.fontSize = '12px';
+        } else {
+          btn.innerHTML = '📋 簡潔';
+          btn.style.background = '#666';
+          btn.style.color = '#ccc';
+          logBox.style.fontSize = '11px';
+        }
+        
+        // 重新渲染現有日誌
+        var allLogs = Array.from(logBox.children);
+        allLogs.forEach(log => {
+          if (!isDetailMode) {
+            // 簡潔模式：截斷長文字
+            var text = log.textContent;
+            if (text.length > 80) {
+              log.innerHTML = text.substring(0, 80) + '...';
+            }
+          } else {
+            // 詳細模式：顯示完整文字
+            var originalText = log.title || log.textContent;
+            log.innerHTML = originalText;
+          }
+        });
       }
     </script>
   </body>
