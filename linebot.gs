@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.103"; // 2026-01-27 Fix: 強化網路搜尋開場規則，禁止否定句開頭
-const BUILD_TIMESTAMP = "2026-01-27 22:00";
+const GAS_VERSION = "v29.5.105"; // 2026-01-28 改善追問機制：強化型號模糊處理、優化 Flex 泡泡觸發條件
+const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1326,11 +1326,8 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           replyMessage(replyToken, replyText);
 
           // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
-          writeLog(
-            `[AI Reply] ${replyText.substring(0, 2000)}${
-              replyText.length > 2000 ? "..." : ""
-            }`,
-          );
+          // v29.5.103: 移除截斷限制，完整記錄 AI 回覆
+          writeLog(`[AI Reply] ${replyText}`);
           writeLog(
             `[PDF Mode] 完成查詢手冊，花費 ${
               lastTokenUsage && lastTokenUsage.costTWD
@@ -1435,11 +1432,8 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         replyMessage(replyToken, replyText);
 
         // v27.7.6: 回寫包含費用的完整回覆，方便 testMessage 顯示金額
-        writeLog(
-          `[AI Reply] ${replyText.substring(0, 2000)}${
-            replyText.length > 2000 ? "..." : ""
-          }`,
-        );
+        // v29.5.103: 移除截斷限制，完整記錄 AI 回覆
+        writeLog(`[AI Reply] ${replyText}`);
         writeLog(
           `[PDF Mode] 完成查詢手冊，花費 ${
             lastTokenUsage && lastTokenUsage.costTWD
@@ -3629,8 +3623,41 @@ function constructDynamicPrompt(
 
   if (!kbFiles.length && !imageBlob && !forceWebSearch) {
     // Phase 1: 極速模式 (Fast Mode)
-    // v29.4.17: Prompt Hardening - Forbid General Knowledge for Maintenance/Usage
-    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。\n【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n\n【防幻覺鐵律 (Anti-Hallucination)】\n1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。\n2. **呈現選項**：若你需要提供多個選項、規格列表或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，**嚴禁使用圓點 (•) 或其他符號 (即使是規格列表也必須強制轉換為數字清單)**。\n3. **規格題與功能題分流**：\n   - **硬體規格題 (如：有沒有4K、面板類型)**：若 Context 未明確提及，**必須**回答「根據目前資料，該型號不支援此規格」，不得猜測。\n   - **功能/操作/保養題 (如：零售模式、重置、清潔、上蓋是否要開)**：若 Context 無資料，**必須** 強制轉移至 PDF 查詢 (\`[AUTO_SEARCH_PDF]\`)。\n   - **進階搜尋指令 (重要)**：若你能從 Context (如輕量層定義) 推斷出用戶指涉的系列或型號關鍵字 (例如：用戶用語「水/上蓋」推斷為「洗衣機」或「WA」)，請務必將關鍵字帶入指令，格式為 \`[AUTO_SEARCH_PDF: 關鍵字]\` (例如 \`[AUTO_SEARCH_PDF: 洗衣機]\` 或 \`[AUTO_SEARCH_PDF: WA21A8377GV]\`)。這將大幅提升搜尋準確度。\n4. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。\n5. **嚴禁推託客服**：絕對禁止說「聯絡三星客服」、「撥打 0800」、「聯繫客服專線」。若真的查無資料，請建議「直接問問 Sam」。\n\n【回答格式優化】\n1. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: 手冊]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n2. **網路搜尋**: 若你需要使用網路搜尋 (Web Search)，請**直接呼叫工具**，**嚴禁** 回答「我會幫你搜尋...」或「請稍等...」。直接給我搜尋結果！\n\n【回答流程 (必須嚴格遵守)】\n1. Search QA & Rules (Context):\n   - 若 QA/Rules 有答案 -> 使用該資料回答，標註 [來源: QA/規格庫]\n   - **若找不到支援的證據 (關鍵分歧點)：**\n     - 判定問題類型：\n       (A) 是否為「硬體規格」存有性的詢問 -> 回答 **不支援**。\n       (B) 是否為「功能模式、操作步驟、故障排除、保養習慣」的詢問 -> **無視 Prompt.csv 的「漸進式解決」規則，直接輸出** **[AUTO_SEARCH_PDF: <推斷關鍵字>]**。\n\n2. Fallback to PDF (重要!):\n   - 若 Context 資料不足，你 **必須** 放棄回答，並強制輸出指令： [AUTO_SEARCH_PDF] 或 [AUTO_SEARCH_PDF: <關鍵字>]\n   - **嚴禁**反問用戶「是否要幫你查手冊」或「資料沒寫」。一旦資料不足且推斷出關聯產品，**立即**觸發指令。\n   - **絕對禁止** 使用「通用知識」回答產品保養或操作建議 (例如洗衣機上蓋、冰箱除霜等)，這些必須查閱手冊。\n\n3. Exception:\n   - 僅當用戶閒聊 (打招呼) 或問已知的通用「名詞定義」(如：什麼是HDMI) 時，才可用通用知識回答。`;
+    // v29.5.105: 強化型號追問機制
+    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。
+【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。
+
+【🚨 型號追問機制 (最高優先級)】
+當用戶使用「模糊別稱」(如 G5、G8、M7、M8) 詢問「操作/設定/故障」類問題時：
+1. **必須先檢查** Context 中該別稱是否包含多個實體型號 (看「請優先引導用戶確認型號」提示)
+2. **若有多款型號**：必須先列出所有型號讓用戶選擇，格式如下：
+   「G5 系列有多款型號，請問你是哪一款？
+   1. S27CG552EC (27吋曲面)
+   2. S32CG552EC (32吋曲面)
+   3. S27DG502EC (27吋平面)
+   4. S32DG502EC (32吋平面)
+   請直接回覆數字或型號～」
+3. **禁止直接回答**：在用戶未確認型號前，禁止直接給操作步驟，因為不同型號操作可能不同
+4. **例外**：若用戶問的是「通用規格」(如「G5有4K嗎」)且所有G5型號答案相同，可直接回答
+
+【防幻覺鐵律 (Anti-Hallucination)】
+1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。
+2. **呈現選項**：若你需要提供多個選項、規格列表或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，**嚴禁使用圓點 (•) 或其他符號**。
+3. **規格題與功能題分流**：
+   - **硬體規格題 (如：有沒有4K、面板類型)**：若 Context 未明確提及，**必須**回答「根據目前資料，該型號不支援此規格」，不得猜測。
+   - **功能/操作/保養題 (如：零售模式、重置、清潔、上蓋是否要開)**：若 Context 無資料，**必須**輸出 \`[AUTO_SEARCH_PDF: 關鍵字]\` 觸發手冊搜尋。
+4. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。
+5. **嚴禁推託客服**：絕對禁止說「聯絡三星客服」、「撥打 0800」、「聯繫客服專線」。若真的查無資料，請建議「直接問問 Sam」。
+
+【回答流程 (必須嚴格遵守)】
+1. **型號確認** (最優先)：
+   - 用戶用模糊別稱 + 問操作問題 → 先反問確認型號
+   - 用戶給了完整型號 (如 S32CG552EC) → 直接回答
+2. **Search QA & Rules**：
+   - QA/Rules 有答案 → 使用該資料回答，標註 [來源: QA/規格庫]
+   - 找不到資料 → 輸出 [AUTO_SEARCH_PDF: <型號或關鍵字>]
+3. **Exception**：
+   - 僅當用戶閒聊或問通用名詞定義 (如：什麼是HDMI) 時，才可用通用知識回答。`;
   } else if (kbFiles.length > 0) {
     // Phase 2 & 3: 深度模式 (Deep Mode)
     // v27.8.6: 防護機制 - 確保真的有掛載 PDF
@@ -5257,19 +5284,38 @@ function handleMessage(event) {
           // Case B: 多個型號 -> 顯示泡泡 (Flex Selection)
           // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
           else if (suggestedModels.length > 1) {
-            // v29.5.48: UX Fix - 針對「通用/列表/推薦」類問題，跳過泡泡，讓 AI 直接列出
-            // 避免用戶問「哪一台有 Calman」卻被反問「請選擇型號」
+            // v29.5.105: 改善追問機制 - 更精準判斷何時該跳過泡泡
+            // 
+            // 【跳過泡泡的情況】:
+            // 1. 明確的列表/比較意圖 + 不涉及操作/故障問題
+            // 2. 型號數量過多(>10)，通常是類別查詢
+            //
+            // 【保留泡泡的情況】:
+            // 1. 操作/故障/設定問題（即使有「哪一台」也要追問型號）
+            // 2. 用戶使用模糊別稱（如 G5、M8）詢問功能問題
+            
             const listIntent =
-              /(哪一台|推薦|介紹|有哪些|列表|清單|差異|比較|认证|認證|列出|整理|都有.*嗎|差別|選擇)/i.test(
+              /(推薦|介紹|有哪些|列表|清單|差異|比較|认证|認證|列出|整理|選擇)/i.test(
                 userMessage,
               );
-            const tooMany = suggestedModels.length > 10; // 如果超過 10 個，通常是類別查詢，跳泡泡比較好
+            const needSpecificModelIntent =
+              /(怎麼|如何|設定|故障|無法|不能|操作|步驟|重置|reset|閃爍|亮燈|不亮|連接|安裝|調整|開啟|關閉|使用|方法|教學)/i.test(
+                userMessage,
+              );
+            const tooMany = suggestedModels.length > 10;
 
-            if (listIntent || tooMany) {
+            // 只有在「純列表意圖」且「非操作問題」時才跳過泡泡
+            const shouldSkipBubble = (listIntent && !needSpecificModelIntent) || tooMany;
+
+            if (shouldSkipBubble) {
               writeLog(
-                `[Smart Router v29.5.48] 偵測到列表意圖/數量過多(${suggestedModels.length})，跳過選單泡泡，讓 AI 直接回答。`,
+                `[Smart Router v29.5.105] 偵測到列表意圖(${listIntent})/數量過多(${suggestedModels.length})，且無操作需求，跳過選單泡泡。`,
               );
               suggestedModels = []; // 清空以跳過泡泡生成
+            } else if (listIntent && needSpecificModelIntent) {
+              writeLog(
+                `[Smart Router v29.5.105] 偵測到列表意圖但同時有操作需求，保留型號選單泡泡。`,
+              );
             }
 
             // Re-check length (if cleared, this block won't run)
@@ -6280,12 +6326,9 @@ function handleMessage(event) {
         writeRecordDirectly(userId, saveText, contextId, "assistant", "");
         // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
         // v27.7.6: Log 回覆時包含費用資訊，方便 testMessage 顯示成本
+        // v29.5.103: 移除截斷限制，完整記錄 AI 回覆
         var replyForLog = replyText || finalText;
-        writeLog(
-          `[AI Reply] ${replyForLog.substring(0, 2000)}${
-            replyForLog.length > 2000 ? "..." : ""
-          }`,
-        );
+        writeLog(`[AI Reply] ${replyForLog}`);
 
         updateHistorySheetAndCache(contextId, history, userMsgObj, {
           role: "assistant",

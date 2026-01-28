@@ -11,6 +11,21 @@
 7. **三層記憶架構（Cache/Sheet/API）の實現邏輯不應硬寫在 GAS，應由 Prompt 引導 AI。**
 8. **開發鐵律 - 儲存流程**：當用戶說「儲存」時，必須執行完整部署：① 更新版本號 (`linebot.gs` & `Prompt.csv`) ②`clasp push` ③`clasp version` ④`clasp deploy` ⑤`git commit & push`。這是唯一確保 Webhook 生效的途徑。
 
+## 🚨 部署鐵律 (DEPLOYMENT IRON RULE)
+
+**⚠️ 只執行 `clasp push` 不會更新 LINE Webhook！必須完整執行以下流程：**
+
+```bash
+# 🔥 完整部署一行指令 (每次修改後必須執行)：
+clasp push -f; clasp version "v29.x.xxx 描述"; clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+
+# Deployment ID (固定值，勿修改)：
+# AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+```
+
+**❌ 錯誤做法**：只執行 `clasp push` → LINE 完全無反應
+**✅ 正確做法**：push → version → deploy 三步驟缺一不可
+
 ## 專案概述
 
 Google Apps Script (GAS) 專案，整合 LINE Messaging API + Gemini 2.5 Flash，為台灣三星電腦螢幕提供 AI 客服。

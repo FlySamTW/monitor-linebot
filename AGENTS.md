@@ -6,14 +6,41 @@ Google Apps Script (GAS) LINE Bot providing AI customer service for Samsung comp
 
 ## 🔧 Build & Deployment Commands
 
+### 🚨 完整部署流程 (MANDATORY - 每次修改後必須執行)
+
+```bash
+# ⚠️ 重要：只執行 clasp push 不會更新 LINE Webhook！
+# 必須依序執行以下 4 步驟，Webhook 才會生效：
+
+# Step 1: 推送代碼
+clasp push -f
+
+# Step 2: 建立版本快照
+clasp version "v29.x.xxx 功能描述"
+
+# Step 3: 部署到 Webhook (這步最關鍵！)
+clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+
+# Step 4: Git 同步
+git add . && git commit -m "v29.x.xxx 功能描述" && git push
+
+# 🔥 一行完整部署指令 (推薦使用)：
+clasp push -f; clasp version "v29.x.xxx"; clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+```
+
+### ❌ 常見錯誤
+- 只執行 `clasp push` → Webhook 不會更新，LINE 無反應
+- 忘記 `clasp deploy` → 代碼已上傳但未部署到生產環境
+- 使用錯誤的 Deployment ID → 部署到測試環境
+
 ### Main Commands
 
 ```bash
 # Deploy to GAS (Primary)
 ./deploy.bat                     # Windows batch deployment
-clasp push -f                   # Push code only
+clasp push -f                   # Push code only (不會更新 Webhook!)
 clasp version "description"     # Create version snapshot
-clasp deploy -i DEPLOYMENT_ID   # Deploy to webhook
+clasp deploy -i DEPLOYMENT_ID   # Deploy to webhook (必須執行!)
 
 # Git Operations (Required after each deployment)
 git add .
