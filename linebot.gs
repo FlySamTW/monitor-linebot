@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.114"; // 2026-01-28 話題延續：改為語意判斷，不硬編碼句式
+const GAS_VERSION = "v29.5.115"; // 2026-01-28 話題延續：改為語意判斷，不硬編碼句式
 const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -3654,6 +3654,17 @@ function constructDynamicPrompt(
   // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
   // 僅注入當前系統狀態 (Fast Mode / Deep Mode)
 
+  // v29.5.115: 檢查是否有保存的「話題」（用戶選泡泡後延續話題）
+  const pendingTopic = cache.get(`${userId}:pending_topic`);
+  if (pendingTopic) {
+    dynamicPrompt += `\n\n【🔥 話題延續提示 (v29.5.115)】
+用戶剛才在討論的話題是：「${pendingTopic}」
+如果用戶現在只輸入型號（如 S32FM803UC），你應該回答「該型號 + 上述話題」。
+例如：話題是「線材版本」，用戶輸入 S32FM803UC → 你應回答「S32FM803UC 的線材版本」
+**禁止給整體規格概覽！必須針對上述話題回答！**\n`;
+    writeLog(`[Topic Inject v29.5.115] 注入話題: ${pendingTopic.substring(0, 50)}...`);
+  }
+
   if (!kbFiles.length && !imageBlob && !forceWebSearch) {
     // Phase 1: 極速模式 (Fast Mode)
     // v29.5.105: 強化型號追問機制
@@ -5485,6 +5496,27 @@ function handleMessage(event) {
                 JSON.stringify(suggestedModels),
                 300,
               );
+              
+              // v29.5.115: 保存當前話題，供用戶選泡泡後延續
+              // 當用戶問「那 M8 呢」→ 話題來自上一輪（如「線材版本」）
+              // 從 history 找上一輪的話題
+              const history = getHistoryFromCacheOrSheet(contextId);
+              if (history && history.length >= 2) {
+                for (let i = history.length - 1; i >= 0; i--) {
+                  const h = history[i];
+                  if (h.role === "user") {
+                    let topic = h.content || "";
+                    // 清理 System Hint
+                    topic = topic.replace(/\[System Hint:.*?\]/gs, "").trim();
+                    // 跳過追問句（如「那M8呢」）和純型號
+                    if (topic.length > 15 && !topic.match(/^(那|換|改).{1,10}(呢|的話)?$/)) {
+                      cache.put(`${userId}:pending_topic`, topic, 600);
+                      writeLog(`[Topic Save v29.5.115] 保存話題: ${topic.substring(0, 50)}...`);
+                      break;
+                    }
+                  }
+                }
+              }
 
               // 生成 Flex Message (使用 V2 去重版)
               // v29.5.50: Determine Search Intent for Dynamic Bubble Text
@@ -6630,41 +6662,50 @@ function handleCommand(c, u, cid) {
     }
 
     // 取得最後一題 (通常是 Assistant 前的 User Message)
-    // v29.5.79: 強話上下文組合。若上一題只是型號 (User 點選 Flex)，則必須再往前找問題內容
+    // v29.5.115: 強化話題延續 - 需要找出「真正的話題」而非「型號選擇」或「System Hint」
     let userMsg = history[history.length - 2]
       ? history[history.length - 2].content
       : history[0].content;
+    
+    // v29.5.115: 清理 System Hint 殘留
+    userMsg = userMsg.replace(/\[System Hint:.*?\]/gs, "").trim();
+    userMsg = userMsg.replace(/\n\n$/g, "").trim();
 
-    // 簡單判斷：如果 userMsg 看起來像純型號 (長度<15 且含數字)
-    if (userMsg.length < 15 && /\d/.test(userMsg) && history.length >= 4) {
-      // 嘗試往前找上一則 User Message (History: U1(Q) -> A1 -> U2(Model) -> A2(Spec) -> Cmd)
-      // Cmd 觸發時，History 尚未包含 Cmd。
-      // A2 是 Spec Reply.
-      // U2 是 Model (history[history.length - 2])
-      // A1 是 Select Hint
-      // U1 是 Question (history[history.length - 4])
-      // v29.5.91: Use iterative search for previous user message instead of hardcoded index
-      let prevUserMsg = "";
-      // Start from index -3 (skip current U2, A2) -> Look for U1
+    // v29.5.115: 儲存用戶選擇的型號（用於後續組合）
+    let selectedModel = "";
+    if (userMsg.length < 20 && /^[A-Z0-9]+$/i.test(userMsg.replace(/[\s-]/g, ""))) {
+      selectedModel = userMsg;
+    }
+
+    // v29.5.115: 找出真正的「話題」（不是型號選擇、不是 System Hint）
+    let realTopic = "";
+    if (selectedModel || (userMsg.length < 15 && /\d/.test(userMsg))) {
+      // 上一則是型號選擇，需要往前找話題
       for (let i = history.length - 3; i >= 0; i--) {
         const h = history[i];
-        // v29.5.93: Context Repair Hardening
-        // Ignore messages with brackets [] (likely logs/tags) or non-user roles
-        if (
-          h.role === "user" &&
-          !h.content.includes("[") &&
-          !h.content.includes("]")
-        ) {
-          prevUserMsg = h.content;
-          break;
+        if (h.role === "user") {
+          let content = h.content || "";
+          // 清理 System Hint
+          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+          // 跳過純型號、System Hint、空白內容
+          if (
+            content.length > 15 &&
+            !content.includes("[AUTO_SEARCH") &&
+            !content.includes("to check manuals")
+          ) {
+            realTopic = content;
+            writeLog(`[Context Repair v29.5.115] 找到原始話題: ${realTopic.substring(0, 50)}...`);
+            break;
+          }
         }
       }
-
-      if (prevUserMsg) {
-        writeLog(
-          `[Command] 偵測到純型號上下文，組合前一題: ${prevUserMsg} + ${userMsg}`,
-        );
-        userMsg = `${userMsg} ${prevUserMsg}`; // S27AG500NC G5 怎麼設定
+      
+      // 組合「型號 + 話題」
+      if (realTopic && selectedModel) {
+        userMsg = `${selectedModel} ${realTopic}`;
+        writeLog(`[Context Repair v29.5.115] 組合查詢: ${userMsg.substring(0, 80)}...`);
+      } else if (realTopic) {
+        userMsg = realTopic;
       }
     }
 
@@ -6770,11 +6811,17 @@ function handleCommand(c, u, cid) {
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
       let result = formatForLineMobile(searchResponse);
       
-      // v29.5.112: 加入網路搜尋來源顯示
-      if (lastSearchSources && lastSearchSources.length > 0) {
-        result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join('、')})`;
+      // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
+      if (!triggerPDF) {
+        // 網路搜尋模式
+        if (lastSearchSources && lastSearchSources.length > 0) {
+          result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join('、')})`;
+        } else {
+          result += "\n\n(🔍 網路搜尋補充資料)";
+        }
       } else {
-        result += "\n\n(🔍 網路搜尋補充資料)";
+        // PDF 搜尋模式，不加網路搜尋標籤
+        result += "\n\n(📖 已查閱產品手冊)";
       }
 
       // v29.5.85: Append Token Cost for Manual Web Search
