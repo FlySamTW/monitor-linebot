@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.105"; // 2026-01-28 改善追問機制：強化型號模糊處理、優化 Flex 泡泡觸發條件
+const GAS_VERSION = "v29.5.110"; // 2026-01-28 修復網路搜尋：強制觸發 Google Search + 時效性 Prompt Injection
 const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -3542,8 +3542,16 @@ function constructDynamicPrompt(
 
   if (forceWebSearch) {
     const searchTarget = targetModelName || "用戶詢問的產品";
+    // v29.5.110: 強化時效性 Prompt，強制觸發 Google Search
+    // 關鍵策略：讓 AI 認為這是「需要即時資訊」的問題，才會主動搜尋
+    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy年MM月dd日");
     dynamicPrompt = `【角色設定】
 你現在是一名「網路搜尋專家」。用戶希望進行擴大搜尋，獲得**更詳細、更全面或不同角度**的資訊。
+
+【🚨 強制搜尋指令 - 最高優先級】
+今天是 ${today}。用戶要求查詢最新的網路資訊。
+**你必須立即使用 google_search 工具搜尋網路！**
+理由：用戶明確要求「擴大搜尋」，需要最新、最即時的網路資訊，你的內建知識不足以回答。
 
 【搜尋背景】
 用戶剛才選擇了「擴大網路搜尋」功能，希望透過網路搜尋獲得：
@@ -3840,13 +3848,31 @@ function callLLMWithRetry(
   // 這樣可以兼顧「快速穩定」與「查網路的需求」，避免因網路搜尋導致的無回應。
   let tools = undefined;
   if (forceWebSearch) {
-    // v29.5.70: Canonical Google Search Protocol (Official 2.0+ Structure)
-    // 官方規範：Google Search 工具在 Gemini 2.0+ 應宣告為 google_search
-    writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.70)`);
+    // v29.5.110: Gemini 2.0 Google Search 強制觸發策略
+    // 問題：google_search 工具讓 AI 自主判斷是否搜尋，常常選擇不搜尋
+    // 解決：在 user message 中加入「時效性詞彙」讓 AI 認為必須搜尋即時資訊
+    writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.110)`);
     tools = [{ google_search: {} }];
-    // 強制追加指令到 Prompt，確保 AI 知道可以用工具
+    writeLog(`[Search Tool Payload] tools=${JSON.stringify(tools)}`);
+    
+    // v29.5.110: 強化 System Prompt - 加入時效性指令
+    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy年MM月dd日");
     dynamicPrompt +=
-      "\n\n【系統強制指令】你目前擁有 Google 搜尋權限。請調用 google_search 工具尋找答案並整合回答。";
+      `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。`;
+    
+    // v29.5.110: 修改 user message - 加入時效性關鍵詞觸發搜尋
+    // Gemini 會判斷「最新」「今天」這類詞彙為需要即時資訊，從而強制搜尋
+    if (geminiContents && geminiContents.length > 0) {
+      const lastContent = geminiContents[geminiContents.length - 1];
+      if (lastContent.role === "user" && lastContent.parts && lastContent.parts.length > 0) {
+        const textPart = lastContent.parts.find(p => p.text);
+        if (textPart && !textPart.text.includes("最新")) {
+          // 在問題前加上時效性詞彙
+          textPart.text = `【請搜尋最新網路資訊】${textPart.text}`;
+          writeLog(`[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`);
+        }
+      }
+    }
   } else if (attachPDFs && !imageBlob) {
     // Pass 1: 預設禁用，以防 Timeout
     // 但如果用戶想要網路來源，Prompt 會引導輸出 [AUTO_SEARCH_WEB]
@@ -4182,11 +4208,44 @@ function callLLMWithRetry(
             const firstPart = candidates[0].content.parts[0];
             let text = (firstPart.text || "").trim();
 
-            // v29.5.72: Exhaustive Grounding and Tool Call Detection
+            // v29.5.108: Exhaustive Grounding and Tool Call Detection
             // 當啟用工具時，即使 text 為空，只要有任何工具調用、Grounding 或正常結算信號就算成功
             const grounding = candidates[0].groundingMetadata;
             const finishReason = candidates[0].finishReason;
             const hasToolCalls = firstPart && firstPart.functionCall;
+            
+            // v29.5.109: 完整記錄 Grounding Metadata (Web Search 結果)
+            if (grounding) {
+              // 記錄完整的 grounding 物件（限制長度避免過大）
+              const groundingKeys = Object.keys(grounding);
+              writeLog(`[Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: ${groundingKeys.join(', ')}`);
+              
+              if (grounding.webSearchQueries && grounding.webSearchQueries.length > 0) {
+                writeLog(`[Grounding] 搜尋查詢: ${JSON.stringify(grounding.webSearchQueries)}`);
+              } else {
+                writeLog(`[Grounding] webSearchQueries 不存在或為空`);
+              }
+              
+              if (grounding.groundingChunks && grounding.groundingChunks.length > 0) {
+                writeLog(`[Grounding] 來源數量: ${grounding.groundingChunks.length}`);
+                grounding.groundingChunks.slice(0, 3).forEach((chunk, i) => {
+                  if (chunk.web) writeLog(`[Grounding] 來源 ${i+1}: ${chunk.web.title || 'N/A'} - ${chunk.web.uri || 'N/A'}`);
+                });
+              } else {
+                writeLog(`[Grounding] groundingChunks 不存在或為空`);
+              }
+              
+              if (grounding.searchEntryPoint) {
+                writeLog(`[Grounding] 有 searchEntryPoint (搜尋建議 Widget)`);
+              }
+              
+              // 記錄 AI 回應文字 (Web Search 結果)
+              if (text.length > 0) {
+                writeLog(`[Grounding] AI 搜尋回應: ${text}`);
+              }
+            } else if (forceWebSearch) {
+              writeLog(`[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`);
+            }
 
             if (grounding && text.length === 0) {
               const hasEntryPoint = !!grounding.searchEntryPoint;
@@ -5103,11 +5162,20 @@ function handleMessage(event) {
       }
 
       if (rawResponse) {
+        // 🔥 v29.5.107: 完整記錄 AI 原始回應
+        writeLog(`[AI Raw Response] ${rawResponse}`);
+        
         let finalText = formatForLineMobile(rawResponse);
         let replyText = finalText;
 
         // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
         let aiRequestedPdfSearch = false;
+
+        // 🔥 v29.5.106: 詳細 LOG - 檢測暗號
+        const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
+        const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
+        const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
+        writeLog(`[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`);
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
         // v27.9.48 fix: 增加對 hallucination (如 [.setAuto_search_pdf()]) 的容錯
@@ -5397,12 +5465,16 @@ function handleMessage(event) {
           }
         }
 
+        // 🔥 v29.5.106: 詳細 LOG - 進入主要判斷邏輯
+        writeLog(`[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`);
+
         // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
         if (hasExplicitTrigger) {
           // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
           // 這裡維持原本邏輯 (可能後續會走 Auto Search Web)
+          writeLog(`[Flow] hasExplicitTrigger=true，進入 PDF 觸發邏輯`);
         } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
-          writeLog("[Auto Web] Fast Mode 觸發 [AUTO_SEARCH_WEB] -> Pass 2");
+          writeLog("[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋");
 
           // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
           const pass1Usage =
@@ -6315,6 +6387,12 @@ function handleMessage(event) {
             ],
           };
         }
+
+        // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
+        const replyFull = Array.isArray(replyText) 
+          ? `[多泡泡回覆 ${replyText.length}則] ` + replyText.join(' ||| ')
+          : (replyText || '');
+        writeLog(`[Final Reply] 即將回覆: ${replyFull.replace(/\n/g, ' ')}`);
 
         replyMessage(replyToken, replyText, responseOptions);
         // v25.0.2 修復：補上缺失的 user 訊息記錄
@@ -8652,13 +8730,13 @@ function replyMessage(tk, txt, options = {}) {
     );
 
     const code = response.getResponseCode();
-    // v29.3.50: Fix txt.substring error when txt is Flex Message (object)
-    const logPreview =
+    // v29.5.109: 完整記錄 LINE 回覆內容
+    const logFull =
       typeof txt === "string"
-        ? txt.substring(0, 50)
-        : txt.altText || "[Flex Message]";
+        ? txt.replace(/\n/g, ' ')
+        : (txt.altText || "[Flex Message]");
     if (code === 200) {
-      writeLog(`[Reply] ✅ LINE 回覆成功 (${logPreview}...)`);
+      writeLog(`[Reply] ✅ LINE 回覆成功: ${logFull}`);
     } else {
       const errorBody = response.getContentText();
       writeLog(`[Reply] ❌ LINE API 錯誤 ${code}: ${errorBody}`);
