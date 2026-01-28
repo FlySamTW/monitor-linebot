@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.111"; // 2026-01-28 修復對話記憶：網路搜尋後保存原始問題而非指令文字
+const GAS_VERSION = "v29.5.112"; // 2026-01-28 顯示網路搜尋來源 + 話題延續判斷
 const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -2256,6 +2256,9 @@ const DEBUG_SHOW_TOKENS =
 // 最後一次 API 呼叫的 Token 資訊 (用於測試模式顯示)
 let lastTokenUsage = null;
 
+// v29.5.112: 最後一次網路搜尋的來源列表 (用於顯示在回覆中)
+let lastSearchSources = null;
+
 /**
  * 從型號或關鍵字提取 LS 編號，產生三星官網搜尋連結
  * 例：G80SD -> LS32DG802SCXZW -> https://www.samsung.com/tw/search/?searchvalue=LS32DG802SCXZW
@@ -3632,10 +3635,20 @@ function constructDynamicPrompt(
   if (!kbFiles.length && !imageBlob && !forceWebSearch) {
     // Phase 1: 極速模式 (Fast Mode)
     // v29.5.105: 強化型號追問機制
+    // v29.5.112: 加入話題延續 vs 新話題判斷
     dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。
 【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。
 
-【🚨 型號追問機制 (最高優先級)】
+【🚨 話題延續判斷 (v29.5.112 - 最高優先級)】
+當用戶說「那XXX呢」、「XXX的呢」、「換成XXX」等**追問句式**時：
+1. **必須先分析上一輪的話題**：用戶之前在討論什麼主題（如「線材版本」、「規格」、「設定方法」）？
+2. **延續話題**：若用戶換了型號但用追問句式，應理解為「新型號 + 上一輪話題」
+   - 例：上一題「S27C900PAC 的線材版本」→ 用戶問「那 M8 呢」→ 應回答「M8 的線材版本」
+   - 例：上一題「G5 怎麼設定 144Hz」→ 用戶問「G8 的呢」→ 應回答「G8 怎麼設定 144Hz」
+3. **新話題判斷**：若用戶提出**完全不同的問題**（如從「線材」跳到「價格」或「怎麼設定 HDR」），則視為新話題，可忘記之前內容
+4. **追問句式清單**：「那...呢」「...的呢」「換成...」「改成...」「...也是嗎」「...一樣嗎」
+
+【🚨 型號追問機制】
 當用戶使用「模糊別稱」(如 G5、G8、M7、M8) 詢問「操作/設定/故障」類問題時：
 1. **必須先檢查** Context 中該別稱是否包含多個實體型號 (看「請優先引導用戶確認型號」提示)
 2. **若有多款型號**：必須先列出所有型號讓用戶選擇，格式如下：
@@ -4214,6 +4227,9 @@ function callLLMWithRetry(
             const finishReason = candidates[0].finishReason;
             const hasToolCalls = firstPart && firstPart.functionCall;
             
+            // v29.5.112: 重置搜尋來源 (每次 API 呼叫前清除)
+            lastSearchSources = null;
+            
             // v29.5.109: 完整記錄 Grounding Metadata (Web Search 結果)
             if (grounding) {
               // 記錄完整的 grounding 物件（限制長度避免過大）
@@ -4226,11 +4242,61 @@ function callLLMWithRetry(
                 writeLog(`[Grounding] webSearchQueries 不存在或為空`);
               }
               
+              // v29.5.112: 提取搜尋來源並保存到全域變數
               if (grounding.groundingChunks && grounding.groundingChunks.length > 0) {
                 writeLog(`[Grounding] 來源數量: ${grounding.groundingChunks.length}`);
-                grounding.groundingChunks.slice(0, 3).forEach((chunk, i) => {
-                  if (chunk.web) writeLog(`[Grounding] 來源 ${i+1}: ${chunk.web.title || 'N/A'} - ${chunk.web.uri || 'N/A'}`);
+                
+                // 提取所有來源的域名
+                const sourceSet = new Set();
+                grounding.groundingChunks.forEach((chunk, i) => {
+                  if (chunk.web && chunk.web.uri) {
+                    // 從 URI 提取域名
+                    try {
+                      // URI 可能是 redirect URL，嘗試提取真實域名
+                      const uri = chunk.web.uri;
+                      let domain = '';
+                      
+                      // 優先使用 title 中的域名資訊
+                      if (chunk.web.title) {
+                        domain = chunk.web.title.toLowerCase();
+                      }
+                      
+                      // 如果 title 不像域名，嘗試從 URI 解析
+                      if (!domain.includes('.') || domain.length > 50) {
+                        // 嘗試解析 URI
+                        const urlMatch = uri.match(/https?:\/\/([^\/]+)/);
+                        if (urlMatch) {
+                          domain = urlMatch[1].replace('www.', '');
+                        }
+                      }
+                      
+                      if (domain && domain.length < 50) {
+                        sourceSet.add(domain);
+                      }
+                    } catch (e) {
+                      // 解析失敗，跳過
+                    }
+                    
+                    if (i < 3) {
+                      writeLog(`[Grounding] 來源 ${i+1}: ${chunk.web.title || 'N/A'} - ${chunk.web.uri || 'N/A'}`);
+                    }
+                  }
                 });
+                
+                // 轉換為陣列並排序 (samsung.com 優先)
+                let sources = Array.from(sourceSet);
+                sources.sort((a, b) => {
+                  // samsung.com 或 samsung.com.tw 優先
+                  const aIsSamsung = a.includes('samsung');
+                  const bIsSamsung = b.includes('samsung');
+                  if (aIsSamsung && !bIsSamsung) return -1;
+                  if (!aIsSamsung && bIsSamsung) return 1;
+                  return 0;
+                });
+                
+                // 限制最多顯示 5 個來源
+                lastSearchSources = sources.slice(0, 5);
+                writeLog(`[Grounding] 提取來源: ${lastSearchSources.join(', ')}`);
               } else {
                 writeLog(`[Grounding] groundingChunks 不存在或為空`);
               }
@@ -6679,8 +6745,14 @@ function handleCommand(c, u, cid) {
     }
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
-      let result =
-        formatForLineMobile(searchResponse) + "\n\n(🔍 網路搜尋補充資料)";
+      let result = formatForLineMobile(searchResponse);
+      
+      // v29.5.112: 加入網路搜尋來源顯示
+      if (lastSearchSources && lastSearchSources.length > 0) {
+        result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join('、')})`;
+      } else {
+        result += "\n\n(🔍 網路搜尋補充資料)";
+      }
 
       // v29.5.85: Append Token Cost for Manual Web Search
       if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
