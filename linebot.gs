@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.110"; // 2026-01-28 修復網路搜尋：強制觸發 Google Search + 時效性 Prompt Injection
+const GAS_VERSION = "v29.5.111"; // 2026-01-28 修復對話記憶：網路搜尋後保存原始問題而非指令文字
 const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -6686,13 +6686,17 @@ function handleCommand(c, u, cid) {
       if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
         result += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
       }
-      // v29.3.30: 更新歷史紀錄，將搜尋結果成對寫入
+      // v29.5.111: 修復對話記憶問題
+      // 🔥 關鍵修正：保存原始問題 (userMsg) 而非指令文字 (cmd)
+      // 這樣用戶問「那 M8 呢」時，AI 能看到之前在討論什麼主題（如「線材」）
+      // 而不是看到「不滿意這回答請繼續擴大搜尋」這種無意義的上下文
       updateHistorySheetAndCache(
         cid,
         history,
-        { role: "user", content: cmd },
+        { role: "user", content: userMsg },  // v29.5.111: 改為保存原始問題
         { role: "assistant", content: searchResponse },
       );
+      writeLog(`[History Fix v29.5.111] 保存原始問題至歷史: ${userMsg.substring(0, 50)}...`);
       return result;
     } else {
       return "抱歉，網路搜尋連線逾時，請稍後再試。";
