@@ -12,7 +12,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.113"; // 2026-01-28 話題延續：改為語意判斷，不硬編碼句式
+const GAS_VERSION = "v29.5.114"; // 2026-01-28 話題延續：改為語意判斷，不硬編碼句式
 const BUILD_TIMESTAMP = "2026-01-27 22:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -3545,13 +3545,35 @@ function constructDynamicPrompt(
 
   if (forceWebSearch) {
     const searchTarget = targetModelName || "用戶詢問的產品";
-    // v29.5.110: 強化時效性 Prompt，強制觸發 Google Search
-    // 關鍵策略：讓 AI 認為這是「需要即時資訊」的問題，才會主動搜尋
+    // v29.5.114: 強化網路搜尋 - 禁止重複上一輪回答，必須找「新增價值」的資訊
     const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy年MM月dd日");
+    
+    // 從對話歷史提取上一次 AI 的回答，用於防止重複
+    let previousAnswer = "";
+    if (messages && messages.length > 0) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "model" || messages[i].role === "assistant") {
+          previousAnswer = messages[i].content || "";
+          if (previousAnswer.length > 200) previousAnswer = previousAnswer.substring(0, 200) + "...";
+          break;
+        }
+      }
+    }
+    
     dynamicPrompt = `【角色設定】
-你現在是一名「網路搜尋專家」。用戶希望進行擴大搜尋，獲得**更詳細、更全面或不同角度**的資訊。
+你現在是一名「網路搜尋專家」。用戶對之前的回答不滿意，希望獲得**不同於上次、更有價值**的資訊。
 
-【🚨 強制搜尋指令 - 最高優先級】
+【🚨 最高優先級：禁止重複！】
+你上一次的回答是：
+「${previousAnswer}」
+
+用戶已經看過這些內容了，現在希望你搜尋**網路上的新資訊**。
+**你必須提供「上次沒說過的」新內容！**
+
+如果搜尋後發現網路上也沒有更多資訊，你必須誠實說：
+「我搜尋了網路，但這方面的確沒有更詳細的官方說明。建議你可以問問 Sam，他可能有第一手資訊！」
+
+【🚨 強制搜尋指令】
 今天是 ${today}。用戶要求查詢最新的網路資訊。
 **你必須立即使用 google_search 工具搜尋網路！**
 理由：用戶明確要求「擴大搜尋」，需要最新、最即時的網路資訊，你的內建知識不足以回答。
