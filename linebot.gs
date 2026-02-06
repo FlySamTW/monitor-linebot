@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.121"; // 2026-02-07 移除 Rich Menu + 修復泡泡內部代號 + PDF 回答遏輯
-const BUILD_TIMESTAMP = "2026-02-07 01:30";
+const GAS_VERSION = "v29.5.122"; // 2026-02-07 修復 PDF Index Check 只看第一個型號就放棄的 bug
+const BUILD_TIMESTAMP = "2026-02-07 02:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -3461,53 +3461,64 @@ function getRelevantKBFiles(
   // v29.5.49: Assign primaryModel HERE (before filtering logic uses it)
   primaryModel = exactModels.length > 0 ? exactModels[0] : null;
 
-  // v29.5.53: PDF Model Index Check - 確認型號是否有專屬 PDF
+  // v29.5.122: PDF Model Index Check - 遍歷所有 exactModels 找有 PDF 的型號
+  // 修復：舊版只檢查 exactModels[0]（如 G90XF 內部代號），找不到就放棄
+  // 新版：遍歷所有候選型號，找到第一個有 PDF 的作為 primaryModel
   let hasDedicatedPdf = false;
-  if (primaryModel) {
-    try {
-      const pdfIndexJson =
-        PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
-      const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
-      hasDedicatedPdf = pdfModelIndex.some((m) => {
-        // v29.5.59: Strict Dedicated Check
-        // 如果 m 是 S-model (長度足夠且 S 開頭)，則允許子字串匹配 (例如 S27FG502 匹配 S27FG502SC)
+  try {
+    const pdfIndexJson =
+      PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+    const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+
+    // 輔助函式：檢查某個型號是否在 PDF Index 中有對應
+    function checkModelInPdfIndex(modelToCheck) {
+      return pdfModelIndex.some((m) => {
         if (m.startsWith("S") && m.length >= 7) {
-          // v29.5.77: Size-Agnostic Match (跨尺寸匹配)
-          // 將 S32DG502EC 簡化為 DG502EC，將 S27DG502EC 簡化為 DG502EC，然後比對
-          // 邏輯：移除前3碼 (S + 2碼數字)，比對後續核心型號
-          const corePrimary = primaryModel.replace(/^S\d{2}/, "");
+          const coreCheck = modelToCheck.replace(/^S\d{2}/, "");
           const coreIndex = m.replace(/^S\d{2}/, "");
-          // 如果核心型號相同 (DG502EC === DG502EC)，視為命中
           if (
-            coreIndex.includes(corePrimary) ||
-            corePrimary.includes(coreIndex)
+            coreIndex.includes(coreCheck) ||
+            coreCheck.includes(coreIndex)
           ) {
-            // writeLog(`[KB Select] 🎯 跨尺寸命中: ${primaryModel} (Core: ${corePrimary}) matches ${m}`);
             return true;
           }
-          return m.includes(primaryModel) || primaryModel.includes(m);
+          return m.includes(modelToCheck) || modelToCheck.includes(m);
         }
-        // 如果是像 G5 這種別稱，必須與鎖定的型號完全一致才算「專屬 PDF」
-        // (這能防止 S27AG500NC 誤判含有 G5 而載入手冊)
-        return m === primaryModel;
+        return m === modelToCheck;
       });
-      if (!hasDedicatedPdf) {
-        writeLog(
-          `[KB Select] ⚠️ 型號 ${primaryModel} 無專屬 PDF (Index Match Failed)`,
-        );
-      }
-    } catch (e) {
-      // 靜默失敗
     }
+
+    // 先檢查 primaryModel（第一個）
+    if (primaryModel && checkModelInPdfIndex(primaryModel)) {
+      hasDedicatedPdf = true;
+    } else {
+      // primaryModel 無 PDF → 遍歷其他 exactModels，找有 PDF 的替代
+      for (let i = 0; i < exactModels.length; i++) {
+        if (exactModels[i] !== primaryModel && checkModelInPdfIndex(exactModels[i])) {
+          writeLog(
+            `[KB Select] 🔄 型號 ${primaryModel} 無 PDF，改用 ${exactModels[i]} 作為 primaryModel`,
+          );
+          primaryModel = exactModels[i];
+          hasDedicatedPdf = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasDedicatedPdf && primaryModel) {
+      writeLog(
+        `[KB Select] ⚠️ 所有型號均無專屬 PDF: ${exactModels.join(", ")}`,
+      );
+    }
+  } catch (e) {
+    // 靜默失敗
   }
 
-  // v29.5.57: 關鍵修復 - 若 primaryModel 沒有專屬 PDF，不載入任何 PDF
-  // 避免載入錯誤的 Alias PDF 導致 API 空回應
+  // v29.5.57: 若所有型號都沒有專屬 PDF，不載入任何 PDF
   if (!hasDedicatedPdf && primaryModel) {
     writeLog(
-      `[KB Select] 🚫 型號 ${primaryModel} 無專屬 PDF，跳過 PDF 載入，改用規格庫回答`,
+      `[KB Select] 🚫 所有型號均無專屬 PDF，跳過載入，改用規格庫回答`,
     );
-    // 直接返回空結果，不載入任何 PDF
     return {
       files: [],
       exactModels: exactModels,
