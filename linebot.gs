@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.119"; // 2026-02-07 Rich Menu 圖片修復
-const BUILD_TIMESTAMP = "2026-02-07 00:30";
+const GAS_VERSION = "v29.5.120"; // 2026-02-07 修復 #型號: 和 #查手冊 PDF 未掛載問題
+const BUILD_TIMESTAMP = "2026-02-07 01:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5173,9 +5173,9 @@ function handleMessage(event) {
     // ══════════════════════════════════════════════════════════
     if (msg.startsWith("#型號:")) {
       const selectedModel = msg.replace("#型號:", "").trim().toUpperCase();
-      writeLog(`[Model Select v29.5.118] 🎯 用戶選擇型號: ${selectedModel}`);
+      writeLog(`[Model Select v29.5.120] 🎯 用戶選擇型號: ${selectedModel}`);
 
-      // 注入型號
+      // 注入型號到 Cache
       cache.put(`${userId}:direct_search_models`, JSON.stringify([selectedModel]), 300);
 
       // 設置 PDF Mode
@@ -5187,7 +5187,23 @@ function handleMessage(event) {
       const queryText = savedTopic ? `${savedTopic} (型號: ${selectedModel})` : selectedModel;
 
       showLoadingAnimation(userId, 60);
-      writeLog(`[Model Select v29.5.118] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`);
+      writeLog(`[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`);
+
+      // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
+      const kbList = JSON.parse(
+        PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]"
+      );
+      const searchMsg = { role: "user", content: queryText };
+      const kbResult = getRelevantKBFiles(
+        [searchMsg],
+        kbList,
+        userId,
+        contextId,
+        true,  // forceCurrentOnly
+      );
+      const relevantFiles = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+      const primaryModel = Array.isArray(kbResult) ? null : (kbResult.primaryModel || null);
+      writeLog(`[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`);
 
       const history = getHistoryFromCacheOrSheet(contextId);
       const userMsgObj = { role: "user", content: queryText };
@@ -5195,19 +5211,34 @@ function handleMessage(event) {
       const response = callLLMWithRetry(
         queryText,
         [...history, userMsgObj],
-        [],
+        relevantFiles,  // ← 實際掛載 PDF
         true,   // attachPDFs
         null,
         false,
         userId,
         false,
-        selectedModel,
+        primaryModel || selectedModel,
       );
 
       if (response) {
         let finalText = formatForLineMobile(response);
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+
+        // v29.5.120: 加入 PDF 來源標註
+        if (relevantFiles.length > 0) {
+          finalText = finalText.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
+          const pdfNames = relevantFiles
+            .filter(f => f.mimeType === "application/pdf")
+            .map(f => f.name.replace(".pdf", ""));
+          if (pdfNames.length > 0) {
+            const productName = getPdfProductName(pdfNames[0]);
+            if (productName) {
+              finalText += `\n\n[來源: ${productName} 使用手冊]`;
+            }
+          }
+        }
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -5243,19 +5274,29 @@ function handleMessage(event) {
     // v29.5.118: 攔截 #查手冊 / #搜尋網路（Quick Reply 按鈕）
     // ══════════════════════════════════════════════════════════
     if (msg === "#查手冊") {
-      writeLog(`[Quick Reply v29.5.118] 用戶要求查手冊`);
-      // 設置 PDF Mode，讓流程繼續往下進入 PDF 載入邏輯
+      writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
+      // 設置 PDF Mode
       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
       cache.put(pdfModeKey, "true", 300);
 
-      // 從歷史找出上一個問題
+      // 從歷史找出上一個真正的問題（跳過 #型號:, #查手冊, 純型號 等）
       const history = getHistoryFromCacheOrSheet(contextId);
       let lastQuestion = "";
+      const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
       for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].role === "user") {
           let content = history[i].content || "";
           content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-          if (content.length > 5 && !content.startsWith("#") && !content.includes("不滿意")) {
+          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜尋網路、純型號、泡泡選擇等
+          if (
+            content.length > 5 &&
+            !content.startsWith("#") &&
+            !content.includes("不滿意") &&
+            !content.includes("繼續問") &&
+            !content.match(/^\d$/) &&
+            !MODEL_ONLY_RE.test(content) &&
+            !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
+          ) {
             lastQuestion = content;
             break;
           }
@@ -5268,24 +5309,56 @@ function handleMessage(event) {
       }
 
       showLoadingAnimation(userId, 60);
-      writeLog(`[Quick Reply v29.5.118] 查手冊，問題: ${lastQuestion.substring(0, 60)}`);
+      writeLog(`[Quick Reply v29.5.120] 查手冊，問題: ${lastQuestion.substring(0, 60)}`);
+
+      // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
+      const kbList = JSON.parse(
+        PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]"
+      );
+      const searchMsg = { role: "user", content: lastQuestion };
+      const kbResult = getRelevantKBFiles(
+        [...history, searchMsg],
+        kbList,
+        userId,
+        contextId,
+        false,
+      );
+      const relevantFiles = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+      const primaryModel = Array.isArray(kbResult) ? null : (kbResult.primaryModel || null);
+      writeLog(`[Quick Reply v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`);
 
       const userMsgObj = { role: "user", content: lastQuestion };
       const response = callLLMWithRetry(
         lastQuestion,
         [...history, userMsgObj],
-        [],
+        relevantFiles,  // ← 實際掛載 PDF
         true,   // attachPDFs
         null,
         false,
         userId,
         false,
+        primaryModel,
       );
 
       if (response) {
         let finalText = formatForLineMobile(response);
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+
+        // v29.5.120: 加入 PDF 來源標註
+        if (relevantFiles.length > 0) {
+          finalText = finalText.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
+          const pdfNames = relevantFiles
+            .filter(f => f.mimeType === "application/pdf")
+            .map(f => f.name.replace(".pdf", ""));
+          if (pdfNames.length > 0) {
+            const productName = getPdfProductName(pdfNames[0]);
+            if (productName) {
+              finalText += `\n\n[來源: ${productName} 使用手冊]`;
+            }
+          }
+        }
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
