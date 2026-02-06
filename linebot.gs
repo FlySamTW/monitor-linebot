@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.117"; // 2026-02-06 修復型號泡泡循環 (v2)：支持直接型號輸入進PDF模式
-const BUILD_TIMESTAMP = "2026-02-06 18:30";
+const GAS_VERSION = "v29.5.118"; // 2026-02-06 Rich Menu + 統一 Quick Reply 三按鈕 + 泡泡攔截修復
+const BUILD_TIMESTAMP = "2026-02-06 19:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5032,19 +5032,14 @@ function handleMessage(event) {
           const footer = `\n\n[來源: 使用者提供長文] [費用: NT$${costStr}]`;
           replyText += footer;
 
-          // v29.3.36: 設定預設 Quick Reply (不滿意按鈕) - 使用 explicit options
+          // v29.5.118: 統一三按鈕 Quick Reply
           let responseOptions = {};
-          if (!msg.startsWith("/") && isDualBubbleComplete !== undefined) {
+          if (!msg.startsWith("/")) {
             responseOptions.quickReply = {
               items: [
-                {
-                  type: "action",
-                  action: {
-                    type: "message",
-                    label: "對以上回答不滿意",
-                    text: "不滿意這回答請繼續擴大搜尋",
-                  },
-                },
+                { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+                { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
+                { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
               ],
             };
           }
@@ -5102,11 +5097,7 @@ function handleMessage(event) {
       return;
     }
 
-    // v29.3.39: 攔截「不滿意...擴大搜尋」按鈕，強制觸發網路搜尋 (Pass 2)
-    // 用戶明確指出：這顆按鈕是「網路搜尋」，不是 PDF 搜尋，也不是反問
-    // v29.5.22: 修復匹配問題 - "不太滿意" 也要能匹配
-    // v29.5.54: 修復匹配問題 - 支援「網路搜尋」和「擴大搜尋」兩種觸發詞
-    // v29.5.55: 分離 Web Search 和 PDF Search 觸發邏輯
+    // v29.5.118: 攔截舊版「不滿意...」按鈕（向下相容）
     const isWebSearchRequest =
       (msg.includes("不滿意") || msg.includes("不太滿意")) &&
       (msg.includes("擴大搜尋") ||
@@ -5118,7 +5109,8 @@ function handleMessage(event) {
       (msg.includes("不滿意") || msg.includes("不太滿意")) &&
       (msg.includes("查詢使用手冊") ||
         msg.includes("查閱產品手冊") ||
-        msg.includes("繼續查詢使用手冊"));
+        msg.includes("繼續查詢使用手冊") ||
+        msg.includes("查詢手冊"));
 
     if (isWebSearchRequest) {
       writeLog(`[Force Web] 收到網路搜尋請求，強制切換至網路搜尋模式`);
@@ -5173,6 +5165,167 @@ function handleMessage(event) {
     // 如果用戶之前被問了「請選擇型號」，這裡處理他的回覆
     if (handlePdfSelectionReply(msg, userId, replyToken, contextId)) {
       return; // 已處理完成
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // v29.5.118: 攔截 #型號:XXX（V3 泡泡選擇）
+    // 用戶點泡泡 → LINE 發送 #型號:S27FG900XC → 直接進 Pass 1.5 PDF 模式
+    // ══════════════════════════════════════════════════════════
+    if (msg.startsWith("#型號:")) {
+      const selectedModel = msg.replace("#型號:", "").trim().toUpperCase();
+      writeLog(`[Model Select v29.5.118] 🎯 用戶選擇型號: ${selectedModel}`);
+
+      // 注入型號
+      cache.put(`${userId}:direct_search_models`, JSON.stringify([selectedModel]), 300);
+
+      // 設置 PDF Mode
+      const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+      cache.put(pdfModeKey, "true", 300);
+
+      // 取得保存的話題（用戶之前問的問題）
+      const savedTopic = cache.get(`${userId}:pending_topic`) || "";
+      const queryText = savedTopic ? `${savedTopic} (型號: ${selectedModel})` : selectedModel;
+
+      showLoadingAnimation(userId, 60);
+      writeLog(`[Model Select v29.5.118] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`);
+
+      const history = getHistoryFromCacheOrSheet(contextId);
+      const userMsgObj = { role: "user", content: queryText };
+
+      const response = callLLMWithRetry(
+        queryText,
+        [...history, userMsgObj],
+        [],
+        true,   // attachPDFs
+        null,
+        false,
+        userId,
+        false,
+        selectedModel,
+      );
+
+      if (response) {
+        let finalText = formatForLineMobile(response);
+        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+        finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+
+        let replyText = finalText;
+        if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+          replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+        }
+
+        // v29.5.118: 回覆附帶三按鈕 Quick Reply
+        const qrOptions = {
+          quickReply: {
+            items: [
+              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+              { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
+              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+            ],
+          },
+        };
+        replyMessage(replyToken, replyText, qrOptions);
+        writeLog(`[AI Reply] ${replyText}`);
+
+        const asstMsgObj = { role: "assistant", content: finalText };
+        updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+      } else {
+        replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+      }
+
+      cache.remove(`${userId}:pending_topic`);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // v29.5.118: 攔截 #查手冊 / #搜尋網路（Quick Reply 按鈕）
+    // ══════════════════════════════════════════════════════════
+    if (msg === "#查手冊") {
+      writeLog(`[Quick Reply v29.5.118] 用戶要求查手冊`);
+      // 設置 PDF Mode，讓流程繼續往下進入 PDF 載入邏輯
+      const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+      cache.put(pdfModeKey, "true", 300);
+
+      // 從歷史找出上一個問題
+      const history = getHistoryFromCacheOrSheet(contextId);
+      let lastQuestion = "";
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === "user") {
+          let content = history[i].content || "";
+          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+          if (content.length > 5 && !content.startsWith("#") && !content.includes("不滿意")) {
+            lastQuestion = content;
+            break;
+          }
+        }
+      }
+
+      if (!lastQuestion) {
+        replyMessage(replyToken, "請先問一個問題，我再幫你查手冊 📖");
+        return;
+      }
+
+      showLoadingAnimation(userId, 60);
+      writeLog(`[Quick Reply v29.5.118] 查手冊，問題: ${lastQuestion.substring(0, 60)}`);
+
+      const userMsgObj = { role: "user", content: lastQuestion };
+      const response = callLLMWithRetry(
+        lastQuestion,
+        [...history, userMsgObj],
+        [],
+        true,   // attachPDFs
+        null,
+        false,
+        userId,
+        false,
+      );
+
+      if (response) {
+        let finalText = formatForLineMobile(response);
+        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+        finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+
+        let replyText = finalText;
+        if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+          replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+        }
+
+        const qrOptions = {
+          quickReply: {
+            items: [
+              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+            ],
+          },
+        };
+        replyMessage(replyToken, replyText, qrOptions);
+        writeLog(`[AI Reply] ${replyText}`);
+
+        const asstMsgObj = { role: "assistant", content: finalText };
+        updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+        writeRecordDirectly(userId, "#查手冊", contextId, "user", "");
+        writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+      } else {
+        replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+      }
+      return;
+    }
+
+    if (msg === "#搜尋網路") {
+      writeLog(`[Quick Reply v29.5.118] 用戶要求搜尋網路`);
+      showLoadingAnimation(userId, 60);
+      const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+      const qrOptions = {
+        quickReply: {
+          items: [
+            { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+          ],
+        },
+      };
+      replyMessage(replyToken, cmdResult, qrOptions);
+      return;
     }
 
     // v29.5.116: 【關鍵修復】檢查「待執行 PDF 查詢」標記
@@ -6575,82 +6728,26 @@ function handleMessage(event) {
           }
         }
 
-        // v29.5.52: Dynamic Quick Reply Text based on Search Context
+        // v29.5.118: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
         let responseOptions = {};
-        if (!msg.startsWith("/") && replyText) {
-          // Determine Context
+        if (!msg.startsWith("/") && !msg.startsWith("#") && replyText) {
           const isWebSearchPhase =
-            replyText.includes("[來源: 網路搜尋]") ||
-            replyText.includes("🔍 網路搜尋補充資料");
-          const isPdfModePhase =
-            isInPdfMode ||
-            (replyText.includes("[來源:") && replyText.includes("手冊]"));
+            (typeof replyText === 'string' && (replyText.includes("[來源: 網路搜尋]") ||
+            replyText.includes("🔍 網路搜尋補充資料")));
 
-          let qrText = "對以上回答不滿意，請改搜尋網路資料";
-          let qrLabel = "對以上回答不滿意"; // Standardized Label
+          const qrItems = [];
+          // 第一個按鈕永遠是「繼續問」
+          qrItems.push({ type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } });
 
-          if (isWebSearchPhase) {
-            // 1. Web Phase -> Continue Web
-            qrText = "對以上答案不理想，換個關鍵字再搜";
-            qrLabel = "對以上回答不滿意";
-          } else if (isPdfModePhase) {
-            // 2. PDF Phase -> Go to Web
-            qrText = "手冊沒解答，改搜尋網路資料";
-            qrLabel = "對以上回答不滿意";
+          if (!isWebSearchPhase) {
+            // QA/PDF 階段：提供「查手冊」和「搜網路」
+            qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
+            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } });
           } else {
-            // 3. Fast Mode (Spec/QA)
-            // v29.5.64: 檢查該型號是否有專屬 PDF，沒有就不建議查手冊
-            let hasDedicatedPdf = false;
-            try {
-              const pdfIndexJson =
-                PropertiesService.getScriptProperties().getProperty(
-                  "PDF_MODEL_INDEX",
-                );
-              const pdfModelIndex = pdfIndexJson
-                ? JSON.parse(pdfIndexJson)
-                : [];
-              const lockedModel = cache.get(`${userId}:locked_model`);
-              if (lockedModel) {
-                hasDedicatedPdf = pdfModelIndex.some((m) => {
-                  // v29.5.59: Strict Dedicated Check
-                  if (m.startsWith("S") && m.length >= 7) {
-                    return m.includes(lockedModel) || lockedModel.includes(m);
-                  }
-                  return m === lockedModel;
-                });
-              }
-            } catch (e) {}
-
-            const intent = determineSearchIntent(msg);
-            if (
-              hasDedicatedPdf &&
-              (intent.headerText.includes("查閱產品手冊") ||
-                intent.headerText.includes("查詢規格"))
-            ) {
-              // 有 PDF，建議查手冊
-              qrText = "對以上回答不滿意，請繼續查詢手冊";
-              qrLabel = "對以上回答不滿意";
-            } else {
-              // 無 PDF 或一般問題 -> Go to Web
-              qrText = "對以上回答不滿意，請改搜尋網路資料";
-              qrLabel = "對以上回答不滿意";
-            }
+            // 網路搜尋階段：只剩「繼續問」（已是最後手段）
           }
 
-          responseOptions.quickReply = {
-            items: [
-              {
-                type: "action",
-                action: {
-                  type: "message",
-                  // v29.5.63: Force limit label to 20 chars but keep it same as text
-                  // v29.5.88: Ensure label is explicitly set and valid
-                  label: qrLabel,
-                  text: qrText,
-                },
-              },
-            ],
-          };
+          responseOptions.quickReply = { items: qrItems };
         }
 
         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
@@ -9722,7 +9819,7 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
   const displayModels = uniqueModels.slice(0, 10);
   const remainingCount = uniqueModels.length - displayModels.length;
 
-  // 建立型號按鈕 - 使用 primary 風格
+  // v29.5.118: 建立型號按鈕 - 回傳 #型號:MODEL 格式，讓 handleMessage 能攔截
   const buttons = displayModels.map((model, index) => {
     const label = `${model}`.substring(0, 20);
     return {
@@ -9730,11 +9827,11 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
       action: {
         type: "message",
         label: label,
-        text: `${model}`,
+        text: `#型號:${model}`,  // v29.5.118: 加前綴，避免觸發 DirectDeep
       },
       style: "primary",
-      color: "#4A90D9", // 清爲藍色
-      margin: "md", // v29.5.16: 增加間距
+      color: "#4A90D9",
+      margin: "md",
       height: "sm",
     };
   });
@@ -9932,4 +10029,160 @@ function checkPdfCost(userMsg) {
   }
 
   return { isHighCost: false, reason: "General Conversation" };
+}
+
+// ════════════════════════════════════════════════════════════════
+// v29.5.118: Rich Menu 設定
+// 在 GAS 編輯器選擇此函式並執行一次即可
+// ════════════════════════════════════════════════════════════════
+/**
+ * 建立並設定 Rich Menu（LINE 底部常駐選單）
+ * 手動執行一次即可（在 GAS 編輯器選擇 setupRichMenu → 執行）
+ */
+function setupRichMenu() {
+  const accessToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN").trim();
+  
+  // 1. 建立 Rich Menu 結構
+  const richMenu = {
+    size: { width: 2500, height: 843 },
+    selected: true,
+    name: "Samsung Monitor Bot Menu",
+    chatBarText: "📋 選單",
+    areas: [
+      {
+        bounds: { x: 0, y: 0, width: 1250, height: 843 },
+        action: { type: "message", text: "繼續問" },
+      },
+      {
+        bounds: { x: 1250, y: 0, width: 1250, height: 843 },
+        action: { type: "message", text: "#查手冊" },
+      },
+    ],
+  };
+
+  // 2. 呼叫 LINE API 建立 Rich Menu
+  const createRes = UrlFetchApp.fetch(
+    "https://api.line.me/v2/bot/richmenu",
+    {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + accessToken,
+      },
+      payload: JSON.stringify(richMenu),
+      muteHttpExceptions: true,
+    },
+  );
+
+  const richMenuId = JSON.parse(createRes.getContentText()).richMenuId;
+  if (!richMenuId) {
+    Logger.log("❌ 建立 Rich Menu 失敗: " + createRes.getContentText());
+    return;
+  }
+  Logger.log("✅ Rich Menu 建立成功: " + richMenuId);
+
+  // 3. 上傳圖片（使用程式碼繪製簡單圖片）
+  const imageBlob = createRichMenuImage_();
+  
+  const uploadRes = UrlFetchApp.fetch(
+    `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
+    {
+      method: "post",
+      headers: {
+        "Content-Type": "image/png",
+        Authorization: "Bearer " + accessToken,
+      },
+      payload: imageBlob,
+      muteHttpExceptions: true,
+    },
+  );
+  Logger.log("圖片上傳: " + uploadRes.getResponseCode());
+
+  // 4. 設為預設 Rich Menu（所有用戶都看得到）
+  const defaultRes = UrlFetchApp.fetch(
+    `https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`,
+    {
+      method: "post",
+      headers: {
+        Authorization: "Bearer " + accessToken,
+      },
+      muteHttpExceptions: true,
+    },
+  );
+  Logger.log("設為預設: " + defaultRes.getResponseCode());
+  Logger.log("🎉 Rich Menu 設定完成！所有用戶將看到底部選單");
+}
+
+/**
+ * 繪製 Rich Menu 圖片 (2500x843)
+ * 使用 Google Charts API 生成簡潔的雙格選單圖
+ */
+function createRichMenuImage_() {
+  // 使用 Google Charts API 生成圖片
+  const chartUrl = "https://chart.googleapis.com/chart?" + 
+    "cht=p&chs=2500x843&chd=t:1,1&chl=|" +
+    "&chco=4A90D9,FF6B35" +
+    "&chf=bg,s,FFFFFF";
+  
+  // 改用簡單方案：用 Slides API 或直接建立 PNG
+  // 最簡方案：用外部圖片 URL
+  // 這裡用一個 1x1 像素的佔位圖片，用戶可以之後更換
+  
+  // 建立 2500x843 的簡單 PNG 圖片
+  const width = 2500;
+  const height = 843;
+  
+  // 使用 Google Apps Script 的繪圖能力較有限
+  // 建議手動上傳精美圖片。這裡先用基本方案讓功能跑起來
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <rect width="${width}" height="${height}" fill="#F8F9FA"/>
+    <line x1="1250" y1="0" x2="1250" y2="${height}" stroke="#E0E0E0" stroke-width="3"/>
+    <rect x="50" y="50" width="1150" height="743" rx="30" fill="#4A90D9" opacity="0.1"/>
+    <rect x="1300" y="50" width="1150" height="743" rx="30" fill="#FF6B35" opacity="0.1"/>
+    <text x="625" y="350" text-anchor="middle" font-family="Arial" font-size="100" fill="#4A90D9" font-weight="bold">💬</text>
+    <text x="625" y="500" text-anchor="middle" font-family="Arial" font-size="72" fill="#333333" font-weight="bold">QA 快答</text>
+    <text x="625" y="600" text-anchor="middle" font-family="Arial" font-size="48" fill="#888888">常見問題秒回</text>
+    <text x="1875" y="350" text-anchor="middle" font-family="Arial" font-size="100" fill="#FF6B35" font-weight="bold">📖</text>
+    <text x="1875" y="500" text-anchor="middle" font-family="Arial" font-size="72" fill="#333333" font-weight="bold">查官方手冊</text>
+    <text x="1875" y="600" text-anchor="middle" font-family="Arial" font-size="48" fill="#888888">操作步驟詳解(較慢)</text>
+  </svg>`;
+  
+  // 注意: LINE Rich Menu 圖片必須是 JPEG 或 PNG
+  // SVG 無法直接使用，需要轉換。這裡暫時用佔位方案
+  // 建議用戶準備 2500x843 的 PNG/JPEG 圖片後手動上傳
+  
+  // 暫時方案：建立一個簡單的填滿色塊的圖片
+  const charts = Charts.newAreaChart()
+    .setDimensions(width, height)
+    .build();
+  
+  // 最簡方案：回傳一個基本的圖片 blob
+  // 用 Google Slides 建立精美圖片需要額外設定
+  // 這裡用最小可行方案
+  try {
+    // 嘗試用 Google Charts 建立簡單圖表作為底圖
+    const url = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+      type: 'bar',
+      data: {
+        labels: ['QA 快答 💬', '查官方手冊 📖'],
+        datasets: [{
+          data: [1, 1],
+          backgroundColor: ['#4A90D9', '#FF6B35'],
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+        },
+        indexAxis: 'y',
+      }
+    }))}&w=${width}&h=${height}&f=png`;
+    
+    return UrlFetchApp.fetch(url).getBlob().setContentType("image/png");
+  } catch (e) {
+    Logger.log("圖片生成失敗，請手動上傳: " + e.message);
+    // 回傳一個 1x1 的 PNG 作為佔位
+    const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    return Utilities.newBlob(Utilities.base64Decode(base64), "image/png", "richmenu.png");
+  }
 }
