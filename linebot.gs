@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.122"; // 2026-02-07 修復 PDF Index Check 只看第一個型號就放棄的 bug
-const BUILD_TIMESTAMP = "2026-02-07 02:20";
+const GAS_VERSION = "v29.5.123"; // 2026-02-07 DirectDeep 有 PDF 直接掛載 + 無 PDF 隱藏查手冊
+const BUILD_TIMESTAMP = "2026-02-07 03:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -4859,6 +4859,7 @@ function handleMessage(event) {
     let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
     let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
     let aiSearchQuery = null; // v29.4.22: AI-driven search query
+    let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
 
     // v29.3.26: 手動觸發診斷功能 (供用戶測試二次搜機制用)
     if (msg === "測試二次搜尋") {
@@ -5282,12 +5283,11 @@ function handleMessage(event) {
           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
         }
 
-        // v29.5.118: 回覆附帶三按鈕 Quick Reply
+        // v29.5.123: #型號: handler 已查 PDF，不再顯示「查手冊」
         const qrOptions = {
           quickReply: {
             items: [
               { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
-              { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
               { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
             ],
           },
@@ -5557,6 +5557,60 @@ function handleMessage(event) {
         if (hitKeys.length > 1) {
           cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
         }
+
+        // v29.5.123: 立刻檢查這些型號有沒有 PDF，有的話直接預載
+        // 不再讓使用者多按一步「查手冊」才觸發 PDF
+        try {
+          const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+          const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+          const directModels = directSearchResult.models || [];
+
+          // 遍歷 DirectDeep 提取的型號，找有 PDF 的
+          let pdfMatchModel = null;
+          for (const mdl of directModels) {
+            const found = pdfModelIndex.some((idx) => {
+              if (idx.startsWith("S") && idx.length >= 7) {
+                const coreCheck = mdl.replace(/^S\d{2}/, "");
+                const coreIdx = idx.replace(/^S\d{2}/, "");
+                return coreIdx.includes(coreCheck) || coreCheck.includes(coreIdx) || idx.includes(mdl) || mdl.includes(idx);
+              }
+              return idx === mdl;
+            });
+            if (found) {
+              pdfMatchModel = mdl;
+              break;
+            }
+          }
+
+          if (pdfMatchModel) {
+            hasPdfForModel = true;
+            primaryModel = pdfMatchModel;
+            writeLog(`[DirectDeep v29.5.123] 型號 ${pdfMatchModel} 有 PDF，立刻預載`);
+
+            // 呼叫 getRelevantKBFiles 取得 PDF 檔案
+            const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
+            if (kbListJson) {
+              const kbList = JSON.parse(kbListJson);
+              const kbResult = getRelevantKBFiles(
+                [...history, { role: "user", content: msg }],
+                kbList,
+                userId,
+                contextId,
+                false,
+              );
+              const files = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+              if (files.length > 0) {
+                filesToAttach = files;
+                primaryModel = (kbResult.primaryModel) || pdfMatchModel;
+                writeLog(`[DirectDeep v29.5.123] ✅ 預載 ${files.filter(f => f.mimeType === "application/pdf").length} 本 PDF`);
+              }
+            }
+          } else {
+            writeLog(`[DirectDeep v29.5.123] 所有型號均無 PDF: ${directModels.join(", ")}`);
+          }
+        } catch (e) {
+          writeLog(`[DirectDeep v29.5.123] PDF 預載失敗: ${e.message}`);
+        }
       }
     }
 
@@ -5633,11 +5687,24 @@ function handleMessage(event) {
         );
       }
 
+      // v29.5.123: 如果 DirectDeep 已預載 PDF，直接帶上
+      const shouldAttachPdfs = filesToAttach.length > 0 && hasPdfForModel;
+      if (shouldAttachPdfs) {
+        writeLog(`[DirectDeep v29.5.123] 首次回答即掛載 PDF (${filesToAttach.filter(f => f.mimeType === 'application/pdf').length} 本)`);
+        // 移除強制 [AUTO_SEARCH_PDF] 的 System Hint（PDF 已掛載，不需要 AI 再觸發）
+        userMessage = userMessage.replace(/\n\n\[System Hint:.*?\]/s, "");
+        userMsgObj.content = userMessage;
+        // 標記已查過 PDF，後續 [AUTO_SEARCH_PDF] 信號會直接升級為 Web Search
+        cache.put(`${userId}:pdf_consulted`, "true", 600);
+        isInPdfMode = true;
+        cache.put(pdfModeKey, "true", 300);
+      }
+
       let rawResponse = callLLMWithRetry(
         userMessage,
         [...history, userMsgObj],
         filesToAttach,
-        false, // attachPDFs
+        shouldAttachPdfs, // attachPDFs: 有預載就直接帶
         null, // imageBlob
         false, // isRetry
         userId,
@@ -6876,8 +6943,13 @@ function handleMessage(event) {
           qrItems.push({ type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } });
 
           if (!isWebSearchPhase) {
-            // QA/PDF 階段：提供「查手冊」和「搜網路」
-            qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
+            // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+            // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+            // 無 PDF → 避免使用者點了卻查不到
+            const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+            if (hasPdfForModel && !alreadyConsultedPdf) {
+              qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
+            }
             qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } });
           } else {
             // 網路搜尋階段：只剩「繼續問」（已是最後手段）
