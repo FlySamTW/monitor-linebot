@@ -10277,7 +10277,7 @@ function createRichMenuImage_() {
             shapeBackgroundFill: {
               solidFill: { color: { rgbColor: hexToRgb_(color) } },
             },
-            outline: { outlineFill: { solidFill: { color: { rgbColor: hexToRgb_(color) } } }, weight: { magnitude: 0, unit: "EMU" } },
+            outline: { propertyState: "NOT_RENDERED" },
           },
           fields: "shapeBackgroundFill,outline",
         },
