@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.116"; // 2026-02-06 修復型號泡泡循環：直接進Pass 1.5不重複觸發DirectDeep
-const BUILD_TIMESTAMP = "2026-02-06 17:45";
+const GAS_VERSION = "v29.5.117"; // 2026-02-06 修復型號泡泡循環 (v2)：支持直接型號輸入進PDF模式
+const BUILD_TIMESTAMP = "2026-02-06 18:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1211,6 +1211,90 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
     const cache = CacheService.getScriptCache();
     const pendingKey = CACHE_KEYS.PENDING_PDF_SELECTION + userId;
     const pendingJson = cache.get(pendingKey);
+
+    // v29.5.116 修復：先檢查用戶是否直接輸入了有效型號
+    // 即使沒有 pending 泡泡狀態，也要支持用戶直接型號輸入進 PDF 模式
+    const directModelMatch = msg
+      .toUpperCase()
+      .match(/^[SC]\d{2}[A-Z]{1,2}\d{2,3}[A-Z]{0,2}$/);
+    
+    if (directModelMatch && !pendingJson) {
+      // 用戶直接輸入型號，且沒有 pending 泡泡狀態
+      const inputModel = directModelMatch[0];
+      writeLog(
+        `[PDF Select v29.5.116] 🆕 用戶直接輸入型號（無泡泡）: ${inputModel}`,
+      );
+
+      // 注入型號到 Cache（供 getRelevantKBFiles 使用）
+      cache.put(
+        `${userId}:direct_search_models`,
+        JSON.stringify([inputModel]),
+        300,
+      );
+
+      // 設置 PDF Mode
+      const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+      cache.put(pdfModeKey, "true", 300);
+
+      // 直接進入 Pass 1.5：加載 PDF，不再走 DirectDeep
+      writeLog(
+        `[PDF Select v29.5.116] 執行 Pass 1.5 查詢 PDF，型號: ${inputModel}`,
+      );
+
+      // 【重要】直接執行 PDF 查詢，而不是只設置標記
+      const history = getHistoryFromCacheOrSheet(contextId);
+      const userMsgObj = { role: "user", content: msg };
+
+      const response = callLLMWithRetry(
+        msg,
+        [...history, userMsgObj],
+        [],
+        true,  // attachPDFs = true，強制加載 PDF
+        null,
+        false,
+        userId,
+        false,
+        inputModel,
+      );
+
+      if (response) {
+        let finalText = formatForLineMobile(response);
+        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+        finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+
+        let replyText = finalText;
+        if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+          const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
+            4,
+          )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
+            lastTokenUsage.total
+          })`;
+          replyText += tokenInfo;
+        }
+
+        replyMessage(replyToken, replyText);
+        writeLog(`[AI Reply] ${replyText}`);
+
+        // 記錄到歷史
+        const asstMsgObj = { role: "assistant", content: finalText };
+        updateHistorySheetAndCache(
+          contextId,
+          history,
+          userMsgObj,
+          asstMsgObj,
+        );
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+      } else {
+        replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+      }
+
+      // 清除快取標記
+      cache.remove(`${userId}:pending_pdf_query`);
+      cache.remove(pendingKey);
+
+      return true; // 已處理完成
+    }
 
     if (!pendingJson) return false; // 沒有等待選擇的狀態
 
