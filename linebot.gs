@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.115"; // 2026-01-28 話題延續：改為語意判斷，不硬編碼句式
-const BUILD_TIMESTAMP = "2026-01-27 22:10";
+const GAS_VERSION = "v29.5.116"; // 2026-02-06 修復型號泡泡循環：直接進Pass 1.5不重複觸發DirectDeep
+const BUILD_TIMESTAMP = "2026-02-06 17:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -1233,6 +1233,21 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         // 清除等待狀態
         cache.remove(pendingKey);
 
+        // v29.5.116: 【關鍵修復】設置「待執行 PDF 查詢」標記
+        // 下次 handleMessage 進來時，將直接進 Pass 1.5，不再觸發 DirectDeep（避免循環）
+        cache.put(
+          `${userId}:pending_pdf_query`,
+          JSON.stringify({
+            model: selected.matchedModel,
+            originalQuery: pending.originalQuery,
+            timestamp: new Date().getTime(),
+          }),
+          300, // 5 分鐘有效
+        );
+        writeLog(
+          `[PDF Select v29.5.116] ✅ 標記待執行 PDF 查詢: ${selected.matchedModel}`,
+        );
+
         // v24.4.1: 顯示 Loading 動畫（PDF 查詢可能需要 1-2 分鐘）
         showLoadingAnimation(userId, 60);
 
@@ -1468,6 +1483,8 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
     // 用戶回覆不是數字也不是型號 → 當作新問題，清除等待狀態
     writeLog(`[PDF Select] 用戶未選擇，當作新問題處理: ${msg}`);
     cache.remove(pendingKey);
+    // v29.5.116: 同時清除待執行 PDF 查詢標記（因為用戶改變主意了）
+    cache.remove(`${userId}:pending_pdf_query`);
     return false; // 繼續正常流程
   } catch (e) {
     writeLog(`[Error] handlePdfSelectionReply: ${e.message}`);
@@ -5072,6 +5089,49 @@ function handleMessage(event) {
     // 如果用戶之前被問了「請選擇型號」，這裡處理他的回覆
     if (handlePdfSelectionReply(msg, userId, replyToken, contextId)) {
       return; // 已處理完成
+    }
+
+    // v29.5.116: 【關鍵修復】檢查「待執行 PDF 查詢」標記
+    // 如果用戶剛選好型號（上一步），系統會標記 pending_pdf_query
+    // 現在直接進 Pass 1.5，不再走 DirectDeep（避免循環）
+    const pendingPdfQueryJson = cache.get(`${userId}:pending_pdf_query`);
+    if (pendingPdfQueryJson) {
+      try {
+        const pending = JSON.parse(pendingPdfQueryJson);
+        writeLog(
+          `[PDF v29.5.116] 🔥 檢測到待執行 PDF 查詢: ${pending.model}，直接進 Pass 1.5`,
+        );
+
+        // 清除待執行標記（只使用一次）
+        cache.remove(`${userId}:pending_pdf_query`);
+
+        // 注入型號到 Cache（供 getRelevantKBFiles 使用）
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify([pending.model]),
+          300,
+        );
+
+        // 設置 PDF Mode
+        const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+        cache.put(pdfModeKey, "true", 300);
+
+        // 直接進入 Pass 1.5（不走 DirectDeep，避免重複觸發泡泡）
+        writeLog(
+          `[PDF v29.5.116] 跳過 DirectDeep，直接進 Pass 1.5 查詢 PDF`,
+        );
+
+        // 強制組合查詢：用戶輸入 + 原始問題
+        const combinedQuery = `${pending.originalQuery}\n\n(用戶選擇型號: ${pending.model})`;
+
+        // 正常進入對話流程，但已設置 PDF Mode，會自動載入 PDF
+        // 不 return，讓下面的 D. 一般對話 邏輯接手
+      } catch (e) {
+        writeLog(
+          `[PDF v29.5.116] 待執行 PDF 查詢解析失敗: ${e.message}，繼續正常流程`,
+        );
+        cache.remove(`${userId}:pending_pdf_query`);
+      }
     }
 
     // D. 一般對話
