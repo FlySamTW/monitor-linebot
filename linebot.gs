@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.120"; // 2026-02-07 修復 #型號: 和 #查手冊 PDF 未掛載問題
-const BUILD_TIMESTAMP = "2026-02-07 01:00";
+const GAS_VERSION = "v29.5.121"; // 2026-02-07 移除 Rich Menu + 修復泡泡內部代號 + PDF 回答遏輯
+const BUILD_TIMESTAMP = "2026-02-07 01:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5183,7 +5183,33 @@ function handleMessage(event) {
       cache.put(pdfModeKey, "true", 300);
 
       // 取得保存的話題（用戶之前問的問題）
-      const savedTopic = cache.get(`${userId}:pending_topic`) || "";
+      let savedTopic = cache.get(`${userId}:pending_topic`) || "";
+
+      // v29.5.121: 若 pending_topic 為空，從歷史找原始問題
+      if (!savedTopic) {
+        const historyForTopic = getHistoryFromCacheOrSheet(contextId);
+        const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
+        for (let i = historyForTopic.length - 1; i >= 0; i--) {
+          if (historyForTopic[i].role === "user") {
+            let content = historyForTopic[i].content || "";
+            content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+            if (
+              content.length > 5 &&
+              !content.startsWith("#") &&
+              !content.includes("不滿意") &&
+              !content.includes("繼續問") &&
+              !content.match(/^\d$/) &&
+              !MODEL_ONLY_RE.test(content) &&
+              !content.includes("(型號:")
+            ) {
+              savedTopic = content;
+              writeLog(`[Model Select v29.5.121] 從歷史找到原始問題: ${savedTopic.substring(0, 50)}`);
+              break;
+            }
+          }
+        }
+      }
+
       const queryText = savedTopic ? `${savedTopic} (型號: ${selectedModel})` : selectedModel;
 
       showLoadingAnimation(userId, 60);
@@ -5856,6 +5882,28 @@ function handleMessage(event) {
               );
             }
 
+            if (suggestedModels.length > 1) {
+              // v29.5.121: 過濾內部代號，只顯示用戶認識的完整型號
+              // 內部代號如 G90XF, G80SD, G81SF 等短別稱，用戶不認識
+              // 完整型號如 S27FG900XC, S32DG802SC (S開頭+數字+字母)
+              const INTERNAL_ALIAS_RE = /^[A-Z]\d{1,2}[A-Z]{0,3}$/; // G90XF, G5, M8, G80SD
+              const fullModels = suggestedModels.filter(m => !INTERNAL_ALIAS_RE.test(m));
+              if (fullModels.length > 0) {
+                // 有完整型號時，移除內部代號
+                const removed = suggestedModels.filter(m => INTERNAL_ALIAS_RE.test(m));
+                if (removed.length > 0) {
+                  writeLog(`[Smart Router v29.5.121] 過濾內部代號: ${removed.join(", ")} → 只顯示: ${fullModels.join(", ")}`);
+                }
+                suggestedModels = fullModels;
+              }
+              // 過濾後只剩 1 個型號，不需要顯示泡泡，直接鎖定
+              if (suggestedModels.length === 1) {
+                writeLog(`[Smart Router v29.5.121] 過濾後單一型號 ${suggestedModels[0]}，自動鎖定`);
+                cache.put(`${userId}:direct_search_models`, JSON.stringify(suggestedModels), 300);
+                suggestedModels = [];
+              }
+            }
+
             // Re-check length (if cleared, this block won't run)
             if (suggestedModels.length > 1) {
               writeLog(
@@ -5867,22 +5915,26 @@ function handleMessage(event) {
                 300,
               );
               
-              // v29.5.115: 保存當前話題，供用戶選泡泡後延續
-              // 當用戶問「那 M8 呢」→ 話題來自上一輪（如「線材版本」）
-              // 從 history 找上一輪的話題
-              const history = getHistoryFromCacheOrSheet(contextId);
-              if (history && history.length >= 2) {
-                for (let i = history.length - 1; i >= 0; i--) {
-                  const h = history[i];
-                  if (h.role === "user") {
-                    let topic = h.content || "";
-                    // 清理 System Hint
-                    topic = topic.replace(/\[System Hint:.*?\]/gs, "").trim();
-                    // 跳過追問句（如「那M8呢」）和純型號
-                    if (topic.length > 15 && !topic.match(/^(那|換|改).{1,10}(呢|的話)?$/)) {
-                      cache.put(`${userId}:pending_topic`, topic, 600);
-                      writeLog(`[Topic Save v29.5.115] 保存話題: ${topic.substring(0, 50)}...`);
-                      break;
+              // v29.5.121: 保存當前話題，供用戶選泡泡後延續
+              // 優先使用當前用戶訊息本身作為話題
+              const currentTopic = userMessage || "";
+              if (currentTopic.length > 5) {
+                cache.put(`${userId}:pending_topic`, currentTopic, 600);
+                writeLog(`[Topic Save v29.5.121] 保存當前話題: ${currentTopic.substring(0, 50)}`);
+              } else {
+                // fallback: 從歷史找上一輪的話題
+                const history = getHistoryFromCacheOrSheet(contextId);
+                if (history && history.length >= 1) {
+                  for (let i = history.length - 1; i >= 0; i--) {
+                    const h = history[i];
+                    if (h.role === "user") {
+                      let topic = h.content || "";
+                      topic = topic.replace(/\[System Hint:.*?\]/gs, "").trim();
+                      if (topic.length > 10 && !topic.match(/^(\u90a3|\u63db|\u6539).{1,10}(\u5462|\u7684\u8a71)?$/)) {
+                        cache.put(`${userId}:pending_topic`, topic, 600);
+                        writeLog(`[Topic Save v29.5.121] 從歷史保存話題: ${topic.substring(0, 50)}`);
+                        break;
+                      }
                     }
                   }
                 }
@@ -10102,305 +10154,4 @@ function checkPdfCost(userMsg) {
   }
 
   return { isHighCost: false, reason: "General Conversation" };
-}
-
-// ════════════════════════════════════════════════════════════════
-// v29.5.118: Rich Menu 設定
-// 在 GAS 編輯器選擇此函式並執行一次即可
-// ════════════════════════════════════════════════════════════════
-/**
- * 建立並設定 Rich Menu（LINE 底部常駐選單）
- * 手動執行一次即可（在 GAS 編輯器選擇 setupRichMenu → 執行）
- */
-function setupRichMenu() {
-  const accessToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN").trim();
-  const headers = { Authorization: "Bearer " + accessToken };
-
-  // ── 0. 清除舊的 Rich Menu ──
-  try {
-    const listRes = UrlFetchApp.fetch(
-      "https://api.line.me/v2/bot/richmenu/list",
-      { headers: headers, muteHttpExceptions: true }
-    );
-    const oldMenus = JSON.parse(listRes.getContentText()).richmenus || [];
-    oldMenus.forEach(function(m) {
-      UrlFetchApp.fetch(
-        "https://api.line.me/v2/bot/richmenu/" + m.richMenuId,
-        { method: "delete", headers: headers, muteHttpExceptions: true }
-      );
-      Logger.log("🗑️ 已刪除舊 Rich Menu: " + m.richMenuId);
-    });
-  } catch (e) {
-    Logger.log("清除舊 Menu 失敗(可忽略): " + e.message);
-  }
-
-  // ── 1. 建立 Rich Menu 結構 ──
-  const richMenu = {
-    size: { width: 2500, height: 843 },
-    selected: true,
-    name: "Samsung Monitor Bot Menu",
-    chatBarText: "📋 選單",
-    areas: [
-      {
-        bounds: { x: 0, y: 0, width: 1250, height: 843 },
-        action: { type: "message", text: "繼續問" },
-      },
-      {
-        bounds: { x: 1250, y: 0, width: 1250, height: 843 },
-        action: { type: "message", text: "#查手冊" },
-      },
-    ],
-  };
-
-  const createRes = UrlFetchApp.fetch(
-    "https://api.line.me/v2/bot/richmenu",
-    {
-      method: "post",
-      headers: Object.assign({ "Content-Type": "application/json" }, headers),
-      payload: JSON.stringify(richMenu),
-      muteHttpExceptions: true,
-    }
-  );
-
-  const richMenuId = JSON.parse(createRes.getContentText()).richMenuId;
-  if (!richMenuId) {
-    Logger.log("❌ 建立 Rich Menu 失敗: " + createRes.getContentText());
-    return;
-  }
-  Logger.log("✅ Rich Menu 建立成功: " + richMenuId);
-
-  // ── 2. 用 Google Slides 生成 2500×843 PNG 並上傳 ──
-  const imageBlob = createRichMenuImage_();
-  Logger.log("圖片 Blob 大小: " + imageBlob.getBytes().length + " bytes, type: " + imageBlob.getContentType());
-
-  const uploadRes = UrlFetchApp.fetch(
-    "https://api-data.line.me/v2/bot/richmenu/" + richMenuId + "/content",
-    {
-      method: "post",
-      headers: Object.assign({ "Content-Type": imageBlob.getContentType() }, headers),
-      payload: imageBlob.getBytes(),
-      muteHttpExceptions: true,
-    }
-  );
-  Logger.log("圖片上傳: " + uploadRes.getResponseCode() + " | " + uploadRes.getContentText());
-
-  if (uploadRes.getResponseCode() !== 200) {
-    // 上傳失敗就刪掉剛建立的空 Menu，避免殘留
-    UrlFetchApp.fetch(
-      "https://api.line.me/v2/bot/richmenu/" + richMenuId,
-      { method: "delete", headers: headers, muteHttpExceptions: true }
-    );
-    Logger.log("❌ 圖片上傳失敗，已刪除空 Rich Menu");
-    return;
-  }
-
-  // ── 3. 設為預設 Rich Menu ──
-  const defaultRes = UrlFetchApp.fetch(
-    "https://api.line.me/v2/bot/user/all/richmenu/" + richMenuId,
-    {
-      method: "post",
-      headers: headers,
-      muteHttpExceptions: true,
-    }
-  );
-  Logger.log("設為預設: " + defaultRes.getResponseCode() + " | " + defaultRes.getContentText());
-
-  if (defaultRes.getResponseCode() === 200) {
-    Logger.log("🎉 Rich Menu 設定完成！所有用戶將看到底部選單");
-  } else {
-    Logger.log("⚠️ 設為預設失敗，請至 LINE Official Account Manager 手動設定");
-  }
-}
-
-/**
- * 用 Advanced Slides API 繪製 Rich Menu 圖片 (2500×843 PNG)
- * ⚠️ 需在 GAS 編輯器「服務」啟用 Google Slides API
- * 流程：建立指定尺寸簡報 → 繪製選單 → 匯出 PNG → 刪除簡報
- */
-function createRichMenuImage_() {
-  // ── 1 px ≈ 9525 EMU ──
-  const PX = 9525;
-  const W = 2500;
-  const H = 843;
-
-  // ── 用 Advanced API 建立指定頁面尺寸的簡報 ──
-  const presResource = Slides.Presentations.create({
-    title: "_RichMenu_temp_" + Date.now(),
-    pageSize: {
-      width:  { magnitude: W * PX, unit: "EMU" },
-      height: { magnitude: H * PX, unit: "EMU" },
-    },
-  });
-  const presId = presResource.presentationId;
-  const slideId = presResource.slides[0].objectId;
-  Logger.log("📐 臨時簡報已建立: " + presId + " (" + W + "×" + H + ")");
-
-  try {
-    // ── 批次繪製所有元素 ──
-    const requests = [];
-
-    // 背景色
-    requests.push({
-      updatePageProperties: {
-        objectId: slideId,
-        pageProperties: {
-          pageBackgroundFill: {
-            solidFill: { color: { rgbColor: hexToRgb_("#1A2332") } },
-          },
-        },
-        fields: "pageBackgroundFill",
-      },
-    });
-
-    // 輔助函數：建立圓角矩形
-    function addRect(id, x, y, w, h, color) {
-      requests.push({
-        createShape: {
-          objectId: id,
-          shapeType: "ROUND_RECTANGLE",
-          elementProperties: {
-            pageObjectId: slideId,
-            size: {
-              width:  { magnitude: w * PX, unit: "EMU" },
-              height: { magnitude: h * PX, unit: "EMU" },
-            },
-            transform: {
-              scaleX: 1, scaleY: 1, translateX: x * PX, translateY: y * PX, unit: "EMU",
-            },
-          },
-        },
-      });
-      requests.push({
-        updateShapeProperties: {
-          objectId: id,
-          shapeProperties: {
-            shapeBackgroundFill: {
-              solidFill: { color: { rgbColor: hexToRgb_(color) } },
-            },
-            outline: { propertyState: "NOT_RENDERED" },
-          },
-          fields: "shapeBackgroundFill,outline",
-        },
-      });
-    }
-
-    // 輔助函數：建立文字框
-    function addText(id, x, y, w, h, text, fontSize, color, bold) {
-      requests.push({
-        createShape: {
-          objectId: id,
-          shapeType: "TEXT_BOX",
-          elementProperties: {
-            pageObjectId: slideId,
-            size: {
-              width:  { magnitude: w * PX, unit: "EMU" },
-              height: { magnitude: h * PX, unit: "EMU" },
-            },
-            transform: {
-              scaleX: 1, scaleY: 1, translateX: x * PX, translateY: y * PX, unit: "EMU",
-            },
-          },
-        },
-      });
-      requests.push({
-        insertText: { objectId: id, text: text, insertionIndex: 0 },
-      });
-      requests.push({
-        updateTextStyle: {
-          objectId: id,
-          style: {
-            fontSize: { magnitude: fontSize, unit: "PT" },
-            foregroundColor: { opaqueColor: { rgbColor: hexToRgb_(color) } },
-            bold: !!bold,
-          },
-          fields: "fontSize,foregroundColor,bold",
-        },
-      });
-      requests.push({
-        updateParagraphStyle: {
-          objectId: id,
-          style: { alignment: "CENTER" },
-          fields: "alignment",
-        },
-      });
-    }
-
-    // ── 左半：QA 快答 ──
-    addRect("leftBg", 40, 40, 1170, 763, "#2A4060");
-    addText("leftIcon", 400, 150, 450, 200, "💬", 96, "#FFFFFF", true);
-    addText("leftTitle", 275, 380, 700, 130, "QA 快答", 56, "#FFFFFF", true);
-    addText("leftSub", 325, 530, 600, 80, "常見問題秒回", 32, "#7EB0DD", false);
-
-    // ── 右半：查官方手冊 ──
-    addRect("rightBg", 1290, 40, 1170, 763, "#4D3520");
-    addText("rightIcon", 1650, 150, 450, 200, "📖", 96, "#FFFFFF", true);
-    addText("rightTitle", 1475, 380, 800, 130, "查官方手冊", 56, "#FFFFFF", true);
-    addText("rightSub", 1525, 530, 700, 80, "操作步驟詳解", 32, "#D4A574", false);
-
-    // ── 中間分隔線 ──
-    requests.push({
-      createLine: {
-        objectId: "dividerLine",
-        lineCategory: "STRAIGHT",
-        elementProperties: {
-          pageObjectId: slideId,
-          size: {
-            width:  { magnitude: 0, unit: "EMU" },
-            height: { magnitude: 680 * PX, unit: "EMU" },
-          },
-          transform: {
-            scaleX: 1, scaleY: 1,
-            translateX: 1250 * PX, translateY: 80 * PX,
-            unit: "EMU",
-          },
-        },
-      },
-    });
-    requests.push({
-      updateLineProperties: {
-        objectId: "dividerLine",
-        lineProperties: {
-          lineFill: { solidFill: { color: { rgbColor: hexToRgb_("#FFFFFF") }, alpha: 0.3 } },
-          weight: { magnitude: 2, unit: "PT" },
-          dashStyle: "DASH",
-        },
-        fields: "lineFill,weight,dashStyle",
-      },
-    });
-
-    // ── 執行批次更新 ──
-    Slides.Presentations.batchUpdate({ requests: requests }, presId);
-    Logger.log("🎨 繪製完成，開始匯出 PNG...");
-
-    // ── 匯出為 PNG ──
-    // 方法1：DriveApp.getAs (GAS 會自動將首頁匯出)
-    const pngBlob = UrlFetchApp.fetch(
-      "https://docs.google.com/presentation/d/" + presId + "/export/png",
-      { headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() } }
-    ).getBlob().setContentType("image/png").setName("richmenu.png");
-
-    Logger.log("✅ PNG 匯出成功，大小: " + pngBlob.getBytes().length + " bytes");
-    return pngBlob;
-
-  } finally {
-    // ── 清除臨時簡報 ──
-    try {
-      DriveApp.getFileById(presId).setTrashed(true);
-      Logger.log("🗑️ 臨時簡報已刪除");
-    } catch (e) {
-      Logger.log("⚠️ 臨時簡報刪除失敗: " + e.message);
-    }
-  }
-}
-
-/**
- * HEX 色碼轉 Google Slides RGB 物件 (0~1 浮點)
- */
-function hexToRgb_(hex) {
-  hex = hex.replace("#", "");
-  return {
-    red:   parseInt(hex.substring(0, 2), 16) / 255,
-    green: parseInt(hex.substring(2, 4), 16) / 255,
-    blue:  parseInt(hex.substring(4, 6), 16) / 255,
-  };
 }
