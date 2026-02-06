@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.118"; // 2026-02-06 Rich Menu + 統一 Quick Reply 三按鈕 + 泡泡攔截修復
-const BUILD_TIMESTAMP = "2026-02-06 19:30";
+const GAS_VERSION = "v29.5.119"; // 2026-02-07 Rich Menu 圖片修復
+const BUILD_TIMESTAMP = "2026-02-07 00:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -10041,8 +10041,27 @@ function checkPdfCost(userMsg) {
  */
 function setupRichMenu() {
   const accessToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN").trim();
-  
-  // 1. 建立 Rich Menu 結構
+  const headers = { Authorization: "Bearer " + accessToken };
+
+  // ── 0. 清除舊的 Rich Menu ──
+  try {
+    const listRes = UrlFetchApp.fetch(
+      "https://api.line.me/v2/bot/richmenu/list",
+      { headers: headers, muteHttpExceptions: true }
+    );
+    const oldMenus = JSON.parse(listRes.getContentText()).richmenus || [];
+    oldMenus.forEach(function(m) {
+      UrlFetchApp.fetch(
+        "https://api.line.me/v2/bot/richmenu/" + m.richMenuId,
+        { method: "delete", headers: headers, muteHttpExceptions: true }
+      );
+      Logger.log("🗑️ 已刪除舊 Rich Menu: " + m.richMenuId);
+    });
+  } catch (e) {
+    Logger.log("清除舊 Menu 失敗(可忽略): " + e.message);
+  }
+
+  // ── 1. 建立 Rich Menu 結構 ──
   const richMenu = {
     size: { width: 2500, height: 843 },
     selected: true,
@@ -10060,18 +10079,14 @@ function setupRichMenu() {
     ],
   };
 
-  // 2. 呼叫 LINE API 建立 Rich Menu
   const createRes = UrlFetchApp.fetch(
     "https://api.line.me/v2/bot/richmenu",
     {
       method: "post",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + accessToken,
-      },
+      headers: Object.assign({ "Content-Type": "application/json" }, headers),
       payload: JSON.stringify(richMenu),
       muteHttpExceptions: true,
-    },
+    }
   );
 
   const richMenuId = JSON.parse(createRes.getContentText()).richMenuId;
@@ -10081,108 +10096,238 @@ function setupRichMenu() {
   }
   Logger.log("✅ Rich Menu 建立成功: " + richMenuId);
 
-  // 3. 上傳圖片（使用程式碼繪製簡單圖片）
+  // ── 2. 用 Google Slides 生成 2500×843 PNG 並上傳 ──
   const imageBlob = createRichMenuImage_();
-  
-  const uploadRes = UrlFetchApp.fetch(
-    `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
-    {
-      method: "post",
-      headers: {
-        "Content-Type": "image/png",
-        Authorization: "Bearer " + accessToken,
-      },
-      payload: imageBlob,
-      muteHttpExceptions: true,
-    },
-  );
-  Logger.log("圖片上傳: " + uploadRes.getResponseCode());
+  Logger.log("圖片 Blob 大小: " + imageBlob.getBytes().length + " bytes, type: " + imageBlob.getContentType());
 
-  // 4. 設為預設 Rich Menu（所有用戶都看得到）
-  const defaultRes = UrlFetchApp.fetch(
-    `https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`,
+  const uploadRes = UrlFetchApp.fetch(
+    "https://api-data.line.me/v2/bot/richmenu/" + richMenuId + "/content",
     {
       method: "post",
-      headers: {
-        Authorization: "Bearer " + accessToken,
-      },
+      headers: Object.assign({ "Content-Type": imageBlob.getContentType() }, headers),
+      payload: imageBlob.getBytes(),
       muteHttpExceptions: true,
-    },
+    }
   );
-  Logger.log("設為預設: " + defaultRes.getResponseCode());
-  Logger.log("🎉 Rich Menu 設定完成！所有用戶將看到底部選單");
+  Logger.log("圖片上傳: " + uploadRes.getResponseCode() + " | " + uploadRes.getContentText());
+
+  if (uploadRes.getResponseCode() !== 200) {
+    // 上傳失敗就刪掉剛建立的空 Menu，避免殘留
+    UrlFetchApp.fetch(
+      "https://api.line.me/v2/bot/richmenu/" + richMenuId,
+      { method: "delete", headers: headers, muteHttpExceptions: true }
+    );
+    Logger.log("❌ 圖片上傳失敗，已刪除空 Rich Menu");
+    return;
+  }
+
+  // ── 3. 設為預設 Rich Menu ──
+  const defaultRes = UrlFetchApp.fetch(
+    "https://api.line.me/v2/bot/user/all/richmenu/" + richMenuId,
+    {
+      method: "post",
+      headers: headers,
+      muteHttpExceptions: true,
+    }
+  );
+  Logger.log("設為預設: " + defaultRes.getResponseCode() + " | " + defaultRes.getContentText());
+
+  if (defaultRes.getResponseCode() === 200) {
+    Logger.log("🎉 Rich Menu 設定完成！所有用戶將看到底部選單");
+  } else {
+    Logger.log("⚠️ 設為預設失敗，請至 LINE Official Account Manager 手動設定");
+  }
 }
 
 /**
- * 繪製 Rich Menu 圖片 (2500x843)
- * 使用 Google Charts API 生成簡潔的雙格選單圖
+ * 用 Advanced Slides API 繪製 Rich Menu 圖片 (2500×843 PNG)
+ * ⚠️ 需在 GAS 編輯器「服務」啟用 Google Slides API
+ * 流程：建立指定尺寸簡報 → 繪製選單 → 匯出 PNG → 刪除簡報
  */
 function createRichMenuImage_() {
-  // 使用 Google Charts API 生成圖片
-  const chartUrl = "https://chart.googleapis.com/chart?" + 
-    "cht=p&chs=2500x843&chd=t:1,1&chl=|" +
-    "&chco=4A90D9,FF6B35" +
-    "&chf=bg,s,FFFFFF";
-  
-  // 改用簡單方案：用 Slides API 或直接建立 PNG
-  // 最簡方案：用外部圖片 URL
-  // 這裡用一個 1x1 像素的佔位圖片，用戶可以之後更換
-  
-  // 建立 2500x843 的簡單 PNG 圖片
-  const width = 2500;
-  const height = 843;
-  
-  // 使用 Google Apps Script 的繪圖能力較有限
-  // 建議手動上傳精美圖片。這裡先用基本方案讓功能跑起來
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-    <rect width="${width}" height="${height}" fill="#F8F9FA"/>
-    <line x1="1250" y1="0" x2="1250" y2="${height}" stroke="#E0E0E0" stroke-width="3"/>
-    <rect x="50" y="50" width="1150" height="743" rx="30" fill="#4A90D9" opacity="0.1"/>
-    <rect x="1300" y="50" width="1150" height="743" rx="30" fill="#FF6B35" opacity="0.1"/>
-    <text x="625" y="350" text-anchor="middle" font-family="Arial" font-size="100" fill="#4A90D9" font-weight="bold">💬</text>
-    <text x="625" y="500" text-anchor="middle" font-family="Arial" font-size="72" fill="#333333" font-weight="bold">QA 快答</text>
-    <text x="625" y="600" text-anchor="middle" font-family="Arial" font-size="48" fill="#888888">常見問題秒回</text>
-    <text x="1875" y="350" text-anchor="middle" font-family="Arial" font-size="100" fill="#FF6B35" font-weight="bold">📖</text>
-    <text x="1875" y="500" text-anchor="middle" font-family="Arial" font-size="72" fill="#333333" font-weight="bold">查官方手冊</text>
-    <text x="1875" y="600" text-anchor="middle" font-family="Arial" font-size="48" fill="#888888">操作步驟詳解(較慢)</text>
-  </svg>`;
-  
-  // 注意: LINE Rich Menu 圖片必須是 JPEG 或 PNG
-  // SVG 無法直接使用，需要轉換。這裡暫時用佔位方案
-  // 建議用戶準備 2500x843 的 PNG/JPEG 圖片後手動上傳
-  
-  // 暫時方案：建立一個簡單的填滿色塊的圖片
-  const charts = Charts.newAreaChart()
-    .setDimensions(width, height)
-    .build();
-  
-  // 最簡方案：回傳一個基本的圖片 blob
-  // 用 Google Slides 建立精美圖片需要額外設定
-  // 這裡用最小可行方案
+  // ── 1 px ≈ 9525 EMU ──
+  const PX = 9525;
+  const W = 2500;
+  const H = 843;
+
+  // ── 用 Advanced API 建立指定頁面尺寸的簡報 ──
+  const presResource = Slides.Presentations.create({
+    title: "_RichMenu_temp_" + Date.now(),
+    pageSize: {
+      width:  { magnitude: W * PX, unit: "EMU" },
+      height: { magnitude: H * PX, unit: "EMU" },
+    },
+  });
+  const presId = presResource.presentationId;
+  const slideId = presResource.slides[0].objectId;
+  Logger.log("📐 臨時簡報已建立: " + presId + " (" + W + "×" + H + ")");
+
   try {
-    // 嘗試用 Google Charts 建立簡單圖表作為底圖
-    const url = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
-      type: 'bar',
-      data: {
-        labels: ['QA 快答 💬', '查官方手冊 📖'],
-        datasets: [{
-          data: [1, 1],
-          backgroundColor: ['#4A90D9', '#FF6B35'],
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { display: false },
+    // ── 批次繪製所有元素 ──
+    const requests = [];
+
+    // 背景色
+    requests.push({
+      updatePageProperties: {
+        objectId: slideId,
+        pageProperties: {
+          pageBackgroundFill: {
+            solidFill: { color: { rgbColor: hexToRgb_("#1A2332") } },
+          },
         },
-        indexAxis: 'y',
-      }
-    }))}&w=${width}&h=${height}&f=png`;
-    
-    return UrlFetchApp.fetch(url).getBlob().setContentType("image/png");
-  } catch (e) {
-    Logger.log("圖片生成失敗，請手動上傳: " + e.message);
-    // 回傳一個 1x1 的 PNG 作為佔位
-    const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
-    return Utilities.newBlob(Utilities.base64Decode(base64), "image/png", "richmenu.png");
+        fields: "pageBackgroundFill",
+      },
+    });
+
+    // 輔助函數：建立圓角矩形
+    function addRect(id, x, y, w, h, color) {
+      requests.push({
+        createShape: {
+          objectId: id,
+          shapeType: "ROUND_RECTANGLE",
+          elementProperties: {
+            pageObjectId: slideId,
+            size: {
+              width:  { magnitude: w * PX, unit: "EMU" },
+              height: { magnitude: h * PX, unit: "EMU" },
+            },
+            transform: {
+              scaleX: 1, scaleY: 1, translateX: x * PX, translateY: y * PX, unit: "EMU",
+            },
+          },
+        },
+      });
+      requests.push({
+        updateShapeProperties: {
+          objectId: id,
+          shapeProperties: {
+            shapeBackgroundFill: {
+              solidFill: { color: { rgbColor: hexToRgb_(color) } },
+            },
+            outline: { outlineFill: { solidFill: { color: { rgbColor: hexToRgb_(color) } } }, weight: { magnitude: 0, unit: "EMU" } },
+          },
+          fields: "shapeBackgroundFill,outline",
+        },
+      });
+    }
+
+    // 輔助函數：建立文字框
+    function addText(id, x, y, w, h, text, fontSize, color, bold) {
+      requests.push({
+        createShape: {
+          objectId: id,
+          shapeType: "TEXT_BOX",
+          elementProperties: {
+            pageObjectId: slideId,
+            size: {
+              width:  { magnitude: w * PX, unit: "EMU" },
+              height: { magnitude: h * PX, unit: "EMU" },
+            },
+            transform: {
+              scaleX: 1, scaleY: 1, translateX: x * PX, translateY: y * PX, unit: "EMU",
+            },
+          },
+        },
+      });
+      requests.push({
+        insertText: { objectId: id, text: text, insertionIndex: 0 },
+      });
+      requests.push({
+        updateTextStyle: {
+          objectId: id,
+          style: {
+            fontSize: { magnitude: fontSize, unit: "PT" },
+            foregroundColor: { opaqueColor: { rgbColor: hexToRgb_(color) } },
+            bold: !!bold,
+          },
+          fields: "fontSize,foregroundColor,bold",
+        },
+      });
+      requests.push({
+        updateParagraphStyle: {
+          objectId: id,
+          style: { alignment: "CENTER" },
+          fields: "alignment",
+        },
+      });
+    }
+
+    // ── 左半：QA 快答 ──
+    addRect("leftBg", 40, 40, 1170, 763, "#2A4060");
+    addText("leftIcon", 400, 150, 450, 200, "💬", 96, "#FFFFFF", true);
+    addText("leftTitle", 275, 380, 700, 130, "QA 快答", 56, "#FFFFFF", true);
+    addText("leftSub", 325, 530, 600, 80, "常見問題秒回", 32, "#7EB0DD", false);
+
+    // ── 右半：查官方手冊 ──
+    addRect("rightBg", 1290, 40, 1170, 763, "#4D3520");
+    addText("rightIcon", 1650, 150, 450, 200, "📖", 96, "#FFFFFF", true);
+    addText("rightTitle", 1475, 380, 800, 130, "查官方手冊", 56, "#FFFFFF", true);
+    addText("rightSub", 1525, 530, 700, 80, "操作步驟詳解", 32, "#D4A574", false);
+
+    // ── 中間分隔線 ──
+    requests.push({
+      createLine: {
+        objectId: "dividerLine",
+        lineCategory: "STRAIGHT",
+        elementProperties: {
+          pageObjectId: slideId,
+          size: {
+            width:  { magnitude: 0, unit: "EMU" },
+            height: { magnitude: 680 * PX, unit: "EMU" },
+          },
+          transform: {
+            scaleX: 1, scaleY: 1,
+            translateX: 1250 * PX, translateY: 80 * PX,
+            unit: "EMU",
+          },
+        },
+      },
+    });
+    requests.push({
+      updateLineProperties: {
+        objectId: "dividerLine",
+        lineProperties: {
+          lineFill: { solidFill: { color: { rgbColor: hexToRgb_("#FFFFFF") }, alpha: 0.3 } },
+          weight: { magnitude: 2, unit: "PT" },
+          dashStyle: "DASH",
+        },
+        fields: "lineFill,weight,dashStyle",
+      },
+    });
+
+    // ── 執行批次更新 ──
+    Slides.Presentations.batchUpdate({ requests: requests }, presId);
+    Logger.log("🎨 繪製完成，開始匯出 PNG...");
+
+    // ── 匯出為 PNG ──
+    // 方法1：DriveApp.getAs (GAS 會自動將首頁匯出)
+    const pngBlob = UrlFetchApp.fetch(
+      "https://docs.google.com/presentation/d/" + presId + "/export/png",
+      { headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() } }
+    ).getBlob().setContentType("image/png").setName("richmenu.png");
+
+    Logger.log("✅ PNG 匯出成功，大小: " + pngBlob.getBytes().length + " bytes");
+    return pngBlob;
+
+  } finally {
+    // ── 清除臨時簡報 ──
+    try {
+      DriveApp.getFileById(presId).setTrashed(true);
+      Logger.log("🗑️ 臨時簡報已刪除");
+    } catch (e) {
+      Logger.log("⚠️ 臨時簡報刪除失敗: " + e.message);
+    }
   }
+}
+
+/**
+ * HEX 色碼轉 Google Slides RGB 物件 (0~1 浮點)
+ */
+function hexToRgb_(hex) {
+  hex = hex.replace("#", "");
+  return {
+    red:   parseInt(hex.substring(0, 2), 16) / 255,
+    green: parseInt(hex.substring(2, 4), 16) / 255,
+    blue:  parseInt(hex.substring(4, 6), 16) / 255,
+  };
 }
