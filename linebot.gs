@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.126"; // 2026-02-09 型號驗證防瞎掰 + #繼續問 handler + Quick Reply 統一
-const BUILD_TIMESTAMP = "2026-02-09 15:00";
+const GAS_VERSION = "v29.5.127"; // 2026-02-09 #再詳細說明(AI回答延伸) + 查手冊等待提醒 + 去重來源標註
+const BUILD_TIMESTAMP = "2026-02-09 18:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5050,7 +5050,7 @@ function handleMessage(event) {
           if (!msg.startsWith("/")) {
             responseOptions.quickReply = {
               items: [
-                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
                 { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
                 { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
               ],
@@ -5288,7 +5288,7 @@ function handleMessage(event) {
         const qrOptions = {
           quickReply: {
             items: [
-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
               { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
             ],
           },
@@ -5406,7 +5406,7 @@ function handleMessage(event) {
         const qrOptions = {
           quickReply: {
             items: [
-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
               { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
             ],
           },
@@ -5424,35 +5424,43 @@ function handleMessage(event) {
       return;
     }
 
-    if (msg === "#繼續問") {
-      writeLog(`[Quick Reply v29.5.126] 用戶點擊「再詳細說明」`);
-      // 從歷史找上一個真正的問題，加上「請再詳細說明」讓 AI 延續
+    if (msg === "#再詳細說明") {
+      writeLog(`[Quick Reply v29.5.127] 用戶點擊「再詳細說明」`);
+      // 從歷史找 AI 上一次回答，請 AI 針對自己的回答再詳細展開
       const history = getHistoryFromCacheOrSheet(contextId);
-      let lastQuestion = "";
+      let lastAiAnswer = "";
+      let lastUserQ = "";
       for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].role === "user") {
+        if (history[i].role === "assistant" && !lastAiAnswer) {
+          let content = history[i].content || "";
+          // 截取前200字作為摘要（避免 Token 爆炸）
+          lastAiAnswer = content.replace(/\n---\n本次對話.*$/s, "").trim();
+          if (lastAiAnswer.length > 200) {
+            lastAiAnswer = lastAiAnswer.substring(0, 200) + "...";
+          }
+        }
+        if (history[i].role === "user" && !lastUserQ) {
           let content = history[i].content || "";
           content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
           if (
             content.length > 3 &&
             !content.startsWith("#") &&
             !content.includes("不滿意") &&
-            !content.includes("繼續問") &&
             !content.includes("再詳細") &&
             !/^\d$/.test(content)
           ) {
-            lastQuestion = content;
-            break;
+            lastUserQ = content;
           }
         }
+        if (lastAiAnswer && lastUserQ) break;
       }
-      if (!lastQuestion) {
-        replyMessage(replyToken, "請告訴我你想了解什麼，我來幫你查😊");
+      if (!lastAiAnswer) {
+        replyMessage(replyToken, "請先問我一個問題，我來幫你解答😊");
         return;
       }
-      // 用「請針對上一題再詳細說明」送給 AI
-      const continueMsg = `針對「${lastQuestion}」請再詳細說明，補充更多細節`;
-      writeLog(`[Quick Reply v29.5.126] 延續問題: ${continueMsg.substring(0, 80)}`);
+      // 請 AI 針對上一次回答再詳細說明
+      const continueMsg = `你剛才回答了：「${lastAiAnswer}」\n\n請針對以上回答再詳細說明，補充更多細節和步驟`;
+      writeLog(`[Quick Reply v29.5.127] 再詳細說明: 原問=${lastUserQ ? lastUserQ.substring(0, 40) : 'N/A'}, AI答=${lastAiAnswer.substring(0, 60)}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
       userMessage = continueMsg;
@@ -5467,7 +5475,7 @@ function handleMessage(event) {
       const qrOptions = {
         quickReply: {
           items: [
-            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
           ],
         },
       };
@@ -6168,8 +6176,12 @@ function handleMessage(event) {
           if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
             // v29.4.9: Fast Mode 也要支援二次泡泡
             // Fix: 若 Pass 1 僅包含標籤 (replace 後為空)，則只發送 Pass 2，避免 LINE API 400 Error
+            // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
+            let cleanSearchResponse = formatForLineMobile(searchResponse)
+              .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+              .trim();
             const pass2Bubble =
-              formatForLineMobile(searchResponse) + "\n\n(🔍 網路搜尋補充資料)";
+              cleanSearchResponse + "\n\n(🔍 網路搜尋補充資料)";
 
             let pass1Bubble = formatForLineMobile(rawResponse)
               .replace(/\[AUTO_SEARCH_WEB\]/g, "")
@@ -6976,8 +6988,8 @@ function handleMessage(event) {
             replyText.includes("🔍 網路搜尋補充資料")));
 
           const qrItems = [];
-          // v29.5.126: 第一個按鈕「再詳細說明」→ 從歷史找上一題延續
-          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } });
+          // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
+          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } });
 
           if (!isWebSearchPhase) {
             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
@@ -6986,6 +6998,14 @@ function handleMessage(event) {
             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
             if (hasPdfForModel && !alreadyConsultedPdf) {
               qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
+
+              // v29.5.127: 在回答末尾加入查手冊等待提醒
+              const pdfReminder = "\n\n💡 你也可以點下方「查PDF手冊」深入查詢（約需等待30秒）";
+              if (Array.isArray(replyText)) {
+                replyText[replyText.length - 1] += pdfReminder;
+              } else {
+                replyText += pdfReminder;
+              }
             }
             qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
           } else {
@@ -7296,6 +7316,8 @@ function handleCommand(c, u, cid) {
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
       let result = formatForLineMobile(searchResponse);
+      // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
+      result = result.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
       
       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
       if (!triggerPDF) {
