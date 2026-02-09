@@ -59,9 +59,97 @@
 ---
 
 ## 當前狀態 (Current Status)
-- **最後更新時間**: 2026-01-19 11:25
-- **最後動作**: 完成 Gemini API `No candidates` 錯誤的診斷與修復方案規劃，並寫入開發紀錄。
-- **目前進度**: 系統已具備「源頭減量」與「終極降級」雙重防護。
+- **最後更新時間**: 2026-02-09
+- **最後動作**: v29.5.129 修復 Quick Reply 系列 bug（TDZ、按鈕邏輯、來源標註、型號驗證）
+- **目前進度**: Quick Reply 三按鈕系統穩定，已部署至生產環境
 - **下一步 (Next Steps)**: 
-    - [ ] 觀察後續 Log，確認 `No candidates` 錯誤是否大幅減少。
+    - [ ] 觀察「再詳細說明」按鈕在實際使用中 AI 是否能正確依賴歷史上下文展開回答
+    - [ ] 確認不存在型號的查詢是否被正確攔截（Prompt 層型號驗證）
+
+---
+
+## 2026-02-09 (Quick Reply 系統全面修復)
+
+### 背景
+用戶反覆測試 Quick Reply 按鈕，發現多個連鎖 bug。從 v29.5.123 到 v29.5.129，共經歷 7 個版本的修復。
+
+### v29.5.123 - 查手冊按鈕條件顯示
+- **問題**: 「查PDF手冊」按鈕在沒有 PDF 的型號也顯示，造成用戶期望落空
+- **修復**: 在 DirectDeep 階段預載 PDF_MODEL_INDEX，設置 `hasPdfForModel` flag，條件控制按鈕是否出現
+- **核心邏輯**: DirectDeep 命中 → 檢查 PDF_MODEL_INDEX → 有 PDF 才顯示「📖 查PDF手冊」按鈕
+
+### v29.5.124 - Quick Reply 按鈕標籤優化
+- **問題**: 按鈕標籤太長，不直覺
+- **修復**: 統一為三個按鈕：`💬 再詳細說明`、`📖 查PDF手冊`、`🌐 網路搜尋`
+- **教訓**: 版本號未同步更新導致 LINE 端無反應，追加修正
+
+### v29.5.125 - #繼續問 缺少 # 前綴
+- **問題**: 用戶按「繼續問」按鈕，LINE 將文字當一般訊息處理，未進入命令 handler
+- **修復**: 按鈕 text 加上 `#` 前綴（`#繼續問`）
+
+### v29.5.126 - 不存在型號的幻覺回答
+- **問題**: 用戶輸入 `S32FD812`（不存在型號），AI 仍編造完整規格回答
+- **根因分析（四層失敗）**:
+  1. DirectDeep 匹配到關鍵字（`FD` 系列）但不驗證型號是否存在
+  2. KEYWORD_MAP 擴展到真實型號，AI 以為找到了
+  3. System Hint 強制 AI 觸發 `[AUTO_SEARCH_PDF]`
+  4. Prompt 缺乏「型號不存在時應拒答」的規則
+- **修復**: 在 Prompt.csv 新增【型號驗證】規則：「Context 中完全找不到的型號，必須先告知資料庫無此型號，嚴禁用 LLM 通用知識編造規格」
+- **設計決策**: 用 Prompt 層而非硬編碼解決，因為型號列表會動態變化
+
+### v29.5.127 - 四項修復
+1. **「繼續問」重新命名為「再詳細說明」**: 語意更精確，handler 從 `#繼續問` 改為 `#再詳細說明`
+2. **查手冊觸發時機文件化**: 只在 `hasPdfForModel = true` 時顯示
+3. **查手冊等待提示**: 加入「📖 正在查閱手冊，約需 30 秒」loading 提示
+4. **來源標註去重**: Web 搜尋結果同時被 LLM 和程式碼加上 `[來源: 網路搜尋]`，修復為先 regex 移除 LLM 的再由程式碼統一加上
+
+### v29.5.128 - #再詳細說明 handler 簡化（有 bug）
+- **問題**: 原 handler 從歷史中提取 AI 最後回答並截取前 200 字，造成上下文遺失
+- **用戶指出**: 系統已保留 5 輪對話歷史，AI 本來就看得到完整上下文，不需要手動提取
+- **修復**: 簡化為只改寫 `msg` 和 `userMessage`，讓正常流程帶歷史呼叫 LLM
+- **⚠️ 留下 TDZ bug**: handler 中設置了 `userMsgObj = {...}`，但 `const userMsgObj` 在後面才宣告
+
+### v29.5.129 - TDZ ReferenceError 修復 ⭐
+- **問題**: v29.5.128 的 `#再詳細說明` handler 中 `userMsgObj = { role: "user", content: continueMsg }` 在 `const userMsgObj` 宣告前賦值，V8 引擎的暫時性死區 (TDZ) 會拋出 `ReferenceError`
+- **根因**: `const` 是 block-scoped，handler 和 `const userMsgObj` 在同一個 `try {}` block 中（第 4831 行起），TDZ 從 block 開始到 `const` 宣告行為止
+- **修復**: 移除 handler 中多餘的 `userMsgObj = {...}` 行。因為：
+  - handler 已改寫 `msg = continueMsg` ✅
+  - 後面第 5500 行 `const userMsgObj = { role: "user", content: msg }` 會自動基於改寫後的 `msg` 建構 ✅
+  - `getHistoryFromCacheOrSheet(contextId)` 在第 5499 行載入完整 5 輪歷史 ✅
+  - `callLLMWithRetry(userMessage, [...history, userMsgObj], ...)` 帶著完整歷史呼叫 LLM ✅
+- **教訓**: 修改代碼前必須追蹤完整的變數作用域和生命週期，不能「順著用戶的話改」而不驗證
+
+### `#再詳細說明` 完整流程（驗證後的正確理解）
+
+```
+用戶按「再詳細說明」按鈕
+  ↓
+LINE 發送 #再詳細說明
+  ↓
+handleMessage() 收到 msg = "#再詳細說明"
+  ↓
+if (msg === "#再詳細說明") handler:
+  - msg = "請針對你剛才的回答再詳細說明..."
+  - userMessage = 同上
+  - 不 return（繼續走一般對話流程）
+  ↓
+D. 一般對話:
+  - history = getHistoryFromCacheOrSheet(contextId) ← 載入 5 輪歷史
+  - const userMsgObj = { role: "user", content: msg } ← 基於改寫後的 msg
+  ↓
+E. 直通車檢查 → 不會命中（msg 已不是型號關鍵字）
+  ↓
+callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
+  - history 包含之前的問答（含 AI 上次的完整回答）
+  - userMsgObj 是「請再詳細說明」指令
+  - AI 看到完整上下文，自然知道要展開什麼
+```
+
+### Quick Reply 按鈕完整架構（截至 v29.5.129）
+
+| 按鈕 | text | 觸發條件 | 處理方式 |
+|------|------|----------|----------|
+| 💬 再詳細說明 | `#再詳細說明` | 永遠顯示 | 改寫 msg 後走正常流程，帶完整對話歷史 |
+| 📖 查PDF手冊 | `#查手冊` | `hasPdfForModel = true` | 獨立 handler，從歷史找原始問題，呼叫 getRelevantKBFiles + callLLMWithRetry |
+| 🌐 網路搜尋 | `#搜尋網路` | 永遠顯示 | 呼叫 handleCommand("不滿意...") 觸發 Web Search |
 

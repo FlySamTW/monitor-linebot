@@ -74,7 +74,7 @@ python pdf_keyword_extractor.py
 ## 📁 File Structure & Responsibilities
 
 ```
-linebot.gs          # Main application (single file, ~4000 lines)
+linebot.gs          # Main application (single file, ~10300 lines)
 ├── CONFIG          # Global constants & settings
 ├── BRAIN LAYER     # AI routing & decision logic ⭐
 ├── CORE LAYER      # Message handling & LLM calls
@@ -166,8 +166,8 @@ if (apiError) {
 
 ```javascript
 // ✅ Always update version after code changes
-const GAS_VERSION = "v29.5.87"; // Format: vMajor.Minor.Patch
-const BUILD_TIMESTAMP = "2026-01-19 11:30";
+const GAS_VERSION = "v29.5.129"; // Format: vMajor.Minor.Patch
+// 每次修改後必須更新版本號
 ```
 
 ## 🧠 AI Logic & Prompt Guidelines
@@ -185,6 +185,20 @@ User Message → Direct Search Check → Fast Mode (QA+Rules)
                                              ↓
                                        [Answer] or [AUTO_SEARCH_WEB]
 ```
+
+### Quick Reply 按鈕系統 (v29.5.129)
+
+LINE 回覆訊息底部附帶 Quick Reply 按鈕，用戶點擊後發送帶 `#` 前綴的命令：
+
+| 按鈕 | text | 顯示條件 | 處理方式 |
+|------|------|----------|----------|
+| 💬 再詳細說明 | `#再詳細說明` | 永遠 | 改寫 msg 後**不 return**，走正常流程帶完整 5 輪對話歷史 |
+| 📖 查PDF手冊 | `#查手冊` | `hasPdfForModel=true` | 獨立 handler，從歷史找問題 → getRelevantKBFiles → callLLMWithRetry |
+| 🌐 網路搜尋 | `#搜尋網路` | 永遠 | 呼叫 handleCommand 觸發 Web Search |
+
+**⚠️ 關鍵注意**：`#再詳細說明` handler 不 return，會繼續走到 `const userMsgObj` 宣告處。
+因此 handler 內部**禁止**對 `userMsgObj` 賦值（V8 TDZ 會拋 ReferenceError）。
+只需改寫 `msg` 和 `userMessage`，後面的 `const userMsgObj = { role: "user", content: msg }` 會自動使用改寫後的值。
 
 ### Prompt Engineering Rules
 
@@ -265,6 +279,23 @@ function handleMessage(userId, msg) {}
 
 // 🚨 Modify very carefully: AI routing & PDF selection
 function getRelevantKBFiles(query, exactModels) {}
+```
+
+### V8 TDZ (暫時性死區) 注意事項
+
+```javascript
+// ❌ 危險：在同一 block 中，const 宣告前賦值會 ReferenceError
+if (condition) {
+  userMsgObj = { ... };  // 💥 ReferenceError: Cannot access before initialization
+}
+const userMsgObj = { ... };  // TDZ 從 block 開頭到此行
+
+// ✅ 正確：只改寫 let 變數，讓後面的 const 自動使用新值
+if (condition) {
+  msg = newValue;         // ✅ msg 是 let，可以改
+  userMessage = newValue; // ✅ userMessage 是 let，可以改
+}
+const userMsgObj = { role: "user", content: msg };  // 自動用改寫後的 msg
 ```
 
 ### Knowledge Base Management

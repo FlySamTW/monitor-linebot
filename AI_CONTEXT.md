@@ -32,7 +32,8 @@
 | CORE-001 | linebot.gs      | Core   | 雙階段搜尋 (Two-Pass Search): Fast Mode -> Pass 2 Web Search    |
 | CORE-002 | linebot.gs      | Core   | PDF 深度模式 (PDF Deep Mode) & 智慧型號匹配 (Smart Model Match) |
 | CORE-003 | linebot.gs      | Core   | LLM 模型切換 Logic (Gemini / OpenRouter)                        |
-| CONF-001 | Prompt.csv      | Config | 提示詞設定 (讀取自 Spreadsheet C3)                              |
+| CORE-004 | linebot.gs      | Core   | Quick Reply 按鈕系統 (#再詳細說明 / #查手冊 / #搜尋網路)        |
+| CONF-001 | Prompt.csv      | Config | 提示詞設定 (讀取自 Spreadsheet C3)，含【型號驗證】規則          |
 | CONF-002 | CLASS_RULES.csv | Config | 規格定義與直通車關鍵字 (讀取自 Spreadsheet)                     |
 | UI-001   | TestUI.html     | UI     | 網頁版模擬器 (Mock Mode & Cloud History)                        |
 | UI-002   | TestUI.html     | UI     | 手機版 RWD 支援 (Viewport settings)                             |
@@ -64,6 +65,9 @@
     - **禁止**在「什麼是 HDR」等通識問題進入 PDF Mode。
 3.  **防止型號汙染**: 必須嚴格遵守 `hasInjectedModels` 邏輯，避免一次載入多個不相關型號的 PDF。
 4.  **源頭淨化**: 在 `handleMessage` 與 `testMessage` 入口處，必須強制檢查並轉型輸入資料，防止 `[object Object]` 或非字串導致的崩潰。
+5.  **型號驗證 (v29.5.126+)**: Prompt 層已加入【型號驗證】規則 — Context 中找不到的型號必須拒答，嚴禁用 LLM 通用知識編造規格。
+6.  **Quick Reply 按鈕命令以 # 開頭**: 所有按鈕 text 必須以 `#` 前綴開頭（如 `#再詳細說明`、`#查手冊`、`#搜尋網路`），讓 handler 能正確攔截。
+7.  **變數作用域注意 (TDZ)**: V8 引擎中 `const` 有暫時性死區 (TDZ)，在同一 block 中 `const` 宣告前賦值會拋出 `ReferenceError`。Quick Reply handler 如不 `return` 而是讓流程繼續，禁止提前設定後面用 `const` 宣告的變數。
 
 ## 6. 檔案整併說明 (File Consolidation)
 
