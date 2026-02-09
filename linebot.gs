@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.128"; // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
+const GAS_VERSION = "v29.5.129"; // 2026-02-09 修復 #再詳細說明 TDZ ReferenceError // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
 const BUILD_TIMESTAMP = "2026-02-09 19:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -5425,16 +5425,19 @@ function handleMessage(event) {
     }
 
     if (msg === "#再詳細說明") {
-      writeLog(`[Quick Reply v29.5.128] 用戶點擊「再詳細說明」`);
+      writeLog(`[Quick Reply v29.5.129] 用戶點擊「再詳細說明」`);
       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
-      // 只需送一句簡單指令，AI 會根據完整歷史自行展開
+      // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
+      // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
       const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
-      writeLog(`[Quick Reply v29.5.128] 送出: ${continueMsg}`);
+      writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
       userMessage = continueMsg;
-      userMsgObj = { role: "user", content: continueMsg };
-      // 不 return，讓流程繼續走一般對話邏輯（帶著完整歷史上下文）
+      // 不 return，讓流程走到 D.一般對話：
+      // → getHistoryFromCacheOrSheet() 載入 5 輪歷史
+      // → const userMsgObj = { role: "user", content: msg } 基於改寫後的 msg
+      // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
     }
 
     if (msg === "#搜尋網路") {
