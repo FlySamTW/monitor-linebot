@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.127"; // 2026-02-09 #再詳細說明(AI回答延伸) + 查手冊等待提醒 + 去重來源標註
-const BUILD_TIMESTAMP = "2026-02-09 18:00";
+const GAS_VERSION = "v29.5.128"; // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
+const BUILD_TIMESTAMP = "2026-02-09 19:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5425,47 +5425,16 @@ function handleMessage(event) {
     }
 
     if (msg === "#再詳細說明") {
-      writeLog(`[Quick Reply v29.5.127] 用戶點擊「再詳細說明」`);
-      // 從歷史找 AI 上一次回答，請 AI 針對自己的回答再詳細展開
-      const history = getHistoryFromCacheOrSheet(contextId);
-      let lastAiAnswer = "";
-      let lastUserQ = "";
-      for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].role === "assistant" && !lastAiAnswer) {
-          let content = history[i].content || "";
-          // 截取前200字作為摘要（避免 Token 爆炸）
-          lastAiAnswer = content.replace(/\n---\n本次對話.*$/s, "").trim();
-          if (lastAiAnswer.length > 200) {
-            lastAiAnswer = lastAiAnswer.substring(0, 200) + "...";
-          }
-        }
-        if (history[i].role === "user" && !lastUserQ) {
-          let content = history[i].content || "";
-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-          if (
-            content.length > 3 &&
-            !content.startsWith("#") &&
-            !content.includes("不滿意") &&
-            !content.includes("再詳細") &&
-            !/^\d$/.test(content)
-          ) {
-            lastUserQ = content;
-          }
-        }
-        if (lastAiAnswer && lastUserQ) break;
-      }
-      if (!lastAiAnswer) {
-        replyMessage(replyToken, "請先問我一個問題，我來幫你解答😊");
-        return;
-      }
-      // 請 AI 針對上一次回答再詳細說明
-      const continueMsg = `你剛才回答了：「${lastAiAnswer}」\n\n請針對以上回答再詳細說明，補充更多細節和步驟`;
-      writeLog(`[Quick Reply v29.5.127] 再詳細說明: 原問=${lastUserQ ? lastUserQ.substring(0, 40) : 'N/A'}, AI答=${lastAiAnswer.substring(0, 60)}`);
+      writeLog(`[Quick Reply v29.5.128] 用戶點擊「再詳細說明」`);
+      // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
+      // 只需送一句簡單指令，AI 會根據完整歷史自行展開
+      const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
+      writeLog(`[Quick Reply v29.5.128] 送出: ${continueMsg}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
       userMessage = continueMsg;
       userMsgObj = { role: "user", content: continueMsg };
-      // 不 return，讓流程繼續走一般對話邏輯
+      // 不 return，讓流程繼續走一般對話邏輯（帶著完整歷史上下文）
     }
 
     if (msg === "#搜尋網路") {
