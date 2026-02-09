@@ -12,8 +12,9 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
-const GAS_VERSION = "v29.5.123"; // 2026-02-07 DirectDeep 有 PDF 直接掛載 + 無 PDF 隱藏查手冊
-const BUILD_TIMESTAMP = "2026-02-07 03:10";
+// 更新版本號
+const GAS_VERSION = "v29.5.126"; // 2026-02-09 型號驗證防瞎掰 + #繼續問 handler + Quick Reply 統一
+const BUILD_TIMESTAMP = "2026-02-09 15:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5049,9 +5050,9 @@ function handleMessage(event) {
           if (!msg.startsWith("/")) {
             responseOptions.quickReply = {
               items: [
-                { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
-                { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
-                { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+                { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
+                { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
               ],
             };
           }
@@ -5283,12 +5284,12 @@ function handleMessage(event) {
           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
         }
 
-        // v29.5.123: #型號: handler 已查 PDF，不再顯示「查手冊」
+        // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
         const qrOptions = {
           quickReply: {
             items: [
-              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
-              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
             ],
           },
         };
@@ -5405,8 +5406,8 @@ function handleMessage(event) {
         const qrOptions = {
           quickReply: {
             items: [
-              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
-              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
             ],
           },
         };
@@ -5423,6 +5424,42 @@ function handleMessage(event) {
       return;
     }
 
+    if (msg === "#繼續問") {
+      writeLog(`[Quick Reply v29.5.126] 用戶點擊「再詳細說明」`);
+      // 從歷史找上一個真正的問題，加上「請再詳細說明」讓 AI 延續
+      const history = getHistoryFromCacheOrSheet(contextId);
+      let lastQuestion = "";
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === "user") {
+          let content = history[i].content || "";
+          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+          if (
+            content.length > 3 &&
+            !content.startsWith("#") &&
+            !content.includes("不滿意") &&
+            !content.includes("繼續問") &&
+            !content.includes("再詳細") &&
+            !/^\d$/.test(content)
+          ) {
+            lastQuestion = content;
+            break;
+          }
+        }
+      }
+      if (!lastQuestion) {
+        replyMessage(replyToken, "請告訴我你想了解什麼，我來幫你查😊");
+        return;
+      }
+      // 用「請針對上一題再詳細說明」送給 AI
+      const continueMsg = `針對「${lastQuestion}」請再詳細說明，補充更多細節`;
+      writeLog(`[Quick Reply v29.5.126] 延續問題: ${continueMsg.substring(0, 80)}`);
+      showLoadingAnimation(userId, 60);
+      msg = continueMsg;
+      userMessage = continueMsg;
+      userMsgObj = { role: "user", content: continueMsg };
+      // 不 return，讓流程繼續走一般對話邏輯
+    }
+
     if (msg === "#搜尋網路") {
       writeLog(`[Quick Reply v29.5.118] 用戶要求搜尋網路`);
       showLoadingAnimation(userId, 60);
@@ -5430,7 +5467,7 @@ function handleMessage(event) {
       const qrOptions = {
         quickReply: {
           items: [
-            { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
           ],
         },
       };
@@ -6939,8 +6976,8 @@ function handleMessage(event) {
             replyText.includes("🔍 網路搜尋補充資料")));
 
           const qrItems = [];
-          // 第一個按鈕永遠是「繼續問」
-          qrItems.push({ type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } });
+          // v29.5.126: 第一個按鈕「再詳細說明」→ 從歷史找上一題延續
+          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } });
 
           if (!isWebSearchPhase) {
             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
@@ -6948,11 +6985,11 @@ function handleMessage(event) {
             // 無 PDF → 避免使用者點了卻查不到
             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
             if (hasPdfForModel && !alreadyConsultedPdf) {
-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
+              qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
             }
-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } });
+            qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
           } else {
-            // 網路搜尋階段：只剩「繼續問」（已是最後手段）
+            // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
           }
 
           responseOptions.quickReply = { items: qrItems };
