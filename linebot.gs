@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.129"; // 2026-02-09 修復 #再詳細說明 TDZ ReferenceError // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
-const BUILD_TIMESTAMP = "2026-02-09 19:00";
+const GAS_VERSION = "v29.5.130"; // 2026-02-10 修復 AUTO_SEARCH_PDF→WEB 升級流程 + TestUI 回覆捕捉 + 強化 #再詳細說明
+const BUILD_TIMESTAMP = "2026-02-10 18:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
 // ════════════════════════════════════════════════════════════════
@@ -5429,7 +5429,8 @@ function handleMessage(event) {
       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
-      const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
+      const continueMsg =
+        "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項。\n\n[System Hint: 這是延伸說明需求，請直接在原回答上補充細節，不需要查 PDF 或網路，也不要輸出任何 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB] 暗號，更不要要求使用者再選型號。]";
       writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
@@ -5713,6 +5714,7 @@ function handleMessage(event) {
         userMsgObj.content = userMessage;
         // 標記已查過 PDF，後續 [AUTO_SEARCH_PDF] 信號會直接升級為 Web Search
         cache.put(`${userId}:pdf_consulted`, "true", 600);
+        cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 handleCommand 的 SOP key 對齊
         isInPdfMode = true;
         cache.put(pdfModeKey, "true", 300);
       }
@@ -5851,6 +5853,8 @@ function handleMessage(event) {
                 "[AUTO_SEARCH_WEB]",
               )
               .replace(/\[NEED_DOC\]/gi, "[AUTO_SEARCH_WEB]");
+            // v29.5.130: 同步 replyText，避免暗號外洩到最終回覆
+            replyText = finalText;
             // 跳過 aiRequestedPdfSearch，讓後續 Web Search 邏輯接手
           } else {
             aiRequestedPdfSearch = true;
@@ -5868,6 +5872,8 @@ function handleMessage(event) {
               .trim();
             finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
             finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+            // v29.5.130: 同步 replyText，確保清理後的文字被採用
+            replyText = finalText;
           }
         }
 
@@ -6107,11 +6113,8 @@ function handleMessage(event) {
         writeLog(`[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`);
 
         // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
-        if (hasExplicitTrigger) {
-          // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
-          // 這裡維持原本邏輯 (可能後續會走 Auto Search Web)
-          writeLog(`[Flow] hasExplicitTrigger=true，進入 PDF 觸發邏輯`);
-        } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+        // v29.5.130: 先處理 [AUTO_SEARCH_WEB]，避免「PDF→WEB 升級」後被 hasExplicitTrigger 擋住
+        if (finalText.includes("[AUTO_SEARCH_WEB]")) {
           writeLog("[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋");
 
           // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
@@ -6157,6 +6160,9 @@ function handleMessage(event) {
 
             let pass1Bubble = formatForLineMobile(rawResponse)
               .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
+              .replace(/\[NEED_DOC\]/gi, "")
+              .replace(/\[型號[:：][^\]]+\]/g, "")
               .trim();
 
             if (pass1Bubble.length > 0) {
@@ -6169,7 +6175,12 @@ function handleMessage(event) {
             isDualBubbleComplete = true; // v29.3.29: 標記已完成雙泡泡賦值
             writeLog("[Auto Web] Fast Mode 二次泡泡賦值成功");
           } else {
-            finalText = rawResponse.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+            finalText = formatForLineMobile(rawResponse)
+              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
+              .replace(/\[NEED_DOC\]/gi, "")
+              .replace(/\[型號[:：][^\]]+\]/g, "")
+              .trim();
             finalText += "\n\n(⚠️ 網路搜尋連線逾時)";
             replyText = finalText;
           }
@@ -6177,6 +6188,10 @@ function handleMessage(event) {
           // 跳過後續 PDF Logic
           writeLog("[Auto Web] 已完成搜尋，跳過 PDF Logic");
           // 這裡直接跳到底部
+        } else if (hasExplicitTrigger) {
+          // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
+          // 這裡維持原本邏輯 (可能後續會走 Auto Search PDF)
+          writeLog(`[Flow] hasExplicitTrigger=true，進入 PDF 觸發邏輯`);
         }
 
         // 確保如果是 WEB Search 就不進入 PDF 判斷 (用簡單的方法: 檢查 replyText 是否已改變)
@@ -6404,6 +6419,7 @@ function handleMessage(event) {
 
                   // v29.4.33: 設置 PDF 已查詢標記
                   cache.put(`${userId}:pdf_consulted`, "true", 600);
+                  cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 SOP key 對齊
                   writeLog("[PDF v29.4.33] 已設置 pdf_consulted 標記");
                   replyText = finalText;
                 } else {
@@ -6562,6 +6578,7 @@ function handleMessage(event) {
 
                     // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
                     cache.put(`${userId}:pdf_consulted`, "true", 600); // 10 分鐘有效
+                    cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 SOP key 對齊
                     writeLog(
                       "[PDF v29.4.33] 已設置 pdf_consulted 標記，後續追問將升級至 Web Search",
                     );
@@ -7200,7 +7217,9 @@ function handleCommand(c, u, cid) {
 
     // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
     // 檢查是否已查過 PDF，若未查過且有型號，優先執行 PDF Search
-    const pdfConsulted = cache.get(`pdf_consulted_${u}`) === "true";
+    const pdfConsulted =
+      cache.get(`pdf_consulted_${u}`) === "true" ||
+      cache.get(`${u}:pdf_consulted`) === "true";
     // 嘗試從 Cache 取得上次的型號列表 (需要 Smart Router 有寫入)
     // 注意：cache key 必須與 Smart Router 一致。Smart Router 寫入的是 `last_models_json_${userId}` 嗎？
     // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
@@ -7284,6 +7303,7 @@ function handleCommand(c, u, cid) {
 
     if (triggerPDF) {
       cache.put(`pdf_consulted_${u}`, "true", 600);
+      cache.put(`${u}:pdf_consulted`, "true", 600); // v29.5.130: 與主流程 key 對齊
     }
 
     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
@@ -9285,6 +9305,29 @@ function getHistoryModels(userId) {
 function replyMessage(tk, txt, options = {}) {
   // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
   if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN") {
+    // v29.5.130: TestUI 依賴 testMessage() 從 Log 收集回覆；這裡補寫 [Reply] 讓前端能顯示
+    try {
+      let preview = "";
+      if (Array.isArray(txt)) {
+        preview = txt
+          .map((t) => {
+            if (typeof t === "string") return t;
+            if (t && typeof t === "object") return t.altText || "[Flex Message]";
+            return String(t || "");
+          })
+          .join("\n\n");
+      } else if (txt && typeof txt === "object" && txt.type) {
+        preview = txt.altText || "[Flex Message]";
+      } else {
+        preview = (txt === null || txt === undefined) ? "" : txt.toString();
+      }
+
+      if (preview) {
+        writeLog(`[Reply] ${preview}`);
+      }
+    } catch (e) {
+      // ignore
+    }
     writeLog("[TEST MODE] 跳過 LINE API 呼叫");
     return;
   }
