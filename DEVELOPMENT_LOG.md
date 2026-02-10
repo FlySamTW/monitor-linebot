@@ -153,3 +153,41 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 | 📖 查PDF手冊 | `#查手冊` | `hasPdfForModel = true` | 獨立 handler，從歷史找原始問題，呼叫 getRelevantKBFiles + callLLMWithRetry |
 | 🌐 網路搜尋 | `#搜尋網路` | 永遠顯示 | 呼叫 handleCommand("不滿意...") 觸發 Web Search |
 
+---
+
+## 2026-02-10 (TestUI 可靠性 + PDF→WEB 升級邏輯修復)
+
+### 背景
+用戶要求用 `TestUI.html` 或其他方式驗證整體流程「自洽」，確保實際 LINE 問答不會出錯。
+
+### 問題與根因
+- **TestUI 按下 `#搜尋網路` 出現「(無回覆)」**
+  - **根因**：TestUI 走 `google.script.run.testMessage()`，而 `replyMessage()` 在 TEST MODE 會直接 `return` 不呼叫 LINE API，也沒有把回覆內容寫入 `TEST_LOGS`，導致 `testMessage()` 收集不到回覆。
+- **`#再詳細說明` 在某些情境會把 `[AUTO_SEARCH_PDF]` 等暗號外洩到最終回覆**
+  - **根因**：LLM 在「延伸說明」問題偶爾仍輸出暗號；程式在「PDF 已查過 → 升級 Web」路徑上，存在 flow decision 的先後順序問題，可能導致不會真的跑 Web Search，甚至讓暗號留在 `replyText`。
+- **`pdf_consulted` key 不一致**
+  - **根因**：主流程使用 `${userId}:pdf_consulted`；`handleCommand()` 使用 `pdf_consulted_${u}`，造成 Quick Reply 的「網路搜尋」可能誤判「尚未查過 PDF」而重跑 Pass 1.5（PDF）。
+
+### 修復內容 (v29.5.130)
+- **TestUI 回覆捕捉**：`replyMessage()` 在 TEST MODE 會額外寫入 `[Reply] ...` 到 log，讓 `testMessage()` 能穩定收集回覆。
+- **PDF→WEB 升級流程修復**：Flow decision 改為先處理 `[AUTO_SEARCH_WEB]`，避免被 `hasExplicitTrigger` 先攔住；同時加強 Pass 1 bubble 清理，移除 `[AUTO_SEARCH_*]`、`[NEED_DOC]`、`[型號:...]` 等標記避免外洩。
+- **強化 `#再詳細說明`**：在改寫的 msg 中加入 `System Hint`，降低 LLM 觸發暗號的機率。
+- **統一 `pdf_consulted` flags**：主流程在寫入 `${userId}:pdf_consulted` 時同步寫入 `pdf_consulted_${userId}`；`handleCommand()` 讀取時接受兩種 key，且在 PDF pass 也同步寫回主流程 key。
+- **測試工具更新**：更新 `test_runner/verify_linebot.js` 的 `TEST_URL` 至目前生產部署。
+
+### 驗證結果
+- TestUI 端實測流程：
+  - `/重啟` 顯示版本 `v29.5.130`
+  - `M8有視訊鏡頭嗎` 正常回覆
+  - `#再詳細說明` 正常展開、無暗號外洩
+  - `#搜尋網路` 正常回覆（且不再誤走 PDF Pass 1.5）
+
+---
+
+## 當前狀態 (Current Status)
+- **最後更新時間**: 2026-02-10
+- **最後動作**: v29.5.130 修復 TestUI 回覆捕捉、PDF→WEB 升級流程、`pdf_consulted` key 對齊，並強化 `#再詳細說明`
+- **目前進度**: TestUI 測試可穩定重現 LINE 主流程，Quick Reply 主要路徑已驗證
+- **下一步 (Next Steps)**:
+    - [ ] 追加測試「型號選擇泡泡 → #型號:xxx → PDF 查詢」完整鏈
+    - [ ] 觀察實際 LINE 端「網路搜尋」是否能穩定取得 groundingMetadata（避免 `webSearchQueries` 為空）
