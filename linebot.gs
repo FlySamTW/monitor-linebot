@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.131"; // 2026-02-11 直通車改為 QA 優先：移除強制 PDF hint 與首輪預載
+const GAS_VERSION = "v29.5.132"; // 2026-02-11 修復手冊延續記憶、搜網上上下文修復、Odyssey 3D 衝突判定
 const BUILD_TIMESTAMP = "2026-02-10 18:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -1236,6 +1236,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       // 設置 PDF Mode
       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
       cache.put(pdfModeKey, "true", 300);
+      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
 
       // 直接進入 Pass 1.5：加載 PDF，不再走 DirectDeep
       writeLog(
@@ -5311,38 +5312,45 @@ function handleMessage(event) {
     // ══════════════════════════════════════════════════════════
     // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
     // ══════════════════════════════════════════════════════════
-    if (msg === "#查手冊") {
+    if (msg === "#查手冊" || msg.startsWith("#查手冊 ")) {
       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
       // 設置 PDF Mode
       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
       cache.put(pdfModeKey, "true", 300);
+      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
 
       // 從歷史找出上一個真正的問題（跳過 #型號:, #查手冊, 純型號 等）
       const history = getHistoryFromCacheOrSheet(contextId);
-      let lastQuestion = "";
+      let lastQuestion = manualQueryFromCmd || "";
       const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
-      for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].role === "user") {
-          let content = history[i].content || "";
-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
-          if (
-            content.length > 5 &&
-            !content.startsWith("#") &&
-            !content.includes("不滿意") &&
-            !content.includes("繼續問") &&
-            !content.match(/^\d$/) &&
-            !MODEL_ONLY_RE.test(content) &&
-            !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
-          ) {
-            lastQuestion = content;
-            break;
+      if (!lastQuestion) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i].role === "user") {
+            let content = history[i].content || "";
+            content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+            // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
+            if (
+              content.length > 5 &&
+              !content.startsWith("#") &&
+              !content.includes("不滿意") &&
+              !content.includes("繼續問") &&
+              !content.includes("請針對你剛才的回答再詳細說明") &&
+              !content.match(/^\d$/) &&
+              !MODEL_ONLY_RE.test(content) &&
+              !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
+            ) {
+              lastQuestion = content;
+              break;
+            }
           }
         }
       }
 
       if (!lastQuestion) {
-        replyMessage(replyToken, "請先問一個問題，我再幫你查手冊 📖");
+        replyMessage(
+          replyToken,
+          "請先告訴我型號或問題，我再幫你查手冊。\n例如：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
+        );
         return;
       }
 
@@ -5731,6 +5739,26 @@ function handleMessage(event) {
         const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
         const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
         writeLog(`[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`);
+
+        // v29.5.132: 若已知有手冊且命中直通車，但 Fast Mode 誤回「找不到 PDF」，
+        // 強制補上 PDF 觸發暗號，避免 Odyssey 3D 這類場景卡住。
+        const looksLikeMissingManualReply =
+          /找不到相關的\s*PDF\s*手冊檔案|看起來像需要查手冊|找不到相關的\s*PDF/i.test(
+            rawResponse,
+          );
+        if (
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          hasPdfForModel &&
+          hitAliasKeys.length > 0 &&
+          looksLikeMissingManualReply
+        ) {
+          writeLog(
+            `[Auto Search v29.5.132] 偵測到可查手冊但 Fast Mode 誤判，強制追加 [AUTO_SEARCH_PDF]`,
+          );
+          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+        }
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
         // v27.9.48 fix: 增加對 hallucination (如 [.setAuto_search_pdf()]) 的容錯
@@ -6183,11 +6211,26 @@ function handleMessage(event) {
             // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
             // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
             const currentMsgModels = extractModelNumbers(msg);
+            const hasExplicitModelPattern =
+              /\b[A-Z]\d{2}[A-Z]{1,3}\d{3,4}[A-Z0-9]*\b/i.test(msg);
 
             // v29.3.20: 強化型號衝突判定，支援別稱 (Alias) 解析
             // 避免 G6 比對 S27FG6... 時誤判為衝突
             let isModelMismatch = false;
-            if (currentMsgModels.length > 0 && cachedDirectModels.length > 0) {
+            if (
+              !hasExplicitModelPattern &&
+              hitAliasKeys.length > 0 &&
+              cachedDirectModels.length > 0
+            ) {
+              // v29.5.132: 若當前只有別稱（如 Odyssey 3D）且命中直通車，不視為型號衝突
+              writeLog(
+                `[Auto Search v29.5.132] 命中別稱且未指定新型號，保留既有型號記憶: ${cachedDirectModels.join(", ")}`,
+              );
+              isModelMismatch = false;
+            } else if (
+              currentMsgModels.length > 0 &&
+              cachedDirectModels.length > 0
+            ) {
               // 取得別稱對應表 (供反向查詢)
               const mapJson =
                 PropertiesService.getScriptProperties().getProperty(
@@ -6571,9 +6614,18 @@ function handleMessage(event) {
                 // 否則強制只用當前訊息，避免歷史污染（如：第1輪問Odyssey，第2輪問奇美）
 
                 let useHistory = false;
+                const manualOrContinuationSignals =
+                  /手冊|說明書|manual|剛剛那台|剛才那台|上一台|那台|這台|同一台|前面那台|延續|繼續剛剛/i;
+
+                if (manualOrContinuationSignals.test(msg)) {
+                  useHistory = true;
+                  writeLog(
+                    `[Topic Check v29.5.132] 命中手冊/延續語意，強制 useHistory=true`,
+                  );
+                }
 
                 // 只有在有對話歷史時才需要判斷
-                if (history && history.length > 0) {
+                if (!useHistory && history && history.length > 0) {
                   try {
                     // 使用最便宜的 LLM (Gemini Flash) 快速判斷話題延續性
                     const lastAssistantMsg = history
@@ -6634,7 +6686,7 @@ function handleMessage(event) {
                       `[Topic Check] LLM 判斷失敗，使用關鍵字 fallback: ${e.message}`,
                     );
                     const unresolvedSignals =
-                      /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓/i;
+                      /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓|手冊|說明書|manual|剛剛那台|那台|這台|同一台/i;
                     useHistory = unresolvedSignals.test(msg);
                   }
                 }
@@ -7118,52 +7170,90 @@ function handleCommand(c, u, cid) {
       return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
     }
 
-    // 取得最後一題 (通常是 Assistant 前的 User Message)
-    // v29.5.115: 強化話題延續 - 需要找出「真正的話題」而非「型號選擇」或「System Hint」
-    let userMsg = history[history.length - 2]
-      ? history[history.length - 2].content
-      : history[0].content;
-    
-    // v29.5.115: 清理 System Hint 殘留
-    userMsg = userMsg.replace(/\[System Hint:.*?\]/gs, "").trim();
-    userMsg = userMsg.replace(/\n\n$/g, "").trim();
+    // v29.5.132: 強化 Context Repair
+    // - 跳過 #再詳細說明模板與 System Hint 殘留
+    // - 跳過「不滿意這回答請繼續擴大搜尋」等指令文字
+    // - 若最後一次是純型號，回溯上一個真正問題後再組合
+    const cleanHistoryText = (text) => {
+      if (!text) {
+        return "";
+      }
+      return text
+        .replace(/\[System Hint:.*?\]/gs, "")
+        .replace(/\[AUTO_SEARCH_[A-Z_]+(?:[:：][^\]]+)?\]/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
 
-    // v29.5.115: 儲存用戶選擇的型號（用於後續組合）
+    const isModelOnlyText = (text) => {
+      const normalized = (text || "").replace(/[\s-]/g, "").toUpperCase();
+      return (
+        normalized.length >= 5 &&
+        normalized.length <= 24 &&
+        /^[A-Z0-9]+$/.test(normalized) &&
+        /\d/.test(normalized)
+      );
+    };
+
+    const isNoiseForContextRepair = (text) => {
+      if (!text) {
+        return true;
+      }
+      return (
+        text.startsWith("#") ||
+        text.includes("不滿意這回答請繼續擴大搜尋") ||
+        text.includes("請針對你剛才的回答再詳細說明") ||
+        text.includes("這是延伸說明需求") ||
+        text.includes("to check manuals") ||
+        text.includes("[AUTO_SEARCH") ||
+        /^\d$/.test(text)
+      );
+    };
+
     let selectedModel = "";
-    if (userMsg.length < 20 && /^[A-Z0-9]+$/i.test(userMsg.replace(/[\s-]/g, ""))) {
-      selectedModel = userMsg;
+    let userMsg = "";
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const h = history[i];
+      if (h.role !== "user") {
+        continue;
+      }
+      const content = cleanHistoryText(h.content || "");
+      if (!content) {
+        continue;
+      }
+
+      if (!selectedModel && isModelOnlyText(content)) {
+        selectedModel = content.replace(/\s+/g, "");
+        continue;
+      }
+
+      if (isNoiseForContextRepair(content) || isModelOnlyText(content)) {
+        continue;
+      }
+
+      userMsg = content;
+      break;
     }
 
-    // v29.5.115: 找出真正的「話題」（不是型號選擇、不是 System Hint）
-    let realTopic = "";
-    if (selectedModel || (userMsg.length < 15 && /\d/.test(userMsg))) {
-      // 上一則是型號選擇，需要往前找話題
-      for (let i = history.length - 3; i >= 0; i--) {
-        const h = history[i];
-        if (h.role === "user") {
-          let content = h.content || "";
-          // 清理 System Hint
-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-          // 跳過純型號、System Hint、空白內容
-          if (
-            content.length > 15 &&
-            !content.includes("[AUTO_SEARCH") &&
-            !content.includes("to check manuals")
-          ) {
-            realTopic = content;
-            writeLog(`[Context Repair v29.5.115] 找到原始話題: ${realTopic.substring(0, 50)}...`);
-            break;
-          }
-        }
-      }
-      
-      // 組合「型號 + 話題」
-      if (realTopic && selectedModel) {
-        userMsg = `${selectedModel} ${realTopic}`;
-        writeLog(`[Context Repair v29.5.115] 組合查詢: ${userMsg.substring(0, 80)}...`);
-      } else if (realTopic) {
-        userMsg = realTopic;
-      }
+    if (!userMsg) {
+      const fallbackUser = history.find((h) => h.role === "user");
+      userMsg = cleanHistoryText(fallbackUser ? fallbackUser.content || "" : "");
+    }
+
+    if (
+      selectedModel &&
+      userMsg &&
+      !userMsg.toUpperCase().includes(selectedModel.toUpperCase())
+    ) {
+      userMsg = `${selectedModel} ${userMsg}`.trim();
+      writeLog(
+        `[Context Repair v29.5.132] 組合查詢: ${userMsg.substring(0, 80)}...`,
+      );
+    } else {
+      writeLog(
+        `[Context Repair v29.5.132] 還原查詢: ${userMsg.substring(0, 80)}...`,
+      );
     }
 
     // 處理計數器 (dissatisfied_count)
