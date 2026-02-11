@@ -13,9 +13,11 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.133"; // 2026-02-11 修復17點：手冊自然語句觸發、上下文延續、Context Repair、防污染與文案一致性
-const BUILD_TIMESTAMP = "2026-02-10 18:52";
+const GAS_VERSION = "v29.5.134"; // 2026-02-11 修復17點延伸：再詳細說明次數上限、缺型號改為對話提示、泡泡動態化
+const BUILD_TIMESTAMP = "2026-02-11 14:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+const MAX_ELABORATE_PER_ANSWER = 2;
+const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
 
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -85,6 +87,68 @@ var TEST_LOGS = [];
 // v27.8.5: Log 緩衝區 (Batch Logging)
 var PENDING_LOGS = [];
 // ════════════════════════════════════════════════════════════════
+
+function computeReplyAnchor_(text) {
+  const raw = String(text || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
+  return digest
+    .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
+    .join("")
+    .substring(0, 16);
+}
+
+function getElaborationStateKey_(userId) {
+  return `${userId}:elaboration_state`;
+}
+
+function readElaborationState_(cache, userId) {
+  try {
+    const raw = cache.get(getElaborationStateKey_(userId));
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed;
+  } catch (e) {
+    writeLog(`[Elaboration State] 解析失敗: ${e.message}`);
+    return null;
+  }
+}
+
+function writeElaborationState_(cache, userId, anchor, count) {
+  const state = {
+    anchor: anchor || "",
+    count: Number(count) || 0,
+    updatedAt: Date.now(),
+  };
+  cache.put(
+    getElaborationStateKey_(userId),
+    JSON.stringify(state),
+    ELABORATE_STATE_TTL_SECONDS,
+  );
+}
+
+function getElaborationCountForAnchor_(cache, userId, anchor) {
+  if (!anchor) {
+    return 0;
+  }
+  const state = readElaborationState_(cache, userId);
+  if (!state || state.anchor !== anchor) {
+    return 0;
+  }
+  return Number(state.count) || 0;
+}
+
+function getElaborationTopicAnchor_(cache, userId, fallbackText) {
+  const topicText = (cache.get(`${userId}:last_meaningful_query`) || fallbackText || "").trim();
+  return computeReplyAnchor_(topicText);
+}
 
 /**
  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
@@ -5298,14 +5362,28 @@ function handleMessage(event) {
         }
 
         // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
-        const qrOptions = {
-          quickReply: {
-            items: [
-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
-            ],
-          },
-        };
+        const manualReplyAnchor = getElaborationTopicAnchor_(
+          cache,
+          userId,
+          lastQuestion,
+        );
+        const manualElaborationCount = getElaborationCountForAnchor_(
+          cache,
+          userId,
+          manualReplyAnchor,
+        );
+        const qrItems = [];
+        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+          qrItems.push({
+            type: "action",
+            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
+          });
+        }
+        qrItems.push({
+          type: "action",
+          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
+        });
+        const qrOptions = { quickReply: { items: qrItems } };
         replyMessage(replyToken, replyText, qrOptions);
         writeLog(`[AI Reply] ${replyText}`);
 
@@ -5438,14 +5516,24 @@ function handleMessage(event) {
           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
         }
 
-        const qrOptions = {
-          quickReply: {
-            items: [
-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
-            ],
-          },
-        };
+        const manualReplyAnchor = computeReplyAnchor_(finalText);
+        const manualElaborationCount = getElaborationCountForAnchor_(
+          cache,
+          userId,
+          manualReplyAnchor,
+        );
+        const manualQrItems = [];
+        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+          manualQrItems.push({
+            type: "action",
+            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
+          });
+        }
+        manualQrItems.push({
+          type: "action",
+          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
+        });
+        const qrOptions = { quickReply: { items: manualQrItems } };
         replyMessage(replyToken, replyText, qrOptions);
         writeLog(`[AI Reply] ${replyText}`);
 
@@ -5461,6 +5549,69 @@ function handleMessage(event) {
 
     if (msg === "#再詳細說明") {
       writeLog(`[Quick Reply v29.5.129] 用戶點擊「再詳細說明」`);
+      const historyForContinue = getHistoryFromCacheOrSheet(contextId);
+      const lastAssistantMsg = historyForContinue
+        .slice()
+        .reverse()
+        .find((h) => h.role === "assistant" && (h.content || "").trim());
+      if (!lastAssistantMsg) {
+        replyMessage(
+          replyToken,
+          "我目前找不到上一則回答，請直接再問一次你想深入的問題。",
+        );
+        return;
+      }
+
+      const replyAnchor = getElaborationTopicAnchor_(
+        cache,
+        userId,
+        lastAssistantMsg.content,
+      );
+      const currentElaborationCount = getElaborationCountForAnchor_(
+        cache,
+        userId,
+        replyAnchor,
+      );
+      if (currentElaborationCount >= MAX_ELABORATE_PER_ANSWER) {
+        const limitText =
+          `這一題我已經補充到第 ${MAX_ELABORATE_PER_ANSWER} 次了。\n` +
+          "你可以直接告訴我想深入的段落，或輸入「#查手冊 型號 你的問題」我會改走手冊解答。";
+        const limitQrItems = [
+          {
+            type: "action",
+            action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
+          },
+        ];
+        if (hasPdfForModel) {
+          limitQrItems.unshift({
+            type: "action",
+            action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+          });
+        }
+        replyMessage(replyToken, limitText, { quickReply: { items: limitQrItems } });
+        writeLog(
+          `[Quick Reply v29.5.134] 再詳細說明達上限 ${currentElaborationCount}/${MAX_ELABORATE_PER_ANSWER}`,
+        );
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, limitText, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          historyForContinue,
+          { role: "user", content: msg },
+          { role: "assistant", content: limitText },
+        );
+        return;
+      }
+
+      writeElaborationState_(
+        cache,
+        userId,
+        replyAnchor,
+        currentElaborationCount + 1,
+      );
+      writeLog(
+        `[Quick Reply v29.5.134] 再詳細說明計數: ${currentElaborationCount + 1}/${MAX_ELABORATE_PER_ANSWER}`,
+      );
       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
@@ -5480,13 +5631,24 @@ function handleMessage(event) {
       writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
       showLoadingAnimation(userId, 60);
       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
-      const qrOptions = {
-        quickReply: {
-          items: [
-            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-          ],
-        },
-      };
+      const webReplyAnchor = getElaborationTopicAnchor_(
+        cache,
+        userId,
+        cmdResult,
+      );
+      const webElaborationCount = getElaborationCountForAnchor_(
+        cache,
+        userId,
+        webReplyAnchor,
+      );
+      const qrItems = [];
+      if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+        qrItems.push({
+          type: "action",
+          action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
+        });
+      }
+      const qrOptions = qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
       replyMessage(replyToken, cmdResult, qrOptions);
       return;
     }
@@ -7025,9 +7187,32 @@ function handleMessage(event) {
             (typeof replyText === 'string' && (replyText.includes("[來源: 網路搜尋]") ||
             replyText.includes("🔍 網路搜尋補充資料")));
 
+          let currentReplyTextForUi = Array.isArray(replyText)
+            ? replyText.join("\n")
+            : String(replyText || "");
+          const currentReplyAnchor = getElaborationTopicAnchor_(
+            cache,
+            userId,
+            finalText || currentReplyTextForUi,
+          );
+          const elaborationCountForThisReply = getElaborationCountForAnchor_(
+            cache,
+            userId,
+            currentReplyAnchor,
+          );
+
           const qrItems = [];
-          // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
-          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } });
+          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
+            // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
+            qrItems.push({
+              type: "action",
+              action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
+            });
+          } else {
+            writeLog(
+              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
+            );
+          }
 
           if (!isWebSearchPhase) {
             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
@@ -7045,12 +7230,31 @@ function handleMessage(event) {
                 replyText += pdfReminder;
               }
             }
+
+            // 缺型號時改為對話提示，不以泡泡引導
+            const userAskedManual = /手冊|說明書|manual/i.test(msg);
+            const alreadyHasModelHint =
+              /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
+            if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
+              const modelHint =
+                "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
+              if (Array.isArray(replyText)) {
+                replyText[replyText.length - 1] += modelHint;
+              } else {
+                replyText += modelHint;
+              }
+              currentReplyTextForUi = Array.isArray(replyText)
+                ? replyText.join("\n")
+                : String(replyText || "");
+            }
             qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } });
           } else {
             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
           }
 
-          responseOptions.quickReply = { items: qrItems };
+          if (qrItems.length > 0) {
+            responseOptions.quickReply = { items: qrItems };
+          }
         }
 
         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
