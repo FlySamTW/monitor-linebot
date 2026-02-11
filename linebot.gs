@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.130"; // 2026-02-10 修復 AUTO_SEARCH_PDF→WEB 升級流程 + TestUI 回覆捕捉 + 強化 #再詳細說明
+const GAS_VERSION = "v29.5.131"; // 2026-02-11 直通車改為 QA 優先：移除強制 PDF hint 與首輪預載
 const BUILD_TIMESTAMP = "2026-02-10 18:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -5052,7 +5052,7 @@ function handleMessage(event) {
               items: [
                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
                 { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
-                { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+                { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
               ],
             };
           }
@@ -5289,7 +5289,7 @@ function handleMessage(event) {
           quickReply: {
             items: [
               { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
             ],
           },
         };
@@ -5309,7 +5309,7 @@ function handleMessage(event) {
     }
 
     // ══════════════════════════════════════════════════════════
-    // v29.5.118: 攔截 #查手冊 / #搜尋網路（Quick Reply 按鈕）
+    // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
     // ══════════════════════════════════════════════════════════
     if (msg === "#查手冊") {
       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
@@ -5325,7 +5325,7 @@ function handleMessage(event) {
         if (history[i].role === "user") {
           let content = history[i].content || "";
           content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜尋網路、純型號、泡泡選擇等
+          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
           if (
             content.length > 5 &&
             !content.startsWith("#") &&
@@ -5407,7 +5407,7 @@ function handleMessage(event) {
           quickReply: {
             items: [
               { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
             ],
           },
         };
@@ -5441,8 +5441,8 @@ function handleMessage(event) {
       // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
     }
 
-    if (msg === "#搜尋網路") {
-      writeLog(`[Quick Reply v29.5.118] 用戶要求搜尋網路`);
+    if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
+      writeLog(`[Quick Reply v29.5.131] 用戶要求搜網上其他解答`);
       showLoadingAnimation(userId, 60);
       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
       const qrOptions = {
@@ -5548,27 +5548,8 @@ function handleMessage(event) {
         writeLog(
           `[Direct Search] 命中直通車關鍵字: ${hitKeys.join(
             ", ",
-          )}，將強制 AI 進行 PDF 搜索 (Fast Mode Hint)`,
+          )}，先走 Fast Mode (QA/Rules 優先，不強制 PDF)`,
         );
-
-        // v29.4.28: Force AI to trigger Auto-Search for Direct Keywords
-        // "M7" should behave like "Search M7"
-        // We append a System Hint to the message content passed to LLM (but not to User Log/Record?)
-        // Actually, callLLMWithRetry formatting might expose it if we aren't careful?
-        // No, callLLMWithRetry constructs the prompt. We can modify `userMessage` here?
-        // But `userMessage` is used for caching and recording.
-        // Better to handle this inside the prompt construction or just append here and record the raw message.
-        // Let's rely on the prompt's ability to see this hint.
-
-        // Note: We don't change `msg` (which is used for logic), but `userMessage` (passed to LLM).
-        // BUT wait, `userMessage` is passed to `callLLMWithRetry` as the first arg.
-
-        // We will append a hidden hint.
-        // We will append a hidden hint.
-        userMessage += `\n\n[System Hint: User mentioned keyword '${hitKeys[0]}'. You MUST output [AUTO_SEARCH_PDF: ${hitKeys[0]}] to check manuals.]`;
-
-        // v29.4.29 Fix: Update userMsgObj so LLM actually sees the hint!
-        userMsgObj.content = userMessage;
 
         // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
         cache.put(`${userId}:hit_alias_key`, hitKeys[0], 300); // 相容舊邏輯
@@ -5576,8 +5557,8 @@ function handleMessage(event) {
           cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
         }
 
-        // v29.5.123: 立刻檢查這些型號有沒有 PDF，有的話直接預載
-        // 不再讓使用者多按一步「查手冊」才觸發 PDF
+        // v29.5.131: QA 優先修正
+        // 只檢查「是否有手冊可查」供 Quick Reply 顯示，不再首輪直接預載 PDF。
         try {
           const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
           const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
@@ -5603,31 +5584,12 @@ function handleMessage(event) {
           if (pdfMatchModel) {
             hasPdfForModel = true;
             primaryModel = pdfMatchModel;
-            writeLog(`[DirectDeep v29.5.123] 型號 ${pdfMatchModel} 有 PDF，立刻預載`);
-
-            // 呼叫 getRelevantKBFiles 取得 PDF 檔案
-            const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
-            if (kbListJson) {
-              const kbList = JSON.parse(kbListJson);
-              const kbResult = getRelevantKBFiles(
-                [...history, { role: "user", content: msg }],
-                kbList,
-                userId,
-                contextId,
-                false,
-              );
-              const files = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
-              if (files.length > 0) {
-                filesToAttach = files;
-                primaryModel = (kbResult.primaryModel) || pdfMatchModel;
-                writeLog(`[DirectDeep v29.5.123] ✅ 預載 ${files.filter(f => f.mimeType === "application/pdf").length} 本 PDF`);
-              }
-            }
+            writeLog(`[DirectDeep v29.5.131] 型號 ${pdfMatchModel} 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊`);
           } else {
-            writeLog(`[DirectDeep v29.5.123] 所有型號均無 PDF: ${directModels.join(", ")}`);
+            writeLog(`[DirectDeep v29.5.131] 所有型號均無 PDF: ${directModels.join(", ")}`);
           }
         } catch (e) {
-          writeLog(`[DirectDeep v29.5.123] PDF 預載失敗: ${e.message}`);
+          writeLog(`[DirectDeep v29.5.131] PDF 可用性檢查失敗: ${e.message}`);
         }
       }
     }
@@ -6996,7 +6958,7 @@ function handleMessage(event) {
                 replyText += pdfReminder;
               }
             }
-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
+            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } });
           } else {
             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
           }
