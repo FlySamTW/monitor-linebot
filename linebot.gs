@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.132"; // 2026-02-11 修復手冊延續記憶、搜網上上下文修復、Odyssey 3D 衝突判定
+const GAS_VERSION = "v29.5.133"; // 2026-02-11 修復17點：手冊自然語句觸發、上下文延續、Context Repair、防污染與文案一致性
 const BUILD_TIMESTAMP = "2026-02-10 18:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 
@@ -1236,7 +1236,6 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       // 設置 PDF Mode
       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
       cache.put(pdfModeKey, "true", 300);
-      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
 
       // 直接進入 Pass 1.5：加載 PDF，不再走 DirectDeep
       writeLog(
@@ -4918,6 +4917,7 @@ function handleMessage(event) {
     // 但指令類別不做去重，因為用戶可能需要重試
     const cache = CacheService.getScriptCache();
     const isCommand = msg.startsWith("/");
+    const isQuickCommand = msg.startsWith("#");
 
     if (!isCommand) {
       // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
@@ -4939,6 +4939,18 @@ function handleMessage(event) {
         return;
       }
       cache.put(dedupKey, "1", 60);
+    }
+
+    // v29.5.133: 記錄最近一則「可延續話題」的問題，供 #搜網上其他解答 fallback 使用
+    const shouldCacheMeaningfulQuery =
+      !isCommand &&
+      !isQuickCommand &&
+      msg.length >= 2 &&
+      !/^(?:1|2|3)$/.test(msg) &&
+      !/不滿意這回答請繼續擴大搜尋/.test(msg) &&
+      !/請針對你剛才的回答再詳細說明/.test(msg);
+    if (shouldCacheMeaningfulQuery) {
+      cache.put(`${userId}:last_meaningful_query`, msg, 21600); // 6 小時
     }
 
     // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
@@ -5052,7 +5064,7 @@ function handleMessage(event) {
             responseOptions.quickReply = {
               items: [
                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
-                { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
+                { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
                 { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
               ],
             };
@@ -5312,6 +5324,19 @@ function handleMessage(event) {
     // ══════════════════════════════════════════════════════════
     // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
     // ══════════════════════════════════════════════════════════
+    // v29.5.133: 支援自然語句觸發手冊（例如：我想找手冊上的答案 / 查手冊 S27FG900XC ...）
+    const naturalManualCmd = msg.match(
+      /^(?:我想(?:找|查|看)?手冊(?:上的答案)?|幫我查手冊|請查手冊|查手冊|查說明書|看說明書)\s*(.*)$/i,
+    );
+    if (!msg.startsWith("#") && naturalManualCmd) {
+      const manualTail = (naturalManualCmd[1] || "").trim();
+      msg = manualTail ? `#查手冊 ${manualTail}` : "#查手冊";
+      userMessage = msg;
+      writeLog(
+        `[Quick Reply v29.5.133] 自然語句轉換為手冊指令: ${msg.substring(0, 80)}`,
+      );
+    }
+
     if (msg === "#查手冊" || msg.startsWith("#查手冊 ")) {
       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
       // 設置 PDF Mode
@@ -5335,6 +5360,8 @@ function handleMessage(event) {
               !content.includes("不滿意") &&
               !content.includes("繼續問") &&
               !content.includes("請針對你剛才的回答再詳細說明") &&
+              !content.includes("不需要查 PDF 或網路") &&
+              !content.includes("不要輸出任何系統暗號") &&
               !content.match(/^\d$/) &&
               !MODEL_ONLY_RE.test(content) &&
               !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
@@ -5349,7 +5376,7 @@ function handleMessage(event) {
       if (!lastQuestion) {
         replyMessage(
           replyToken,
-          "請先告訴我型號或問題，我再幫你查手冊。\n例如：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
+          "請先告訴我型號或問題，我再幫你查手冊。\n你可以這樣輸入：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub\n或：查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
         );
         return;
       }
@@ -5424,7 +5451,7 @@ function handleMessage(event) {
 
         const asstMsgObj = { role: "assistant", content: finalText };
         updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
-        writeRecordDirectly(userId, "#查手冊", contextId, "user", "");
+        writeRecordDirectly(userId, msg, contextId, "user", "");
         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
       } else {
         replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
@@ -5438,7 +5465,7 @@ function handleMessage(event) {
       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
       const continueMsg =
-        "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項。\n\n[System Hint: 這是延伸說明需求，請直接在原回答上補充細節，不需要查 PDF 或網路，也不要輸出任何 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB] 暗號，更不要要求使用者再選型號。]";
+        "請針對你剛才的回答再詳細說明，補充更多細節、步驟與注意事項；請延續原主題，不需要查 PDF 或網路，也不要輸出任何系統暗號。";
       writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
@@ -5450,7 +5477,7 @@ function handleMessage(event) {
     }
 
     if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
-      writeLog(`[Quick Reply v29.5.131] 用戶要求搜網上其他解答`);
+      writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
       showLoadingAnimation(userId, 60);
       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
       const qrOptions = {
@@ -6897,8 +6924,16 @@ function handleMessage(event) {
 
                     // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
                     if (!finalText || finalText.trim().length === 0) {
+                      const suggestedModel =
+                        cachedDirectModels && cachedDirectModels.length > 0
+                          ? cachedDirectModels[0]
+                          : "";
+                      const usageHint = suggestedModel
+                        ? `\n你也可以直接輸入：#查手冊 ${suggestedModel} 你的問題`
+                        : `\n你也可以直接輸入：#查手冊 S27FG900XC 你的問題`;
                       finalText =
-                        "抱歉，雖然這看起來像需要查手冊的問題，但我找不到相關的 PDF 手冊檔案。😅\n請確認您的型號是否正確（例如包含完整型號），或是問得更具體一點喔！";
+                        "抱歉，這題看起來需要手冊，但我目前找不到可對應的 PDF。😅\n請補上完整型號或更具體的問題。" +
+                        usageHint;
                     }
                     replyText = finalText;
                   }
@@ -7000,10 +7035,10 @@ function handleMessage(event) {
             // 無 PDF → 避免使用者點了卻查不到
             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
             if (hasPdfForModel && !alreadyConsultedPdf) {
-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
+              qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
 
               // v29.5.127: 在回答末尾加入查手冊等待提醒
-              const pdfReminder = "\n\n💡 你也可以點下方「查PDF手冊」深入查詢（約需等待30秒）";
+              const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
               if (Array.isArray(replyText)) {
                 replyText[replyText.length - 1] += pdfReminder;
               } else {
@@ -7169,8 +7204,9 @@ function handleCommand(c, u, cid) {
     if (!history || history.length === 0) {
       return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
     }
+    const cache = CacheService.getScriptCache();
 
-    // v29.5.132: 強化 Context Repair
+    // v29.5.133: 強化 Context Repair
     // - 跳過 #再詳細說明模板與 System Hint 殘留
     // - 跳過「不滿意這回答請繼續擴大搜尋」等指令文字
     // - 若最後一次是純型號，回溯上一個真正問題後再組合
@@ -7187,12 +7223,14 @@ function handleCommand(c, u, cid) {
 
     const isModelOnlyText = (text) => {
       const normalized = (text || "").replace(/[\s-]/g, "").toUpperCase();
-      return (
-        normalized.length >= 5 &&
-        normalized.length <= 24 &&
-        /^[A-Z0-9]+$/.test(normalized) &&
-        /\d/.test(normalized)
-      );
+      if (!normalized) {
+        return false;
+      }
+      // 僅把「真正像型號」的內容視為 model-only，避免把 ODYSSEY3D 這類語意詞當成型號
+      if (/ODYSSEY|HUB|ARK/.test(normalized)) {
+        return false;
+      }
+      return /^[SCFGM]\d{1,2}[A-Z0-9]{1,20}$/.test(normalized);
     };
 
     const isNoiseForContextRepair = (text) => {
@@ -7204,6 +7242,7 @@ function handleCommand(c, u, cid) {
         text.includes("不滿意這回答請繼續擴大搜尋") ||
         text.includes("請針對你剛才的回答再詳細說明") ||
         text.includes("這是延伸說明需求") ||
+        text.includes("更不要要求使用者再選型號") ||
         text.includes("to check manuals") ||
         text.includes("[AUTO_SEARCH") ||
         /^\d$/.test(text)
@@ -7237,8 +7276,33 @@ function handleCommand(c, u, cid) {
     }
 
     if (!userMsg) {
-      const fallbackUser = history.find((h) => h.role === "user");
-      userMsg = cleanHistoryText(fallbackUser ? fallbackUser.content || "" : "");
+      const lastMeaningfulFromCache = cleanHistoryText(
+        cache.get(`${u}:last_meaningful_query`) || "",
+      );
+      if (lastMeaningfulFromCache && !isNoiseForContextRepair(lastMeaningfulFromCache)) {
+        userMsg = lastMeaningfulFromCache;
+        writeLog(
+          `[Context Repair v29.5.133] 使用 last_meaningful_query fallback: ${userMsg.substring(0, 80)}...`,
+        );
+      }
+    }
+
+    if (!userMsg) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        const h = history[i];
+        if (h.role !== "user") {
+          continue;
+        }
+        const content = cleanHistoryText(h.content || "");
+        if (!content || isNoiseForContextRepair(content)) {
+          continue;
+        }
+        userMsg = content;
+        writeLog(
+          `[Context Repair v29.5.133] 使用歷史 fallback: ${userMsg.substring(0, 80)}...`,
+        );
+        break;
+      }
     }
 
     if (
@@ -7248,16 +7312,19 @@ function handleCommand(c, u, cid) {
     ) {
       userMsg = `${selectedModel} ${userMsg}`.trim();
       writeLog(
-        `[Context Repair v29.5.132] 組合查詢: ${userMsg.substring(0, 80)}...`,
+        `[Context Repair v29.5.133] 組合查詢: ${userMsg.substring(0, 80)}...`,
       );
     } else {
       writeLog(
-        `[Context Repair v29.5.132] 還原查詢: ${userMsg.substring(0, 80)}...`,
+        `[Context Repair v29.5.133] 還原查詢: ${userMsg.substring(0, 80)}...`,
       );
     }
 
+    if (!userMsg) {
+      return "我找不到可延續的問題內容，請直接告訴我你要查的主題。\n例如：S27FG900XC 怎麼開啟 Odyssey Hub";
+    }
+
     // 處理計數器 (dissatisfied_count)
-    const cache = CacheService.getScriptCache();
     const countKey = `dissatisfied_count_${u}`;
     let count = parseInt(cache.get(countKey) || "0") + 1;
     cache.put(countKey, count.toString(), 600); // 10 分鐘內有效
@@ -7311,9 +7378,14 @@ function handleCommand(c, u, cid) {
               kbList,
               u,
             );
-            if (kbResult.files.length > 0) {
+            const sopFiles = Array.isArray(kbResult)
+              ? kbResult
+              : kbResult && Array.isArray(kbResult.files)
+                ? kbResult.files
+                : [];
+            if (sopFiles.length > 0) {
               triggerPDF = true;
-              filesToAttach = kbResult.files;
+              filesToAttach = sopFiles;
               writeLog(
                 `[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`,
               );
