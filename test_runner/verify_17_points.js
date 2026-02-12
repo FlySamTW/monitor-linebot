@@ -127,7 +127,7 @@ async function main() {
       "04 failed: #再詳細說明 仍誤觸 PDF/Web 暗號流程。",
     );
     assertStep(
-      hasPattern(t4.logs, /Quick Reply .*搜網上其他解答/),
+      hasPattern(t4.logs, /Quick Reply .*(搜網上其他解答|搜尋這題的網路解答)/),
       "05 failed: #搜網上其他解答 指令未正確攔截。",
     );
     const repairLine = String(getContextRepairLine(t4.logs) || "");
@@ -195,4 +195,3 @@ main().catch((e) => {
   console.error(`FAIL: ${e.message}`);
   process.exit(1);
 });
-

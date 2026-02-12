@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.135"; // 2026-02-11 文案修正：泡泡改為「這題搜網路解法」避免誤解為新問題
-const BUILD_TIMESTAMP = "2026-02-11 19:48";
+const GAS_VERSION = "v29.5.136"; // 2026-02-11 文案修正：泡泡統一為「搜尋這題的網路解答」
+const BUILD_TIMESTAMP = "2026-02-11 20:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5129,7 +5129,7 @@ function handleMessage(event) {
               items: [
                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
                 { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
-                { type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } },
+                { type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } },
               ],
             };
           }
@@ -5381,7 +5381,7 @@ function handleMessage(event) {
         }
         qrItems.push({
           type: "action",
-          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
         });
         const qrOptions = { quickReply: { items: qrItems } };
         replyMessage(replyToken, replyText, qrOptions);
@@ -5531,7 +5531,7 @@ function handleMessage(event) {
         }
         manualQrItems.push({
           type: "action",
-          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
         });
         const qrOptions = { quickReply: { items: manualQrItems } };
         replyMessage(replyToken, replyText, qrOptions);
@@ -5579,7 +5579,7 @@ function handleMessage(event) {
         const limitQrItems = [
           {
             type: "action",
-            action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+            action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
           },
         ];
         if (hasPdfForModel) {
@@ -5628,7 +5628,7 @@ function handleMessage(event) {
     }
 
     if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
-      writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
+      writeLog(`[Quick Reply v29.5.136] 用戶要求搜尋這題的網路解答`);
       showLoadingAnimation(userId, 60);
       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
       const webReplyAnchor = getElaborationTopicAnchor_(
@@ -7247,7 +7247,7 @@ function handleMessage(event) {
                 ? replyText.join("\n")
                 : String(replyText || "");
             }
-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } });
+            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } });
           } else {
             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
           }
