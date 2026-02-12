@@ -184,10 +184,39 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 
 ---
 
+## 2026-02-12 (Quick Reply 動態規則校正 + 文案修正)
+
+### 背景
+- 用戶指出兩個核心問題：
+  1. 「搜網路」泡泡文案不自然，且容易誤解成「只能問新題」。
+  2. Web 回合被硬編碼縮成 1 顆泡泡，與「同題可繼續查手冊/搜網路/再詳細」的設計衝突。
+
+### 修復內容
+- **文案調整**：統一為 `🌐 這題再搜網路`（指向同題延伸，不是開新題）。
+- **指令相容**：新增 `#這題再搜網路`，同時保留 `#搜尋網路` / `#搜網上其他解答` / `#搜往上其他解答`。
+- **Web 回合泡泡修復**：
+  - 移除「Web 階段只留再詳細」的硬編碼。
+  - 改為依條件動態顯示（再詳細次數、是否可查手冊、同題型號記憶）。
+- **手冊入口保留**：
+  - 在 `#這題再搜網路` 回合，若同題已有型號記憶 (`direct_search_models`)，仍保留「📖 查手冊」。
+- **可觀測性**：
+  - 新增日誌：`[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: N`，避免「看起來像 1 顆」但無法追查。
+- **測試防回歸**：
+  - 新增 `test_runner/verify_web_qr_persistence.js`（檢查 Web 回合泡泡數）。
+  - 更新 `test_runner/verify_17_points.js`：`userId` 改動態，避免舊快取污染導致誤判。
+
+### 驗證結果
+- `verify_web_qr_persistence`：PASS
+- `verify_17_points`：PASS
+- `verify_manual_continuity`：PASS
+- 生產部署已更新至 `AKfycbz7... @824`。
+
+---
+
 ## 當前狀態 (Current Status)
-- **最後更新時間**: 2026-02-10
-- **最後動作**: v29.5.130 修復 TestUI 回覆捕捉、PDF→WEB 升級流程、`pdf_consulted` key 對齊，並強化 `#再詳細說明`
-- **目前進度**: TestUI 測試可穩定重現 LINE 主流程，Quick Reply 主要路徑已驗證
+- **最後更新時間**: 2026-02-12
+- **最後動作**: v29.5.139 完成 Quick Reply 文案與動態規則校正（Web 回合不再硬編碼 1 顆）
+- **目前進度**: 17 點修復完成；同題泡泡行為與測試腳本已對齊
 - **下一步 (Next Steps)**:
-    - [ ] 追加測試「型號選擇泡泡 → #型號:xxx → PDF 查詢」完整鏈
-    - [ ] 觀察實際 LINE 端「網路搜尋」是否能穩定取得 groundingMetadata（避免 `webSearchQueries` 為空）
+    - [ ] 觀察真實 LINE 流量下 `groundingMetadata` 穩定度（`webSearchQueries`/`groundingChunks`）
+    - [ ] 補一支「泡泡矩陣快照」測試（QA/PDF/Web 三種來源 × 次數上限 × 有無型號）
