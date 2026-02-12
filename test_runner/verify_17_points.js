@@ -17,7 +17,7 @@ function assertStep(ok, message) {
 async function main() {
   const TEST_URL =
     "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
-  const userId = "TEST_FIX_17_POINTS_001";
+  const userId = `TEST_FIX_17_POINTS_${Date.now()}`;
 
   const turns = [
     "/重啟",
@@ -127,8 +127,8 @@ async function main() {
       "04 failed: #再詳細說明 仍誤觸 PDF/Web 暗號流程。",
     );
     assertStep(
-      hasPattern(t4.logs, /Quick Reply .*(搜網上其他解答|搜尋這題的網路解答)/),
-      "05 failed: #搜網上其他解答 指令未正確攔截。",
+      hasPattern(t4.logs, /Quick Reply .*(搜網上其他解答|搜尋這題的網路解答|這題再搜網路)/),
+      "05 failed: 搜網路指令未正確攔截。",
     );
     const repairLine = String(getContextRepairLine(t4.logs) || "");
     assertStep(

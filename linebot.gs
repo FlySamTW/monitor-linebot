@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.136"; // 2026-02-11 文案修正：泡泡統一為「搜尋這題的網路解答」
-const BUILD_TIMESTAMP = "2026-02-11 20:05";
+const GAS_VERSION = "v29.5.139"; // 2026-02-12 修正：Web 指令階段記錄泡泡數，確保三按鈕可驗證
+const BUILD_TIMESTAMP = "2026-02-12 10:31";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5129,7 +5129,7 @@ function handleMessage(event) {
               items: [
                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
                 { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
-                { type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } },
+                { type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } },
               ],
             };
           }
@@ -5381,7 +5381,7 @@ function handleMessage(event) {
         }
         qrItems.push({
           type: "action",
-          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
         });
         const qrOptions = { quickReply: { items: qrItems } };
         replyMessage(replyToken, replyText, qrOptions);
@@ -5400,7 +5400,7 @@ function handleMessage(event) {
     }
 
     // ══════════════════════════════════════════════════════════
-    // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
+    // v29.5.118: 攔截 #查手冊 / #這題再搜網路（含舊指令相容）
     // ══════════════════════════════════════════════════════════
     // v29.5.133: 支援自然語句觸發手冊（例如：我想找手冊上的答案 / 查手冊 S27FG900XC ...）
     const naturalManualCmd = msg.match(
@@ -5531,7 +5531,7 @@ function handleMessage(event) {
         }
         manualQrItems.push({
           type: "action",
-          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
         });
         const qrOptions = { quickReply: { items: manualQrItems } };
         replyMessage(replyToken, replyText, qrOptions);
@@ -5579,7 +5579,7 @@ function handleMessage(event) {
         const limitQrItems = [
           {
             type: "action",
-            action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+            action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
           },
         ];
         if (hasPdfForModel) {
@@ -5627,8 +5627,13 @@ function handleMessage(event) {
       // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
     }
 
-    if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
-      writeLog(`[Quick Reply v29.5.136] 用戶要求搜尋這題的網路解答`);
+    if (
+      msg === "#搜尋網路" ||
+      msg === "#搜往上其他解答" ||
+      msg === "#搜網上其他解答" ||
+      msg === "#這題再搜網路"
+    ) {
+      writeLog(`[Quick Reply v29.5.137] 用戶要求這題再搜網路`);
       showLoadingAnimation(userId, 60);
       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
       const webReplyAnchor = getElaborationTopicAnchor_(
@@ -5641,6 +5646,16 @@ function handleMessage(event) {
         userId,
         webReplyAnchor,
       );
+      let canShowManualQuickReply = hasPdfForModel;
+      if (!canShowManualQuickReply) {
+        try {
+          const directModels = JSON.parse(cache.get(`${userId}:direct_search_models`) || "[]");
+          // 只要延續同題且已有型號記憶，就保留「查手冊」入口，避免泡泡縮到只剩 1~2 顆
+          canShowManualQuickReply = Array.isArray(directModels) && directModels.length > 0;
+        } catch (e) {
+          writeLog(`[Quick Reply v29.5.137] 手冊按鈕判斷失敗: ${e.message}`);
+        }
+      }
       const qrItems = [];
       if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
         qrItems.push({
@@ -5648,6 +5663,17 @@ function handleMessage(event) {
           action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
         });
       }
+      if (canShowManualQuickReply) {
+        qrItems.push({
+          type: "action",
+          action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+        });
+      }
+      qrItems.push({
+        type: "action",
+        action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
+      });
+      writeLog(`[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: ${qrItems.length}`);
       const qrOptions = qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
       replyMessage(replyToken, cmdResult, qrOptions);
       return;
@@ -7183,10 +7209,6 @@ function handleMessage(event) {
         // v29.5.118: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
         let responseOptions = {};
         if (!msg.startsWith("/") && !msg.startsWith("#") && replyText) {
-          const isWebSearchPhase =
-            (typeof replyText === 'string' && (replyText.includes("[來源: 網路搜尋]") ||
-            replyText.includes("🔍 網路搜尋補充資料")));
-
           let currentReplyTextForUi = Array.isArray(replyText)
             ? replyText.join("\n")
             : String(replyText || "");
@@ -7214,43 +7236,39 @@ function handleMessage(event) {
             );
           }
 
-          if (!isWebSearchPhase) {
-            // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
-            // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
-            // 無 PDF → 避免使用者點了卻查不到
-            const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
-            if (hasPdfForModel && !alreadyConsultedPdf) {
-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
+          // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+          // 無 PDF → 避免使用者點了卻查不到
+          const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+          if (hasPdfForModel && !alreadyConsultedPdf) {
+            qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
 
-              // v29.5.127: 在回答末尾加入查手冊等待提醒
-              const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
-              if (Array.isArray(replyText)) {
-                replyText[replyText.length - 1] += pdfReminder;
-              } else {
-                replyText += pdfReminder;
-              }
+            // v29.5.127: 在回答末尾加入查手冊等待提醒
+            const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
+            if (Array.isArray(replyText)) {
+              replyText[replyText.length - 1] += pdfReminder;
+            } else {
+              replyText += pdfReminder;
             }
-
-            // 缺型號時改為對話提示，不以泡泡引導
-            const userAskedManual = /手冊|說明書|manual/i.test(msg);
-            const alreadyHasModelHint =
-              /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
-            if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
-              const modelHint =
-                "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
-              if (Array.isArray(replyText)) {
-                replyText[replyText.length - 1] += modelHint;
-              } else {
-                replyText += modelHint;
-              }
-              currentReplyTextForUi = Array.isArray(replyText)
-                ? replyText.join("\n")
-                : String(replyText || "");
-            }
-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } });
-          } else {
-            // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
           }
+
+          // 缺型號時改為對話提示，不以泡泡引導
+          const userAskedManual = /手冊|說明書|manual/i.test(msg);
+          const alreadyHasModelHint =
+            /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
+          if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
+            const modelHint =
+              "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
+            if (Array.isArray(replyText)) {
+              replyText[replyText.length - 1] += modelHint;
+            } else {
+              replyText += modelHint;
+            }
+            currentReplyTextForUi = Array.isArray(replyText)
+              ? replyText.join("\n")
+              : String(replyText || "");
+          }
+          qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } });
 
           if (qrItems.length > 0) {
             responseOptions.quickReply = { items: qrItems };
