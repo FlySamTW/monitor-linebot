@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.140"; // 2026-03-02 修正：[型號]標籤外洩、強化來源標註與PDF查無規格自動轉網搜
-const BUILD_TIMESTAMP = "2026-03-02 13:32";
+const GAS_VERSION = "v29.5.141"; // 2026-03-02 修正：同步 MODEL_REGEX，確保 DirectDeep 能提取 WA/WD/VR 家電型號並彈出泡泡
+const BUILD_TIMESTAMP = "2026-03-02 16:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -875,7 +875,7 @@ function checkDirectDeepSearch(msg, userId) {
             if (mappedValue) {
               // 從映射值提取型號
               const MODEL_REGEX =
-                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
               const models = [];
               let match;
               while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
@@ -982,7 +982,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
           if (mapJson) {
             const keywordMap = JSON.parse(mapJson);
             const MODEL_REGEX =
-              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
+              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
 
             for (const hitKey of hitKeys) {
               const mappedValue = keywordMap[hitKey];
@@ -3292,9 +3292,9 @@ function getRelevantKBFiles(
   // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
   // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
   // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
-  // v29.4.24: Broaden Regex to support Appliances (WA/WD/VR) and full range
+  // v29.5.50: Broaden Regex to support Appliances (WA/WD/VR) and full range, and S series with 1 or 2 digits
   const MODEL_REGEX =
-    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
 
   // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
   // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
@@ -9373,7 +9373,7 @@ function extractContextFromHistory(userId, contextId) {
 
     // 提取型號
     const MODEL_REGEX =
-      /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]{0,2}|S\d{1,2})\b/g;
+      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
     const models = [];
     let match;
     while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
