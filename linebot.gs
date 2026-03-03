@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.141"; // 2026-03-02 修正：同步 MODEL_REGEX，確保 DirectDeep 能提取 WA/WD/VR 家電型號並彈出泡泡
-const BUILD_TIMESTAMP = "2026-03-02 16:15";
+const GAS_VERSION = "v29.5.145"; // 2026-03-03 修正：同步 MODEL_REGEX，修復 Cache 污染與泡泡條件
+const BUILD_TIMESTAMP = "2026-03-03 10:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -875,7 +875,7 @@ function checkDirectDeepSearch(msg, userId) {
             if (mappedValue) {
               // 從映射值提取型號
               const MODEL_REGEX =
-                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
               const models = [];
               let match;
               while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
@@ -982,7 +982,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
           if (mapJson) {
             const keywordMap = JSON.parse(mapJson);
             const MODEL_REGEX =
-              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
 
             for (const hitKey of hitKeys) {
               const mappedValue = keywordMap[hitKey];
@@ -1007,10 +1007,10 @@ function checkDirectDeepSearchWithKey(msg, userId) {
           writeLog("[DirectDeep] 型號提取失敗: " + e.message);
         }
 
+          const cache = CacheService.getScriptCache();
         // v27.9.1: 移除 tooMany 檢查（型號比較用 CLASS_RULES 就夠了）
         // 注入所有型號到 Cache（供後續 PDF 查詢時使用）
         if (allModels.length > 0) {
-          const cache = CacheService.getScriptCache();
           cache.put(
             `${userId}:direct_search_models`,
             JSON.stringify(allModels),
@@ -1021,6 +1021,10 @@ function checkDirectDeepSearchWithKey(msg, userId) {
               ", ",
             )}`,
           );
+        } else {
+          // v29.5.143: 若命中新關鍵字但無對應型號，必須清除舊 Cache，避免污染 (Fix Issue 2)
+          cache.remove(`${userId}:direct_search_models`);
+          writeLog(`[DirectDeep] ⚠️ 清除舊型號 Cache，因新關鍵字無對應型號 (userId: ${userId})`);
         }
 
         return { hit: true, keys: hitKeys, models: allModels };
@@ -2042,12 +2046,14 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // v24.5.5: 注入直通車偵測到的型號定義 (Fix Bug A)
     // 解決 Fast Mode 不知道 "M8" 是 "M80D" 的問題
     let inferredModelContext = "";
+    let injectedModelsList = []; // v29.5.142: 供後續規格搜尋使用
     if (userId) {
       const cachedModels = cache.get(`${userId}:direct_search_models`);
       if (cachedModels) {
         try {
           const models = JSON.parse(cachedModels);
           if (models && models.length > 0) {
+            injectedModelsList = models;
             inferredModelContext = `【系統偵測型號】用戶提及的型號（如 M8/M7）已在系統定義為：${models.join(
               ", ",
             )}。請優先針對此型號回答，不要說「沒有精確定義」。\n`;
@@ -2230,6 +2236,16 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       const validNormalTokens = normalTokens.filter(
         (t) => t.length >= 2 && !/^\d+$/.test(t),
       );
+
+      // v29.5.142: 注入直通車推斷模型作為搜尋 Token，確保規格檔能被命中
+      if (typeof injectedModelsList !== "undefined" && injectedModelsList.length > 0) {
+        injectedModelsList.forEach((m) => {
+          if (!validNormalTokens.includes(m)) {
+            validNormalTokens.push(m);
+          }
+        });
+        writeLog(`[SmartRetrieval] 已注入的型號 Token: ${injectedModelsList.join(", ")}`);
+      }
 
       // writeLog(`[SmartRetrieval] HighTokens: ${JSON.stringify(highValTokens)}, NormalTokens: ${JSON.stringify(validNormalTokens)}`);
 
@@ -2891,8 +2907,10 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
         // 提取 M-models (e.g. M70D, M50F)
         const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
+        // v29.5.142: 提取家電型號 (WA, WD, VR)
+        const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
 
-        pdfModels = pdfModels.concat(sModels, gModels, mModels);
+        pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels);
       }
     });
     const uniquePdfModels = [...new Set(pdfModels)];
@@ -3294,7 +3312,7 @@ function getRelevantKBFiles(
   // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
   // v29.5.50: Broaden Regex to support Appliances (WA/WD/VR) and full range, and S series with 1 or 2 digits
   const MODEL_REGEX =
-    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
 
   // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
   // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
@@ -6369,10 +6387,10 @@ function handleMessage(event) {
             }
 
             // Re-check length (if cleared, this block won't run)
-            // v29.5.140: 若 AI 已有完整回答 (無 PDF 觸發且有內容)，則不顯示型號選單
+            // v29.5.144: 若命中多個型號，只要有需要具體型號的意圖 (needSpecificModelIntent)，或是 AI 明確要求選擇，就強制顯示型號選單。
             if (
               suggestedModels.length > 1 &&
-              (hasExplicitTrigger || !finalText || finalText.length < 5)
+              (hasExplicitTrigger || !finalText || finalText.length < 5 || needSpecificModelIntent)
             ) {
               writeLog(
                 `[Smart Router v29.5.140] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
@@ -9373,7 +9391,7 @@ function extractContextFromHistory(userId, contextId) {
 
     // 提取型號
     const MODEL_REGEX =
-      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
     const models = [];
     let match;
     while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
