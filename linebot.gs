@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.148"; // 2026-03-06 修復 DirectDeep 未將「型號模式為」內的明確字眼視為直通車關鍵字的問題
-const BUILD_TIMESTAMP = "2026-03-06 16:40";
+const GAS_VERSION = "v29.5.150"; // 2026-03-06 全面切換至高 CP 值的 Gemini 2.5 Flash-Lite
+const BUILD_TIMESTAMP = "2026-03-06 17:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -31,7 +31,7 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.5-flash";
+const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
 const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input
 const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output
 
@@ -44,18 +44,17 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-// ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 2.0 Flash (v29.5.43: Context Optimized, 2.0 Safe now)
-const GEMINI_MODEL_THINK = "models/gemini-2.5-flash";
+const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
 const PRICE_THINK_INPUT = 0.1;
 const PRICE_THINK_OUTPUT = 0.4;
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：/記錄 功能目前強制使用 Gemini 3 Flash Preview 以確保品質
-const GEMINI_MODEL_POLISH = "models/gemini-3-flash-preview";
-const PRICE_POLISH_INPUT = 0.5;
-const PRICE_POLISH_OUTPUT = 3.0;
+// ⚠️ 注意：考量到成本管控，後台 QA 生成亦使用穩定便宜的 Gemini 2.5 Flash-Lite
+const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
+const PRICE_POLISH_INPUT = 0.1;
+const PRICE_POLISH_OUTPUT = 0.4;
 // ════════════════════════════════════════════════════════════════
 // 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
 // ════════════════════════════════════════════════════════════════
@@ -7424,21 +7423,6 @@ function handleMessage(event) {
           );
 
           const qrItems = [];
-          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
-            // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
-            qrItems.push({
-              type: "action",
-              action: {
-                type: "message",
-                label: "💬 再詳細說明",
-                text: "#再詳細說明",
-              },
-            });
-          } else {
-            writeLog(
-              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
-            );
-          }
 
           // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
           // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
@@ -7454,14 +7438,30 @@ function handleMessage(event) {
               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
             });
 
-            // v29.5.127: 在回答末尾加入查手冊等待提醒
+            // v29.5.149: 修改回答末尾的查手冊等待提醒
             const pdfReminder =
-              "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
+              "\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!";
             if (Array.isArray(replyText)) {
               replyText[replyText.length - 1] += pdfReminder;
             } else {
               replyText += pdfReminder;
             }
+          }
+
+          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
+            // v29.5.149: 第二個按鈕改為「再詳細說明」→ 找 AI 上次回答並請求展開
+            qrItems.push({
+              type: "action",
+              action: {
+                type: "message",
+                label: "💬 再詳細說明",
+                text: "#再詳細說明",
+              },
+            });
+          } else {
+            writeLog(
+              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
+            );
           }
 
           // 缺型號時改為對話提示，不以泡泡引導
