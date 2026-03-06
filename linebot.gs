@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.153"; // 2026-03-06 早期子字串去重 (Early Substring Deduplication) 修正 AI 提問不跳泡泡問題
-const BUILD_TIMESTAMP = "2026-03-06 18:55";
+const GAS_VERSION = "v29.5.154"; // 2026-03-06 前置內部代號過濾 (Early Internal Alias Filtering) 修正 AI 型號數量認知落差
+const BUILD_TIMESTAMP = "2026-03-06 20:50";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1010,6 +1010,18 @@ function checkDirectDeepSearchWithKey(msg, userId) {
         // v27.9.1: 移除 tooMany 檢查（型號比較用 CLASS_RULES 就夠了）
         // 注入所有型號到 Cache（供後續 PDF 查詢時使用）
         if (allModels.length > 0) {
+          // v29.5.154: Early Internal Alias Filtering
+          // 內部代號如 G90XF, G5, M8 只是用來命中規則，不該讓 AI 看到，否則 AI 會以為有多個型號而提問
+          // 這裡提早過濾，確保 AI 跟 Smart Router 看到的型號清單完全一致
+          const INTERNAL_ALIAS_RE = /^[A-Z]\d{1,2}[A-Z]{0,3}$/; // G90XF, G5, M8, G80SD
+          const fullModels = allModels.filter((m) => !INTERNAL_ALIAS_RE.test(m));
+          
+          if (fullModels.length > 0) {
+            allModels.length = 0;
+            allModels.push(...fullModels);
+            writeLog(`[DirectDeep v29.5.154] 過濾內部代號，只保留完整型號: ${allModels.join(", ")}`);
+          }
+
           // v29.5.153: Early Substring Deduplication
           // 若同時存在 S27FG900XC 與 S27FG900 等互為子字串的型號，保留最長、最精準的，避免混淆 AI
           const dedupModels = [];
