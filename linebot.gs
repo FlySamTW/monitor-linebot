@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.151"; // 2026-03-06 修復 QA 建檔指令丟失，升級 QA 模型至 Gemini 3，修復手冊幻覺
-const BUILD_TIMESTAMP = "2026-03-06 17:15";
+const GAS_VERSION = "v29.5.152"; // 2026-03-06 子字串去重 (Substring Deduplication)
+const BUILD_TIMESTAMP = "2026-03-06 18:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6382,7 +6382,25 @@ function handleMessage(event) {
                     `[Smart Router v29.5.121] 過濾內部代號: ${removed.join(", ")} → 只顯示: ${fullModels.join(", ")}`,
                   );
                 }
-                suggestedModels = fullModels;
+                
+                // v29.5.152: 子字串去重 (Substring Deduplication)
+                // 若同時存在 S27FG900XC 與 S27FG900，顯示兩個泡泡會造成困擾，保留最長者
+                const dedupModels = [];
+                // 依長度降冪排序，長字串優先處理
+                const sortedModels = fullModels.slice().sort((a, b) => b.length - a.length);
+                sortedModels.forEach((model) => {
+                  // 若尚未被更長的型號包含，才加入
+                  const isSubset = dedupModels.some(existing => existing.includes(model));
+                  if (!isSubset) {
+                    dedupModels.push(model);
+                  }
+                });
+
+                if (fullModels.length !== dedupModels.length) {
+                  writeLog(`[Smart Router v29.5.152] 子字串去重: 去除互包含冗餘型號，剩餘: ${dedupModels.join(", ")}`);
+                }
+
+                suggestedModels = dedupModels;
               }
               // 過濾後只剩 1 個型號，不需要顯示泡泡，直接鎖定
               if (suggestedModels.length === 1) {
