@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.154"; // 2026-03-06 前置內部代號過濾 (Early Internal Alias Filtering) 修正 AI 型號數量認知落差
-const BUILD_TIMESTAMP = "2026-03-06 20:50";
+const GAS_VERSION = "v29.5.155"; // 2026-03-06 修復 Fast Mode 無手冊時遺失型號導致鬼打牆反問的 Bug
+const BUILD_TIMESTAMP = "2026-03-06 21:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3912,9 +3912,14 @@ function constructDynamicPrompt(
     // v29.5.105: 強化型號追問機制
     // v29.5.112: 加入話題延續 vs 新話題判斷
     dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。
-【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。
+【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n`;
 
-【🚨 話題延續判斷 (v29.5.113 - 最高優先級)】
+    // v29.5.155: 強制標註已確認型號，避免 LLM 鬼打牆要求用戶提供型號
+    if (targetModelName) {
+      dynamicPrompt += `\n【已確認對象型號】系統已在背景確認用戶正在詢問的型號為「${targetModelName}」。你必須直接針對此型號回答，絕對禁止再反問用戶「請告訴我你的螢幕型號」。\n`;
+    }
+
+    dynamicPrompt += `\n【🚨 話題延續判斷 (v29.5.113 - 最高優先級)】
 當用戶的訊息**語意上是追問**時（例如省略主詞、用代詞「它」、或只提新型號而沒有完整問題），你必須：
 1. **分析對話歷史**：用戶上一輪在討論什麼主題（如「線材版本」、「規格」、「設定方法」、「價格」）？
 2. **延續話題**：將用戶的追問理解為「新型號/新對象 + 上一輪話題」
@@ -6008,6 +6013,11 @@ function handleMessage(event) {
             writeLog(
               `[DirectDeep v29.5.131] 所有型號均無 PDF: ${directModels.join(", ")}`,
             );
+            // v29.5.155: 即便無 PDF，只要有抽到型號，就必須設為主型號，避免 Fast Mode AI 反問用戶
+            if (directModels.length > 0) {
+              primaryModel = directModels[0];
+              writeLog(`[DirectDeep v29.5.155] 型號 ${primaryModel} 雖無 PDF，仍設定為主角提供系統上下文`);
+            }
           }
         } catch (e) {
           writeLog(`[DirectDeep v29.5.131] PDF 可用性檢查失敗: ${e.message}`);
