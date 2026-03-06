@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.147"; // 2026-03-06 新增 3D 直通車關鍵字，升級至 Gemini 2.5 Flash 模型
-const BUILD_TIMESTAMP = "2026-03-06 13:55";
+const GAS_VERSION = "v29.5.148"; // 2026-03-06 修復 DirectDeep 未將「型號模式為」內的明確字眼視為直通車關鍵字的問題
+const BUILD_TIMESTAMP = "2026-03-06 16:40";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2739,6 +2739,18 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               )})`;
               resolvedPatternCount++;
             }
+
+            // v29.5.148: 除了 wildcard 型號，將精確字眼 (如 3D, Odyssey3D) 也主動加入直通車觸發清單
+            patterns.forEach((p) => {
+              const cleanP = p.trim().toUpperCase();
+              if (cleanP && !cleanP.includes("*") && !cleanP.includes("?")) {
+                if (cleanP.length >= 2 && !strongKeywords.includes(cleanP)) {
+                  strongKeywords.push(cleanP);
+                }
+                // 也必須讓 keywordMap 認得這個字眼能映射回原句
+                keywordMap[cleanP] = text;
+              }
+            });
           }
 
           // v27.9.84: 確保 keywordMap 也使用處理過的 cleanText
