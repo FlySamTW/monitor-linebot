@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.145"; // 2026-03-03 修正：同步 MODEL_REGEX，修復 Cache 污染與泡泡條件
-const BUILD_TIMESTAMP = "2026-03-03 10:10";
+const GAS_VERSION = "v29.5.146"; // 2026-03-06 修復 Web Search 內容不足、放寬查手冊氣泡條件、精簡 Log
+const BUILD_TIMESTAMP = "2026-03-06 11:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2342,13 +2342,14 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     }
 
     // 記錄總 Context 大小
-    // v29.5.0: Consolidate Context Logs
-    writeLog(
-      `[Ctx Info] QA: ${fullQA ? fullQA.length : 0}c | Light: ${
-        lightRules ? lightRules.length : 0
-      }c | Total: ${relevantContext.length}c`,
-    );
-
+    // v29.5.0: Consolidate    // v29.5.146: 移除冗長 log
+    // if (qaContext) {
+    //   writeLog(
+    //     `[Ctx Info] QA: ${fullQA ? fullQA.length : 0}c | Light: ${
+    //       lightRules.length
+    //     }c | Total: ${dynamicPrompt.length}c`,
+    //   );
+    // }
     return relevantContext;
   } catch (e) {
     writeLog(`[DynamicContext Error] ${e.message}`);
@@ -4121,7 +4122,7 @@ function callLLMWithRetry(
         const textPart = lastContent.parts.find((p) => p.text);
         if (textPart && !textPart.text.includes("最新")) {
           // 在問題前加上時效性詞彙
-          textPart.text = `【請搜尋最新網路資訊】${textPart.text}`;
+          textPart.text = `【請搜尋最新網路資訊】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟。${textPart.text}`;
           writeLog(
             `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
           );
@@ -4496,9 +4497,9 @@ function callLLMWithRetry(
                 grounding.groundingChunks &&
                 grounding.groundingChunks.length > 0
               ) {
-                writeLog(
-                  `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
-                );
+                // writeLog(
+                //   `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
+                // );
 
                 // 提取所有來源的域名
                 const sourceSet = new Set();
@@ -4531,11 +4532,11 @@ function callLLMWithRetry(
                       // 解析失敗，跳過
                     }
 
-                    if (i < 3) {
-                      writeLog(
-                        `[Grounding] 來源 ${i + 1}: ${chunk.web.title || "N/A"} - ${chunk.web.uri || "N/A"}`,
-                      );
-                    }
+                    // if (i < 3) {
+                    //   writeLog(
+                    //     `[Grounding] 來源 ${i + 1}: ${chunk.web.title || "N/A"} - ${chunk.web.uri || "N/A"}`,
+                    //   );
+                    // }
                   }
                 });
 
@@ -7430,9 +7431,12 @@ function handleMessage(event) {
           // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
           // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
           // 無 PDF → 避免使用者點了卻查不到
+          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+          // 無 PDF 時如果是一般閒聊則不顯示；若是明確的操作故障題則顯示，交給 Smart Router 後續查證
           const alreadyConsultedPdf =
             cache.get(`${userId}:pdf_consulted`) === "true";
-          if (hasPdfForModel && !alreadyConsultedPdf) {
+          const isOperationIntent = /設定|說明書|手冊|故障|error|安裝|reset|重置|亮燈|閃爍|無法|不能/i.test(msg);
+          if ((hasPdfForModel || isOperationIntent) && !alreadyConsultedPdf) {
             qrItems.push({
               type: "action",
               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
