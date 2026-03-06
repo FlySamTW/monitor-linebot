@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.146"; // 2026-03-06 修復 Web Search 內容不足、放寬查手冊氣泡條件、精簡 Log
-const BUILD_TIMESTAMP = "2026-03-06 11:35";
+const GAS_VERSION = "v29.5.147"; // 2026-03-06 新增 3D 直通車關鍵字，升級至 Gemini 2.5 Flash 模型
+const BUILD_TIMESTAMP = "2026-03-06 13:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -31,7 +31,7 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.0-flash";
+const GEMINI_MODEL_FAST = "models/gemini-2.5-flash";
 const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input
 const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output
 
@@ -45,7 +45,7 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
 // ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 2.0 Flash (v29.5.43: Context Optimized, 2.0 Safe now)
-const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
+const GEMINI_MODEL_THINK = "models/gemini-2.5-flash";
 const PRICE_THINK_INPUT = 0.1;
 const PRICE_THINK_OUTPUT = 0.4;
 
