@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.150"; // 2026-03-06 全面切換至高 CP 值的 Gemini 2.5 Flash-Lite
-const BUILD_TIMESTAMP = "2026-03-06 17:00";
+const GAS_VERSION = "v29.5.151"; // 2026-03-06 修復 QA 建檔指令丟失，升級 QA 模型至 Gemini 3，修復手冊幻覺
+const BUILD_TIMESTAMP = "2026-03-06 17:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -51,10 +51,10 @@ const PRICE_THINK_OUTPUT = 0.4;
 // ════════════════════════════════════════════════════════════════
 // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：考量到成本管控，後台 QA 生成亦使用穩定便宜的 Gemini 2.5 Flash-Lite
-const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
-const PRICE_POLISH_INPUT = 0.1;
-const PRICE_POLISH_OUTPUT = 0.4;
+// ⚠️ 注意：/記錄 功能目前強制使用 Gemini 3 Flash Preview 以確保建檔內容萃取的極高準確度
+const GEMINI_MODEL_POLISH = "models/gemini-3-flash-preview";
+const PRICE_POLISH_INPUT = 0.5;
+const PRICE_POLISH_OUTPUT = 3.0; // $3.00 per 1M Output ($0.096 TWD)
 // ════════════════════════════════════════════════════════════════
 // 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
 // ════════════════════════════════════════════════════════════════
@@ -3935,7 +3935,7 @@ function constructDynamicPrompt(
     } else {
       dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊${
         targetModelName ? ` (${targetModelName})` : ""
-      }，請根據手冊內容詳細回答。\n\n【回答格式優化 (嚴格執行)】\n1. **呈現選項/步驟**: 若你需要提供多個選項或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，嚴禁使用圓點 (•) 或其他符號。\n2. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: ${sourceLabel}]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n3. **網路搜尋**: 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。\n\n【內容優先級】\n1. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶「是否要幫你查手冊」。\n2. 若手冊無資料，請輸出 [AUTO_SEARCH_WEB]。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
+      }，請根據手冊內容詳細回答。\n\n【回答格式優化 (嚴格執行)】\n1. **呈現選項/步驟**: 若你需要提供多個選項或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，嚴禁使用圓點 (•) 或其他符號。\n2. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: ${sourceLabel}]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n3. **網路搜尋**: 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。\n\n【致命錯誤警告】你現在已經在閱讀原廠手冊了！嚴禁在句尾詢問用戶「需要幫你查手冊嗎」或「要不要幫你查找更詳細步驟」等類似問句。違反此項將導致系統崩潰。\n\n【內容優先級】\n1. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶是否要查手冊。\n2. 若手冊無資料，請輸出 [AUTO_SEARCH_WEB]。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
     }
   } else if (imageBlob) {
     // Image Mode
@@ -7629,6 +7629,24 @@ function handleCommand(c, u, cid) {
     CacheService.getScriptCache().remove(draftKey);
     CacheService.getScriptCache().remove(CACHE_KEYS.PENDING_QUERY + u);
     return "❌ 已取消建檔，回到一般對話模式。";
+  }
+
+  // v29.5.151: 恢復遺失的 QA 建檔指令
+  if (cmd === "/紀錄" || cmd === "/記錄") {
+    const draftCache = CacheService.getScriptCache().get(draftKey);
+    if (!draftCache) {
+      return "⚠️ 目前沒有正在進行的建檔草稿喔！請先輸入「/紀錄 <內容>」開始建檔。";
+    }
+    const result = saveDraftToSheet(JSON.parse(draftCache));
+    return "📝 存檔結果：\n" + (result ? "❌ 錯誤: " + result : "✅ 已成功存入 QA 知識庫！");
+  }
+
+  if (cmd.startsWith("/紀錄 ") || cmd.startsWith("/記錄 ")) {
+    const content = cmd.replace(/^\/[紀錄記錄]+\s*/, "").trim();
+    if (!content) {
+      return "⚠️ 請在指令後方加上你要建檔的內容。";
+    }
+    return startNewEntryDraft(content, u);
   }
 
   if (

@@ -1,0 +1,315 @@
+7607: function handleCommand(c, u, cid) {
+7608: const cmd = c.trim();
+7609: const draftKey = CACHE_KEYS.ENTRY_DRAFT_PREFIX + u;
+7610: 
+7611: if (cmd === "/重啟" || cmd === "/reboot") {
+7612: writeLog(`[Command] /重啟 by ${u}`);
+7613: clearHistorySheetAndCache(cid);
+7614: // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
+7615: const cache = CacheService.getScriptCache();
+7616: // v29.5.27: 清除不滿意計數器與 PDF 狀態，避免測試時卡住
+7617: cache.remove(`dissatisfied_count_${u}`);
+7618: cache.remove(`pdf_consulted_${u}`);
+7619: 
+7620: // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
+7621: // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
+7622: // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
+7623: const resultMsg = syncGeminiKnowledgeBase(false);
+7624: writeLog(`[Command] 重啟完成: ${resultMsg.split("\n")[0]}`);
+7625: return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
+7626: }
+7627: 
+7628: if (cmd === "/取消") {
+7629: CacheService.getScriptCache().remove(draftKey);
+7630: CacheService.getScriptCache().remove(CACHE_KEYS.PENDING_QUERY + u);
+7631: return "❌ 已取消建檔，回到一般對話模式。";
+7632: }
+7633: 
+7634: if (
+7635: cmd === "/不滿意" ||
+7636: cmd === "/擴大搜尋" ||
+7637: cmd === "不滿意這回答請繼續擴大搜尋" ||
+7638: cmd === "/重試"
+7639: ) {
+7640: writeLog(`[Command] 觸發擴大搜尋 by ${u}, cmd: ${cmd}`);
+7641: // 立即發送 Loading 動畫，因為搜尋需要時間
+7642: showLoadingAnimation(u, 60);
+7643: 
+7644: const history = getHistoryFromCacheOrSheet(cid);
+7645: if (!history || history.length === 0) {
+7646: return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
+7647: }
+7648: const cache = CacheService.getScriptCache();
+7649: 
+7650: // v29.5.133: 強化 Context Repair
+7651: // - 跳過 #再詳細說明模板與 System Hint 殘留
+7652: // - 跳過「不滿意這回答請繼續擴大搜尋」等指令文字
+7653: // - 若最後一次是純型號，回溯上一個真正問題後再組合
+7654: const cleanHistoryText = (text) => {
+7655: if (!text) {
+7656: return "";
+7657: }
+7658: return text
+7659: .replace(/\[System Hint:.*?\]/gs, "")
+7660: .replace(/\[AUTO_SEARCH_[A-Z_]+(?:[:：][^\]]+)?\]/gi, "")
+7661: .replace(/\s+/g, " ")
+7662: .trim();
+7663: };
+7664: 
+7665: const isModelOnlyText = (text) => {
+7666: const normalized = (text || "").replace(/[\s-]/g, "").toUpperCase();
+7667: if (!normalized) {
+7668: return false;
+7669: }
+7670: // 僅把「真正像型號」的內容視為 model-only，避免把 ODYSSEY3D 這類語意詞當成型號
+7671: if (/ODYSSEY|HUB|ARK/.test(normalized)) {
+7672: return false;
+7673: }
+7674: return /^[SCFGM]\d{1,2}[A-Z0-9]{1,20}$/.test(normalized);
+7675: };
+7676: 
+7677: const isNoiseForContextRepair = (text) => {
+7678: if (!text) {
+7679: return true;
+7680: }
+7681: return (
+7682: text.startsWith("#") ||
+7683: text.includes("不滿意這回答請繼續擴大搜尋") ||
+7684: text.includes("請針對你剛才的回答再詳細說明") ||
+7685: text.includes("這是延伸說明需求") ||
+7686: text.includes("更不要要求使用者再選型號") ||
+7687: text.includes("to check manuals") ||
+7688: text.includes("[AUTO_SEARCH") ||
+7689: /^\d$/.test(text)
+7690: );
+7691: };
+7692: 
+7693: let selectedModel = "";
+7694: let userMsg = "";
+7695: 
+7696: for (let i = history.length - 1; i >= 0; i--) {
+7697: const h = history[i];
+7698: if (h.role !== "user") {
+7699: continue;
+7700: }
+7701: const content = cleanHistoryText(h.content || "");
+7702: if (!content) {
+7703: continue;
+7704: }
+7705: 
+7706: if (!selectedModel && isModelOnlyText(content)) {
+7707: selectedModel = content.replace(/\s+/g, "");
+7708: continue;
+7709: }
+7710: 
+7711: if (isNoiseForContextRepair(content) || isModelOnlyText(content)) {
+7712: continue;
+7713: }
+7714: 
+7715: userMsg = content;
+7716: break;
+7717: }
+7718: 
+7719: if (!userMsg) {
+7720: const lastMeaningfulFromCache = cleanHistoryText(
+7721: cache.get(`${u}:last_meaningful_query`) || "",
+7722: );
+7723: if (
+7724: lastMeaningfulFromCache &&
+7725: !isNoiseForContextRepair(lastMeaningfulFromCache)
+7726: ) {
+7727: userMsg = lastMeaningfulFromCache;
+7728: writeLog(
+7729: `[Context Repair v29.5.133] 使用 last_meaningful_query fallback: ${userMsg.substring(0, 80)}...`,
+7730: );
+7731: }
+7732: }
+7733: 
+7734: if (!userMsg) {
+7735: for (let i = history.length - 1; i >= 0; i--) {
+7736: const h = history[i];
+7737: if (h.role !== "user") {
+7738: continue;
+7739: }
+7740: const content = cleanHistoryText(h.content || "");
+7741: if (!content || isNoiseForContextRepair(content)) {
+7742: continue;
+7743: }
+7744: userMsg = content;
+7745: writeLog(
+7746: `[Context Repair v29.5.133] 使用歷史 fallback: ${userMsg.substring(0, 80)}...`,
+7747: );
+7748: break;
+7749: }
+7750: }
+7751: 
+7752: if (
+7753: selectedModel &&
+7754: userMsg &&
+7755: !userMsg.toUpperCase().includes(selectedModel.toUpperCase())
+7756: ) {
+7757: userMsg = `${selectedModel} ${userMsg}`.trim();
+7758: writeLog(
+7759: `[Context Repair v29.5.133] 組合查詢: ${userMsg.substring(0, 80)}...`,
+7760: );
+7761: } else {
+7762: writeLog(
+7763: `[Context Repair v29.5.133] 還原查詢: ${userMsg.substring(0, 80)}...`,
+7764: );
+7765: }
+7766: 
+7767: if (!userMsg) {
+7768: return "我找不到可延續的問題內容，請直接告訴我你要查的主題。\n例如：S27FG900XC 怎麼開啟 Odyssey Hub";
+7769: }
+7770: 
+7771: // 處理計數器 (dissatisfied_count)
+7772: const countKey = `dissatisfied_count_${u}`;
+7773: let count = parseInt(cache.get(countKey) || "0") + 1;
+7774: cache.put(countKey, count.toString(), 600); // 10 分鐘內有效
+7775: 
+7776: if (count > 3) {
+7777: writeLog(`[Command] 三振出局: ${u} 已重試 ${count} 次`);
+7778: return "抱歉，我已經嘗試多種角度搜尋但似乎仍未找到完美答案。😅 建議你可以將問題描述得更具體，或直接聯繫 Sam 協助喔！";
+7779: }
+7780: 
+7781: // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
+7782: // 檢查是否已查過 PDF，若未查過且有型號，優先執行 PDF Search
+7783: const pdfConsulted =
+7784: cache.get(`pdf_consulted_${u}`) === "true" ||
+7785: cache.get(`${u}:pdf_consulted`) === "true";
+7786: // 嘗試從 Cache 取得上次的型號列表 (需要 Smart Router 有寫入)
+7787: // 注意：cache key 必須與 Smart Router 一致。Smart Router 寫入的是 `last_models_json_${userId}` 嗎？
+7788: // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
+7789: // 實際上 Smart Router v29.4.14 寫入的是 `model_selection_${userId}` 的選項，但我們需要 raw models
+7790: // 讓我們改為嘗試從 userMsg 裡重新提取型號，這最保險
+7791: 
+7792: let triggerPDF = false;
+7793: let filesToAttach = [];
+7794: 
+7795: // v29.5.59: SOP Enforcement (Check PDF Index first!)
+7796: if (!pdfConsulted && count <= 2) {
+7797: const ruleObj = getClassRules();
+7798: if (ruleObj && ruleObj.extractModelKeywords) {
+7799: const models = ruleObj.extractModelKeywords(userMsg);
+7800: if (models.length > 0) {
+7801: const primary = models[0];
+7802: // 關鍵檢查：這型號真的有 PDF 嗎？
+7803: const pdfIndexJson =
+7804: PropertiesService.getScriptProperties().getProperty(
+7805: "PDF_MODEL_INDEX",
+7806: );
+7807: const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+7808: const hasManual = pdfModelIndex.some((m) => {
+7809: if (m.startsWith("S") && m.length >= 7)
+7810: return m.includes(primary) || primary.includes(m);
+7811: return m === primary;
+7812: });
+7813: 
+7814: if (hasManual) {
+7815: const kbList = JSON.parse(
+7816: PropertiesService.getScriptProperties().getProperty(
+7817: CACHE_KEYS.KB_URI_LIST,
+7818: ) || "[]",
+7819: );
+7820: const kbResult = getRelevantKBFiles(
+7821: [{ role: "user", content: userMsg }],
+7822: kbList,
+7823: u,
+7824: );
+7825: const sopFiles = Array.isArray(kbResult)
+7826: ? kbResult
+7827: : kbResult && Array.isArray(kbResult.files)
+7828: ? kbResult.files
+7829: : [];
+7830: if (sopFiles.length > 0) {
+7831: triggerPDF = true;
+7832: filesToAttach = sopFiles;
+7833: writeLog(
+7834: `[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`,
+7835: );
+7836: }
+7837: } else {
+7838: writeLog(
+7839: `[SOP] 型號 ${primary} 無專屬手冊，跳過 Pass 1.5，直接 Web Search`,
+7840: );
+7841: }
+7842: }
+7843: }
+7844: }
+7845: 
+7846: // 執行搜尋
+7847: // v29.5.22: 修正參數順序
+7848: // v29.5.27: 根據 triggerPDF 調整參數
+7849: writeLog(
+7850: `[Command] 啟動 Pass ${triggerPDF ? "1.5 (PDF)" : "2 (Web)"}, 次數: ${count}`,
+7851: );
+7852: 
+7853: // v29.5.89: 明確記錄完整搜尋內容，以便 Debug 確認 "型號+問題" 是否正確組合
+7854: writeLog(`[Context Repair] Combined Query Sent to AI: "${userMsg}"`);
+7855: 
+7856: // v29.5.81: Critical Fix - 必須將 userMsg (組合後的查詢) 加入 history，API 才會真的收到
+7857: // 否則 LLM 只會看到舊的 history，看不到我們剛組合好的 "S27AG500NC G5 怎麼設定"
+7858: const searchHistory = [...history, { role: "user", content: userMsg }];
+7859: 
+7860: const searchResponse = callLLMWithRetry(
+7861: userMsg, // query (for Prompt injection)
+7862: searchHistory, // messages (for API payload, now includes the combined query)
+7863: triggerPDF ? filesToAttach : [], // filesToAttach
+7864: triggerPDF, // attachPDFs
+7865: null, // imageBlob
+7866: true, // isRetry
+7867: u, // userId
+7868: !triggerPDF, // forceWebSearch (PDF 優先於 Web)
+7869: "", // targetModelName
+7870: );
+7871: 
+7872: if (triggerPDF) {
+7873: cache.put(`pdf_consulted_${u}`, "true", 600);
+7874: cache.put(`${u}:pdf_consulted`, "true", 600); // v29.5.130: 與主流程 key 對齊
+7875: }
+7876: 
+7877: if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+7878: let result = formatForLineMobile(searchResponse);
+7879: // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
+7880: result = result
+7881: .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+7882: .trim();
+7883: 
+7884: // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
+7885: if (!triggerPDF) {
+7886: // 網路搜尋模式
+7887: if (lastSearchSources && lastSearchSources.length > 0) {
+7888: result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+7889: } else {
+7890: result += "\n\n(🔍 網路搜尋補充資料)";
+7891: }
+7892: } else {
+7893: // PDF 搜尋模式，不加網路搜尋標籤
+7894: result += "\n\n(📖 已查閱產品手冊)";
+7895: }
+7896: 
+7897: // v29.5.85: Append Token Cost for Manual Web Search
+7898: if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+7899: result += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+7900: }
+7901: // v29.5.111: 修復對話記憶問題
+7902: // 🔥 關鍵修正：保存原始問題 (userMsg) 而非指令文字 (cmd)
+7903: // 這樣用戶問「那 M8 呢」時，AI 能看到之前在討論什麼主題（如「線材」）
+7904: // 而不是看到「不滿意這回答請繼續擴大搜尋」這種無意義的上下文
+7905: updateHistorySheetAndCache(
+7906: cid,
+7907: history,
+7908: { role: "user", content: userMsg }, // v29.5.111: 改為保存原始問題
+7909: { role: "assistant", content: searchResponse },
+7910: );
+7911: writeLog(
+7912: `[History Fix v29.5.111] 保存原始問題至歷史: ${userMsg.substring(0, 50)}...`,
+7913: );
+7914: return result;
+7915: } else {
+7916: return "抱歉，網路搜尋連線逾時，請稍後再試。";
+7917: }
+7918: }
+7919: 
+7920: return `❌ 未知指令\n\n【指令列表】\n/重啟 -> 重置對話+同步\n/紀錄 <內容> -> 開始建檔\n/紀錄 -> 存檔/整理QA\n/取消 -> 退出建檔\n不滿意這回答請繼續擴大搜尋 -> 啟動網路搜尋`;
+7921: }

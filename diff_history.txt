@@ -1,0 +1,3820 @@
+commit 910b70e550c4a62a50d4ab4aa2d1b10f565e63f1
+Author: Your Name <you@example.com>
+Date:   Fri Mar 6 16:56:39 2026 +0800
+
+    Switch to Gemini 2.5 Flash Lite
+
+diff --git a/linebot.gs b/linebot.gs
+index 2337683..4c488f9 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.148"; // 2026-03-06 修復 DirectDeep 未將「型號模式為」內的明確字眼視為直通車關鍵字的問題
+-const BUILD_TIMESTAMP = "2026-03-06 16:40";
++const GAS_VERSION = "v29.5.150"; // 2026-03-06 全面切換至高 CP 值的 Gemini 2.5 Flash-Lite
++const BUILD_TIMESTAMP = "2026-03-06 17:00";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -31,7 +31,7 @@ const LLM_PROVIDER = "Gemini";
+ // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
+ // ════════════════════════════════════════════════════════════════
+ // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
+-const GEMINI_MODEL_FAST = "models/gemini-2.5-flash";
++const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
+ const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input
+ const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output
+ 
+@@ -44,18 +44,17 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
+ // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
+ // ════════════════════════════════════════════════════════════════
+ // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
+-// ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 2.0 Flash (v29.5.43: Context Optimized, 2.0 Safe now)
+-const GEMINI_MODEL_THINK = "models/gemini-2.5-flash";
++const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
+ const PRICE_THINK_INPUT = 0.1;
+ const PRICE_THINK_OUTPUT = 0.4;
+ 
+ // ════════════════════════════════════════════════════════════════
+ // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
+ // ════════════════════════════════════════════════════════════════
+-// ⚠️ 注意：/記錄 功能目前強制使用 Gemini 3 Flash Preview 以確保品質
+-const GEMINI_MODEL_POLISH = "models/gemini-3-flash-preview";
+-const PRICE_POLISH_INPUT = 0.5;
+-const PRICE_POLISH_OUTPUT = 3.0;
++// ⚠️ 注意：考量到成本管控，後台 QA 生成亦使用穩定便宜的 Gemini 2.5 Flash-Lite
++const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
++const PRICE_POLISH_INPUT = 0.1;
++const PRICE_POLISH_OUTPUT = 0.4;
+ // ════════════════════════════════════════════════════════════════
+ // 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
+ // ════════════════════════════════════════════════════════════════
+@@ -7424,21 +7423,6 @@ function handleMessage(event) {
+           );
+ 
+           const qrItems = [];
+-          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
+-            // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
+-            qrItems.push({
+-              type: "action",
+-              action: {
+-                type: "message",
+-                label: "💬 再詳細說明",
+-                text: "#再詳細說明",
+-              },
+-            });
+-          } else {
+-            writeLog(
+-              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
+-            );
+-          }
+ 
+           // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+           // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+@@ -7454,9 +7438,9 @@ function handleMessage(event) {
+               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+             });
+ 
+-            // v29.5.127: 在回答末尾加入查手冊等待提醒
++            // v29.5.149: 修改回答末尾的查手冊等待提醒
+             const pdfReminder =
+-              "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
++              "\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!";
+             if (Array.isArray(replyText)) {
+               replyText[replyText.length - 1] += pdfReminder;
+             } else {
+@@ -7464,6 +7448,22 @@ function handleMessage(event) {
+             }
+           }
+ 
++          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
++            // v29.5.149: 第二個按鈕改為「再詳細說明」→ 找 AI 上次回答並請求展開
++            qrItems.push({
++              type: "action",
++              action: {
++                type: "message",
++                label: "💬 再詳細說明",
++                text: "#再詳細說明",
++              },
++            });
++          } else {
++            writeLog(
++              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
++            );
++          }
++
+           // 缺型號時改為對話提示，不以泡泡引導
+           const userAskedManual = /手冊|說明書|manual/i.test(msg);
+           const alreadyHasModelHint =
+
+commit 8656a66a6179998f5706fbb913879095387c0d7b
+Author: Your Name <you@example.com>
+Date:   Fri Mar 6 16:38:23 2026 +0800
+
+    Fix 3D matching logic by parsing description regex directly in linebot.gs instead of CSV
+
+diff --git a/linebot.gs b/linebot.gs
+index 33aaca9..2337683 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.147"; // 2026-03-06 新增 3D 直通車關鍵字，升級至 Gemini 2.5 Flash 模型
+-const BUILD_TIMESTAMP = "2026-03-06 13:55";
++const GAS_VERSION = "v29.5.148"; // 2026-03-06 修復 DirectDeep 未將「型號模式為」內的明確字眼視為直通車關鍵字的問題
++const BUILD_TIMESTAMP = "2026-03-06 16:40";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -2739,6 +2739,18 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
+               )})`;
+               resolvedPatternCount++;
+             }
++
++            // v29.5.148: 除了 wildcard 型號，將精確字眼 (如 3D, Odyssey3D) 也主動加入直通車觸發清單
++            patterns.forEach((p) => {
++              const cleanP = p.trim().toUpperCase();
++              if (cleanP && !cleanP.includes("*") && !cleanP.includes("?")) {
++                if (cleanP.length >= 2 && !strongKeywords.includes(cleanP)) {
++                  strongKeywords.push(cleanP);
++                }
++                // 也必須讓 keywordMap 認得這個字眼能映射回原句
++                keywordMap[cleanP] = text;
++              }
++            });
+           }
+ 
+           // v27.9.84: 確保 keywordMap 也使用處理過的 cleanText
+
+commit 635a9972a8f69c3d0e9796c2629d755014caecb4
+Author: Your Name <you@example.com>
+Date:   Fri Mar 6 16:08:17 2026 +0800
+
+    Add 3D alias, upgrade to Gemini 2.5 Flash, and add Python Markitdown UI
+
+diff --git a/linebot.gs b/linebot.gs
+index 7b0db77..33aaca9 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.146"; // 2026-03-06 修復 Web Search 內容不足、放寬查手冊氣泡條件、精簡 Log
+-const BUILD_TIMESTAMP = "2026-03-06 11:35";
++const GAS_VERSION = "v29.5.147"; // 2026-03-06 新增 3D 直通車關鍵字，升級至 Gemini 2.5 Flash 模型
++const BUILD_TIMESTAMP = "2026-03-06 13:55";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -31,7 +31,7 @@ const LLM_PROVIDER = "Gemini";
+ // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
+ // ════════════════════════════════════════════════════════════════
+ // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
+-const GEMINI_MODEL_FAST = "models/gemini-2.0-flash";
++const GEMINI_MODEL_FAST = "models/gemini-2.5-flash";
+ const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input
+ const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output
+ 
+@@ -45,7 +45,7 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
+ // ════════════════════════════════════════════════════════════════
+ // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
+ // ⚠️ 注意：PDF 閱讀模式恢復使用 Gemini 2.0 Flash (v29.5.43: Context Optimized, 2.0 Safe now)
+-const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
++const GEMINI_MODEL_THINK = "models/gemini-2.5-flash";
+ const PRICE_THINK_INPUT = 0.1;
+ const PRICE_THINK_OUTPUT = 0.4;
+ 
+
+commit 279909ca3162b08ef99fd2ce77bf36531a371c0c
+Author: Your Name <you@example.com>
+Date:   Fri Mar 6 11:34:01 2026 +0800
+
+    Fix Web Search response issue, loosen manual bubble trigger, and optimize log output
+
+diff --git a/linebot.gs b/linebot.gs
+index 6def2f2..7b0db77 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.145"; // 2026-03-03 修正：同步 MODEL_REGEX，修復 Cache 污染與泡泡條件
+-const BUILD_TIMESTAMP = "2026-03-03 10:10";
++const GAS_VERSION = "v29.5.146"; // 2026-03-06 修復 Web Search 內容不足、放寬查手冊氣泡條件、精簡 Log
++const BUILD_TIMESTAMP = "2026-03-06 11:35";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -2342,13 +2342,14 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
+     }
+ 
+     // 記錄總 Context 大小
+-    // v29.5.0: Consolidate Context Logs
+-    writeLog(
+-      `[Ctx Info] QA: ${fullQA ? fullQA.length : 0}c | Light: ${
+-        lightRules ? lightRules.length : 0
+-      }c | Total: ${relevantContext.length}c`,
+-    );
+-
++    // v29.5.0: Consolidate    // v29.5.146: 移除冗長 log
++    // if (qaContext) {
++    //   writeLog(
++    //     `[Ctx Info] QA: ${fullQA ? fullQA.length : 0}c | Light: ${
++    //       lightRules.length
++    //     }c | Total: ${dynamicPrompt.length}c`,
++    //   );
++    // }
+     return relevantContext;
+   } catch (e) {
+     writeLog(`[DynamicContext Error] ${e.message}`);
+@@ -4121,7 +4122,7 @@ function callLLMWithRetry(
+         const textPart = lastContent.parts.find((p) => p.text);
+         if (textPart && !textPart.text.includes("最新")) {
+           // 在問題前加上時效性詞彙
+-          textPart.text = `【請搜尋最新網路資訊】${textPart.text}`;
++          textPart.text = `【請搜尋最新網路資訊】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟。${textPart.text}`;
+           writeLog(
+             `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
+           );
+@@ -4496,9 +4497,9 @@ function callLLMWithRetry(
+                 grounding.groundingChunks &&
+                 grounding.groundingChunks.length > 0
+               ) {
+-                writeLog(
+-                  `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
+-                );
++                // writeLog(
++                //   `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
++                // );
+ 
+                 // 提取所有來源的域名
+                 const sourceSet = new Set();
+@@ -4531,11 +4532,11 @@ function callLLMWithRetry(
+                       // 解析失敗，跳過
+                     }
+ 
+-                    if (i < 3) {
+-                      writeLog(
+-                        `[Grounding] 來源 ${i + 1}: ${chunk.web.title || "N/A"} - ${chunk.web.uri || "N/A"}`,
+-                      );
+-                    }
++                    // if (i < 3) {
++                    //   writeLog(
++                    //     `[Grounding] 來源 ${i + 1}: ${chunk.web.title || "N/A"} - ${chunk.web.uri || "N/A"}`,
++                    //   );
++                    // }
+                   }
+                 });
+ 
+@@ -7430,9 +7431,12 @@ function handleMessage(event) {
+           // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+           // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+           // 無 PDF → 避免使用者點了卻查不到
++          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
++          // 無 PDF 時如果是一般閒聊則不顯示；若是明確的操作故障題則顯示，交給 Smart Router 後續查證
+           const alreadyConsultedPdf =
+             cache.get(`${userId}:pdf_consulted`) === "true";
+-          if (hasPdfForModel && !alreadyConsultedPdf) {
++          const isOperationIntent = /設定|說明書|手冊|故障|error|安裝|reset|重置|亮燈|閃爍|無法|不能/i.test(msg);
++          if ((hasPdfForModel || isOperationIntent) && !alreadyConsultedPdf) {
+             qrItems.push({
+               type: "action",
+               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+
+commit eb2d325efbb967658c05bc94ef369f2d612c99a1
+Author: Your Name <you@example.com>
+Date:   Tue Mar 3 13:35:13 2026 +0800
+
+    v29.5.145: Fix PDF WA index, DirectDeep Regex & Cache, Bubble logic
+
+diff --git a/linebot.gs b/linebot.gs
+index 37cb379..6def2f2 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.141"; // 2026-03-02 修正：同步 MODEL_REGEX，確保 DirectDeep 能提取 WA/WD/VR 家電型號並彈出泡泡
+-const BUILD_TIMESTAMP = "2026-03-02 16:15";
++const GAS_VERSION = "v29.5.145"; // 2026-03-03 修正：同步 MODEL_REGEX，修復 Cache 污染與泡泡條件
++const BUILD_TIMESTAMP = "2026-03-03 10:10";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -875,7 +875,7 @@ function checkDirectDeepSearch(msg, userId) {
+             if (mappedValue) {
+               // 從映射值提取型號
+               const MODEL_REGEX =
+-                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
++                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+               const models = [];
+               let match;
+               while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
+@@ -982,7 +982,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
+           if (mapJson) {
+             const keywordMap = JSON.parse(mapJson);
+             const MODEL_REGEX =
+-              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
++              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+ 
+             for (const hitKey of hitKeys) {
+               const mappedValue = keywordMap[hitKey];
+@@ -1007,10 +1007,10 @@ function checkDirectDeepSearchWithKey(msg, userId) {
+           writeLog("[DirectDeep] 型號提取失敗: " + e.message);
+         }
+ 
++          const cache = CacheService.getScriptCache();
+         // v27.9.1: 移除 tooMany 檢查（型號比較用 CLASS_RULES 就夠了）
+         // 注入所有型號到 Cache（供後續 PDF 查詢時使用）
+         if (allModels.length > 0) {
+-          const cache = CacheService.getScriptCache();
+           cache.put(
+             `${userId}:direct_search_models`,
+             JSON.stringify(allModels),
+@@ -1021,6 +1021,10 @@ function checkDirectDeepSearchWithKey(msg, userId) {
+               ", ",
+             )}`,
+           );
++        } else {
++          // v29.5.143: 若命中新關鍵字但無對應型號，必須清除舊 Cache，避免污染 (Fix Issue 2)
++          cache.remove(`${userId}:direct_search_models`);
++          writeLog(`[DirectDeep] ⚠️ 清除舊型號 Cache，因新關鍵字無對應型號 (userId: ${userId})`);
+         }
+ 
+         return { hit: true, keys: hitKeys, models: allModels };
+@@ -2042,12 +2046,14 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
+     // v24.5.5: 注入直通車偵測到的型號定義 (Fix Bug A)
+     // 解決 Fast Mode 不知道 "M8" 是 "M80D" 的問題
+     let inferredModelContext = "";
++    let injectedModelsList = []; // v29.5.142: 供後續規格搜尋使用
+     if (userId) {
+       const cachedModels = cache.get(`${userId}:direct_search_models`);
+       if (cachedModels) {
+         try {
+           const models = JSON.parse(cachedModels);
+           if (models && models.length > 0) {
++            injectedModelsList = models;
+             inferredModelContext = `【系統偵測型號】用戶提及的型號（如 M8/M7）已在系統定義為：${models.join(
+               ", ",
+             )}。請優先針對此型號回答，不要說「沒有精確定義」。\n`;
+@@ -2231,6 +2237,16 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
+         (t) => t.length >= 2 && !/^\d+$/.test(t),
+       );
+ 
++      // v29.5.142: 注入直通車推斷模型作為搜尋 Token，確保規格檔能被命中
++      if (typeof injectedModelsList !== "undefined" && injectedModelsList.length > 0) {
++        injectedModelsList.forEach((m) => {
++          if (!validNormalTokens.includes(m)) {
++            validNormalTokens.push(m);
++          }
++        });
++        writeLog(`[SmartRetrieval] 已注入的型號 Token: ${injectedModelsList.join(", ")}`);
++      }
++
+       // writeLog(`[SmartRetrieval] HighTokens: ${JSON.stringify(highValTokens)}, NormalTokens: ${JSON.stringify(validNormalTokens)}`);
+ 
+       // v29.4.8: 上下文回補機制 (Context Recovery)
+@@ -2891,8 +2907,10 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
+         const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
+         // 提取 M-models (e.g. M70D, M50F)
+         const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
++        // v29.5.142: 提取家電型號 (WA, WD, VR)
++        const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
+ 
+-        pdfModels = pdfModels.concat(sModels, gModels, mModels);
++        pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels);
+       }
+     });
+     const uniquePdfModels = [...new Set(pdfModels)];
+@@ -3294,7 +3312,7 @@ function getRelevantKBFiles(
+   // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
+   // v29.5.50: Broaden Regex to support Appliances (WA/WD/VR) and full range, and S series with 1 or 2 digits
+   const MODEL_REGEX =
+-    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
++    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+ 
+   // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
+   // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
+@@ -6369,10 +6387,10 @@ function handleMessage(event) {
+             }
+ 
+             // Re-check length (if cleared, this block won't run)
+-            // v29.5.140: 若 AI 已有完整回答 (無 PDF 觸發且有內容)，則不顯示型號選單
++            // v29.5.144: 若命中多個型號，只要有需要具體型號的意圖 (needSpecificModelIntent)，或是 AI 明確要求選擇，就強制顯示型號選單。
+             if (
+               suggestedModels.length > 1 &&
+-              (hasExplicitTrigger || !finalText || finalText.length < 5)
++              (hasExplicitTrigger || !finalText || finalText.length < 5 || needSpecificModelIntent)
+             ) {
+               writeLog(
+                 `[Smart Router v29.5.140] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
+@@ -9373,7 +9391,7 @@ function extractContextFromHistory(userId, contextId) {
+ 
+     // 提取型號
+     const MODEL_REGEX =
+-      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
++      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+     const models = [];
+     let match;
+     while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
+
+commit 75a4c054101ac782c2051188bcbbd0d36993ffa7
+Author: Your Name <you@example.com>
+Date:   Mon Mar 2 16:45:31 2026 +0800
+
+    v29.5.141: Sync MODEL_REGEX to support WA/WD/VR appliances and S-series matching
+
+diff --git a/linebot.gs b/linebot.gs
+index 61ee125..37cb379 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.140"; // 2026-03-02 修正：[型號]標籤外洩、強化來源標註與PDF查無規格自動轉網搜
+-const BUILD_TIMESTAMP = "2026-03-02 13:32";
++const GAS_VERSION = "v29.5.141"; // 2026-03-02 修正：同步 MODEL_REGEX，確保 DirectDeep 能提取 WA/WD/VR 家電型號並彈出泡泡
++const BUILD_TIMESTAMP = "2026-03-02 16:15";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -875,7 +875,7 @@ function checkDirectDeepSearch(msg, userId) {
+             if (mappedValue) {
+               // 從映射值提取型號
+               const MODEL_REGEX =
+-                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
++                /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+               const models = [];
+               let match;
+               while ((match = MODEL_REGEX.exec(mappedValue)) !== null) {
+@@ -982,7 +982,7 @@ function checkDirectDeepSearchWithKey(msg, userId) {
+           if (mapJson) {
+             const keywordMap = JSON.parse(mapJson);
+             const MODEL_REGEX =
+-              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3})\b/g;
++              /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+ 
+             for (const hitKey of hitKeys) {
+               const mappedValue = keywordMap[hitKey];
+@@ -3292,9 +3292,9 @@ function getRelevantKBFiles(
+   // M系列: M50F, M70F, M80F 等（M + 2位數 + 1字母）
+   // S系列: S27DG602SC, S32DG802SC 等（S + 2位數 + 完整型號碼）
+   // F/C系列 (舊款): F24T350, C24T550 (F/C + 2位數 + 1字母 + 3數字)
+-  // v29.4.24: Broaden Regex to support Appliances (WA/WD/VR) and full range
++  // v29.5.50: Broaden Regex to support Appliances (WA/WD/VR) and full range, and S series with 1 or 2 digits
+   const MODEL_REGEX =
+-    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|S\d{1,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
++    /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+ 
+   // v24.1.5: 改善：關鍵字搜尋時同時檢查「原始字串」和「去空白字串」
+   // 解決「Odyssey Hub」(用戶輸入) vs「OdysseyHub」(KEYWORD_MAP key) 的不匹配問題
+@@ -9373,7 +9373,7 @@ function extractContextFromHistory(userId, contextId) {
+ 
+     // 提取型號
+     const MODEL_REGEX =
+-      /\b([SG]\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}|M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]{0,2}|S\d{1,2})\b/g;
++      /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,3}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/g;
+     const models = [];
+     let match;
+     while ((match = MODEL_REGEX.exec(recentMsgs)) !== null) {
+
+commit d7a51c8ecbd5367688112dd8e2d9f6bfac9e260a
+Author: Your Name <you@example.com>
+Date:   Mon Mar 2 16:03:32 2026 +0800
+
+    v29.5.140: Fix [型號] tag leakage, enforce source tagging, and improve PDF/Web fallback logic
+
+diff --git a/linebot.gs b/linebot.gs
+index a8d470f..61ee125 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.139"; // 2026-02-12 修正：Web 指令階段記錄泡泡數，確保三按鈕可驗證
+-const BUILD_TIMESTAMP = "2026-02-12 10:31";
++const GAS_VERSION = "v29.5.140"; // 2026-03-02 修正：[型號]標籤外洩、強化來源標註與PDF查無規格自動轉網搜
++const BUILD_TIMESTAMP = "2026-03-02 13:32";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -146,7 +146,11 @@ function getElaborationCountForAnchor_(cache, userId, anchor) {
+ }
+ 
+ function getElaborationTopicAnchor_(cache, userId, fallbackText) {
+-  const topicText = (cache.get(`${userId}:last_meaningful_query`) || fallbackText || "").trim();
++  const topicText = (
++    cache.get(`${userId}:last_meaningful_query`) ||
++    fallbackText ||
++    ""
++  ).trim();
+   return computeReplyAnchor_(topicText);
+ }
+ 
+@@ -1282,7 +1286,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+     const directModelMatch = msg
+       .toUpperCase()
+       .match(/^[SC]\d{2}[A-Z]{1,2}\d{2,3}[A-Z]{0,2}$/);
+-    
++
+     if (directModelMatch && !pendingJson) {
+       // 用戶直接輸入型號，且沒有 pending 泡泡狀態
+       const inputModel = directModelMatch[0];
+@@ -1314,7 +1318,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+         msg,
+         [...history, userMsgObj],
+         [],
+-        true,  // attachPDFs = true，強制加載 PDF
++        true, // attachPDFs = true，強制加載 PDF
+         null,
+         false,
+         userId,
+@@ -1342,12 +1346,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+ 
+         // 記錄到歷史
+         const asstMsgObj = { role: "assistant", content: finalText };
+-        updateHistorySheetAndCache(
+-          contextId,
+-          history,
+-          userMsgObj,
+-          asstMsgObj,
+-        );
++        updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+         writeRecordDirectly(userId, msg, contextId, "user", "");
+         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+       } else {
+@@ -1436,9 +1435,9 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+           cleanedHistory.push({ role: "user", content: pending.originalQuery });
+           cleanedHistory.push({
+             role: "assistant",
+-            content: createModelSelectionFlexV2(
+-              pending.aliasKey,
+-              pending.options,
++            content: createModelSelectionFlexV3(
++              pending.options.map((o) => o.prefix), // Extract model names for V3
++              { headerText: `🔍 ${pending.aliasKey} 型號確認` },
+             ),
+           });
+           cleanedHistory.push({ role: "user", content: msg });
+@@ -3541,10 +3540,7 @@ function getRelevantKBFiles(
+         if (m.startsWith("S") && m.length >= 7) {
+           const coreCheck = modelToCheck.replace(/^S\d{2}/, "");
+           const coreIndex = m.replace(/^S\d{2}/, "");
+-          if (
+-            coreIndex.includes(coreCheck) ||
+-            coreCheck.includes(coreIndex)
+-          ) {
++          if (coreIndex.includes(coreCheck) || coreCheck.includes(coreIndex)) {
+             return true;
+           }
+           return m.includes(modelToCheck) || modelToCheck.includes(m);
+@@ -3559,7 +3555,10 @@ function getRelevantKBFiles(
+     } else {
+       // primaryModel 無 PDF → 遍歷其他 exactModels，找有 PDF 的替代
+       for (let i = 0; i < exactModels.length; i++) {
+-        if (exactModels[i] !== primaryModel && checkModelInPdfIndex(exactModels[i])) {
++        if (
++          exactModels[i] !== primaryModel &&
++          checkModelInPdfIndex(exactModels[i])
++        ) {
+           writeLog(
+             `[KB Select] 🔄 型號 ${primaryModel} 無 PDF，改用 ${exactModels[i]} 作為 primaryModel`,
+           );
+@@ -3581,9 +3580,7 @@ function getRelevantKBFiles(
+ 
+   // v29.5.57: 若所有型號都沒有專屬 PDF，不載入任何 PDF
+   if (!hasDedicatedPdf && primaryModel) {
+-    writeLog(
+-      `[KB Select] 🚫 所有型號均無專屬 PDF，跳過載入，改用規格庫回答`,
+-    );
++    writeLog(`[KB Select] 🚫 所有型號均無專屬 PDF，跳過載入，改用規格庫回答`);
+     return {
+       files: [],
+       exactModels: exactModels,
+@@ -3723,20 +3720,25 @@ function constructDynamicPrompt(
+   if (forceWebSearch) {
+     const searchTarget = targetModelName || "用戶詢問的產品";
+     // v29.5.114: 強化網路搜尋 - 禁止重複上一輪回答，必須找「新增價值」的資訊
+-    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy年MM月dd日");
+-    
++    const today = Utilities.formatDate(
++      new Date(),
++      "Asia/Taipei",
++      "yyyy年MM月dd日",
++    );
++
+     // 從對話歷史提取上一次 AI 的回答，用於防止重複
+     let previousAnswer = "";
+     if (messages && messages.length > 0) {
+       for (let i = messages.length - 1; i >= 0; i--) {
+         if (messages[i].role === "model" || messages[i].role === "assistant") {
+           previousAnswer = messages[i].content || "";
+-          if (previousAnswer.length > 200) previousAnswer = previousAnswer.substring(0, 200) + "...";
++          if (previousAnswer.length > 200)
++            previousAnswer = previousAnswer.substring(0, 200) + "...";
+           break;
+         }
+       }
+     }
+-    
++
+     dynamicPrompt = `【角色設定】
+ 你現在是一名「網路搜尋專家」。用戶對之前的回答不滿意，希望獲得**不同於上次、更有價值**的資訊。
+ 
+@@ -3839,7 +3841,9 @@ function constructDynamicPrompt(
+ 如果用戶現在只輸入型號（如 S32FM803UC），你應該回答「該型號 + 上述話題」。
+ 例如：話題是「線材版本」，用戶輸入 S32FM803UC → 你應回答「S32FM803UC 的線材版本」
+ **禁止給整體規格概覽！必須針對上述話題回答！**\n`;
+-    writeLog(`[Topic Inject v29.5.115] 注入話題: ${pendingTopic.substring(0, 50)}...`);
++    writeLog(
++      `[Topic Inject v29.5.115] 注入話題: ${pendingTopic.substring(0, 50)}...`,
++    );
+   }
+ 
+   if (!kbFiles.length && !imageBlob && !forceWebSearch) {
+@@ -4078,22 +4082,31 @@ function callLLMWithRetry(
+     writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.110)`);
+     tools = [{ google_search: {} }];
+     writeLog(`[Search Tool Payload] tools=${JSON.stringify(tools)}`);
+-    
++
+     // v29.5.110: 強化 System Prompt - 加入時效性指令
+-    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy年MM月dd日");
+-    dynamicPrompt +=
+-      `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。`;
+-    
++    const today = Utilities.formatDate(
++      new Date(),
++      "Asia/Taipei",
++      "yyyy年MM月dd日",
++    );
++    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。`;
++
+     // v29.5.110: 修改 user message - 加入時效性關鍵詞觸發搜尋
+     // Gemini 會判斷「最新」「今天」這類詞彙為需要即時資訊，從而強制搜尋
+     if (geminiContents && geminiContents.length > 0) {
+       const lastContent = geminiContents[geminiContents.length - 1];
+-      if (lastContent.role === "user" && lastContent.parts && lastContent.parts.length > 0) {
+-        const textPart = lastContent.parts.find(p => p.text);
++      if (
++        lastContent.role === "user" &&
++        lastContent.parts &&
++        lastContent.parts.length > 0
++      ) {
++        const textPart = lastContent.parts.find((p) => p.text);
+         if (textPart && !textPart.text.includes("最新")) {
+           // 在問題前加上時效性詞彙
+           textPart.text = `【請搜尋最新網路資訊】${textPart.text}`;
+-          writeLog(`[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`);
++          writeLog(
++            `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
++          );
+         }
+       }
+     }
+@@ -4437,26 +4450,38 @@ function callLLMWithRetry(
+             const grounding = candidates[0].groundingMetadata;
+             const finishReason = candidates[0].finishReason;
+             const hasToolCalls = firstPart && firstPart.functionCall;
+-            
++
+             // v29.5.112: 重置搜尋來源 (每次 API 呼叫前清除)
+             lastSearchSources = null;
+-            
++
+             // v29.5.109: 完整記錄 Grounding Metadata (Web Search 結果)
+             if (grounding) {
+               // 記錄完整的 grounding 物件（限制長度避免過大）
+               const groundingKeys = Object.keys(grounding);
+-              writeLog(`[Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: ${groundingKeys.join(', ')}`);
+-              
+-              if (grounding.webSearchQueries && grounding.webSearchQueries.length > 0) {
+-                writeLog(`[Grounding] 搜尋查詢: ${JSON.stringify(grounding.webSearchQueries)}`);
++              writeLog(
++                `[Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: ${groundingKeys.join(", ")}`,
++              );
++
++              if (
++                grounding.webSearchQueries &&
++                grounding.webSearchQueries.length > 0
++              ) {
++                writeLog(
++                  `[Grounding] 搜尋查詢: ${JSON.stringify(grounding.webSearchQueries)}`,
++                );
+               } else {
+                 writeLog(`[Grounding] webSearchQueries 不存在或為空`);
+               }
+-              
++
+               // v29.5.112: 提取搜尋來源並保存到全域變數
+-              if (grounding.groundingChunks && grounding.groundingChunks.length > 0) {
+-                writeLog(`[Grounding] 來源數量: ${grounding.groundingChunks.length}`);
+-                
++              if (
++                grounding.groundingChunks &&
++                grounding.groundingChunks.length > 0
++              ) {
++                writeLog(
++                  `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
++                );
++
+                 // 提取所有來源的域名
+                 const sourceSet = new Set();
+                 grounding.groundingChunks.forEach((chunk, i) => {
+@@ -4465,63 +4490,69 @@ function callLLMWithRetry(
+                     try {
+                       // URI 可能是 redirect URL，嘗試提取真實域名
+                       const uri = chunk.web.uri;
+-                      let domain = '';
+-                      
++                      let domain = "";
++
+                       // 優先使用 title 中的域名資訊
+                       if (chunk.web.title) {
+                         domain = chunk.web.title.toLowerCase();
+                       }
+-                      
++
+                       // 如果 title 不像域名，嘗試從 URI 解析
+-                      if (!domain.includes('.') || domain.length > 50) {
++                      if (!domain.includes(".") || domain.length > 50) {
+                         // 嘗試解析 URI
+                         const urlMatch = uri.match(/https?:\/\/([^\/]+)/);
+                         if (urlMatch) {
+-                          domain = urlMatch[1].replace('www.', '');
++                          domain = urlMatch[1].replace("www.", "");
+                         }
+                       }
+-                      
++
+                       if (domain && domain.length < 50) {
+                         sourceSet.add(domain);
+                       }
+                     } catch (e) {
+                       // 解析失敗，跳過
+                     }
+-                    
++
+                     if (i < 3) {
+-                      writeLog(`[Grounding] 來源 ${i+1}: ${chunk.web.title || 'N/A'} - ${chunk.web.uri || 'N/A'}`);
++                      writeLog(
++                        `[Grounding] 來源 ${i + 1}: ${chunk.web.title || "N/A"} - ${chunk.web.uri || "N/A"}`,
++                      );
+                     }
+                   }
+                 });
+-                
++
+                 // 轉換為陣列並排序 (samsung.com 優先)
+                 let sources = Array.from(sourceSet);
+                 sources.sort((a, b) => {
+                   // samsung.com 或 samsung.com.tw 優先
+-                  const aIsSamsung = a.includes('samsung');
+-                  const bIsSamsung = b.includes('samsung');
++                  const aIsSamsung = a.includes("samsung");
++                  const bIsSamsung = b.includes("samsung");
+                   if (aIsSamsung && !bIsSamsung) return -1;
+                   if (!aIsSamsung && bIsSamsung) return 1;
+                   return 0;
+                 });
+-                
++
+                 // 限制最多顯示 5 個來源
+                 lastSearchSources = sources.slice(0, 5);
+-                writeLog(`[Grounding] 提取來源: ${lastSearchSources.join(', ')}`);
++                writeLog(
++                  `[Grounding] 提取來源: ${lastSearchSources.join(", ")}`,
++                );
+               } else {
+                 writeLog(`[Grounding] groundingChunks 不存在或為空`);
+               }
+-              
++
+               if (grounding.searchEntryPoint) {
+                 writeLog(`[Grounding] 有 searchEntryPoint (搜尋建議 Widget)`);
+               }
+-              
++
+               // 記錄 AI 回應文字 (Web Search 結果)
+               if (text.length > 0) {
+                 writeLog(`[Grounding] AI 搜尋回應: ${text}`);
+               }
+             } else if (forceWebSearch) {
+-              writeLog(`[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`);
++              writeLog(
++                `[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`,
++              );
+             }
+ 
+             if (grounding && text.length === 0) {
+@@ -4841,16 +4872,19 @@ function formatForLineMobile(text) {
+   // === 強化分段邏輯 v29.5.99 ===
+   // 1. 基本句尾換行 (句號、驚嘆號、問號)
+   processed = processed.replace(/([。！？])\s*/g, "$1\n\n");
+-  
++
+   // 2. 分號、冒號後適當分段 (特別是 QA 格式)
+   processed = processed.replace(/([；：])\s*/g, "$1\n\n");
+-  
++
+   // 3. 長句智能分段：逗號後如果後面還有很多文字，適當換行
+-  processed = processed.replace(/([，])(\s*)([^，。！？；：\n]{15,})/g, "$1\n\n$3");
+-  
++  processed = processed.replace(
++    /([，])(\s*)([^，。！？；：\n]{15,})/g,
++    "$1\n\n$3",
++  );
++
+   // 4. 數字列表項前強制換行
+   processed = processed.replace(/(\n|^)(\d+\.)/g, "\n\n$2");
+-  
++
+   // 5. 移除多餘換行 (3個以上換行合併為2個)
+   processed = processed.replace(/\n{3,}/g, "\n\n");
+ 
+@@ -5127,9 +5161,30 @@ function handleMessage(event) {
+           if (!msg.startsWith("/")) {
+             responseOptions.quickReply = {
+               items: [
+-                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-                { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } },
++                {
++                  type: "action",
++                  action: {
++                    type: "message",
++                    label: "💬 再詳細說明",
++                    text: "#再詳細說明",
++                  },
++                },
++                {
++                  type: "action",
++                  action: {
++                    type: "message",
++                    label: "📖 查手冊",
++                    text: "#查手冊",
++                  },
++                },
++                {
++                  type: "action",
++                  action: {
++                    type: "message",
++                    label: "🌐 這題再搜網路",
++                    text: "#這題再搜網路",
++                  },
++                },
+               ],
+             };
+           }
+@@ -5266,7 +5321,11 @@ function handleMessage(event) {
+       writeLog(`[Model Select v29.5.120] 🎯 用戶選擇型號: ${selectedModel}`);
+ 
+       // 注入型號到 Cache
+-      cache.put(`${userId}:direct_search_models`, JSON.stringify([selectedModel]), 300);
++      cache.put(
++        `${userId}:direct_search_models`,
++        JSON.stringify([selectedModel]),
++        300,
++      );
+ 
+       // 設置 PDF Mode
+       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+@@ -5293,21 +5352,29 @@ function handleMessage(event) {
+               !content.includes("(型號:")
+             ) {
+               savedTopic = content;
+-              writeLog(`[Model Select v29.5.121] 從歷史找到原始問題: ${savedTopic.substring(0, 50)}`);
++              writeLog(
++                `[Model Select v29.5.121] 從歷史找到原始問題: ${savedTopic.substring(0, 50)}`,
++              );
+               break;
+             }
+           }
+         }
+       }
+ 
+-      const queryText = savedTopic ? `${savedTopic} (型號: ${selectedModel})` : selectedModel;
++      const queryText = savedTopic
++        ? `${savedTopic} (型號: ${selectedModel})`
++        : selectedModel;
+ 
+       showLoadingAnimation(userId, 60);
+-      writeLog(`[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`);
++      writeLog(
++        `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
++      );
+ 
+       // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
+       const kbList = JSON.parse(
+-        PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]"
++        PropertiesService.getScriptProperties().getProperty(
++          CACHE_KEYS.KB_URI_LIST,
++        ) || "[]",
+       );
+       const searchMsg = { role: "user", content: queryText };
+       const kbResult = getRelevantKBFiles(
+@@ -5315,11 +5382,17 @@ function handleMessage(event) {
+         kbList,
+         userId,
+         contextId,
+-        true,  // forceCurrentOnly
++        true, // forceCurrentOnly
++      );
++      const relevantFiles = Array.isArray(kbResult)
++        ? kbResult
++        : kbResult.files || [];
++      const primaryModel = Array.isArray(kbResult)
++        ? null
++        : kbResult.primaryModel || null;
++      writeLog(
++        `[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
+       );
+-      const relevantFiles = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+-      const primaryModel = Array.isArray(kbResult) ? null : (kbResult.primaryModel || null);
+-      writeLog(`[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`);
+ 
+       const history = getHistoryFromCacheOrSheet(contextId);
+       const userMsgObj = { role: "user", content: queryText };
+@@ -5327,8 +5400,8 @@ function handleMessage(event) {
+       const response = callLLMWithRetry(
+         queryText,
+         [...history, userMsgObj],
+-        relevantFiles,  // ← 實際掛載 PDF
+-        true,   // attachPDFs
++        relevantFiles, // ← 實際掛載 PDF
++        true, // attachPDFs
+         null,
+         false,
+         userId,
+@@ -5344,10 +5417,12 @@ function handleMessage(event) {
+ 
+         // v29.5.120: 加入 PDF 來源標註
+         if (relevantFiles.length > 0) {
+-          finalText = finalText.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
++          finalText = finalText
++            .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
++            .trim();
+           const pdfNames = relevantFiles
+-            .filter(f => f.mimeType === "application/pdf")
+-            .map(f => f.name.replace(".pdf", ""));
++            .filter((f) => f.mimeType === "application/pdf")
++            .map((f) => f.name.replace(".pdf", ""));
+           if (pdfNames.length > 0) {
+             const productName = getPdfProductName(pdfNames[0]);
+             if (productName) {
+@@ -5365,7 +5440,7 @@ function handleMessage(event) {
+         const manualReplyAnchor = getElaborationTopicAnchor_(
+           cache,
+           userId,
+-          lastQuestion,
++          queryText,
+         );
+         const manualElaborationCount = getElaborationCountForAnchor_(
+           cache,
+@@ -5376,12 +5451,20 @@ function handleMessage(event) {
+         if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+           qrItems.push({
+             type: "action",
+-            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++            action: {
++              type: "message",
++              label: "💬 再詳細說明",
++              text: "#再詳細說明",
++            },
+           });
+         }
+         qrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
++          action: {
++            type: "message",
++            label: "🌐 這題再搜網路",
++            text: "#這題再搜網路",
++          },
+         });
+         const qrOptions = { quickReply: { items: qrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5460,11 +5543,15 @@ function handleMessage(event) {
+       }
+ 
+       showLoadingAnimation(userId, 60);
+-      writeLog(`[Quick Reply v29.5.120] 查手冊，問題: ${lastQuestion.substring(0, 60)}`);
++      writeLog(
++        `[Quick Reply v29.5.120] 查手冊，問題: ${lastQuestion.substring(0, 60)}`,
++      );
+ 
+       // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
+       const kbList = JSON.parse(
+-        PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]"
++        PropertiesService.getScriptProperties().getProperty(
++          CACHE_KEYS.KB_URI_LIST,
++        ) || "[]",
+       );
+       const searchMsg = { role: "user", content: lastQuestion };
+       const kbResult = getRelevantKBFiles(
+@@ -5474,16 +5561,22 @@ function handleMessage(event) {
+         contextId,
+         false,
+       );
+-      const relevantFiles = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+-      const primaryModel = Array.isArray(kbResult) ? null : (kbResult.primaryModel || null);
+-      writeLog(`[Quick Reply v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`);
++      const relevantFiles = Array.isArray(kbResult)
++        ? kbResult
++        : kbResult.files || [];
++      const primaryModel = Array.isArray(kbResult)
++        ? null
++        : kbResult.primaryModel || null;
++      writeLog(
++        `[Quick Reply v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
++      );
+ 
+       const userMsgObj = { role: "user", content: lastQuestion };
+       const response = callLLMWithRetry(
+         lastQuestion,
+         [...history, userMsgObj],
+-        relevantFiles,  // ← 實際掛載 PDF
+-        true,   // attachPDFs
++        relevantFiles, // ← 實際掛載 PDF
++        true, // attachPDFs
+         null,
+         false,
+         userId,
+@@ -5499,10 +5592,12 @@ function handleMessage(event) {
+ 
+         // v29.5.120: 加入 PDF 來源標註
+         if (relevantFiles.length > 0) {
+-          finalText = finalText.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
++          finalText = finalText
++            .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
++            .trim();
+           const pdfNames = relevantFiles
+-            .filter(f => f.mimeType === "application/pdf")
+-            .map(f => f.name.replace(".pdf", ""));
++            .filter((f) => f.mimeType === "application/pdf")
++            .map((f) => f.name.replace(".pdf", ""));
+           if (pdfNames.length > 0) {
+             const productName = getPdfProductName(pdfNames[0]);
+             if (productName) {
+@@ -5526,12 +5621,20 @@ function handleMessage(event) {
+         if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+           manualQrItems.push({
+             type: "action",
+-            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++            action: {
++              type: "message",
++              label: "💬 再詳細說明",
++              text: "#再詳細說明",
++            },
+           });
+         }
+         manualQrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
++          action: {
++            type: "message",
++            label: "🌐 這題再搜網路",
++            text: "#這題再搜網路",
++          },
+         });
+         const qrOptions = { quickReply: { items: manualQrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5579,7 +5682,11 @@ function handleMessage(event) {
+         const limitQrItems = [
+           {
+             type: "action",
+-            action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
++            action: {
++              type: "message",
++              label: "🌐 這題再搜網路",
++              text: "#這題再搜網路",
++            },
+           },
+         ];
+         if (hasPdfForModel) {
+@@ -5588,7 +5695,9 @@ function handleMessage(event) {
+             action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+           });
+         }
+-        replyMessage(replyToken, limitText, { quickReply: { items: limitQrItems } });
++        replyMessage(replyToken, limitText, {
++          quickReply: { items: limitQrItems },
++        });
+         writeLog(
+           `[Quick Reply v29.5.134] 再詳細說明達上限 ${currentElaborationCount}/${MAX_ELABORATE_PER_ANSWER}`,
+         );
+@@ -5635,7 +5744,11 @@ function handleMessage(event) {
+     ) {
+       writeLog(`[Quick Reply v29.5.137] 用戶要求這題再搜網路`);
+       showLoadingAnimation(userId, 60);
+-      const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
++      const cmdResult = handleCommand(
++        "不滿意這回答請繼續擴大搜尋",
++        userId,
++        contextId,
++      );
+       const webReplyAnchor = getElaborationTopicAnchor_(
+         cache,
+         userId,
+@@ -5649,9 +5762,12 @@ function handleMessage(event) {
+       let canShowManualQuickReply = hasPdfForModel;
+       if (!canShowManualQuickReply) {
+         try {
+-          const directModels = JSON.parse(cache.get(`${userId}:direct_search_models`) || "[]");
++          const directModels = JSON.parse(
++            cache.get(`${userId}:direct_search_models`) || "[]",
++          );
+           // 只要延續同題且已有型號記憶，就保留「查手冊」入口，避免泡泡縮到只剩 1~2 顆
+-          canShowManualQuickReply = Array.isArray(directModels) && directModels.length > 0;
++          canShowManualQuickReply =
++            Array.isArray(directModels) && directModels.length > 0;
+         } catch (e) {
+           writeLog(`[Quick Reply v29.5.137] 手冊按鈕判斷失敗: ${e.message}`);
+         }
+@@ -5660,7 +5776,11 @@ function handleMessage(event) {
+       if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+         qrItems.push({
+           type: "action",
+-          action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++          action: {
++            type: "message",
++            label: "💬 再詳細說明",
++            text: "#再詳細說明",
++          },
+         });
+       }
+       if (canShowManualQuickReply) {
+@@ -5671,10 +5791,17 @@ function handleMessage(event) {
+       }
+       qrItems.push({
+         type: "action",
+-        action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
++        action: {
++          type: "message",
++          label: "🌐 這題再搜網路",
++          text: "#這題再搜網路",
++        },
+       });
+-      writeLog(`[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: ${qrItems.length}`);
+-      const qrOptions = qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
++      writeLog(
++        `[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: ${qrItems.length}`,
++      );
++      const qrOptions =
++        qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
+       replyMessage(replyToken, cmdResult, qrOptions);
+       return;
+     }
+@@ -5705,9 +5832,7 @@ function handleMessage(event) {
+         cache.put(pdfModeKey, "true", 300);
+ 
+         // 直接進入 Pass 1.5（不走 DirectDeep，避免重複觸發泡泡）
+-        writeLog(
+-          `[PDF v29.5.116] 跳過 DirectDeep，直接進 Pass 1.5 查詢 PDF`,
+-        );
++        writeLog(`[PDF v29.5.116] 跳過 DirectDeep，直接進 Pass 1.5 查詢 PDF`);
+ 
+         // 強制組合查詢：用戶輸入 + 原始問題
+         const combinedQuery = `${pending.originalQuery}\n\n(用戶選擇型號: ${pending.model})`;
+@@ -5783,7 +5908,10 @@ function handleMessage(event) {
+         // v29.5.131: QA 優先修正
+         // 只檢查「是否有手冊可查」供 Quick Reply 顯示，不再首輪直接預載 PDF。
+         try {
+-          const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
++          const pdfIndexJson =
++            PropertiesService.getScriptProperties().getProperty(
++              "PDF_MODEL_INDEX",
++            );
+           const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+           const directModels = directSearchResult.models || [];
+ 
+@@ -5794,7 +5922,12 @@ function handleMessage(event) {
+               if (idx.startsWith("S") && idx.length >= 7) {
+                 const coreCheck = mdl.replace(/^S\d{2}/, "");
+                 const coreIdx = idx.replace(/^S\d{2}/, "");
+-                return coreIdx.includes(coreCheck) || coreCheck.includes(coreIdx) || idx.includes(mdl) || mdl.includes(idx);
++                return (
++                  coreIdx.includes(coreCheck) ||
++                  coreCheck.includes(coreIdx) ||
++                  idx.includes(mdl) ||
++                  mdl.includes(idx)
++                );
+               }
+               return idx === mdl;
+             });
+@@ -5807,9 +5940,13 @@ function handleMessage(event) {
+           if (pdfMatchModel) {
+             hasPdfForModel = true;
+             primaryModel = pdfMatchModel;
+-            writeLog(`[DirectDeep v29.5.131] 型號 ${pdfMatchModel} 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊`);
++            writeLog(
++              `[DirectDeep v29.5.131] 型號 ${pdfMatchModel} 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊`,
++            );
+           } else {
+-            writeLog(`[DirectDeep v29.5.131] 所有型號均無 PDF: ${directModels.join(", ")}`);
++            writeLog(
++              `[DirectDeep v29.5.131] 所有型號均無 PDF: ${directModels.join(", ")}`,
++            );
+           }
+         } catch (e) {
+           writeLog(`[DirectDeep v29.5.131] PDF 可用性檢查失敗: ${e.message}`);
+@@ -5893,7 +6030,9 @@ function handleMessage(event) {
+       // v29.5.123: 如果 DirectDeep 已預載 PDF，直接帶上
+       const shouldAttachPdfs = filesToAttach.length > 0 && hasPdfForModel;
+       if (shouldAttachPdfs) {
+-        writeLog(`[DirectDeep v29.5.123] 首次回答即掛載 PDF (${filesToAttach.filter(f => f.mimeType === 'application/pdf').length} 本)`);
++        writeLog(
++          `[DirectDeep v29.5.123] 首次回答即掛載 PDF (${filesToAttach.filter((f) => f.mimeType === "application/pdf").length} 本)`,
++        );
+         // 移除強制 [AUTO_SEARCH_PDF] 的 System Hint（PDF 已掛載，不需要 AI 再觸發）
+         userMessage = userMessage.replace(/\n\n\[System Hint:.*?\]/s, "");
+         userMsgObj.content = userMessage;
+@@ -5942,7 +6081,7 @@ function handleMessage(event) {
+       if (rawResponse) {
+         // 🔥 v29.5.107: 完整記錄 AI 原始回應
+         writeLog(`[AI Raw Response] ${rawResponse}`);
+-        
++
+         let finalText = formatForLineMobile(rawResponse);
+         let replyText = finalText;
+ 
+@@ -5953,7 +6092,9 @@ function handleMessage(event) {
+         const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
+         const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
+         const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
+-        writeLog(`[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`);
++        writeLog(
++          `[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`,
++        );
+ 
+         // v29.5.132: 若已知有手冊且命中直通車，但 Fast Mode 誤回「找不到 PDF」，
+         // 強制補上 PDF 觸發暗號，避免 Odyssey 3D 這類場景卡住。
+@@ -6080,6 +6221,10 @@ function handleMessage(event) {
+             // v29.5.130: 同步 replyText，確保清理後的文字被採用
+             replyText = finalText;
+           }
++        } else {
++          // 若無 Explicit Trigger，仍必須清理內部溝通用的型號標籤，以免外洩 (詳見 #1)
++          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
++          replyText = finalText;
+         }
+ 
+         // 去重
+@@ -6155,7 +6300,7 @@ function handleMessage(event) {
+           // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
+           else if (suggestedModels.length > 1) {
+             // v29.5.105: 改善追問機制 - 更精準判斷何時該跳過泡泡
+-            // 
++            //
+             // 【跳過泡泡的情況】:
+             // 1. 明確的列表/比較意圖 + 不涉及操作/故障問題
+             // 2. 型號數量過多(>10)，通常是類別查詢
+@@ -6163,7 +6308,7 @@ function handleMessage(event) {
+             // 【保留泡泡的情況】:
+             // 1. 操作/故障/設定問題（即使有「哪一台」也要追問型號）
+             // 2. 用戶使用模糊別稱（如 G5、M8）詢問功能問題
+-            
++
+             const listIntent =
+               /(推薦|介紹|有哪些|列表|清單|差異|比較|认证|認證|列出|整理|選擇)/i.test(
+                 userMessage,
+@@ -6175,7 +6320,8 @@ function handleMessage(event) {
+             const tooMany = suggestedModels.length > 10;
+ 
+             // 只有在「純列表意圖」且「非操作問題」時才跳過泡泡
+-            const shouldSkipBubble = (listIntent && !needSpecificModelIntent) || tooMany;
++            const shouldSkipBubble =
++              (listIntent && !needSpecificModelIntent) || tooMany;
+ 
+             if (shouldSkipBubble) {
+               writeLog(
+@@ -6193,40 +6339,58 @@ function handleMessage(event) {
+               // 內部代號如 G90XF, G80SD, G81SF 等短別稱，用戶不認識
+               // 完整型號如 S27FG900XC, S32DG802SC (S開頭+數字+字母)
+               const INTERNAL_ALIAS_RE = /^[A-Z]\d{1,2}[A-Z]{0,3}$/; // G90XF, G5, M8, G80SD
+-              const fullModels = suggestedModels.filter(m => !INTERNAL_ALIAS_RE.test(m));
++              const fullModels = suggestedModels.filter(
++                (m) => !INTERNAL_ALIAS_RE.test(m),
++              );
+               if (fullModels.length > 0) {
+                 // 有完整型號時，移除內部代號
+-                const removed = suggestedModels.filter(m => INTERNAL_ALIAS_RE.test(m));
++                const removed = suggestedModels.filter((m) =>
++                  INTERNAL_ALIAS_RE.test(m),
++                );
+                 if (removed.length > 0) {
+-                  writeLog(`[Smart Router v29.5.121] 過濾內部代號: ${removed.join(", ")} → 只顯示: ${fullModels.join(", ")}`);
++                  writeLog(
++                    `[Smart Router v29.5.121] 過濾內部代號: ${removed.join(", ")} → 只顯示: ${fullModels.join(", ")}`,
++                  );
+                 }
+                 suggestedModels = fullModels;
+               }
+               // 過濾後只剩 1 個型號，不需要顯示泡泡，直接鎖定
+               if (suggestedModels.length === 1) {
+-                writeLog(`[Smart Router v29.5.121] 過濾後單一型號 ${suggestedModels[0]}，自動鎖定`);
+-                cache.put(`${userId}:direct_search_models`, JSON.stringify(suggestedModels), 300);
++                writeLog(
++                  `[Smart Router v29.5.121] 過濾後單一型號 ${suggestedModels[0]}，自動鎖定`,
++                );
++                cache.put(
++                  `${userId}:direct_search_models`,
++                  JSON.stringify(suggestedModels),
++                  300,
++                );
+                 suggestedModels = [];
+               }
+             }
+ 
+             // Re-check length (if cleared, this block won't run)
+-            if (suggestedModels.length > 1) {
++            // v29.5.140: 若 AI 已有完整回答 (無 PDF 觸發且有內容)，則不顯示型號選單
++            if (
++              suggestedModels.length > 1 &&
++              (hasExplicitTrigger || !finalText || finalText.length < 5)
++            ) {
+               writeLog(
+-                `[Smart Router v29.4.14] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
++                `[Smart Router v29.5.140] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
+               );
+               cache.put(
+                 `${userId}:suggested_models`,
+                 JSON.stringify(suggestedModels),
+                 300,
+               );
+-              
++
+               // v29.5.121: 保存當前話題，供用戶選泡泡後延續
+               // 優先使用當前用戶訊息本身作為話題
+               const currentTopic = userMessage || "";
+               if (currentTopic.length > 5) {
+                 cache.put(`${userId}:pending_topic`, currentTopic, 600);
+-                writeLog(`[Topic Save v29.5.121] 保存當前話題: ${currentTopic.substring(0, 50)}`);
++                writeLog(
++                  `[Topic Save v29.5.121] 保存當前話題: ${currentTopic.substring(0, 50)}`,
++                );
+               } else {
+                 // fallback: 從歷史找上一輪的話題
+                 const history = getHistoryFromCacheOrSheet(contextId);
+@@ -6236,9 +6400,16 @@ function handleMessage(event) {
+                     if (h.role === "user") {
+                       let topic = h.content || "";
+                       topic = topic.replace(/\[System Hint:.*?\]/gs, "").trim();
+-                      if (topic.length > 10 && !topic.match(/^(\u90a3|\u63db|\u6539).{1,10}(\u5462|\u7684\u8a71)?$/)) {
++                      if (
++                        topic.length > 10 &&
++                        !topic.match(
++                          /^(\u90a3|\u63db|\u6539).{1,10}(\u5462|\u7684\u8a71)?$/,
++                        )
++                      ) {
+                         cache.put(`${userId}:pending_topic`, topic, 600);
+-                        writeLog(`[Topic Save v29.5.121] 從歷史保存話題: ${topic.substring(0, 50)}`);
++                        writeLog(
++                          `[Topic Save v29.5.121] 從歷史保存話題: ${topic.substring(0, 50)}`,
++                        );
+                         break;
+                       }
+                     }
+@@ -6266,13 +6437,7 @@ function handleMessage(event) {
+               if (finalText && finalText.length > 0) {
+                 messages.push({ type: "text", text: finalText });
+               }
+-              messages.push({
+-                type: "flex",
+-                altText: "請選擇您要查詢的型號",
+-                contents: flexMsg.contents
+-                  ? flexMsg
+-                  : { type: "carousel", contents: [flexMsg] }, // Ensure container format
+-              });
++              messages.push(flexMsg);
+ 
+               // 使用 replyToken 一次發送
+               const url = "https://api.line.me/v2/bot/message/reply";
+@@ -6315,12 +6480,16 @@ function handleMessage(event) {
+         }
+ 
+         // 🔥 v29.5.106: 詳細 LOG - 進入主要判斷邏輯
+-        writeLog(`[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`);
++        writeLog(
++          `[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`,
++        );
+ 
+         // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
+         // v29.5.130: 先處理 [AUTO_SEARCH_WEB]，避免「PDF→WEB 升級」後被 hasExplicitTrigger 擋住
+         if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+-          writeLog("[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋");
++          writeLog(
++            "[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋",
++          );
+ 
+           // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
+           const pass1Usage =
+@@ -6711,9 +6880,9 @@ function handleMessage(event) {
+ 
+                   // v24.4.4: 直接發送反問訊息，不附加 Fast Mode 的錯誤回答
+                   // （既然 AI 說需要查 PDF，Fast Mode 的回答就是不準確的）
+-                  const askMsg = createModelSelectionFlexV2(
+-                    pdfSearchResult.aliasName,
+-                    pdfSearchResult.matchedPdfs.slice(0, 9),
++                  const askMsg = createModelSelectionFlexV3(
++                    pdfSearchResult.matchedPdfs.map((p) => p.prefix),
++                    { headerText: `🔍 ${pdfSearchResult.aliasName} 型號確認` },
+                   );
+ 
+                   replyMessage(replyToken, askMsg);
+@@ -7228,7 +7397,11 @@ function handleMessage(event) {
+             // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
+             qrItems.push({
+               type: "action",
+-              action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++              action: {
++                type: "message",
++                label: "💬 再詳細說明",
++                text: "#再詳細說明",
++              },
+             });
+           } else {
+             writeLog(
+@@ -7239,12 +7412,17 @@ function handleMessage(event) {
+           // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+           // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+           // 無 PDF → 避免使用者點了卻查不到
+-          const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
++          const alreadyConsultedPdf =
++            cache.get(`${userId}:pdf_consulted`) === "true";
+           if (hasPdfForModel && !alreadyConsultedPdf) {
+-            qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
++            qrItems.push({
++              type: "action",
++              action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
++            });
+ 
+             // v29.5.127: 在回答末尾加入查手冊等待提醒
+-            const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
++            const pdfReminder =
++              "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
+             if (Array.isArray(replyText)) {
+               replyText[replyText.length - 1] += pdfReminder;
+             } else {
+@@ -7268,7 +7446,14 @@ function handleMessage(event) {
+               ? replyText.join("\n")
+               : String(replyText || "");
+           }
+-          qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } });
++          qrItems.push({
++            type: "action",
++            action: {
++              type: "message",
++              label: "🌐 這題再搜網路",
++              text: "#這題再搜網路",
++            },
++          });
+ 
+           if (qrItems.length > 0) {
+             responseOptions.quickReply = { items: qrItems };
+@@ -7276,10 +7461,10 @@ function handleMessage(event) {
+         }
+ 
+         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
+-        const replyFull = Array.isArray(replyText) 
+-          ? `[多泡泡回覆 ${replyText.length}則] ` + replyText.join(' ||| ')
+-          : (replyText || '');
+-        writeLog(`[Final Reply] 即將回覆: ${replyFull.replace(/\n/g, ' ')}`);
++        const replyFull = Array.isArray(replyText)
++          ? `[多泡泡回覆 ${replyText.length}則] ` + replyText.join(" ||| ")
++          : replyText || "";
++        writeLog(`[Final Reply] 即將回覆: ${replyFull.replace(/\n/g, " ")}`);
+ 
+         replyMessage(replyToken, replyText, responseOptions);
+         // v25.0.2 修復：補上缺失的 user 訊息記錄
+@@ -7501,7 +7686,10 @@ function handleCommand(c, u, cid) {
+       const lastMeaningfulFromCache = cleanHistoryText(
+         cache.get(`${u}:last_meaningful_query`) || "",
+       );
+-      if (lastMeaningfulFromCache && !isNoiseForContextRepair(lastMeaningfulFromCache)) {
++      if (
++        lastMeaningfulFromCache &&
++        !isNoiseForContextRepair(lastMeaningfulFromCache)
++      ) {
+         userMsg = lastMeaningfulFromCache;
+         writeLog(
+           `[Context Repair v29.5.133] 使用 last_meaningful_query fallback: ${userMsg.substring(0, 80)}...`,
+@@ -7655,13 +7843,15 @@ function handleCommand(c, u, cid) {
+     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+       let result = formatForLineMobile(searchResponse);
+       // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
+-      result = result.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
+-      
++      result = result
++        .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
++        .trim();
++
+       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
+       if (!triggerPDF) {
+         // 網路搜尋模式
+         if (lastSearchSources && lastSearchSources.length > 0) {
+-          result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join('、')})`;
++          result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+         } else {
+           result += "\n\n(🔍 網路搜尋補充資料)";
+         }
+@@ -7681,10 +7871,12 @@ function handleCommand(c, u, cid) {
+       updateHistorySheetAndCache(
+         cid,
+         history,
+-        { role: "user", content: userMsg },  // v29.5.111: 改為保存原始問題
++        { role: "user", content: userMsg }, // v29.5.111: 改為保存原始問題
+         { role: "assistant", content: searchResponse },
+       );
+-      writeLog(`[History Fix v29.5.111] 保存原始問題至歷史: ${userMsg.substring(0, 50)}...`);
++      writeLog(
++        `[History Fix v29.5.111] 保存原始問題至歷史: ${userMsg.substring(0, 50)}...`,
++      );
+       return result;
+     } else {
+       return "抱歉，網路搜尋連線逾時，請稍後再試。";
+@@ -9658,14 +9850,15 @@ function replyMessage(tk, txt, options = {}) {
+         preview = txt
+           .map((t) => {
+             if (typeof t === "string") return t;
+-            if (t && typeof t === "object") return t.altText || "[Flex Message]";
++            if (t && typeof t === "object")
++              return t.altText || "[Flex Message]";
+             return String(t || "");
+           })
+           .join("\n\n");
+       } else if (txt && typeof txt === "object" && txt.type) {
+         preview = txt.altText || "[Flex Message]";
+       } else {
+-        preview = (txt === null || txt === undefined) ? "" : txt.toString();
++        preview = txt === null || txt === undefined ? "" : txt.toString();
+       }
+ 
+       if (preview) {
+@@ -9748,8 +9941,8 @@ function replyMessage(tk, txt, options = {}) {
+     // v29.5.109: 完整記錄 LINE 回覆內容
+     const logFull =
+       typeof txt === "string"
+-        ? txt.replace(/\n/g, ' ')
+-        : (txt.altText || "[Flex Message]");
++        ? txt.replace(/\n/g, " ")
++        : txt.altText || "[Flex Message]";
+     if (code === 200) {
+       writeLog(`[Reply] ✅ LINE 回覆成功: ${logFull}`);
+     } else {
+@@ -10000,18 +10193,18 @@ function testMessage(msg, userId) {
+     }
+     // v29.5.98: Capture Flex Replies
+     if (log.indexOf("[Flex Reply]") > -1) {
+-       // Extract Alt Text
+-       var match = log.match(/Alt: (.*?), JSON:/);
+-       if (match && match[1]) {
+-         var alt = match[1];
+-         // Append a hint that it was a Flex Message
+-         var content = `[Flex Message] ${alt} (查看日誌以見詳情)`;
+-         if (!seenContent.has(content)) {
+-            botResponses.push(content);
+-            seenContent.add(content);
+-            hasOfficialReply = true;
+-         }
+-       }
++      // Extract Alt Text
++      var match = log.match(/Alt: (.*?), JSON:/);
++      if (match && match[1]) {
++        var alt = match[1];
++        // Append a hint that it was a Flex Message
++        var content = `[Flex Message] ${alt} (查看日誌以見詳情)`;
++        if (!seenContent.has(content)) {
++          botResponses.push(content);
++          seenContent.add(content);
++          hasOfficialReply = true;
++        }
++      }
+     }
+   }
+ 
+@@ -10455,7 +10648,7 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
+       action: {
+         type: "message",
+         label: label,
+-        text: `#型號:${model}`,  // v29.5.118: 加前綴，避免觸發 DirectDeep
++        text: `#型號:${model}`, // v29.5.118: 加前綴，避免觸發 DirectDeep
+       },
+       style: "primary",
+       color: "#4A90D9",
+@@ -10543,9 +10736,17 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
+     },
+   };
+ 
++  // v29.5.141 fix: Wrap in Flex Message object
++  const altText =
++    intentConfig && intentConfig.altText ? intentConfig.altText : "請選擇型號";
++
+   return {
+-    type: "carousel",
+-    contents: [bubble],
++    type: "flex",
++    altText: altText,
++    contents: {
++      type: "carousel",
++      contents: [bubble],
++    },
+   };
+ }
+ 
+@@ -10554,8 +10755,13 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
+  */
+ function replyFlexMessage(replyToken, flexContainer, altText) {
+   // 🧪 TEST MODE START (v29.5.98 Fixed)
+-  if ((typeof IS_TEST_MODE !== 'undefined' && IS_TEST_MODE) || replyToken === "TEST_REPLY_TOKEN") {
+-    writeLog(`[Flex Reply] Alt: ${altText}, JSON: ${JSON.stringify(flexContainer)}`);
++  if (
++    (typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE) ||
++    replyToken === "TEST_REPLY_TOKEN"
++  ) {
++    writeLog(
++      `[Flex Reply] Alt: ${altText}, JSON: ${JSON.stringify(flexContainer)}`,
++    );
+     return 200;
+   }
+   // 🧪 TEST MODE END
+
+commit fd31c6d34368fbfaa1f90e0c7b73a3e05c59235d
+Author: Your Name <you@example.com>
+Date:   Thu Feb 12 10:36:30 2026 +0800
+
+    v29.5.139 fix: web quick reply wording + 3-option persistence
+
+diff --git a/linebot.gs b/linebot.gs
+index 7840c4f..a8d470f 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.136"; // 2026-02-11 文案修正：泡泡統一為「搜尋這題的網路解答」
+-const BUILD_TIMESTAMP = "2026-02-11 20:05";
++const GAS_VERSION = "v29.5.139"; // 2026-02-12 修正：Web 指令階段記錄泡泡數，確保三按鈕可驗證
++const BUILD_TIMESTAMP = "2026-02-12 10:31";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -5129,7 +5129,7 @@ function handleMessage(event) {
+               items: [
+                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+                 { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } },
++                { type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } },
+               ],
+             };
+           }
+@@ -5381,7 +5381,7 @@ function handleMessage(event) {
+         }
+         qrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
+         });
+         const qrOptions = { quickReply: { items: qrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5400,7 +5400,7 @@ function handleMessage(event) {
+     }
+ 
+     // ══════════════════════════════════════════════════════════
+-    // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
++    // v29.5.118: 攔截 #查手冊 / #這題再搜網路（含舊指令相容）
+     // ══════════════════════════════════════════════════════════
+     // v29.5.133: 支援自然語句觸發手冊（例如：我想找手冊上的答案 / 查手冊 S27FG900XC ...）
+     const naturalManualCmd = msg.match(
+@@ -5531,7 +5531,7 @@ function handleMessage(event) {
+         }
+         manualQrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
+         });
+         const qrOptions = { quickReply: { items: manualQrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5579,7 +5579,7 @@ function handleMessage(event) {
+         const limitQrItems = [
+           {
+             type: "action",
+-            action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
++            action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
+           },
+         ];
+         if (hasPdfForModel) {
+@@ -5627,8 +5627,13 @@ function handleMessage(event) {
+       // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
+     }
+ 
+-    if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
+-      writeLog(`[Quick Reply v29.5.136] 用戶要求搜尋這題的網路解答`);
++    if (
++      msg === "#搜尋網路" ||
++      msg === "#搜往上其他解答" ||
++      msg === "#搜網上其他解答" ||
++      msg === "#這題再搜網路"
++    ) {
++      writeLog(`[Quick Reply v29.5.137] 用戶要求這題再搜網路`);
+       showLoadingAnimation(userId, 60);
+       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+       const webReplyAnchor = getElaborationTopicAnchor_(
+@@ -5641,6 +5646,16 @@ function handleMessage(event) {
+         userId,
+         webReplyAnchor,
+       );
++      let canShowManualQuickReply = hasPdfForModel;
++      if (!canShowManualQuickReply) {
++        try {
++          const directModels = JSON.parse(cache.get(`${userId}:direct_search_models`) || "[]");
++          // 只要延續同題且已有型號記憶，就保留「查手冊」入口，避免泡泡縮到只剩 1~2 顆
++          canShowManualQuickReply = Array.isArray(directModels) && directModels.length > 0;
++        } catch (e) {
++          writeLog(`[Quick Reply v29.5.137] 手冊按鈕判斷失敗: ${e.message}`);
++        }
++      }
+       const qrItems = [];
+       if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+         qrItems.push({
+@@ -5648,6 +5663,17 @@ function handleMessage(event) {
+           action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
+         });
+       }
++      if (canShowManualQuickReply) {
++        qrItems.push({
++          type: "action",
++          action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
++        });
++      }
++      qrItems.push({
++        type: "action",
++        action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" },
++      });
++      writeLog(`[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: ${qrItems.length}`);
+       const qrOptions = qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
+       replyMessage(replyToken, cmdResult, qrOptions);
+       return;
+@@ -7183,10 +7209,6 @@ function handleMessage(event) {
+         // v29.5.118: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
+         let responseOptions = {};
+         if (!msg.startsWith("/") && !msg.startsWith("#") && replyText) {
+-          const isWebSearchPhase =
+-            (typeof replyText === 'string' && (replyText.includes("[來源: 網路搜尋]") ||
+-            replyText.includes("🔍 網路搜尋補充資料")));
+-
+           let currentReplyTextForUi = Array.isArray(replyText)
+             ? replyText.join("\n")
+             : String(replyText || "");
+@@ -7214,43 +7236,39 @@ function handleMessage(event) {
+             );
+           }
+ 
+-          if (!isWebSearchPhase) {
+-            // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+-            // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
+-            // 無 PDF → 避免使用者點了卻查不到
+-            const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+-            if (hasPdfForModel && !alreadyConsultedPdf) {
+-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
+-
+-              // v29.5.127: 在回答末尾加入查手冊等待提醒
+-              const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
+-              if (Array.isArray(replyText)) {
+-                replyText[replyText.length - 1] += pdfReminder;
+-              } else {
+-                replyText += pdfReminder;
+-              }
++          // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
++          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
++          // 無 PDF → 避免使用者點了卻查不到
++          const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
++          if (hasPdfForModel && !alreadyConsultedPdf) {
++            qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
++
++            // v29.5.127: 在回答末尾加入查手冊等待提醒
++            const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
++            if (Array.isArray(replyText)) {
++              replyText[replyText.length - 1] += pdfReminder;
++            } else {
++              replyText += pdfReminder;
+             }
++          }
+ 
+-            // 缺型號時改為對話提示，不以泡泡引導
+-            const userAskedManual = /手冊|說明書|manual/i.test(msg);
+-            const alreadyHasModelHint =
+-              /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
+-            if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
+-              const modelHint =
+-                "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
+-              if (Array.isArray(replyText)) {
+-                replyText[replyText.length - 1] += modelHint;
+-              } else {
+-                replyText += modelHint;
+-              }
+-              currentReplyTextForUi = Array.isArray(replyText)
+-                ? replyText.join("\n")
+-                : String(replyText || "");
++          // 缺型號時改為對話提示，不以泡泡引導
++          const userAskedManual = /手冊|說明書|manual/i.test(msg);
++          const alreadyHasModelHint =
++            /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
++          if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
++            const modelHint =
++              "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
++            if (Array.isArray(replyText)) {
++              replyText[replyText.length - 1] += modelHint;
++            } else {
++              replyText += modelHint;
+             }
+-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } });
+-          } else {
+-            // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
++            currentReplyTextForUi = Array.isArray(replyText)
++              ? replyText.join("\n")
++              : String(replyText || "");
+           }
++          qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題再搜網路", text: "#這題再搜網路" } });
+ 
+           if (qrItems.length > 0) {
+             responseOptions.quickReply = { items: qrItems };
+
+commit 142aee522b14f5b8b542e65e309fb175b09603d6
+Author: Your Name <you@example.com>
+Date:   Thu Feb 12 10:07:02 2026 +0800
+
+    v29.5.136 ux: clear same-topic web-search wording
+
+diff --git a/linebot.gs b/linebot.gs
+index a04b76e..7840c4f 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.135"; // 2026-02-11 文案修正：泡泡改為「這題搜網路解法」避免誤解為新問題
+-const BUILD_TIMESTAMP = "2026-02-11 19:48";
++const GAS_VERSION = "v29.5.136"; // 2026-02-11 文案修正：泡泡統一為「搜尋這題的網路解答」
++const BUILD_TIMESTAMP = "2026-02-11 20:05";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -5129,7 +5129,7 @@ function handleMessage(event) {
+               items: [
+                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+                 { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } },
++                { type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } },
+               ],
+             };
+           }
+@@ -5381,7 +5381,7 @@ function handleMessage(event) {
+         }
+         qrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+         });
+         const qrOptions = { quickReply: { items: qrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5531,7 +5531,7 @@ function handleMessage(event) {
+         }
+         manualQrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+         });
+         const qrOptions = { quickReply: { items: manualQrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5579,7 +5579,7 @@ function handleMessage(event) {
+         const limitQrItems = [
+           {
+             type: "action",
+-            action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
++            action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" },
+           },
+         ];
+         if (hasPdfForModel) {
+@@ -5628,7 +5628,7 @@ function handleMessage(event) {
+     }
+ 
+     if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
+-      writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
++      writeLog(`[Quick Reply v29.5.136] 用戶要求搜尋這題的網路解答`);
+       showLoadingAnimation(userId, 60);
+       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+       const webReplyAnchor = getElaborationTopicAnchor_(
+@@ -7247,7 +7247,7 @@ function handleMessage(event) {
+                 ? replyText.join("\n")
+                 : String(replyText || "");
+             }
+-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } });
++            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋這題的網路解答", text: "#搜網上其他解答" } });
+           } else {
+             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
+           }
+
+commit eb9cab512734364116c6e809d23ad556537a5743
+Author: Your Name <you@example.com>
+Date:   Wed Feb 11 19:50:25 2026 +0800
+
+    v29.5.135 ux: rename quick reply to clarify same-topic web search
+
+diff --git a/linebot.gs b/linebot.gs
+index 1cc721e..a04b76e 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.134"; // 2026-02-11 修復17點延伸：再詳細說明次數上限、缺型號改為對話提示、泡泡動態化
+-const BUILD_TIMESTAMP = "2026-02-11 14:30";
++const GAS_VERSION = "v29.5.135"; // 2026-02-11 文案修正：泡泡改為「這題搜網路解法」避免誤解為新問題
++const BUILD_TIMESTAMP = "2026-02-11 19:48";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ const MAX_ELABORATE_PER_ANSWER = 2;
+ const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+@@ -5129,7 +5129,7 @@ function handleMessage(event) {
+               items: [
+                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+                 { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
++                { type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } },
+               ],
+             };
+           }
+@@ -5381,7 +5381,7 @@ function handleMessage(event) {
+         }
+         qrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+         });
+         const qrOptions = { quickReply: { items: qrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5531,7 +5531,7 @@ function handleMessage(event) {
+         }
+         manualQrItems.push({
+           type: "action",
+-          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++          action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+         });
+         const qrOptions = { quickReply: { items: manualQrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+@@ -5579,7 +5579,7 @@ function handleMessage(event) {
+         const limitQrItems = [
+           {
+             type: "action",
+-            action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++            action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" },
+           },
+         ];
+         if (hasPdfForModel) {
+@@ -7247,7 +7247,7 @@ function handleMessage(event) {
+                 ? replyText.join("\n")
+                 : String(replyText || "");
+             }
+-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } });
++            qrItems.push({ type: "action", action: { type: "message", label: "🌐 這題搜網路解法", text: "#搜網上其他解答" } });
+           } else {
+             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
+           }
+
+commit 795a852d0a3b2ae2e6da514ffb0c5e8a9f160b7a
+Author: Your Name <you@example.com>
+Date:   Wed Feb 11 19:45:17 2026 +0800
+
+    v29.5.134 fix: elaborate limit + inline model hint + dynamic quick reply
+
+diff --git a/linebot.gs b/linebot.gs
+index 1c565ba..1cc721e 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,9 +13,11 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.133"; // 2026-02-11 修復17點：手冊自然語句觸發、上下文延續、Context Repair、防污染與文案一致性
+-const BUILD_TIMESTAMP = "2026-02-10 18:52";
++const GAS_VERSION = "v29.5.134"; // 2026-02-11 修復17點延伸：再詳細說明次數上限、缺型號改為對話提示、泡泡動態化
++const BUILD_TIMESTAMP = "2026-02-11 14:30";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
++const MAX_ELABORATE_PER_ANSWER = 2;
++const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+ 
+ // ════════════════════════════════════════════════════════════════
+ // ════════════════════════════════════════════════════════════════
+@@ -86,6 +88,68 @@ var TEST_LOGS = [];
+ var PENDING_LOGS = [];
+ // ════════════════════════════════════════════════════════════════
+ 
++function computeReplyAnchor_(text) {
++  const raw = String(text || "").trim();
++  if (!raw) {
++    return "";
++  }
++  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
++  return digest
++    .map((b) => (b & 0xff).toString(16).padStart(2, "0"))
++    .join("")
++    .substring(0, 16);
++}
++
++function getElaborationStateKey_(userId) {
++  return `${userId}:elaboration_state`;
++}
++
++function readElaborationState_(cache, userId) {
++  try {
++    const raw = cache.get(getElaborationStateKey_(userId));
++    if (!raw) {
++      return null;
++    }
++    const parsed = JSON.parse(raw);
++    if (!parsed || typeof parsed !== "object") {
++      return null;
++    }
++    return parsed;
++  } catch (e) {
++    writeLog(`[Elaboration State] 解析失敗: ${e.message}`);
++    return null;
++  }
++}
++
++function writeElaborationState_(cache, userId, anchor, count) {
++  const state = {
++    anchor: anchor || "",
++    count: Number(count) || 0,
++    updatedAt: Date.now(),
++  };
++  cache.put(
++    getElaborationStateKey_(userId),
++    JSON.stringify(state),
++    ELABORATE_STATE_TTL_SECONDS,
++  );
++}
++
++function getElaborationCountForAnchor_(cache, userId, anchor) {
++  if (!anchor) {
++    return 0;
++  }
++  const state = readElaborationState_(cache, userId);
++  if (!state || state.anchor !== anchor) {
++    return 0;
++  }
++  return Number(state.count) || 0;
++}
++
++function getElaborationTopicAnchor_(cache, userId, fallbackText) {
++  const topicText = (cache.get(`${userId}:last_meaningful_query`) || fallbackText || "").trim();
++  return computeReplyAnchor_(topicText);
++}
++
+ /**
+  * LINE Bot Assistant - 台灣三星電腦螢幕專屬客服 (Gemini 雙模型 + 三層記憶)
+  * Version: v27.9.56 (Fix blank PDF reply, Update 2026-01 Activity, Washing Machine Series)
+@@ -5298,14 +5362,28 @@ function handleMessage(event) {
+         }
+ 
+         // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
+-        const qrOptions = {
+-          quickReply: {
+-            items: [
+-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+-            ],
+-          },
+-        };
++        const manualReplyAnchor = getElaborationTopicAnchor_(
++          cache,
++          userId,
++          lastQuestion,
++        );
++        const manualElaborationCount = getElaborationCountForAnchor_(
++          cache,
++          userId,
++          manualReplyAnchor,
++        );
++        const qrItems = [];
++        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
++          qrItems.push({
++            type: "action",
++            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++          });
++        }
++        qrItems.push({
++          type: "action",
++          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++        });
++        const qrOptions = { quickReply: { items: qrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+         writeLog(`[AI Reply] ${replyText}`);
+ 
+@@ -5438,14 +5516,24 @@ function handleMessage(event) {
+           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+         }
+ 
+-        const qrOptions = {
+-          quickReply: {
+-            items: [
+-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+-            ],
+-          },
+-        };
++        const manualReplyAnchor = computeReplyAnchor_(finalText);
++        const manualElaborationCount = getElaborationCountForAnchor_(
++          cache,
++          userId,
++          manualReplyAnchor,
++        );
++        const manualQrItems = [];
++        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
++          manualQrItems.push({
++            type: "action",
++            action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++          });
++        }
++        manualQrItems.push({
++          type: "action",
++          action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++        });
++        const qrOptions = { quickReply: { items: manualQrItems } };
+         replyMessage(replyToken, replyText, qrOptions);
+         writeLog(`[AI Reply] ${replyText}`);
+ 
+@@ -5461,6 +5549,69 @@ function handleMessage(event) {
+ 
+     if (msg === "#再詳細說明") {
+       writeLog(`[Quick Reply v29.5.129] 用戶點擊「再詳細說明」`);
++      const historyForContinue = getHistoryFromCacheOrSheet(contextId);
++      const lastAssistantMsg = historyForContinue
++        .slice()
++        .reverse()
++        .find((h) => h.role === "assistant" && (h.content || "").trim());
++      if (!lastAssistantMsg) {
++        replyMessage(
++          replyToken,
++          "我目前找不到上一則回答，請直接再問一次你想深入的問題。",
++        );
++        return;
++      }
++
++      const replyAnchor = getElaborationTopicAnchor_(
++        cache,
++        userId,
++        lastAssistantMsg.content,
++      );
++      const currentElaborationCount = getElaborationCountForAnchor_(
++        cache,
++        userId,
++        replyAnchor,
++      );
++      if (currentElaborationCount >= MAX_ELABORATE_PER_ANSWER) {
++        const limitText =
++          `這一題我已經補充到第 ${MAX_ELABORATE_PER_ANSWER} 次了。\n` +
++          "你可以直接告訴我想深入的段落，或輸入「#查手冊 型號 你的問題」我會改走手冊解答。";
++        const limitQrItems = [
++          {
++            type: "action",
++            action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" },
++          },
++        ];
++        if (hasPdfForModel) {
++          limitQrItems.unshift({
++            type: "action",
++            action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
++          });
++        }
++        replyMessage(replyToken, limitText, { quickReply: { items: limitQrItems } });
++        writeLog(
++          `[Quick Reply v29.5.134] 再詳細說明達上限 ${currentElaborationCount}/${MAX_ELABORATE_PER_ANSWER}`,
++        );
++        writeRecordDirectly(userId, msg, contextId, "user", "");
++        writeRecordDirectly(userId, limitText, contextId, "assistant", "");
++        updateHistorySheetAndCache(
++          contextId,
++          historyForContinue,
++          { role: "user", content: msg },
++          { role: "assistant", content: limitText },
++        );
++        return;
++      }
++
++      writeElaborationState_(
++        cache,
++        userId,
++        replyAnchor,
++        currentElaborationCount + 1,
++      );
++      writeLog(
++        `[Quick Reply v29.5.134] 再詳細說明計數: ${currentElaborationCount + 1}/${MAX_ELABORATE_PER_ANSWER}`,
++      );
+       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
+       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
+       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
+@@ -5480,13 +5631,24 @@ function handleMessage(event) {
+       writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
+       showLoadingAnimation(userId, 60);
+       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+-      const qrOptions = {
+-        quickReply: {
+-          items: [
+-            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-          ],
+-        },
+-      };
++      const webReplyAnchor = getElaborationTopicAnchor_(
++        cache,
++        userId,
++        cmdResult,
++      );
++      const webElaborationCount = getElaborationCountForAnchor_(
++        cache,
++        userId,
++        webReplyAnchor,
++      );
++      const qrItems = [];
++      if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
++        qrItems.push({
++          type: "action",
++          action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++        });
++      }
++      const qrOptions = qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
+       replyMessage(replyToken, cmdResult, qrOptions);
+       return;
+     }
+@@ -7025,9 +7187,32 @@ function handleMessage(event) {
+             (typeof replyText === 'string' && (replyText.includes("[來源: 網路搜尋]") ||
+             replyText.includes("🔍 網路搜尋補充資料")));
+ 
++          let currentReplyTextForUi = Array.isArray(replyText)
++            ? replyText.join("\n")
++            : String(replyText || "");
++          const currentReplyAnchor = getElaborationTopicAnchor_(
++            cache,
++            userId,
++            finalText || currentReplyTextForUi,
++          );
++          const elaborationCountForThisReply = getElaborationCountForAnchor_(
++            cache,
++            userId,
++            currentReplyAnchor,
++          );
++
+           const qrItems = [];
+-          // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
+-          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } });
++          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
++            // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
++            qrItems.push({
++              type: "action",
++              action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" },
++            });
++          } else {
++            writeLog(
++              `[Quick Reply v29.5.134] 隱藏「再詳細說明」(已達上限 ${elaborationCountForThisReply}/${MAX_ELABORATE_PER_ANSWER})`,
++            );
++          }
+ 
+           if (!isWebSearchPhase) {
+             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+@@ -7045,12 +7230,31 @@ function handleMessage(event) {
+                 replyText += pdfReminder;
+               }
+             }
++
++            // 缺型號時改為對話提示，不以泡泡引導
++            const userAskedManual = /手冊|說明書|manual/i.test(msg);
++            const alreadyHasModelHint =
++              /請先告訴我型號|請提供型號|完整型號/i.test(currentReplyTextForUi);
++            if (!hasPdfForModel && userAskedManual && !alreadyHasModelHint) {
++              const modelHint =
++                "\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。";
++              if (Array.isArray(replyText)) {
++                replyText[replyText.length - 1] += modelHint;
++              } else {
++                replyText += modelHint;
++              }
++              currentReplyTextForUi = Array.isArray(replyText)
++                ? replyText.join("\n")
++                : String(replyText || "");
++            }
+             qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } });
+           } else {
+             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
+           }
+ 
+-          responseOptions.quickReply = { items: qrItems };
++          if (qrItems.length > 0) {
++            responseOptions.quickReply = { items: qrItems };
++          }
+         }
+ 
+         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
+
+commit 523319acf1655e1f8381b680326eebf6b2ec3679
+Author: Your Name <you@example.com>
+Date:   Wed Feb 11 19:13:06 2026 +0800
+
+    v29.5.133 fix: complete 17-point continuity/manual/context repairs
+
+diff --git a/linebot.gs b/linebot.gs
+index 03692ea..1c565ba 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.132"; // 2026-02-11 修復手冊延續記憶、搜網上上下文修復、Odyssey 3D 衝突判定
++const GAS_VERSION = "v29.5.133"; // 2026-02-11 修復17點：手冊自然語句觸發、上下文延續、Context Repair、防污染與文案一致性
+ const BUILD_TIMESTAMP = "2026-02-10 18:52";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+@@ -1236,7 +1236,6 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+       // 設置 PDF Mode
+       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+       cache.put(pdfModeKey, "true", 300);
+-      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
+ 
+       // 直接進入 Pass 1.5：加載 PDF，不再走 DirectDeep
+       writeLog(
+@@ -4918,6 +4917,7 @@ function handleMessage(event) {
+     // 但指令類別不做去重，因為用戶可能需要重試
+     const cache = CacheService.getScriptCache();
+     const isCommand = msg.startsWith("/");
++    const isQuickCommand = msg.startsWith("#");
+ 
+     if (!isCommand) {
+       // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
+@@ -4941,6 +4941,18 @@ function handleMessage(event) {
+       cache.put(dedupKey, "1", 60);
+     }
+ 
++    // v29.5.133: 記錄最近一則「可延續話題」的問題，供 #搜網上其他解答 fallback 使用
++    const shouldCacheMeaningfulQuery =
++      !isCommand &&
++      !isQuickCommand &&
++      msg.length >= 2 &&
++      !/^(?:1|2|3)$/.test(msg) &&
++      !/不滿意這回答請繼續擴大搜尋/.test(msg) &&
++      !/請針對你剛才的回答再詳細說明/.test(msg);
++    if (shouldCacheMeaningfulQuery) {
++      cache.put(`${userId}:last_meaningful_query`, msg, 21600); // 6 小時
++    }
++
+     // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
+     // v29.3.25: 移除 hasRecentAnimation 判定，強制每一題都發送動畫請求，
+     // 因為 LINE 會自動處理 5s 內的重複請求，我們端點保持最高靈敏度。
+@@ -5052,7 +5064,7 @@ function handleMessage(event) {
+             responseOptions.quickReply = {
+               items: [
+                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-                { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
++                { type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } },
+                 { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+               ],
+             };
+@@ -5312,6 +5324,19 @@ function handleMessage(event) {
+     // ══════════════════════════════════════════════════════════
+     // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
+     // ══════════════════════════════════════════════════════════
++    // v29.5.133: 支援自然語句觸發手冊（例如：我想找手冊上的答案 / 查手冊 S27FG900XC ...）
++    const naturalManualCmd = msg.match(
++      /^(?:我想(?:找|查|看)?手冊(?:上的答案)?|幫我查手冊|請查手冊|查手冊|查說明書|看說明書)\s*(.*)$/i,
++    );
++    if (!msg.startsWith("#") && naturalManualCmd) {
++      const manualTail = (naturalManualCmd[1] || "").trim();
++      msg = manualTail ? `#查手冊 ${manualTail}` : "#查手冊";
++      userMessage = msg;
++      writeLog(
++        `[Quick Reply v29.5.133] 自然語句轉換為手冊指令: ${msg.substring(0, 80)}`,
++      );
++    }
++
+     if (msg === "#查手冊" || msg.startsWith("#查手冊 ")) {
+       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
+       // 設置 PDF Mode
+@@ -5335,6 +5360,8 @@ function handleMessage(event) {
+               !content.includes("不滿意") &&
+               !content.includes("繼續問") &&
+               !content.includes("請針對你剛才的回答再詳細說明") &&
++              !content.includes("不需要查 PDF 或網路") &&
++              !content.includes("不要輸出任何系統暗號") &&
+               !content.match(/^\d$/) &&
+               !MODEL_ONLY_RE.test(content) &&
+               !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
+@@ -5349,7 +5376,7 @@ function handleMessage(event) {
+       if (!lastQuestion) {
+         replyMessage(
+           replyToken,
+-          "請先告訴我型號或問題，我再幫你查手冊。\n例如：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
++          "請先告訴我型號或問題，我再幫你查手冊。\n你可以這樣輸入：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub\n或：查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
+         );
+         return;
+       }
+@@ -5424,7 +5451,7 @@ function handleMessage(event) {
+ 
+         const asstMsgObj = { role: "assistant", content: finalText };
+         updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+-        writeRecordDirectly(userId, "#查手冊", contextId, "user", "");
++        writeRecordDirectly(userId, msg, contextId, "user", "");
+         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+       } else {
+         replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+@@ -5438,7 +5465,7 @@ function handleMessage(event) {
+       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
+       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
+       const continueMsg =
+-        "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項。\n\n[System Hint: 這是延伸說明需求，請直接在原回答上補充細節，不需要查 PDF 或網路，也不要輸出任何 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB] 暗號，更不要要求使用者再選型號。]";
++        "請針對你剛才的回答再詳細說明，補充更多細節、步驟與注意事項；請延續原主題，不需要查 PDF 或網路，也不要輸出任何系統暗號。";
+       writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
+       showLoadingAnimation(userId, 60);
+       msg = continueMsg;
+@@ -5450,7 +5477,7 @@ function handleMessage(event) {
+     }
+ 
+     if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
+-      writeLog(`[Quick Reply v29.5.131] 用戶要求搜網上其他解答`);
++      writeLog(`[Quick Reply v29.5.133] 用戶要求搜網上其他解答`);
+       showLoadingAnimation(userId, 60);
+       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+       const qrOptions = {
+@@ -6897,8 +6924,16 @@ function handleMessage(event) {
+ 
+                     // v27.9.44 Fix: 避免 Fast Mode 只回答 [AUTO_SEARCH_PDF] 被清空後造成空白回覆
+                     if (!finalText || finalText.trim().length === 0) {
++                      const suggestedModel =
++                        cachedDirectModels && cachedDirectModels.length > 0
++                          ? cachedDirectModels[0]
++                          : "";
++                      const usageHint = suggestedModel
++                        ? `\n你也可以直接輸入：#查手冊 ${suggestedModel} 你的問題`
++                        : `\n你也可以直接輸入：#查手冊 S27FG900XC 你的問題`;
+                       finalText =
+-                        "抱歉，雖然這看起來像需要查手冊的問題，但我找不到相關的 PDF 手冊檔案。😅\n請確認您的型號是否正確（例如包含完整型號），或是問得更具體一點喔！";
++                        "抱歉，這題看起來需要手冊，但我目前找不到可對應的 PDF。😅\n請補上完整型號或更具體的問題。" +
++                        usageHint;
+                     }
+                     replyText = finalText;
+                   }
+@@ -7000,10 +7035,10 @@ function handleMessage(event) {
+             // 無 PDF → 避免使用者點了卻查不到
+             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+             if (hasPdfForModel && !alreadyConsultedPdf) {
+-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
++              qrItems.push({ type: "action", action: { type: "message", label: "📖 查手冊", text: "#查手冊" } });
+ 
+               // v29.5.127: 在回答末尾加入查手冊等待提醒
+-              const pdfReminder = "\n\n💡 你也可以點下方「查PDF手冊」深入查詢（約需等待30秒）";
++              const pdfReminder = "\n\n💡 你也可以點下方「查手冊」深入查詢（約需等待30秒）";
+               if (Array.isArray(replyText)) {
+                 replyText[replyText.length - 1] += pdfReminder;
+               } else {
+@@ -7169,8 +7204,9 @@ function handleCommand(c, u, cid) {
+     if (!history || history.length === 0) {
+       return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
+     }
++    const cache = CacheService.getScriptCache();
+ 
+-    // v29.5.132: 強化 Context Repair
++    // v29.5.133: 強化 Context Repair
+     // - 跳過 #再詳細說明模板與 System Hint 殘留
+     // - 跳過「不滿意這回答請繼續擴大搜尋」等指令文字
+     // - 若最後一次是純型號，回溯上一個真正問題後再組合
+@@ -7187,12 +7223,14 @@ function handleCommand(c, u, cid) {
+ 
+     const isModelOnlyText = (text) => {
+       const normalized = (text || "").replace(/[\s-]/g, "").toUpperCase();
+-      return (
+-        normalized.length >= 5 &&
+-        normalized.length <= 24 &&
+-        /^[A-Z0-9]+$/.test(normalized) &&
+-        /\d/.test(normalized)
+-      );
++      if (!normalized) {
++        return false;
++      }
++      // 僅把「真正像型號」的內容視為 model-only，避免把 ODYSSEY3D 這類語意詞當成型號
++      if (/ODYSSEY|HUB|ARK/.test(normalized)) {
++        return false;
++      }
++      return /^[SCFGM]\d{1,2}[A-Z0-9]{1,20}$/.test(normalized);
+     };
+ 
+     const isNoiseForContextRepair = (text) => {
+@@ -7204,6 +7242,7 @@ function handleCommand(c, u, cid) {
+         text.includes("不滿意這回答請繼續擴大搜尋") ||
+         text.includes("請針對你剛才的回答再詳細說明") ||
+         text.includes("這是延伸說明需求") ||
++        text.includes("更不要要求使用者再選型號") ||
+         text.includes("to check manuals") ||
+         text.includes("[AUTO_SEARCH") ||
+         /^\d$/.test(text)
+@@ -7237,8 +7276,33 @@ function handleCommand(c, u, cid) {
+     }
+ 
+     if (!userMsg) {
+-      const fallbackUser = history.find((h) => h.role === "user");
+-      userMsg = cleanHistoryText(fallbackUser ? fallbackUser.content || "" : "");
++      const lastMeaningfulFromCache = cleanHistoryText(
++        cache.get(`${u}:last_meaningful_query`) || "",
++      );
++      if (lastMeaningfulFromCache && !isNoiseForContextRepair(lastMeaningfulFromCache)) {
++        userMsg = lastMeaningfulFromCache;
++        writeLog(
++          `[Context Repair v29.5.133] 使用 last_meaningful_query fallback: ${userMsg.substring(0, 80)}...`,
++        );
++      }
++    }
++
++    if (!userMsg) {
++      for (let i = history.length - 1; i >= 0; i--) {
++        const h = history[i];
++        if (h.role !== "user") {
++          continue;
++        }
++        const content = cleanHistoryText(h.content || "");
++        if (!content || isNoiseForContextRepair(content)) {
++          continue;
++        }
++        userMsg = content;
++        writeLog(
++          `[Context Repair v29.5.133] 使用歷史 fallback: ${userMsg.substring(0, 80)}...`,
++        );
++        break;
++      }
+     }
+ 
+     if (
+@@ -7248,16 +7312,19 @@ function handleCommand(c, u, cid) {
+     ) {
+       userMsg = `${selectedModel} ${userMsg}`.trim();
+       writeLog(
+-        `[Context Repair v29.5.132] 組合查詢: ${userMsg.substring(0, 80)}...`,
++        `[Context Repair v29.5.133] 組合查詢: ${userMsg.substring(0, 80)}...`,
+       );
+     } else {
+       writeLog(
+-        `[Context Repair v29.5.132] 還原查詢: ${userMsg.substring(0, 80)}...`,
++        `[Context Repair v29.5.133] 還原查詢: ${userMsg.substring(0, 80)}...`,
+       );
+     }
+ 
++    if (!userMsg) {
++      return "我找不到可延續的問題內容，請直接告訴我你要查的主題。\n例如：S27FG900XC 怎麼開啟 Odyssey Hub";
++    }
++
+     // 處理計數器 (dissatisfied_count)
+-    const cache = CacheService.getScriptCache();
+     const countKey = `dissatisfied_count_${u}`;
+     let count = parseInt(cache.get(countKey) || "0") + 1;
+     cache.put(countKey, count.toString(), 600); // 10 分鐘內有效
+@@ -7311,9 +7378,14 @@ function handleCommand(c, u, cid) {
+               kbList,
+               u,
+             );
+-            if (kbResult.files.length > 0) {
++            const sopFiles = Array.isArray(kbResult)
++              ? kbResult
++              : kbResult && Array.isArray(kbResult.files)
++                ? kbResult.files
++                : [];
++            if (sopFiles.length > 0) {
+               triggerPDF = true;
+-              filesToAttach = kbResult.files;
++              filesToAttach = sopFiles;
+               writeLog(
+                 `[SOP] 型號 ${primary} 有手冊，執行優先 PDF Search (Pass 1.5)`,
+               );
+
+commit 0e3be0fa15e48bce4e0aae14bd2f494d700cc2f1
+Author: Your Name <you@example.com>
+Date:   Wed Feb 11 18:40:20 2026 +0800
+
+    v29.5.132 fix: manual continuity + context repair + odyssey alias
+
+diff --git a/linebot.gs b/linebot.gs
+index 6412d89..03692ea 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.131"; // 2026-02-11 直通車改為 QA 優先：移除強制 PDF hint 與首輪預載
++const GAS_VERSION = "v29.5.132"; // 2026-02-11 修復手冊延續記憶、搜網上上下文修復、Odyssey 3D 衝突判定
+ const BUILD_TIMESTAMP = "2026-02-10 18:52";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+@@ -1236,6 +1236,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
+       // 設置 PDF Mode
+       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+       cache.put(pdfModeKey, "true", 300);
++      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
+ 
+       // 直接進入 Pass 1.5：加載 PDF，不再走 DirectDeep
+       writeLog(
+@@ -5311,38 +5312,45 @@ function handleMessage(event) {
+     // ══════════════════════════════════════════════════════════
+     // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
+     // ══════════════════════════════════════════════════════════
+-    if (msg === "#查手冊") {
++    if (msg === "#查手冊" || msg.startsWith("#查手冊 ")) {
+       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
+       // 設置 PDF Mode
+       const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+       cache.put(pdfModeKey, "true", 300);
++      const manualQueryFromCmd = msg.replace(/^#查手冊\s*/, "").trim();
+ 
+       // 從歷史找出上一個真正的問題（跳過 #型號:, #查手冊, 純型號 等）
+       const history = getHistoryFromCacheOrSheet(contextId);
+-      let lastQuestion = "";
++      let lastQuestion = manualQueryFromCmd || "";
+       const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
+-      for (let i = history.length - 1; i >= 0; i--) {
+-        if (history[i].role === "user") {
+-          let content = history[i].content || "";
+-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+-          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
+-          if (
+-            content.length > 5 &&
+-            !content.startsWith("#") &&
+-            !content.includes("不滿意") &&
+-            !content.includes("繼續問") &&
+-            !content.match(/^\d$/) &&
+-            !MODEL_ONLY_RE.test(content) &&
+-            !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
+-          ) {
+-            lastQuestion = content;
+-            break;
++      if (!lastQuestion) {
++        for (let i = history.length - 1; i >= 0; i--) {
++          if (history[i].role === "user") {
++            let content = history[i].content || "";
++            content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
++            // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
++            if (
++              content.length > 5 &&
++              !content.startsWith("#") &&
++              !content.includes("不滿意") &&
++              !content.includes("繼續問") &&
++              !content.includes("請針對你剛才的回答再詳細說明") &&
++              !content.match(/^\d$/) &&
++              !MODEL_ONLY_RE.test(content) &&
++              !content.includes("(型號:") // 跳過 #型號: 攔截器產生的記錄
++            ) {
++              lastQuestion = content;
++              break;
++            }
+           }
+         }
+       }
+ 
+       if (!lastQuestion) {
+-        replyMessage(replyToken, "請先問一個問題，我再幫你查手冊 📖");
++        replyMessage(
++          replyToken,
++          "請先告訴我型號或問題，我再幫你查手冊。\n例如：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
++        );
+         return;
+       }
+ 
+@@ -5732,6 +5740,26 @@ function handleMessage(event) {
+         const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
+         writeLog(`[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`);
+ 
++        // v29.5.132: 若已知有手冊且命中直通車，但 Fast Mode 誤回「找不到 PDF」，
++        // 強制補上 PDF 觸發暗號，避免 Odyssey 3D 這類場景卡住。
++        const looksLikeMissingManualReply =
++          /找不到相關的\s*PDF\s*手冊檔案|看起來像需要查手冊|找不到相關的\s*PDF/i.test(
++            rawResponse,
++          );
++        if (
++          !hasAutoPdf &&
++          !hasAutoWeb &&
++          !hasNeedDoc &&
++          hasPdfForModel &&
++          hitAliasKeys.length > 0 &&
++          looksLikeMissingManualReply
++        ) {
++          writeLog(
++            `[Auto Search v29.5.132] 偵測到可查手冊但 Fast Mode 誤判，強制追加 [AUTO_SEARCH_PDF]`,
++          );
++          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
++        }
++
+         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
+         // v27.9.48 fix: 增加對 hallucination (如 [.setAuto_search_pdf()]) 的容錯
+         const pdfTriggerRegex =
+@@ -6183,11 +6211,26 @@ function handleMessage(event) {
+             // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
+             // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
+             const currentMsgModels = extractModelNumbers(msg);
++            const hasExplicitModelPattern =
++              /\b[A-Z]\d{2}[A-Z]{1,3}\d{3,4}[A-Z0-9]*\b/i.test(msg);
+ 
+             // v29.3.20: 強化型號衝突判定，支援別稱 (Alias) 解析
+             // 避免 G6 比對 S27FG6... 時誤判為衝突
+             let isModelMismatch = false;
+-            if (currentMsgModels.length > 0 && cachedDirectModels.length > 0) {
++            if (
++              !hasExplicitModelPattern &&
++              hitAliasKeys.length > 0 &&
++              cachedDirectModels.length > 0
++            ) {
++              // v29.5.132: 若當前只有別稱（如 Odyssey 3D）且命中直通車，不視為型號衝突
++              writeLog(
++                `[Auto Search v29.5.132] 命中別稱且未指定新型號，保留既有型號記憶: ${cachedDirectModels.join(", ")}`,
++              );
++              isModelMismatch = false;
++            } else if (
++              currentMsgModels.length > 0 &&
++              cachedDirectModels.length > 0
++            ) {
+               // 取得別稱對應表 (供反向查詢)
+               const mapJson =
+                 PropertiesService.getScriptProperties().getProperty(
+@@ -6571,9 +6614,18 @@ function handleMessage(event) {
+                 // 否則強制只用當前訊息，避免歷史污染（如：第1輪問Odyssey，第2輪問奇美）
+ 
+                 let useHistory = false;
++                const manualOrContinuationSignals =
++                  /手冊|說明書|manual|剛剛那台|剛才那台|上一台|那台|這台|同一台|前面那台|延續|繼續剛剛/i;
++
++                if (manualOrContinuationSignals.test(msg)) {
++                  useHistory = true;
++                  writeLog(
++                    `[Topic Check v29.5.132] 命中手冊/延續語意，強制 useHistory=true`,
++                  );
++                }
+ 
+                 // 只有在有對話歷史時才需要判斷
+-                if (history && history.length > 0) {
++                if (!useHistory && history && history.length > 0) {
+                   try {
+                     // 使用最便宜的 LLM (Gemini Flash) 快速判斷話題延續性
+                     const lastAssistantMsg = history
+@@ -6634,7 +6686,7 @@ function handleMessage(event) {
+                       `[Topic Check] LLM 判斷失敗，使用關鍵字 fallback: ${e.message}`,
+                     );
+                     const unresolvedSignals =
+-                      /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓/i;
++                      /不行|沒用|可是|但是|問題|仍然|依舊|還是|沒辦法|失效|異常|卡頓|手冊|說明書|manual|剛剛那台|那台|這台|同一台/i;
+                     useHistory = unresolvedSignals.test(msg);
+                   }
+                 }
+@@ -7118,52 +7170,90 @@ function handleCommand(c, u, cid) {
+       return "💡 目前沒有對話紀錄可以進行搜尋喔，請先跟我聊聊天吧！";
+     }
+ 
+-    // 取得最後一題 (通常是 Assistant 前的 User Message)
+-    // v29.5.115: 強化話題延續 - 需要找出「真正的話題」而非「型號選擇」或「System Hint」
+-    let userMsg = history[history.length - 2]
+-      ? history[history.length - 2].content
+-      : history[0].content;
+-    
+-    // v29.5.115: 清理 System Hint 殘留
+-    userMsg = userMsg.replace(/\[System Hint:.*?\]/gs, "").trim();
+-    userMsg = userMsg.replace(/\n\n$/g, "").trim();
++    // v29.5.132: 強化 Context Repair
++    // - 跳過 #再詳細說明模板與 System Hint 殘留
++    // - 跳過「不滿意這回答請繼續擴大搜尋」等指令文字
++    // - 若最後一次是純型號，回溯上一個真正問題後再組合
++    const cleanHistoryText = (text) => {
++      if (!text) {
++        return "";
++      }
++      return text
++        .replace(/\[System Hint:.*?\]/gs, "")
++        .replace(/\[AUTO_SEARCH_[A-Z_]+(?:[:：][^\]]+)?\]/gi, "")
++        .replace(/\s+/g, " ")
++        .trim();
++    };
++
++    const isModelOnlyText = (text) => {
++      const normalized = (text || "").replace(/[\s-]/g, "").toUpperCase();
++      return (
++        normalized.length >= 5 &&
++        normalized.length <= 24 &&
++        /^[A-Z0-9]+$/.test(normalized) &&
++        /\d/.test(normalized)
++      );
++    };
++
++    const isNoiseForContextRepair = (text) => {
++      if (!text) {
++        return true;
++      }
++      return (
++        text.startsWith("#") ||
++        text.includes("不滿意這回答請繼續擴大搜尋") ||
++        text.includes("請針對你剛才的回答再詳細說明") ||
++        text.includes("這是延伸說明需求") ||
++        text.includes("to check manuals") ||
++        text.includes("[AUTO_SEARCH") ||
++        /^\d$/.test(text)
++      );
++    };
+ 
+-    // v29.5.115: 儲存用戶選擇的型號（用於後續組合）
+     let selectedModel = "";
+-    if (userMsg.length < 20 && /^[A-Z0-9]+$/i.test(userMsg.replace(/[\s-]/g, ""))) {
+-      selectedModel = userMsg;
+-    }
+-
+-    // v29.5.115: 找出真正的「話題」（不是型號選擇、不是 System Hint）
+-    let realTopic = "";
+-    if (selectedModel || (userMsg.length < 15 && /\d/.test(userMsg))) {
+-      // 上一則是型號選擇，需要往前找話題
+-      for (let i = history.length - 3; i >= 0; i--) {
+-        const h = history[i];
+-        if (h.role === "user") {
+-          let content = h.content || "";
+-          // 清理 System Hint
+-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+-          // 跳過純型號、System Hint、空白內容
+-          if (
+-            content.length > 15 &&
+-            !content.includes("[AUTO_SEARCH") &&
+-            !content.includes("to check manuals")
+-          ) {
+-            realTopic = content;
+-            writeLog(`[Context Repair v29.5.115] 找到原始話題: ${realTopic.substring(0, 50)}...`);
+-            break;
+-          }
+-        }
++    let userMsg = "";
++
++    for (let i = history.length - 1; i >= 0; i--) {
++      const h = history[i];
++      if (h.role !== "user") {
++        continue;
+       }
+-      
+-      // 組合「型號 + 話題」
+-      if (realTopic && selectedModel) {
+-        userMsg = `${selectedModel} ${realTopic}`;
+-        writeLog(`[Context Repair v29.5.115] 組合查詢: ${userMsg.substring(0, 80)}...`);
+-      } else if (realTopic) {
+-        userMsg = realTopic;
++      const content = cleanHistoryText(h.content || "");
++      if (!content) {
++        continue;
+       }
++
++      if (!selectedModel && isModelOnlyText(content)) {
++        selectedModel = content.replace(/\s+/g, "");
++        continue;
++      }
++
++      if (isNoiseForContextRepair(content) || isModelOnlyText(content)) {
++        continue;
++      }
++
++      userMsg = content;
++      break;
++    }
++
++    if (!userMsg) {
++      const fallbackUser = history.find((h) => h.role === "user");
++      userMsg = cleanHistoryText(fallbackUser ? fallbackUser.content || "" : "");
++    }
++
++    if (
++      selectedModel &&
++      userMsg &&
++      !userMsg.toUpperCase().includes(selectedModel.toUpperCase())
++    ) {
++      userMsg = `${selectedModel} ${userMsg}`.trim();
++      writeLog(
++        `[Context Repair v29.5.132] 組合查詢: ${userMsg.substring(0, 80)}...`,
++      );
++    } else {
++      writeLog(
++        `[Context Repair v29.5.132] 還原查詢: ${userMsg.substring(0, 80)}...`,
++      );
+     }
+ 
+     // 處理計數器 (dissatisfied_count)
+
+commit 59c39bf9fc5d6e3a9ec5ce3a1aa44df50be73440
+Author: Your Name <you@example.com>
+Date:   Wed Feb 11 12:42:46 2026 +0800
+
+    v29.5.131 fix: QA-first direct search + 搜網上其他解答
+
+diff --git a/linebot.gs b/linebot.gs
+index 0663a97..6412d89 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.130"; // 2026-02-10 修復 AUTO_SEARCH_PDF→WEB 升級流程 + TestUI 回覆捕捉 + 強化 #再詳細說明
++const GAS_VERSION = "v29.5.131"; // 2026-02-11 直通車改為 QA 優先：移除強制 PDF hint 與首輪預載
+ const BUILD_TIMESTAMP = "2026-02-10 18:52";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+@@ -5052,7 +5052,7 @@ function handleMessage(event) {
+               items: [
+                 { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+                 { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
++                { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+               ],
+             };
+           }
+@@ -5289,7 +5289,7 @@ function handleMessage(event) {
+           quickReply: {
+             items: [
+               { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
++              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+             ],
+           },
+         };
+@@ -5309,7 +5309,7 @@ function handleMessage(event) {
+     }
+ 
+     // ══════════════════════════════════════════════════════════
+-    // v29.5.118: 攔截 #查手冊 / #搜尋網路（Quick Reply 按鈕）
++    // v29.5.118: 攔截 #查手冊 / #搜網上其他解答（Quick Reply 按鈕）
+     // ══════════════════════════════════════════════════════════
+     if (msg === "#查手冊") {
+       writeLog(`[Quick Reply v29.5.120] 用戶要求查手冊`);
+@@ -5325,7 +5325,7 @@ function handleMessage(event) {
+         if (history[i].role === "user") {
+           let content = history[i].content || "";
+           content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+-          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜尋網路、純型號、泡泡選擇等
++          // v29.5.120: 跳過 #型號:XXX、#查手冊、#搜網上其他解答、純型號、泡泡選擇等
+           if (
+             content.length > 5 &&
+             !content.startsWith("#") &&
+@@ -5407,7 +5407,7 @@ function handleMessage(event) {
+           quickReply: {
+             items: [
+               { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+-              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
++              { type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } },
+             ],
+           },
+         };
+@@ -5441,8 +5441,8 @@ function handleMessage(event) {
+       // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
+     }
+ 
+-    if (msg === "#搜尋網路") {
+-      writeLog(`[Quick Reply v29.5.118] 用戶要求搜尋網路`);
++    if (msg === "#搜尋網路" || msg === "#搜往上其他解答" || msg === "#搜網上其他解答") {
++      writeLog(`[Quick Reply v29.5.131] 用戶要求搜網上其他解答`);
+       showLoadingAnimation(userId, 60);
+       const cmdResult = handleCommand("不滿意這回答請繼續擴大搜尋", userId, contextId);
+       const qrOptions = {
+@@ -5548,36 +5548,17 @@ function handleMessage(event) {
+         writeLog(
+           `[Direct Search] 命中直通車關鍵字: ${hitKeys.join(
+             ", ",
+-          )}，將強制 AI 進行 PDF 搜索 (Fast Mode Hint)`,
++          )}，先走 Fast Mode (QA/Rules 優先，不強制 PDF)`,
+         );
+ 
+-        // v29.4.28: Force AI to trigger Auto-Search for Direct Keywords
+-        // "M7" should behave like "Search M7"
+-        // We append a System Hint to the message content passed to LLM (but not to User Log/Record?)
+-        // Actually, callLLMWithRetry formatting might expose it if we aren't careful?
+-        // No, callLLMWithRetry constructs the prompt. We can modify `userMessage` here?
+-        // But `userMessage` is used for caching and recording.
+-        // Better to handle this inside the prompt construction or just append here and record the raw message.
+-        // Let's rely on the prompt's ability to see this hint.
+-
+-        // Note: We don't change `msg` (which is used for logic), but `userMessage` (passed to LLM).
+-        // BUT wait, `userMessage` is passed to `callLLMWithRetry` as the first arg.
+-
+-        // We will append a hidden hint.
+-        // We will append a hidden hint.
+-        userMessage += `\n\n[System Hint: User mentioned keyword '${hitKeys[0]}'. You MUST output [AUTO_SEARCH_PDF: ${hitKeys[0]}] to check manuals.]`;
+-
+-        // v29.4.29 Fix: Update userMsgObj so LLM actually sees the hint!
+-        userMsgObj.content = userMessage;
+-
+         // 把關鍵字存到 Cache，供後續 [AUTO_SEARCH_PDF] 使用
+         cache.put(`${userId}:hit_alias_key`, hitKeys[0], 300); // 相容舊邏輯
+         if (hitKeys.length > 1) {
+           cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
+         }
+ 
+-        // v29.5.123: 立刻檢查這些型號有沒有 PDF，有的話直接預載
+-        // 不再讓使用者多按一步「查手冊」才觸發 PDF
++        // v29.5.131: QA 優先修正
++        // 只檢查「是否有手冊可查」供 Quick Reply 顯示，不再首輪直接預載 PDF。
+         try {
+           const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
+           const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
+@@ -5603,31 +5584,12 @@ function handleMessage(event) {
+           if (pdfMatchModel) {
+             hasPdfForModel = true;
+             primaryModel = pdfMatchModel;
+-            writeLog(`[DirectDeep v29.5.123] 型號 ${pdfMatchModel} 有 PDF，立刻預載`);
+-
+-            // 呼叫 getRelevantKBFiles 取得 PDF 檔案
+-            const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
+-            if (kbListJson) {
+-              const kbList = JSON.parse(kbListJson);
+-              const kbResult = getRelevantKBFiles(
+-                [...history, { role: "user", content: msg }],
+-                kbList,
+-                userId,
+-                contextId,
+-                false,
+-              );
+-              const files = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
+-              if (files.length > 0) {
+-                filesToAttach = files;
+-                primaryModel = (kbResult.primaryModel) || pdfMatchModel;
+-                writeLog(`[DirectDeep v29.5.123] ✅ 預載 ${files.filter(f => f.mimeType === "application/pdf").length} 本 PDF`);
+-              }
+-            }
++            writeLog(`[DirectDeep v29.5.131] 型號 ${pdfMatchModel} 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊`);
+           } else {
+-            writeLog(`[DirectDeep v29.5.123] 所有型號均無 PDF: ${directModels.join(", ")}`);
++            writeLog(`[DirectDeep v29.5.131] 所有型號均無 PDF: ${directModels.join(", ")}`);
+           }
+         } catch (e) {
+-          writeLog(`[DirectDeep v29.5.123] PDF 預載失敗: ${e.message}`);
++          writeLog(`[DirectDeep v29.5.131] PDF 可用性檢查失敗: ${e.message}`);
+         }
+       }
+     }
+@@ -6996,7 +6958,7 @@ function handleMessage(event) {
+                 replyText += pdfReminder;
+               }
+             }
+-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
++            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜網上其他解答", text: "#搜網上其他解答" } });
+           } else {
+             // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
+           }
+
+commit 2c7837fc3f2791269b3bd2258f645d028e5d49ad
+Author: Your Name <you@example.com>
+Date:   Tue Feb 10 19:39:50 2026 +0800
+
+    v29.5.130 fix: web-upgrade + TestUI reply
+
+diff --git a/linebot.gs b/linebot.gs
+index 01f4080..0663a97 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.129"; // 2026-02-09 修復 #再詳細說明 TDZ ReferenceError // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
+-const BUILD_TIMESTAMP = "2026-02-09 19:00";
++const GAS_VERSION = "v29.5.130"; // 2026-02-10 修復 AUTO_SEARCH_PDF→WEB 升級流程 + TestUI 回覆捕捉 + 強化 #再詳細說明
++const BUILD_TIMESTAMP = "2026-02-10 18:52";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+ // ════════════════════════════════════════════════════════════════
+@@ -5429,7 +5429,8 @@ function handleMessage(event) {
+       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
+       // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
+       // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
+-      const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
++      const continueMsg =
++        "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項。\n\n[System Hint: 這是延伸說明需求，請直接在原回答上補充細節，不需要查 PDF 或網路，也不要輸出任何 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB] 暗號，更不要要求使用者再選型號。]";
+       writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
+       showLoadingAnimation(userId, 60);
+       msg = continueMsg;
+@@ -5713,6 +5714,7 @@ function handleMessage(event) {
+         userMsgObj.content = userMessage;
+         // 標記已查過 PDF，後續 [AUTO_SEARCH_PDF] 信號會直接升級為 Web Search
+         cache.put(`${userId}:pdf_consulted`, "true", 600);
++        cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 handleCommand 的 SOP key 對齊
+         isInPdfMode = true;
+         cache.put(pdfModeKey, "true", 300);
+       }
+@@ -5851,6 +5853,8 @@ function handleMessage(event) {
+                 "[AUTO_SEARCH_WEB]",
+               )
+               .replace(/\[NEED_DOC\]/gi, "[AUTO_SEARCH_WEB]");
++            // v29.5.130: 同步 replyText，避免暗號外洩到最終回覆
++            replyText = finalText;
+             // 跳過 aiRequestedPdfSearch，讓後續 Web Search 邏輯接手
+           } else {
+             aiRequestedPdfSearch = true;
+@@ -5868,6 +5872,8 @@ function handleMessage(event) {
+               .trim();
+             finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+             finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
++            // v29.5.130: 同步 replyText，確保清理後的文字被採用
++            replyText = finalText;
+           }
+         }
+ 
+@@ -6107,11 +6113,8 @@ function handleMessage(event) {
+         writeLog(`[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`);
+ 
+         // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
+-        if (hasExplicitTrigger) {
+-          // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
+-          // 這裡維持原本邏輯 (可能後續會走 Auto Search Web)
+-          writeLog(`[Flow] hasExplicitTrigger=true，進入 PDF 觸發邏輯`);
+-        } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
++        // v29.5.130: 先處理 [AUTO_SEARCH_WEB]，避免「PDF→WEB 升級」後被 hasExplicitTrigger 擋住
++        if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+           writeLog("[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋");
+ 
+           // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
+@@ -6157,6 +6160,9 @@ function handleMessage(event) {
+ 
+             let pass1Bubble = formatForLineMobile(rawResponse)
+               .replace(/\[AUTO_SEARCH_WEB\]/g, "")
++              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
++              .replace(/\[NEED_DOC\]/gi, "")
++              .replace(/\[型號[:：][^\]]+\]/g, "")
+               .trim();
+ 
+             if (pass1Bubble.length > 0) {
+@@ -6169,7 +6175,12 @@ function handleMessage(event) {
+             isDualBubbleComplete = true; // v29.3.29: 標記已完成雙泡泡賦值
+             writeLog("[Auto Web] Fast Mode 二次泡泡賦值成功");
+           } else {
+-            finalText = rawResponse.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
++            finalText = formatForLineMobile(rawResponse)
++              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
++              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
++              .replace(/\[NEED_DOC\]/gi, "")
++              .replace(/\[型號[:：][^\]]+\]/g, "")
++              .trim();
+             finalText += "\n\n(⚠️ 網路搜尋連線逾時)";
+             replyText = finalText;
+           }
+@@ -6177,6 +6188,10 @@ function handleMessage(event) {
+           // 跳過後續 PDF Logic
+           writeLog("[Auto Web] 已完成搜尋，跳過 PDF Logic");
+           // 這裡直接跳到底部
++        } else if (hasExplicitTrigger) {
++          // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
++          // 這裡維持原本邏輯 (可能後續會走 Auto Search PDF)
++          writeLog(`[Flow] hasExplicitTrigger=true，進入 PDF 觸發邏輯`);
+         }
+ 
+         // 確保如果是 WEB Search 就不進入 PDF 判斷 (用簡單的方法: 檢查 replyText 是否已改變)
+@@ -6404,6 +6419,7 @@ function handleMessage(event) {
+ 
+                   // v29.4.33: 設置 PDF 已查詢標記
+                   cache.put(`${userId}:pdf_consulted`, "true", 600);
++                  cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 SOP key 對齊
+                   writeLog("[PDF v29.4.33] 已設置 pdf_consulted 標記");
+                   replyText = finalText;
+                 } else {
+@@ -6562,6 +6578,7 @@ function handleMessage(event) {
+ 
+                     // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
+                     cache.put(`${userId}:pdf_consulted`, "true", 600); // 10 分鐘有效
++                    cache.put(`pdf_consulted_${userId}`, "true", 600); // v29.5.130: 與 SOP key 對齊
+                     writeLog(
+                       "[PDF v29.4.33] 已設置 pdf_consulted 標記，後續追問將升級至 Web Search",
+                     );
+@@ -7200,7 +7217,9 @@ function handleCommand(c, u, cid) {
+ 
+     // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
+     // 檢查是否已查過 PDF，若未查過且有型號，優先執行 PDF Search
+-    const pdfConsulted = cache.get(`pdf_consulted_${u}`) === "true";
++    const pdfConsulted =
++      cache.get(`pdf_consulted_${u}`) === "true" ||
++      cache.get(`${u}:pdf_consulted`) === "true";
+     // 嘗試從 Cache 取得上次的型號列表 (需要 Smart Router 有寫入)
+     // 注意：cache key 必須與 Smart Router 一致。Smart Router 寫入的是 `last_models_json_${userId}` 嗎？
+     // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
+@@ -7284,6 +7303,7 @@ function handleCommand(c, u, cid) {
+ 
+     if (triggerPDF) {
+       cache.put(`pdf_consulted_${u}`, "true", 600);
++      cache.put(`${u}:pdf_consulted`, "true", 600); // v29.5.130: 與主流程 key 對齊
+     }
+ 
+     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+@@ -9285,6 +9305,29 @@ function getHistoryModels(userId) {
+ function replyMessage(tk, txt, options = {}) {
+   // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
+   if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN") {
++    // v29.5.130: TestUI 依賴 testMessage() 從 Log 收集回覆；這裡補寫 [Reply] 讓前端能顯示
++    try {
++      let preview = "";
++      if (Array.isArray(txt)) {
++        preview = txt
++          .map((t) => {
++            if (typeof t === "string") return t;
++            if (t && typeof t === "object") return t.altText || "[Flex Message]";
++            return String(t || "");
++          })
++          .join("\n\n");
++      } else if (txt && typeof txt === "object" && txt.type) {
++        preview = txt.altText || "[Flex Message]";
++      } else {
++        preview = (txt === null || txt === undefined) ? "" : txt.toString();
++      }
++
++      if (preview) {
++        writeLog(`[Reply] ${preview}`);
++      }
++    } catch (e) {
++      // ignore
++    }
+     writeLog("[TEST MODE] 跳過 LINE API 呼叫");
+     return;
+   }
+
+commit a9a1a2185e8cc0d1bdb86745f6fea2d55ac1ce5b
+Author: Your Name <you@example.com>
+Date:   Mon Feb 9 12:25:21 2026 +0800
+
+    v29.5.129 修復 #再詳細說明 TDZ ReferenceError (userMsgObj 在 const 宣告前賦值)
+
+diff --git a/linebot.gs b/linebot.gs
+index c3da9ab..01f4080 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.128"; // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
++const GAS_VERSION = "v29.5.129"; // 2026-02-09 修復 #再詳細說明 TDZ ReferenceError // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
+ const BUILD_TIMESTAMP = "2026-02-09 19:00";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+@@ -5425,16 +5425,19 @@ function handleMessage(event) {
+     }
+ 
+     if (msg === "#再詳細說明") {
+-      writeLog(`[Quick Reply v29.5.128] 用戶點擊「再詳細說明」`);
++      writeLog(`[Quick Reply v29.5.129] 用戶點擊「再詳細說明」`);
+       // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
+-      // 只需送一句簡單指令，AI 會根據完整歷史自行展開
++      // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
++      // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
+       const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
+-      writeLog(`[Quick Reply v29.5.128] 送出: ${continueMsg}`);
++      writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
+       showLoadingAnimation(userId, 60);
+       msg = continueMsg;
+       userMessage = continueMsg;
+-      userMsgObj = { role: "user", content: continueMsg };
+-      // 不 return，讓流程繼續走一般對話邏輯（帶著完整歷史上下文）
++      // 不 return，讓流程走到 D.一般對話：
++      // → getHistoryFromCacheOrSheet() 載入 5 輪歷史
++      // → const userMsgObj = { role: "user", content: msg } 基於改寫後的 msg
++      // → callLLMWithRetry(userMessage, [...history, userMsgObj], ...) 帶完整上下文
+     }
+ 
+     if (msg === "#搜尋網路") {
+
+commit ac57deffa4d7df0029927984993278ca232af6ce
+Author: Your Name <you@example.com>
+Date:   Mon Feb 9 12:20:32 2026 +0800
+
+    v29.5.128 再詳細說明簡化-依賴對話歷史上下文，不再截取AI回答
+
+diff --git a/linebot.gs b/linebot.gs
+index 419bcce..c3da9ab 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.127"; // 2026-02-09 #再詳細說明(AI回答延伸) + 查手冊等待提醒 + 去重來源標註
+-const BUILD_TIMESTAMP = "2026-02-09 18:00";
++const GAS_VERSION = "v29.5.128"; // 2026-02-09 #再詳細說明 簡化：依賴對話歷史上下文，不截取
++const BUILD_TIMESTAMP = "2026-02-09 19:00";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+ // ════════════════════════════════════════════════════════════════
+@@ -5425,47 +5425,16 @@ function handleMessage(event) {
+     }
+ 
+     if (msg === "#再詳細說明") {
+-      writeLog(`[Quick Reply v29.5.127] 用戶點擊「再詳細說明」`);
+-      // 從歷史找 AI 上一次回答，請 AI 針對自己的回答再詳細展開
+-      const history = getHistoryFromCacheOrSheet(contextId);
+-      let lastAiAnswer = "";
+-      let lastUserQ = "";
+-      for (let i = history.length - 1; i >= 0; i--) {
+-        if (history[i].role === "assistant" && !lastAiAnswer) {
+-          let content = history[i].content || "";
+-          // 截取前200字作為摘要（避免 Token 爆炸）
+-          lastAiAnswer = content.replace(/\n---\n本次對話.*$/s, "").trim();
+-          if (lastAiAnswer.length > 200) {
+-            lastAiAnswer = lastAiAnswer.substring(0, 200) + "...";
+-          }
+-        }
+-        if (history[i].role === "user" && !lastUserQ) {
+-          let content = history[i].content || "";
+-          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+-          if (
+-            content.length > 3 &&
+-            !content.startsWith("#") &&
+-            !content.includes("不滿意") &&
+-            !content.includes("再詳細") &&
+-            !/^\d$/.test(content)
+-          ) {
+-            lastUserQ = content;
+-          }
+-        }
+-        if (lastAiAnswer && lastUserQ) break;
+-      }
+-      if (!lastAiAnswer) {
+-        replyMessage(replyToken, "請先問我一個問題，我來幫你解答😊");
+-        return;
+-      }
+-      // 請 AI 針對上一次回答再詳細說明
+-      const continueMsg = `你剛才回答了：「${lastAiAnswer}」\n\n請針對以上回答再詳細說明，補充更多細節和步驟`;
+-      writeLog(`[Quick Reply v29.5.127] 再詳細說明: 原問=${lastUserQ ? lastUserQ.substring(0, 40) : 'N/A'}, AI答=${lastAiAnswer.substring(0, 60)}`);
++      writeLog(`[Quick Reply v29.5.128] 用戶點擊「再詳細說明」`);
++      // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
++      // 只需送一句簡單指令，AI 會根據完整歷史自行展開
++      const continueMsg = "請針對你剛才的回答再詳細說明，補充更多細節、步驟或注意事項";
++      writeLog(`[Quick Reply v29.5.128] 送出: ${continueMsg}`);
+       showLoadingAnimation(userId, 60);
+       msg = continueMsg;
+       userMessage = continueMsg;
+       userMsgObj = { role: "user", content: continueMsg };
+-      // 不 return，讓流程繼續走一般對話邏輯
++      // 不 return，讓流程繼續走一般對話邏輯（帶著完整歷史上下文）
+     }
+ 
+     if (msg === "#搜尋網路") {
+
+commit 07b3165f6e9162530304476d2ad7e880865ccc94
+Author: Your Name <you@example.com>
+Date:   Mon Feb 9 12:14:28 2026 +0800
+
+    v29.5.127 再詳細說明(AI回答延伸) + 查手冊等待提醒 + 去重來源標註
+
+diff --git a/linebot.gs b/linebot.gs
+index 586d30a..419bcce 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+ // 更新版本號
+-const GAS_VERSION = "v29.5.126"; // 2026-02-09 型號驗證防瞎掰 + #繼續問 handler + Quick Reply 統一
+-const BUILD_TIMESTAMP = "2026-02-09 15:00";
++const GAS_VERSION = "v29.5.127"; // 2026-02-09 #再詳細說明(AI回答延伸) + 查手冊等待提醒 + 去重來源標註
++const BUILD_TIMESTAMP = "2026-02-09 18:00";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+ // ════════════════════════════════════════════════════════════════
+@@ -5050,7 +5050,7 @@ function handleMessage(event) {
+           if (!msg.startsWith("/")) {
+             responseOptions.quickReply = {
+               items: [
+-                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+                 { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
+                 { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+               ],
+@@ -5288,7 +5288,7 @@ function handleMessage(event) {
+         const qrOptions = {
+           quickReply: {
+             items: [
+-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+               { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+             ],
+           },
+@@ -5406,7 +5406,7 @@ function handleMessage(event) {
+         const qrOptions = {
+           quickReply: {
+             items: [
+-              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+               { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+             ],
+           },
+@@ -5424,35 +5424,43 @@ function handleMessage(event) {
+       return;
+     }
+ 
+-    if (msg === "#繼續問") {
+-      writeLog(`[Quick Reply v29.5.126] 用戶點擊「再詳細說明」`);
+-      // 從歷史找上一個真正的問題，加上「請再詳細說明」讓 AI 延續
++    if (msg === "#再詳細說明") {
++      writeLog(`[Quick Reply v29.5.127] 用戶點擊「再詳細說明」`);
++      // 從歷史找 AI 上一次回答，請 AI 針對自己的回答再詳細展開
+       const history = getHistoryFromCacheOrSheet(contextId);
+-      let lastQuestion = "";
++      let lastAiAnswer = "";
++      let lastUserQ = "";
+       for (let i = history.length - 1; i >= 0; i--) {
+-        if (history[i].role === "user") {
++        if (history[i].role === "assistant" && !lastAiAnswer) {
++          let content = history[i].content || "";
++          // 截取前200字作為摘要（避免 Token 爆炸）
++          lastAiAnswer = content.replace(/\n---\n本次對話.*$/s, "").trim();
++          if (lastAiAnswer.length > 200) {
++            lastAiAnswer = lastAiAnswer.substring(0, 200) + "...";
++          }
++        }
++        if (history[i].role === "user" && !lastUserQ) {
+           let content = history[i].content || "";
+           content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+           if (
+             content.length > 3 &&
+             !content.startsWith("#") &&
+             !content.includes("不滿意") &&
+-            !content.includes("繼續問") &&
+             !content.includes("再詳細") &&
+             !/^\d$/.test(content)
+           ) {
+-            lastQuestion = content;
+-            break;
++            lastUserQ = content;
+           }
+         }
++        if (lastAiAnswer && lastUserQ) break;
+       }
+-      if (!lastQuestion) {
+-        replyMessage(replyToken, "請告訴我你想了解什麼，我來幫你查😊");
++      if (!lastAiAnswer) {
++        replyMessage(replyToken, "請先問我一個問題，我來幫你解答😊");
+         return;
+       }
+-      // 用「請針對上一題再詳細說明」送給 AI
+-      const continueMsg = `針對「${lastQuestion}」請再詳細說明，補充更多細節`;
+-      writeLog(`[Quick Reply v29.5.126] 延續問題: ${continueMsg.substring(0, 80)}`);
++      // 請 AI 針對上一次回答再詳細說明
++      const continueMsg = `你剛才回答了：「${lastAiAnswer}」\n\n請針對以上回答再詳細說明，補充更多細節和步驟`;
++      writeLog(`[Quick Reply v29.5.127] 再詳細說明: 原問=${lastUserQ ? lastUserQ.substring(0, 40) : 'N/A'}, AI答=${lastAiAnswer.substring(0, 60)}`);
+       showLoadingAnimation(userId, 60);
+       msg = continueMsg;
+       userMessage = continueMsg;
+@@ -5467,7 +5475,7 @@ function handleMessage(event) {
+       const qrOptions = {
+         quickReply: {
+           items: [
+-            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } },
+           ],
+         },
+       };
+@@ -6168,8 +6176,12 @@ function handleMessage(event) {
+           if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+             // v29.4.9: Fast Mode 也要支援二次泡泡
+             // Fix: 若 Pass 1 僅包含標籤 (replace 後為空)，則只發送 Pass 2，避免 LINE API 400 Error
++            // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
++            let cleanSearchResponse = formatForLineMobile(searchResponse)
++              .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
++              .trim();
+             const pass2Bubble =
+-              formatForLineMobile(searchResponse) + "\n\n(🔍 網路搜尋補充資料)";
++              cleanSearchResponse + "\n\n(🔍 網路搜尋補充資料)";
+ 
+             let pass1Bubble = formatForLineMobile(rawResponse)
+               .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+@@ -6976,8 +6988,8 @@ function handleMessage(event) {
+             replyText.includes("🔍 網路搜尋補充資料")));
+ 
+           const qrItems = [];
+-          // v29.5.126: 第一個按鈕「再詳細說明」→ 從歷史找上一題延續
+-          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } });
++          // v29.5.127: 第一個按鈕「再詳細說明」→ 找 AI 上次回答並請求展開
++          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#再詳細說明" } });
+ 
+           if (!isWebSearchPhase) {
+             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+@@ -6986,6 +6998,14 @@ function handleMessage(event) {
+             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+             if (hasPdfForModel && !alreadyConsultedPdf) {
+               qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
++
++              // v29.5.127: 在回答末尾加入查手冊等待提醒
++              const pdfReminder = "\n\n💡 你也可以點下方「查PDF手冊」深入查詢（約需等待30秒）";
++              if (Array.isArray(replyText)) {
++                replyText[replyText.length - 1] += pdfReminder;
++              } else {
++                replyText += pdfReminder;
++              }
+             }
+             qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
+           } else {
+@@ -7296,6 +7316,8 @@ function handleCommand(c, u, cid) {
+ 
+     if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
+       let result = formatForLineMobile(searchResponse);
++      // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
++      result = result.replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "").trim();
+       
+       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
+       if (!triggerPDF) {
+
+commit dff9fe6e57b3a1090e84df249aa5c49a2ff1fe18
+Author: Your Name <you@example.com>
+Date:   Mon Feb 9 10:06:02 2026 +0800
+
+    v29.5.126 型號驗證防瞎掰 + #繼續問 handler + Quick Reply 統一
+
+diff --git a/linebot.gs b/linebot.gs
+index bf0d191..586d30a 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -12,8 +12,9 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // ════════════════════════════════════════════════════════════════
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+-const GAS_VERSION = "v29.5.123"; // 2026-02-07 DirectDeep 有 PDF 直接掛載 + 無 PDF 隱藏查手冊
+-const BUILD_TIMESTAMP = "2026-02-07 03:10";
++// 更新版本號
++const GAS_VERSION = "v29.5.126"; // 2026-02-09 型號驗證防瞎掰 + #繼續問 handler + Quick Reply 統一
++const BUILD_TIMESTAMP = "2026-02-09 15:00";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+ // ════════════════════════════════════════════════════════════════
+@@ -5049,9 +5050,9 @@ function handleMessage(event) {
+           if (!msg.startsWith("/")) {
+             responseOptions.quickReply = {
+               items: [
+-                { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+-                { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
+-                { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
++                { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++                { type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } },
++                { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+               ],
+             };
+           }
+@@ -5283,12 +5284,12 @@ function handleMessage(event) {
+           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+         }
+ 
+-        // v29.5.123: #型號: handler 已查 PDF，不再顯示「查手冊」
++        // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
+         const qrOptions = {
+           quickReply: {
+             items: [
+-              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+-              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
++              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+             ],
+           },
+         };
+@@ -5405,8 +5406,8 @@ function handleMessage(event) {
+         const qrOptions = {
+           quickReply: {
+             items: [
+-              { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+-              { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
++              { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
++              { type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } },
+             ],
+           },
+         };
+@@ -5423,6 +5424,42 @@ function handleMessage(event) {
+       return;
+     }
+ 
++    if (msg === "#繼續問") {
++      writeLog(`[Quick Reply v29.5.126] 用戶點擊「再詳細說明」`);
++      // 從歷史找上一個真正的問題，加上「請再詳細說明」讓 AI 延續
++      const history = getHistoryFromCacheOrSheet(contextId);
++      let lastQuestion = "";
++      for (let i = history.length - 1; i >= 0; i--) {
++        if (history[i].role === "user") {
++          let content = history[i].content || "";
++          content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
++          if (
++            content.length > 3 &&
++            !content.startsWith("#") &&
++            !content.includes("不滿意") &&
++            !content.includes("繼續問") &&
++            !content.includes("再詳細") &&
++            !/^\d$/.test(content)
++          ) {
++            lastQuestion = content;
++            break;
++          }
++        }
++      }
++      if (!lastQuestion) {
++        replyMessage(replyToken, "請告訴我你想了解什麼，我來幫你查😊");
++        return;
++      }
++      // 用「請針對上一題再詳細說明」送給 AI
++      const continueMsg = `針對「${lastQuestion}」請再詳細說明，補充更多細節`;
++      writeLog(`[Quick Reply v29.5.126] 延續問題: ${continueMsg.substring(0, 80)}`);
++      showLoadingAnimation(userId, 60);
++      msg = continueMsg;
++      userMessage = continueMsg;
++      userMsgObj = { role: "user", content: continueMsg };
++      // 不 return，讓流程繼續走一般對話邏輯
++    }
++
+     if (msg === "#搜尋網路") {
+       writeLog(`[Quick Reply v29.5.118] 用戶要求搜尋網路`);
+       showLoadingAnimation(userId, 60);
+@@ -5430,7 +5467,7 @@ function handleMessage(event) {
+       const qrOptions = {
+         quickReply: {
+           items: [
+-            { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
++            { type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } },
+           ],
+         },
+       };
+@@ -6939,8 +6976,8 @@ function handleMessage(event) {
+             replyText.includes("🔍 網路搜尋補充資料")));
+ 
+           const qrItems = [];
+-          // 第一個按鈕永遠是「繼續問」
+-          qrItems.push({ type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } });
++          // v29.5.126: 第一個按鈕「再詳細說明」→ 從歷史找上一題延續
++          qrItems.push({ type: "action", action: { type: "message", label: "💬 再詳細說明", text: "#繼續問" } });
+ 
+           if (!isWebSearchPhase) {
+             // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
+@@ -6948,11 +6985,11 @@ function handleMessage(event) {
+             // 無 PDF → 避免使用者點了卻查不到
+             const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
+             if (hasPdfForModel && !alreadyConsultedPdf) {
+-              qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
++              qrItems.push({ type: "action", action: { type: "message", label: "📖 查PDF手冊", text: "#查手冊" } });
+             }
+-            qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } });
++            qrItems.push({ type: "action", action: { type: "message", label: "🌐 網路搜尋", text: "#搜尋網路" } });
+           } else {
+-            // 網路搜尋階段：只剩「繼續問」（已是最後手段）
++            // 網路搜尋階段：只剩「再詳細說明」（已是最後手段）
+           }
+ 
+           responseOptions.quickReply = { items: qrItems };
+
+commit c1b12d7589590da326ac19efd193d2578fc91173
+Author: Your Name <you@example.com>
+Date:   Sat Feb 7 01:18:09 2026 +0800
+
+    v29.5.123 DirectDeep preload PDF + hide Quick Reply when no PDF
+
+diff --git a/linebot.gs b/linebot.gs
+index 66f50ce..bf0d191 100644
+--- a/linebot.gs
++++ b/linebot.gs
+@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
+ // ════════════════════════════════════════════════════════════════
+ // 🔧 版本號 (每次修改必須更新！)
+ // ════════════════════════════════════════════════════════════════
+-const GAS_VERSION = "v29.5.122"; // 2026-02-07 修復 PDF Index Check 只看第一個型號就放棄的 bug
+-const BUILD_TIMESTAMP = "2026-02-07 02:20";
++const GAS_VERSION = "v29.5.123"; // 2026-02-07 DirectDeep 有 PDF 直接掛載 + 無 PDF 隱藏查手冊
++const BUILD_TIMESTAMP = "2026-02-07 03:10";
+ let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
+ 
+ // ════════════════════════════════════════════════════════════════
+@@ -4859,6 +4859,7 @@ function handleMessage(event) {
+     let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
+     let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
+     let aiSearchQuery = null; // v29.4.22: AI-driven search query
++    let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
+ 
+     // v29.3.26: 手動觸發診斷功能 (供用戶測試二次搜機制用)
+     if (msg === "測試二次搜尋") {
+@@ -5282,12 +5283,11 @@ function handleMessage(event) {
+           replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+         }
+ 
+-        // v29.5.118: 回覆附帶三按鈕 Quick Reply
++        // v29.5.123: #型號: handler 已查 PDF，不再顯示「查手冊」
+         const qrOptions = {
+           quickReply: {
+             items: [
+               { type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } },
+-              { type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } },
+               { type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } },
+             ],
+           },
+@@ -5557,6 +5557,60 @@ function handleMessage(event) {
+         if (hitKeys.length > 1) {
+           cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
+         }
++
++        // v29.5.123: 立刻檢查這些型號有沒有 PDF，有的話直接預載
++        // 不再讓使用者多按一步「查手冊」才觸發 PDF
++        try {
++          const pdfIndexJson = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX");
++          const pdfModelIndex = pdfIndexJson ? JSON.parse(pdfIndexJson) : [];
++          const directModels = directSearchResult.models || [];
++
++          // 遍歷 DirectDeep 提取的型號，找有 PDF 的
++          let pdfMatchModel = null;
++          for (const mdl of directModels) {
++            const found = pdfModelIndex.some((idx) => {
++              if (idx.startsWith("S") && idx.length >= 7) {
++                const coreCheck = mdl.replace(/^S\d{2}/, "");
++                const coreIdx = idx.replace(/^S\d{2}/, "");
++                return coreIdx.includes(coreCheck) || coreCheck.includes(coreIdx) || idx.includes(mdl) || mdl.includes(idx);
++              }
++              return idx === mdl;
++            });
++            if (found) {
++              pdfMatchModel = mdl;
++              break;
++            }
++          }
++
++          if (pdfMatchModel) {
++            hasPdfForModel = true;
++            primaryModel = pdfMatchModel;
++            writeLog(`[DirectDeep v29.5.123] 型號 ${pdfMatchModel} 有 PDF，立刻預載`);
++
++            // 呼叫 getRelevantKBFiles 取得 PDF 檔案
++            const kbListJson = PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST);
++            if (kbListJson) {
++              const kbList = JSON.parse(kbListJson);
++              const kbResult = getRelevantKBFiles(
++                [...history, { role: "user", content: msg }],
++                kbList,
++                userId,
++                contextId,
++                false,
++              );
++              const files = Array.isArray(kbResult) ? kbResult : (kbResult.files || []);
++              if (files.length > 0) {
++                filesToAttach = files;
++                primaryModel = (kbResult.primaryModel) || pdfMatchModel;
++                writeLog(`[DirectDeep v29.5.123] ✅ 預載 ${files.filter(f => f.mimeType === "application/pdf").length} 本 PDF`);
++              }
++            }
++          } else {
++            writeLog(`[DirectDeep v29.5.123] 所有型號均無 PDF: ${directModels.join(", ")}`);
++          }
++        } catch (e) {
++          writeLog(`[DirectDeep v29.5.123] PDF 預載失敗: ${e.message}`);
++        }
+       }
+     }
+ 
+@@ -5633,11 +5687,24 @@ function handleMessage(event) {
+         );
+       }
+ 
++      // v29.5.123: 如果 DirectDeep 已預載 PDF，直接帶上
++      const shouldAttachPdfs = filesToAttach.length > 0 && hasPdfForModel;
++      if (shouldAttachPdfs) {
++        writeLog(`[DirectDeep v29.5.123] 首次回答即掛載 PDF (${filesToAttach.filter(f => f.mimeType === 'application/pdf').length} 本)`);
++        // 移除強制 [AUTO_SEARCH_PDF] 的 System Hint（PDF 已掛載，不需要 AI 再觸發）
++        userMessage = userMessage.replace(/\n\n\[System Hint:.*?\]/s, "");
++        userMsgObj.content = userMessage;
++        // 標記已查過 PDF，後續 [AUTO_SEARCH_PDF] 信號會直接升級為 Web Search
++        cache.put(`${userId}:pdf_consulted`, "true", 600);
++        isInPdfMode = true;
++        cache.put(pdfModeKey, "true", 300);
++      }
++
+       let rawResponse = callLLMWithRetry(
+         userMessage,
+         [...history, userMsgObj],
+         filesToAttach,
+-        false, // attachPDFs
++        shouldAttachPdfs, // attachPDFs: 有預載就直接帶
+         null, // imageBlob
+         false, // isRetry
+         userId,
+@@ -6876,8 +6943,13 @@ function handleMessage(event) {
+           qrItems.push({ type: "action", action: { type: "message", label: "💬 繼續問", text: "繼續問" } });
+ 
+           if (!isWebSearchPhase) {
+-            // QA/PDF 階段：提供「查手冊」和「搜網路」
+-            qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
++            // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
++            // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
++            // 無 PDF → 避免使用者點了卻查不到
++            const alreadyConsultedPdf = cache.get(`${userId}:pdf_consulted`) === "true";
++            if (hasPdfForModel && !alreadyConsultedPdf) {
++              qrItems.push({ type: "action", action: { type: "message", label: "📖 查產品手冊", text: "#查手冊" } });
++            }
+             qrItems.push({ type: "action", action: { type: "message", label: "🌐 搜尋網路", text: "#搜尋網路" } });
+           } else {
+             // 網路搜尋階段：只剩「繼續問」（已是最後手段）
