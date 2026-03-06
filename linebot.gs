@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.152"; // 2026-03-06 子字串去重 (Substring Deduplication)
-const BUILD_TIMESTAMP = "2026-03-06 18:00";
+const GAS_VERSION = "v29.5.153"; // 2026-03-06 早期子字串去重 (Early Substring Deduplication) 修正 AI 提問不跳泡泡問題
+const BUILD_TIMESTAMP = "2026-03-06 18:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1010,11 +1010,30 @@ function checkDirectDeepSearchWithKey(msg, userId) {
         // v27.9.1: 移除 tooMany 檢查（型號比較用 CLASS_RULES 就夠了）
         // 注入所有型號到 Cache（供後續 PDF 查詢時使用）
         if (allModels.length > 0) {
+          // v29.5.153: Early Substring Deduplication
+          // 若同時存在 S27FG900XC 與 S27FG900 等互為子字串的型號，保留最長、最精準的，避免混淆 AI
+          const dedupModels = [];
+          const sortedModels = allModels.slice().sort((a, b) => b.length - a.length);
+          sortedModels.forEach((model) => {
+            const isSubset = dedupModels.some(existing => existing.includes(model));
+            if (!isSubset) {
+              dedupModels.push(model);
+            }
+          });
+
+          if (allModels.length !== dedupModels.length) {
+            writeLog(`[DirectDeep v29.5.153] 早期子字串去重, 剩餘: ${dedupModels.join(", ")}`);
+          }
+
           cache.put(
             `${userId}:direct_search_models`,
-            JSON.stringify(allModels),
+            JSON.stringify(dedupModels),
             300,
           );
+          // 回傳給呼叫者的 models 也應替換為去重後的
+          allModels.length = 0;
+          allModels.push(...dedupModels);
+
           writeLog(
             `[DirectDeep] ✅ 注入型號到 Cache (userId: ${userId}): ${allModels.join(
               ", ",
