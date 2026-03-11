@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.155"; // 2026-03-06 修復 Fast Mode 無手冊時遺失型號導致鬼打牆反問的 Bug
-const BUILD_TIMESTAMP = "2026-03-06 21:15";
+const GAS_VERSION = "v29.5.157"; // 2026-03-11 價格回答防呆：禁止直接報價，固定導三星官網查價頁
+const BUILD_TIMESTAMP = "2026-03-11 12:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2513,6 +2513,61 @@ function getProductUrl(modelOrKeyword) {
 // 2. 核心：Gemini 知識庫同步 (Sync)
 // ==========================================
 
+function isPriceQueryIntent_(msg) {
+  if (!msg) {
+    return false;
+  }
+  return /最低價|市場最低|建議售價|售價|價格|價錢|多少錢|報價|哪裡買|通路價|優惠價|活動價|折扣價|特價/i.test(
+    msg,
+  );
+}
+
+function extractPriceQueryTargets_(msg) {
+  if (!msg) {
+    return [];
+  }
+  const normalized = msg.toUpperCase().replace(/\s+/g, "");
+  const modelRegex =
+    /\b(?:LS\d{2}[A-Z0-9]+CXZW|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,3}|G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|WA\d+[A-Z0-9]*|WD\d+[A-Z0-9]*|VR\d+[A-Z0-9]*)\b/g;
+  const aliasRegex = /\b(?:G5|G6|G7|G8|G9|M5|M7|M8|M9|S8|S9)\b/g;
+
+  const models = normalized.match(modelRegex) || [];
+  const aliases = normalized.match(aliasRegex) || [];
+
+  const unique = [];
+  const seen = {};
+  models.concat(aliases).forEach((token) => {
+    const t = token.trim();
+    if (!t || seen[t]) {
+      return;
+    }
+    seen[t] = true;
+    unique.push(t);
+  });
+  return unique.slice(0, 8);
+}
+
+function buildNoPriceReply_(msg) {
+  const targets = extractPriceQueryTargets_(msg);
+  const lines = [];
+  lines.push("這題是價格相關，我這邊不直接回覆數字價格，避免提供過期或錯誤報價。");
+  lines.push("");
+  lines.push("你可以直接看三星官網查價頁（頁面會顯示當下建議售價/活動資訊）：");
+  if (targets.length === 0) {
+    lines.push(
+      "1. https://www.samsung.com/tw/search/?searchvalue=%E4%B8%89%E6%98%9F%20%E8%9E%A2%E5%B9%95",
+    );
+  } else {
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      lines.push(`${i + 1}. ${getProductUrl(t)}`);
+    }
+  }
+  lines.push("");
+  lines.push("若你要，我可以再幫你整理這些型號目前在官網是否有促銷活動。");
+  lines.push("[來源:三星官網]");
+  return lines.join("\n");
+}
 function syncGeminiKnowledgeBase(forceRebuild = false) {
   const lock = LockService.getScriptLock();
   let hasLock = false;
@@ -3249,6 +3304,9 @@ function ensureSyncTriggerExists() {
 // ==========================================
 // 3. Gemini API (通用映射 + 上下文智慧搜尋)
 // ==========================================
+// =========================================================================
+// Version: 29.5.156
+// =========================================================================
 
 // v27.9.0: 新增 forceCurrentOnly 參數，型號衝突時只從當前訊息提取型號
 // 該函數現在回傳 { files: [], exactModels: [], primaryModel: string | null }
@@ -3911,55 +3969,12 @@ function constructDynamicPrompt(
     // Phase 1: 極速模式 (Fast Mode)
     // v29.5.105: 強化型號追問機制
     // v29.5.112: 加入話題延續 vs 新話題判斷
-    dynamicPrompt += `\n【系統狀態】目前為「極速模式」(Fast Mode)。
-【絕對原則】你是一個知識庫檢索系統，不是聊天機器人。禁止使用你自己的訓練資料回答產品操作或規格問題。\n`;
-
     // v29.5.155: 強制標註已確認型號，避免 LLM 鬼打牆要求用戶提供型號
     if (targetModelName) {
       dynamicPrompt += `\n【已確認對象型號】系統已在背景確認用戶正在詢問的型號為「${targetModelName}」。你必須直接針對此型號回答，絕對禁止再反問用戶「請告訴我你的螢幕型號」。\n`;
     }
 
-    dynamicPrompt += `\n【🚨 話題延續判斷 (v29.5.113 - 最高優先級)】
-當用戶的訊息**語意上是追問**時（例如省略主詞、用代詞「它」、或只提新型號而沒有完整問題），你必須：
-1. **分析對話歷史**：用戶上一輪在討論什麼主題（如「線材版本」、「規格」、「設定方法」、「價格」）？
-2. **延續話題**：將用戶的追問理解為「新型號/新對象 + 上一輪話題」
-   - 例：上一題「S27C900PAC 的線材版本」→ 用戶問「那 M8 呢」→ 應回答「M8 的線材版本」
-   - 例：上一題「G5 怎麼設定 144Hz」→ 用戶問「G8」→ 應回答「G8 怎麼設定 144Hz」
-   - 例：上一題「M7 多少錢」→ 用戶問「M8 呢」→ 應回答「M8 多少錢」
-3. **新話題判斷**：若用戶提出**語意完整且不同的問題**（如從「線材」跳到「怎麼設定 HDR」），則視為新話題
-4. **判斷原則**：看用戶訊息是否「語意不完整需要靠上下文補全」，若是則為追問；若用戶的問題本身已經語意完整，則為新話題
-
-【🚨 型號追問機制】
-當用戶使用「模糊別稱」(如 G5、G8、M7、M8) 詢問「操作/設定/故障」類問題時：
-1. **必須先檢查** Context 中該別稱是否包含多個實體型號 (看「請優先引導用戶確認型號」提示)
-2. **若有多款型號**：必須先列出所有型號讓用戶選擇，格式如下：
-   「G5 系列有多款型號，請問你是哪一款？
-   1. S27CG552EC (27吋曲面)
-   2. S32CG552EC (32吋曲面)
-   3. S27DG502EC (27吋平面)
-   4. S32DG502EC (32吋平面)
-   請直接回覆數字或型號～」
-3. **禁止直接回答**：在用戶未確認型號前，禁止直接給操作步驟，因為不同型號操作可能不同
-4. **例外**：若用戶問的是「通用規格」(如「G5有4K嗎」)且所有G5型號答案相同，可直接回答
-
-【防幻覺鐵律 (Anti-Hallucination)】
-1. **嚴禁模糊**：絕對禁止使用「有些型號可能支援」、「通常會有」等不確定用語。
-2. **呈現選項**：若你需要提供多個選項、規格列表或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，**嚴禁使用圓點 (•) 或其他符號**。
-3. **規格題與功能題分流**：
-   - **硬體規格題 (如：有沒有4K、面板類型)**：若 Context 未明確提及，**必須**回答「根據目前資料，該型號不支援此規格」，不得猜測。
-   - **功能/操作/保養題 (如：零售模式、重置、清潔、上蓋是否要開)**：若 Context 無資料，**必須**輸出 \`[AUTO_SEARCH_PDF: 關鍵字]\` 觸發手冊搜尋。
-4. **精確對應**：回答必須基於 Context 中**完全匹配**該型號的資料，不能拿其他系列的規格來套用。
-5. **嚴禁推託客服**：絕對禁止說「聯絡三星客服」、「撥打 0800」、「聯繫客服專線」。若真的查無資料，請建議「直接問問 Sam」。
-
-【回答流程 (必須嚴格遵守)】
-1. **型號確認** (最優先)：
-   - 用戶用模糊別稱 + 問操作問題 → 先反問確認型號
-   - 用戶給了完整型號 (如 S32CG552EC) → 直接回答
-2. **Search QA & Rules**：
-   - QA/Rules 有答案 → 使用該資料回答，標註 [來源: QA/規格庫]
-   - 找不到資料 → 輸出 [AUTO_SEARCH_PDF: <型號或關鍵字>]
-3. **Exception**：
-   - 僅當用戶閒聊或問通用名詞定義 (如：什麼是HDMI) 時，才可用通用知識回答。`;
+    // Removed hardcoded Prompt for Fast Mode. Handled by Prompt.csv
   } else if (kbFiles.length > 0) {
     // Phase 2 & 3: 深度模式 (Deep Mode)
     // v27.8.6: 防護機制 - 確保真的有掛載 PDF
@@ -5356,6 +5371,22 @@ function handleMessage(event) {
       return;
     }
 
+
+    if (!msg.startsWith("#") && isPriceQueryIntent_(msg)) {
+      const priceReply = buildNoPriceReply_(msg);
+      writeLog(`[Price Guard v29.5.157] 攔截價格數字回覆，改導官網查價頁`);
+      replyMessage(replyToken, priceReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, priceReply, contextId, "assistant", "");
+      const priceHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        priceHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: priceReply },
+      );
+      return;
+    }
     // C. 深度搜尋確認 (已廢棄)
     // v24.1.23: 移除手動確認邏輯，全面改為自動觸發
     /*
