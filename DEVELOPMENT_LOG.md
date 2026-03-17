@@ -317,3 +317,9 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - node test_runner/verify_m7_m8_matter.js：PASS
 - node test_runner/verify_manual_continuity.js：PASS
 - node test_runner/verify_price_no_number.js：PASS
+### 部署紀錄
+- clasp push -f：成功
+- clasp version "v29.5.161 fix: alias-memory guard + prompt/manual consistency"：成功（Version 847）
+- clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA：成功（更新到 @848）
+- git commit：99af3d5（main）
+- git push origin main：成功
