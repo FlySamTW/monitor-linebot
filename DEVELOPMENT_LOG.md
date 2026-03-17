@@ -323,3 +323,35 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA：成功（更新到 @848）
 - git commit：99af3d5（main）
 - git push origin main：成功
+
+## 2026-03-17 (v29.5.162 SmartThings/Matter 路由與格式修復)
+
+### 修復內容
+- linebot.gs
+  - SmartThings/Matter 高風險題觸發手冊查證時，不再先回 Fast Mode 文案再跳泡泡；改為先鎖定單一型號進手冊流程。
+  - 新增 stripAnySourceTags()，移除 AI 臆測來源標籤（例如 [來源:QA資料庫]）。
+  - 手冊路徑新增 enforceManualNumberedList()，將條列符號統一為數字項次並保留空行。
+  - 手冊路徑來源統一以 appendPdfSourceTag() 標示實際掛載 PDF 檔名。
+
+### 驗證
+- node test_runner/verify_m7_exact_issue.js：PASS
+  - 首回覆不再出現 [來源:QA資料庫]。
+  - 不再觸發「準備顯示型號選擇泡泡」。
+  - 手冊回覆來源為真實 PDF 檔名。
+
+### 部署紀錄
+- clasp version "v29.5.162 fix: smartthings router + source strip + manual numbering"：成功（Version 849）
+- clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA：成功（更新到 @850）
+
+## 2026-03-17 (v29.5.163 手冊暗號清理 + Prompt 防呆補強)
+
+### 修復內容
+- linebot.gs
+  - 手冊路徑清理 [型號:...] 內部標籤，避免輸出到終端回覆。
+- Prompt.csv
+  - 版本升級為 Prompt v29.5.163。
+  - 新增「來源與路由防呆」：未實際引用 QA 不得標註 [來源:QA]；SmartThings/Matter/Hub 題未手冊查證前不得先下結論。
+
+### 部署紀錄
+- clasp version "v29.5.163 fix: remove model-tag leakage in manual replies"：成功（Version 852）
+- clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 852：成功（更新到 @852）

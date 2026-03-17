@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.161"; // 2026-03-17 修復別稱記憶條件，避免非別稱追問誤沿用舊型號
-const BUILD_TIMESTAMP = "2026-03-17 17:25";
+const GAS_VERSION = "v29.5.163"; // 2026-03-17 清理手冊路徑 [型號:...] 暗號外洩
+const BUILD_TIMESTAMP = "2026-03-17 18:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1989,6 +1989,74 @@ function appendPdfSourceTag(text, files, maxCount = 1) {
   const label = buildPdfSourceLabelFromFiles(files, maxCount);
   if (!label) return cleaned;
   return `${cleaned}\n\n[來源: ${label} (官方手冊PDF)]`;
+}
+
+/**
+ * 統一移除 AI 自帶來源標籤，避免錯誤來源外洩。
+ */
+function stripAnySourceTags(text) {
+  return String(text || "")
+    .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+    .trim();
+}
+
+/**
+ * 手冊模式輸出格式防呆：將條列符號統一轉為 1. 2. 3. 並保留項次間空行。
+ */
+function enforceManualNumberedList(text) {
+  let raw = String(text || "").trim();
+  if (!raw) return "";
+
+  let sourceTail = "";
+  const sourceMatch = raw.match(
+    /(?:\n\s*)?[\[（\(]來源[：:][^\]）\)]*[\]）\)]\s*$/i,
+  );
+  if (sourceMatch && sourceMatch.index >= 0) {
+    sourceTail = sourceMatch[0].trim();
+    raw = raw.slice(0, sourceMatch.index).trim();
+  }
+
+  const lines = raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line);
+  const output = [];
+  let seq = 1;
+  let touched = false;
+
+  lines.forEach((line) => {
+    const bulletMatch = line.match(/^[•●▪◦‧・\-]\s*(.+)$/);
+    if (bulletMatch) {
+      output.push(`${seq}. ${bulletMatch[1].trim()}`);
+      output.push("");
+      seq++;
+      touched = true;
+      return;
+    }
+
+    const numberedMatch = line.match(/^\d+[\.、\)]\s*(.+)$/);
+    if (numberedMatch) {
+      output.push(`${seq}. ${numberedMatch[1].trim()}`);
+      output.push("");
+      seq++;
+      touched = true;
+      return;
+    }
+
+    output.push(line);
+  });
+
+  while (output.length > 0 && output[output.length - 1] === "") {
+    output.pop();
+  }
+
+  let body = output.join("\n").trim();
+  if (touched) {
+    body = formatListSpacing(body);
+  }
+
+  if (!sourceTail) return body;
+  return `${body}\n\n${sourceTail}`.trim();
 }
 
 /**
@@ -5552,16 +5620,18 @@ function handleMessage(event) {
       );
 
       if (response) {
-        let finalText = formatForLineMobile(response);
+        let finalText = stripAnySourceTags(formatForLineMobile(response));
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+        finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+        finalText = sanitizeManualDeflection(finalText);
+        finalText = enforceManualNumberedList(finalText);
 
         // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
           finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
-        finalText = sanitizeManualDeflection(finalText);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -5717,16 +5787,18 @@ function handleMessage(event) {
       );
 
       if (response) {
-        let finalText = formatForLineMobile(response);
+        let finalText = stripAnySourceTags(formatForLineMobile(response));
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+        finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+        finalText = sanitizeManualDeflection(finalText);
+        finalText = enforceManualNumberedList(finalText);
 
         // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
           finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
-        finalText = sanitizeManualDeflection(finalText);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -6209,7 +6281,7 @@ function handleMessage(event) {
         // 🔥 v29.5.107: 完整記錄 AI 原始回應
         writeLog(`[AI Raw Response] ${rawResponse}`);
 
-        let finalText = formatForLineMobile(rawResponse);
+        let finalText = stripAnySourceTags(formatForLineMobile(rawResponse));
         let replyText = finalText;
 
         // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
@@ -6229,6 +6301,7 @@ function handleMessage(event) {
           /找不到相關的\s*PDF\s*手冊檔案|看起來像需要查手冊|找不到相關的\s*PDF/i.test(
             rawResponse,
           );
+        let forcedManualVerificationTrigger = false;
         if (
           !hasAutoPdf &&
           !hasAutoWeb &&
@@ -6260,6 +6333,7 @@ function handleMessage(event) {
             `[Auto Search v29.5.158] SmartThings/Matter 題需手冊查證，強制追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+          forcedManualVerificationTrigger = true;
         }
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
@@ -6375,6 +6449,20 @@ function handleMessage(event) {
 
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
+
+        // v29.5.161: SmartThings/Matter 高風險題，避免先回答再跳型號選單，直接鎖定首個型號進手冊流程。
+        if (forcedManualVerificationTrigger && suggestedModels.length > 1) {
+          const lockedModel = suggestedModels[0];
+          suggestedModels = [lockedModel];
+          cache.put(
+            `${userId}:direct_search_models`,
+            JSON.stringify([lockedModel]),
+            300,
+          );
+          writeLog(
+            `[Smart Router v29.5.161] SmartThings/Matter 題強制手冊查證，鎖定首個型號: ${lockedModel}`,
+          );
+        }
 
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
         let autoLocked = false;
@@ -6598,8 +6686,11 @@ function handleMessage(event) {
               // Line Reply Token 只能用一次。必須組合成 Array。
 
               const messages = [];
-              if (finalText && finalText.length > 0) {
-                messages.push({ type: "text", text: finalText });
+              const leadText = forcedManualVerificationTrigger
+                ? "這題屬於SmartThings/Matter手冊查證題，請先選擇完整型號，我會直接用對應官方手冊回答。"
+                : finalText;
+              if (leadText && leadText.length > 0) {
+                messages.push({ type: "text", text: leadText });
               }
               messages.push(flexMsg);
 
@@ -6697,6 +6788,7 @@ function handleMessage(event) {
               cleanSearchResponse + "\n\n(🔍 網路搜尋補充資料)";
 
             let pass1Bubble = formatForLineMobile(rawResponse)
+              .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
               .replace(/\[AUTO_SEARCH_WEB\]/g, "")
               .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
               .replace(/\[NEED_DOC\]/gi, "")
@@ -6960,7 +7052,7 @@ function handleMessage(event) {
                 );
 
                 if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                  finalText = formatForLineMobile(deepResponse);
+                  finalText = stripAnySourceTags(formatForLineMobile(deepResponse));
                   finalText = finalText
                     .replace(/\[AUTO_SEARCH_PDF\]/g, "")
                     .trim();
@@ -6969,6 +7061,12 @@ function handleMessage(event) {
                   finalText = finalText
                     .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                     .trim();
+                  finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+                  finalText = sanitizeManualDeflection(finalText);
+                  finalText = enforceManualNumberedList(finalText);
+                  if (filesToAttach.length > 0) {
+                    finalText = appendPdfSourceTag(finalText, filesToAttach, 1);
+                  }
 
                   // v29.4.33: 設置 PDF 已查詢標記
                   cache.put(`${userId}:pdf_consulted`, "true", 600);
@@ -7119,7 +7217,7 @@ function handleMessage(event) {
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                    finalText = formatForLineMobile(deepResponse);
+                    finalText = stripAnySourceTags(formatForLineMobile(deepResponse));
                     finalText = finalText
                       .replace(/\[AUTO_SEARCH_PDF\]/g, "")
                       .trim();
@@ -7128,6 +7226,14 @@ function handleMessage(event) {
                     finalText = finalText
                       .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                       .trim();
+                    finalText = finalText
+                      .replace(/\[型號[:：][^\]]+\]/g, "")
+                      .trim();
+                    finalText = sanitizeManualDeflection(finalText);
+                    finalText = enforceManualNumberedList(finalText);
+                    if (matchedPdf && matchedPdf.file) {
+                      finalText = appendPdfSourceTag(finalText, [matchedPdf.file], 1);
+                    }
 
                     // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
                     cache.put(`${userId}:pdf_consulted`, "true", 600); // 10 分鐘有效
@@ -7316,7 +7422,7 @@ function handleMessage(event) {
                   );
 
                   if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                    finalText = formatForLineMobile(deepResponse);
+                    finalText = stripAnySourceTags(formatForLineMobile(deepResponse));
                     finalText = finalText
                       .replace(/```tool_code/g, "")
                       .replace(/tool_code/g, "")
@@ -7324,6 +7430,9 @@ function handleMessage(event) {
                       .replace(/\[AUTO_SEARCH_PDF\]/g, "")
                       .trim();
                     finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
+                    finalText = finalText
+                      .replace(/\[型號[:：][^\]]+\]/g, "")
+                      .trim();
 
                     if (finalText.startsWith("根據我的資料庫")) {
                       finalText = finalText.replace(
@@ -7331,12 +7440,13 @@ function handleMessage(event) {
                         "根據產品手冊",
                       );
                     }
+                    finalText = sanitizeManualDeflection(finalText);
+                    finalText = enforceManualNumberedList(finalText);
 
                     // v29.5.158: 來源標註改為真實 PDF 檔名
                     if (relevantFiles.length > 0) {
                       finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
                     }
-                    finalText = sanitizeManualDeflection(finalText);
 
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
@@ -8040,6 +8150,7 @@ function handleCommand(c, u, cid) {
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
         result = sanitizeManualDeflection(result);
+        result = enforceManualNumberedList(result);
         result += "\n\n(📖 已查閱產品手冊)";
       }
 
