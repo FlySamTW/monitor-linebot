@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.157"; // 2026-03-11 價格回答防呆：禁止直接報價，固定導三星官網查價頁
-const BUILD_TIMESTAMP = "2026-03-11 12:05";
+const GAS_VERSION = "v29.5.161"; // 2026-03-17 修復別稱記憶條件，避免非別稱追問誤沿用舊型號
+const BUILD_TIMESTAMP = "2026-03-17 17:25";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1962,6 +1962,49 @@ function getPdfProductName(pdfFileName) {
   }
 }
 
+/**
+ * 以「實際掛載的 PDF 檔名」產生來源標籤，避免顯示不存在的手冊名稱。
+ */
+function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
+  try {
+    const safeMax = Math.max(1, Number(maxCount) || 1);
+    const names = (files || [])
+      .filter((f) => f && f.mimeType === "application/pdf" && f.name)
+      .map((f) => String(f.name).trim())
+      .filter((n) => n);
+    const uniqueNames = [...new Set(names)];
+    return uniqueNames.slice(0, safeMax).join("、");
+  } catch (e) {
+    return "";
+  }
+}
+
+/**
+ * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
+ */
+function appendPdfSourceTag(text, files, maxCount = 1) {
+  let cleaned = String(text || "")
+    .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+    .trim();
+  const label = buildPdfSourceLabelFromFiles(files, maxCount);
+  if (!label) return cleaned;
+  return `${cleaned}\n\n[來源: ${label} (官方手冊PDF)]`;
+}
+
+/**
+ * 已查閱手冊時，避免回覆仍要求用戶「自行去查手冊/官網」造成矛盾。
+ */
+function sanitizeManualDeflection(text) {
+  const lines = String(text || "").split(/\n+/);
+  const filtered = lines.filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    const hasDocTarget = /(手冊|官網|產品頁|規格頁|SAMSUNG\s*官網)/i.test(t);
+    const hasDeflectVerb = /(參考|查詢|查閱|自行|前往|到官網|建議)/i.test(t);
+    return !(hasDocTarget && hasDeflectVerb);
+  });
+  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 // 輔助：字串分塊 (避免 Cache 單一 Key 超過 100KB)
 function chunkString(str, size) {
   const numChunks = Math.ceil(str.length / size);
@@ -3365,7 +3408,7 @@ function getRelevantKBFiles(
   // 新設計：從 Sheet 對話歷史中自動提取型號，不依賴短期 Cache
 
   // v24.3.1: 只有在有 userId 時才嘗試提取上下文（避免 userId is not defined）
-  if (userId) {
+  if (userId && !forceCurrentOnly) {
     // 嘗試從 Sheet 對話歷史中提取型號（用於跨時間邊界的延續提問）
     const contextFromHistory = extractContextFromHistory(userId, contextId);
     if (
@@ -3404,6 +3447,8 @@ function getRelevantKBFiles(
     } catch (e) {
       // 靜默失敗，繼續執行
     }
+  } else if (userId && forceCurrentOnly) {
+    writeLog(`[KB Select] forceCurrentOnly=true，跳過歷史/Cache 型號注入`);
   }
 
   // v24.0.0: 型號正則 - 只匹配「真正的型號」，不匹配術語
@@ -5512,21 +5557,11 @@ function handleMessage(event) {
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
 
-        // v29.5.120: 加入 PDF 來源標註
+        // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
-          finalText = finalText
-            .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
-            .trim();
-          const pdfNames = relevantFiles
-            .filter((f) => f.mimeType === "application/pdf")
-            .map((f) => f.name.replace(".pdf", ""));
-          if (pdfNames.length > 0) {
-            const productName = getPdfProductName(pdfNames[0]);
-            if (productName) {
-              finalText += `\n\n[來源: ${productName} 使用手冊]`;
-            }
-          }
+          finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
+        finalText = sanitizeManualDeflection(finalText);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -5652,11 +5687,11 @@ function handleMessage(event) {
       );
       const searchMsg = { role: "user", content: lastQuestion };
       const kbResult = getRelevantKBFiles(
-        [...history, searchMsg],
+        [searchMsg],
         kbList,
         userId,
         contextId,
-        false,
+        true,
       );
       const relevantFiles = Array.isArray(kbResult)
         ? kbResult
@@ -5671,7 +5706,7 @@ function handleMessage(event) {
       const userMsgObj = { role: "user", content: lastQuestion };
       const response = callLLMWithRetry(
         lastQuestion,
-        [...history, userMsgObj],
+        [userMsgObj],
         relevantFiles, // ← 實際掛載 PDF
         true, // attachPDFs
         null,
@@ -5687,21 +5722,11 @@ function handleMessage(event) {
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
 
-        // v29.5.120: 加入 PDF 來源標註
+        // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
-          finalText = finalText
-            .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
-            .trim();
-          const pdfNames = relevantFiles
-            .filter((f) => f.mimeType === "application/pdf")
-            .map((f) => f.name.replace(".pdf", ""));
-          if (pdfNames.length > 0) {
-            const productName = getPdfProductName(pdfNames[0]);
-            if (productName) {
-              finalText += `\n\n[來源: ${productName} 使用手冊]`;
-            }
-          }
+          finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
+        finalText = sanitizeManualDeflection(finalText);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -6209,11 +6234,30 @@ function handleMessage(event) {
           !hasAutoWeb &&
           !hasNeedDoc &&
           hasPdfForModel &&
-          hitAliasKeys.length > 0 &&
+
           looksLikeMissingManualReply
         ) {
           writeLog(
             `[Auto Search v29.5.132] 偵測到可查手冊但 Fast Mode 誤判，強制追加 [AUTO_SEARCH_PDF]`,
+          );
+          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+        }
+
+        // v29.5.158: 針對 SmartThings/Matter 中樞題，若有手冊則優先強制進 PDF 查證
+        const needsManualVerification =
+          /(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(msg || "") ||
+          /(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(userMessage || "");
+        if (
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          hasPdfForModel &&
+
+          needsManualVerification &&
+          !isInPdfMode
+        ) {
+          writeLog(
+            `[Auto Search v29.5.158] SmartThings/Matter 題需手冊查證，強制追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }
@@ -7288,16 +7332,12 @@ function handleMessage(event) {
                       );
                     }
 
-                    // v27.9.80: 移除 LLM 可能自行加入的重複來源標籤
-                    // 清除 [來源:...] 和 (來源:...) 兩種格式
-                    finalText = finalText
-                      .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
-                      .trim();
-
-                    // v27.9.73: 加入 PDF 來源型號標註（只保留一個）
-                    if (productNames.length > 0) {
-                      finalText += `\n\n[來源: ${productNames[0]} 使用手冊]`;
+                    // v29.5.158: 來源標註改為真實 PDF 檔名
+                    if (relevantFiles.length > 0) {
+                      finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
                     }
+                    finalText = sanitizeManualDeflection(finalText);
+
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
                   }
@@ -7993,12 +8033,13 @@ function handleCommand(c, u, cid) {
       if (!triggerPDF) {
         // 網路搜尋模式
         if (lastSearchSources && lastSearchSources.length > 0) {
-          result += `\n\n(🔍 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+          result += `\n\n(📊 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
         } else {
-          result += "\n\n(🔍 網路搜尋補充資料)";
+          result += "\n\n(🌐 網路搜尋補充資料)";
         }
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
+        result = sanitizeManualDeflection(result);
         result += "\n\n(📖 已查閱產品手冊)";
       }
 
@@ -11006,3 +11047,6 @@ function checkPdfCost(userMsg) {
 
   return { isHighCost: false, reason: "General Conversation" };
 }
+
+
+

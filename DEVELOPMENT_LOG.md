@@ -1,4 +1,4 @@
-﻿# 開發對話紀錄
+# 開發對話紀錄
 
 ## 2026-01-19
 
@@ -262,3 +262,58 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - **下一步 (Next Steps)**:
     - [ ] 觀察實際 LINE 對話中的價格題是否維持不報價
     - [ ] 若要進一步收斂，追加「促銷/活動」題型的統一話術與驗證用例
+## 2026-03-17 (v29.5.160 手冊流程一致性修復 + Prompt 強化)
+
+### 背景
+- 用戶回報 M7/M8/SmartThings/Matter 對話出現前後矛盾，且 #查手冊 來源標註出現不存在的手冊名稱（如「Smart Monitor M7 使用手冊」）。
+- 用戶要求：回答規範優先寫在 Prompt（可回貼 GAS 儲存格），程式僅保留必要防呆。
+
+### 修復內容
+- **linebot.gs**
+  - 版本更新為 `v29.5.160`。
+  - `#查手冊` 路徑改為 `getRelevantKBFiles([searchMsg], ..., forceCurrentOnly=true)`，避免混入歷史型號污染。
+  - `#查手冊` 呼叫 LLM 時改為只帶當前問題 `[userMsgObj]`，降低 M7/M8 串題污染機率。
+  - 新增來源標註工具：
+    - `buildPdfSourceLabelFromFiles()`
+    - `appendPdfSourceTag()`
+    - 來源改用「實際掛載 PDF 檔名」，避免虛構手冊名稱。
+  - SmartThings/Matter/Hub/中樞/橋接 題型新增手冊查證防呆：若具手冊條件成立，追加 `[AUTO_SEARCH_PDF]`。
+  - 新增 `sanitizeManualDeflection()`，手冊模式下移除「叫使用者自己查手冊/官網」甩鍋語句。
+  - `getRelevantKBFiles()`：`forceCurrentOnly=true` 時跳過歷史/Cache 型號注入。
+
+- **Prompt.csv**
+  - Prompt 版本更新為 `v29.5.160`。
+  - 新增「手冊回答硬規則」：
+    - 手冊模式禁止甩鍋（自行查手冊/官網/客服）。
+    - 手冊無直接證據時要明示「手冊未記載」並輸出 `[AUTO_SEARCH_WEB]`。
+    - SmartThings/Matter/Hub 題優先手冊查證。
+    - 來源名稱必須使用系統實際掛載手冊檔名，不可自創名稱。
+
+### TestUI 驗證
+- `test_runner/verify_manual_continuity.js`：PASS（部署後 v29.5.160）
+- `test_runner/verify_m7_m8_matter.js`：PASS（部署後 v29.5.160）
+  - 驗證點：
+    - 命中 `forceCurrentOnly` 防污染
+    - 回覆含真實 PDF 來源標註
+    - 不再出現 `Smart Monitor M7 使用手冊` 類型虛構來源
+    - 手冊模式不再甩鍋「自行查手冊/官網」
+
+### 部署紀錄
+- `clasp push -f`：成功
+- `clasp version "v29.5.160 fix: manual deflection filter + smartthings guard"`：成功（Version 845）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @846）
+
+## 2026-03-17 (v29.5.161 追問型號記憶條件修復)
+
+### 修復內容
+- linebot.gs
+  - 版本更新為 v29.5.161。
+  - 修正 isModelMismatch 的別稱條件：僅在 hitAliasKeys.length > 0 時才保留既有型號記憶，避免一般追問誤沿用舊型號。
+- Prompt.csv
+  - Prompt 版本更新為 v29.5.161。
+  - 新增 SmartThings Hub 判定規則：手冊僅提到 Smart Hub 服務合約/SmartThings 功能時，不得推論為內建 Hub；需回覆「手冊未明確記載」並輸出 [AUTO_SEARCH_WEB]。
+
+### 驗證
+- node test_runner/verify_m7_m8_matter.js：PASS
+- node test_runner/verify_manual_continuity.js：PASS
+- node test_runner/verify_price_no_number.js：PASS
