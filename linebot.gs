@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.163"; // 2026-03-17 清理手冊路徑 [型號:...] 暗號外洩
-const BUILD_TIMESTAMP = "2026-03-17 18:55";
+const GAS_VERSION = "v29.5.166"; // 2026-03-17 擴充官方網站/支援頁面甩鍋語句過濾
+const BUILD_TIMESTAMP = "2026-03-17 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2067,9 +2067,16 @@ function sanitizeManualDeflection(text) {
   const filtered = lines.filter((line) => {
     const t = line.trim();
     if (!t) return true;
-    const hasDocTarget = /(手冊|官網|產品頁|規格頁|SAMSUNG\s*官網)/i.test(t);
-    const hasDeflectVerb = /(參考|查詢|查閱|自行|前往|到官網|建議)/i.test(t);
-    return !(hasDocTarget && hasDeflectVerb);
+    const hasDocTarget =
+      /(手冊|官網|官方網站|產品頁|規格頁|支援頁面|SAMSUNG\s*官網|SAMSUNG\s*官方網站)/i.test(
+        t,
+      );
+    const hasSupportTarget = /(客服|客服專線|服務專線|聯絡\s*SAMSUNG|聯繫\s*SAMSUNG)/i.test(
+      t,
+    );
+    const hasDeflectVerb =
+      /(參考|查詢|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問)/i.test(t);
+    return !((hasDocTarget || hasSupportTarget) && hasDeflectVerb);
   });
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

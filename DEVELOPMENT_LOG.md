@@ -355,3 +355,23 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 部署紀錄
 - clasp version "v29.5.163 fix: remove model-tag leakage in manual replies"：成功（Version 852）
 - clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 852：成功（更新到 @852）
+
+## 2026-03-17 (v29.5.164 ~ v29.5.166 手冊甩鍋語句過濾強化)
+
+### 修復內容
+- linebot.gs
+  - 擴充 `sanitizeManualDeflection()`：
+    - 新增客服/專線/聯絡 Samsung 等甩鍋語句過濾。
+    - 新增官方網站/支援頁面等導流語句過濾。
+    - 擴充動詞詞彙（詢問/聯絡/聯繫/直接詢問/前往）以覆蓋更多變形句。
+
+### 驗證
+- node test_runner/verify_m7_exact_issue.js：PASS
+  - 首輪不再錯標 [來源:QA]。
+  - 不再跳型號選擇泡泡。
+  - 手冊回覆維持實際 PDF 檔名來源標註。
+
+### 部署紀錄
+- clasp version "v29.5.164 fix: filter manual deflection to support hotline wording"：成功（Version 854）
+- clasp version "v29.5.166 fix: manual deflection filter includes official-site/support-page wording"：成功（Version 859）
+- clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 859：成功（更新到 @859）
