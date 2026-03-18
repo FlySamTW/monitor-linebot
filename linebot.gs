@@ -14,7 +14,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
 const GAS_VERSION = "v29.5.175"; // 2026-03-18 短別稱改走型號泡泡+選型後依SOP走Fast/PDF
-const BUILD_TIMESTAMP = "2026-03-17 19:18";
+const BUILD_TIMESTAMP = "2026-03-18 12:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
