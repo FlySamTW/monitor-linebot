@@ -620,3 +620,20 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - `clasp version "v29.5.179 通用SOP操作題Fast不足自動進PDF"`：成功（Version 889）
 - `clasp version "v29.5.179b 操作題不足判斷誤觸發修正"`：成功（Version 891）
 - 正式 deployment 更新至 `@892`
+
+## 2026-03-18 (v29.5.180 Log 精簡：減列數但保留可追溯)
+
+### 目標
+- 針對單題回覆過多的路由噪音 Log（尤其 `DirectDeep` / `KB Select`）減列數。
+- 保留可追溯關鍵點（命中、選檔結果、最終回覆、AI 統計），不犧牲除錯能力。
+
+### 程式調整
+- 新增 Log 精簡設定快取：
+  - `LOG_FILTER_STATE`（5 分鐘快取 Script Property）
+  - Script Property：`LOG_COMPACT_ROUTING`（預設 `true`，可設 `false` 關閉）
+- 新增 `refreshLogFilterConfig_()` 與 `shouldSkipNoisyRoutingLog_()`：
+  - 保留：`[HandleMsg]`、`[AI Stats]`、`[AI Raw Response]`、`[Flow Decision]`、`[Final Reply]`、`[Reply]`、`[DirectDeep 命中]`、`[KB Select 最終命中]` 等關鍵節點
+  - 壓縮：`DirectDeep 型號中間提取/去重細節`、`KB Select 中間決策與排序細節` 等重複噪音
+
+### 備註
+- 這次只做「列數精簡」，沒有改動 QA/RULE/PDF/WEB 的主流程判定邏輯。

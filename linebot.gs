@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.179"; // 2026-03-18 通用SOP：操作/故障題 Fast不足自動進PDF
-const BUILD_TIMESTAMP = "2026-03-18 16:05";
+const GAS_VERSION = "v29.5.180"; // 2026-03-18 Log 精簡：壓縮 DirectDeep/KB Select 重複噪音
+const BUILD_TIMESTAMP = "2026-03-18 16:46";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -85,6 +85,11 @@ var IS_TEST_MODE = false;
 var TEST_LOGS = [];
 // v27.8.5: Log 緩衝區 (Batch Logging)
 var PENDING_LOGS = [];
+// v29.5.180: 路由噪音 Log 精簡（保留可追溯關鍵點）
+var LOG_FILTER_STATE = {
+  loadedAt: 0,
+  compactRouting: true,
+};
 // ════════════════════════════════════════════════════════════════
 
 function computeReplyAnchor_(text) {
@@ -9933,6 +9938,79 @@ function writeRule(k, d, u, desc) {
   }
 }
 
+function refreshLogFilterConfig_() {
+  try {
+    const now = Date.now();
+    if (now - LOG_FILTER_STATE.loadedAt < 300000) {
+      return;
+    }
+    const raw = PropertiesService.getScriptProperties().getProperty(
+      "LOG_COMPACT_ROUTING",
+    );
+    if (raw === null || raw === "") {
+      LOG_FILTER_STATE.compactRouting = true;
+    } else {
+      LOG_FILTER_STATE.compactRouting = String(raw).toLowerCase() !== "false";
+    }
+    LOG_FILTER_STATE.loadedAt = now;
+  } catch (e) {
+    // 讀設定失敗時維持預設精簡模式，避免回寫造成額外噪音
+    LOG_FILTER_STATE.compactRouting = true;
+  }
+}
+
+function shouldSkipNoisyRoutingLog_(type, content) {
+  if (type === "Error" || type === "UserRecord") {
+    return false;
+  }
+  if (!LOG_FILTER_STATE.compactRouting || !content) {
+    return false;
+  }
+
+  // 保留最終關鍵可追溯節點
+  const keepPatterns = [
+    /\[HandleMsg\]/,
+    /\[AI Stats\]/,
+    /\[AI Raw Response\]/,
+    /\[Final Reply\]/,
+    /\[Reply\]/,
+    /\[Flow Decision\]/,
+    /\[DirectDeep\] 命中 CLASS_RULES 直通車關鍵字/,
+    /\[DirectDeep v29\.5\.131\] 型號 .*有 PDF/,
+    /\[DirectDeep v29\.5\.131\] 所有型號均無 PDF/,
+    /\[KB Select\] 🎯 命中型號/,
+    /\[KB Select\] Tier0:/,
+    /\[KB Select\] 🚫 所有型號均無專屬 PDF/,
+    /\[KB Select\] ⚠️ 所有型號均無專屬 PDF/,
+  ];
+  if (keepPatterns.some((re) => re.test(content))) {
+    return false;
+  }
+
+  // 壓縮路由細節噪音（同資訊在最終關鍵節點已可追溯）
+  const noisyPatterns = [
+    /\[DirectDeep\] 從所有關鍵字提取型號/,
+    /\[DirectDeep v29\.5\.154\] 過濾內部代號/,
+    /\[DirectDeep v29\.5\.153\] 早期子字串去重/,
+    /\[DirectDeep\] ✅ 注入型號到 Cache/,
+    /\[KB Select\] 強制只用當前訊息匹配型號/,
+    /\[KB Select\] 從對話歷史提取型號/,
+    /\[KB Select\] 從 Cache 讀取直通車注入型號/,
+    /\[KB Select\] forceCurrentOnly=true，跳過歷史\/Cache 型號注入/,
+    /\[KB Select\] 當前訊息有型號，沿用已知型號/,
+    /\[KB Select\] 當前訊息無型號但 forceCurrentOnly=false，保留歷史型號/,
+    /\[KB Select\] 🔍 偵測到比較意圖，保留多型號/,
+    /\[KB Select\] 🔒 已鎖定直通車型號/,
+    /\[KB Select\] ⚡ Single Model Lock Detected/,
+    /\[KB Select\] 📊 Sorted Tier 1:/,
+    /\[KB Select\] 🔍 Comparison detected\. Allowing up to 2 PDFs/,
+    /\[KB Select\] ✂️ Enforcing Strict Limit:/,
+    /\[KB Select\] ⚡ Found Primary Model/,
+  ];
+
+  return noisyPatterns.some((re) => re.test(content));
+}
+
 function writeLog(a, b, c) {
   // 參數相容：
   // - 舊用法：writeLog("文字")
@@ -9947,6 +10025,11 @@ function writeLog(a, b, c) {
     content = c || "";
   } else {
     content = a || "";
+  }
+
+  refreshLogFilterConfig_();
+  if (shouldSkipNoisyRoutingLog_(type, content)) {
+    return;
   }
 
   var timestamp = Utilities.formatDate(
