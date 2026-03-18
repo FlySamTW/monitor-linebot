@@ -412,3 +412,38 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### CSV / GAS 同步提示
 - 本次沒有修改 `CLASS_RULES.csv`、`QA.csv`、`Prompt.csv` 的內容。
 - `Prompt` 雲端儲存格版本目前仍為 `v29.5.161`（與程式版號分離）。
+
+## 2026-03-18 (v29.5.173 S9/KVM 別稱誤答修復 + Fast Mode 來源補回)
+
+### 問題背景
+- 用戶提問：`s9有內建kvm嗎`
+- 系統在 Fast Mode 回覆「S9 支援 KVM」，且最終回覆沒有來源標註。
+- 用戶指出疑點：
+  - QA 無明確 S9=KVM 結論
+  - 規格表應無該結論
+  - 最終訊息缺來源標註
+
+### 根因
+- `S9` 是系列別稱，規格庫同時存在多個 S9 相關型號（含 `S49C950UAC` 條目帶 KVM），導致 LLM 用別型號資訊做肯定回答。
+- Fast Mode 會先 `stripAnySourceTags()`，但後續沒有補回來源標籤。
+- 既有別稱防呆未命中 `S9` 這種短別稱（`extractModelNumbers` 不抓單位數 S 系列別稱）。
+
+### 修復內容
+- `linebot.gs` 升級 `v29.5.173`。
+- 新增 Fast Mode 來源標籤標準化與補回：
+  - `normalizeSourceTagFromRaw()`
+  - `appendSourceTagIfMissing()`
+- 新增短別稱功能題防誤答：
+  - `applyAliasFeatureAmbiguityGuard(...)`
+  - 對 `S9/G8/M7` 這類短別稱 + 功能二元題（如 KVM/G-Sync/HDR/耳機孔）若回覆為肯定，改為要求完整型號後再答。
+  - 防呆改為吃 Smart Router 已解析的型號快取，確保 `S9` 也能命中。
+
+### 驗證
+- TestUI 實測（userId: `TEST_S9_KVM_002`）：
+  - 原始 AI 回覆仍可能先產生「S9 有 KVM」
+  - 最終回覆已被防呆改寫為「請提供完整型號」
+  - 並附上來源標籤 `[來源:規格庫]`
+
+### 部署紀錄
+- `clasp version "v29.5.173 fix short alias guard for feature queries"`：成功（Version 878）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @879）

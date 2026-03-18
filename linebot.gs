@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.171"; // 2026-03-18 SmartThings 修正 + 雲端 PDF 查證輸出序列化
+const GAS_VERSION = "v29.5.173"; // 2026-03-18 修正 S9 這類短別稱功能題防誤答觸發條件
 const BUILD_TIMESTAMP = "2026-03-17 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2034,6 +2034,80 @@ function stripAnySourceTags(text) {
   return String(text || "")
     .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
     .trim();
+}
+
+/**
+ * 將 LLM 原始來源標籤正規化為系統允許格式（Fast Mode 用）。
+ */
+function normalizeSourceTagFromRaw(rawText) {
+  const raw = String(rawText || "");
+  const m = raw.match(/[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/i);
+  if (!m || !m[1]) return "";
+  const src = m[1].trim();
+  if (/QA/i.test(src)) return "[來源:QA]";
+  if (/規格|產品規格|規格表/i.test(src)) return "[來源:規格庫]";
+  if (/網路|Web/i.test(src)) return "[來源:網路搜尋]";
+  return "";
+}
+
+function appendSourceTagIfMissing(text, sourceTag) {
+  const body = String(text || "").trim();
+  const tag = String(sourceTag || "").trim();
+  if (!tag) return body;
+  if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) return body;
+  return `${body}\n\n${tag}`;
+}
+
+function isShortAliasModelToken(model) {
+  const m = String(model || "").trim().toUpperCase();
+  if (!m) return false;
+  // 例如 S9 / G8 / M7 這類系列別稱
+  return /^[SGM]\d{1,2}[A-Z]?$/.test(m);
+}
+
+function isFeatureBinaryQuestion(text) {
+  const q = String(text || "");
+  const hasBinaryTone = /(有沒有|是否|嗎|有|支援|內建|可以|可不可以|能不能)/i.test(
+    q,
+  );
+  const hasFeatureKeyword =
+    /(KVM|G-?SYNC|FREESYNC|HDR|更新率|刷新率|反應時間|耳機孔|喇叭|面板|智慧功能|SMART|PBP|PIP|TYPE-?C|USB-C)/i.test(
+      q,
+    );
+  return hasBinaryTone && hasFeatureKeyword;
+}
+
+/**
+ * 防止「短別稱 + 功能二選一題」被誤答為肯定規格。
+ * 例如：S9有KVM嗎（未給完整型號）。
+ */
+function applyAliasFeatureAmbiguityGuard(
+  question,
+  answerText,
+  sourceTag,
+  candidateModels,
+) {
+  const q = String(question || "");
+  const a = String(answerText || "");
+  const models = Array.isArray(candidateModels) && candidateModels.length > 0
+    ? candidateModels.map((m) => String(m || "").trim().toUpperCase())
+    : extractModelNumbers(q);
+  if (!models || models.length !== 1) return a;
+  const model = String(models[0] || "").trim().toUpperCase();
+  if (!isShortAliasModelToken(model)) return a;
+  if (!isFeatureBinaryQuestion(q)) return a;
+
+  const saysPositive =
+    /(有|支援|內建|可以|可透過|能夠|具備|是支援)/i.test(a) &&
+    !/(未記載|不確定|不支援|沒有|無法確認|未明確)/i.test(a);
+  if (!saysPositive) return a;
+
+  const safe = [
+    `你問的「${model}」是系列別稱，功能可能會因完整型號而不同。`,
+    "",
+    "請給我完整型號（例如 S27... / S32... / LS...），我再幫你精準確認這個功能。",
+  ].join("\n");
+  return appendSourceTagIfMissing(safe, sourceTag);
 }
 
 /**
@@ -6392,6 +6466,7 @@ function handleMessage(event) {
         writeLog(`[AI Raw Response] ${rawResponse}`);
 
         let finalText = stripAnySourceTags(formatForLineMobile(rawResponse));
+        const fastSourceTag = normalizeSourceTagFromRaw(rawResponse);
         let replyText = finalText;
 
         // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
@@ -7893,6 +7968,23 @@ function handleMessage(event) {
           replyText = replyText.map((item) => enforceNiTone(item));
         } else {
           replyText = enforceNiTone(replyText);
+        }
+
+        // Fast Mode 來源保留：若原始回覆有可信來源標籤，清理後補回標準標籤。
+        if (!Array.isArray(replyText)) {
+          const stayedInFastMode =
+            !aiRequestedPdfSearch && !shouldAttachPdfs && !hasExplicitTrigger;
+          if (stayedInFastMode) {
+            replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
+            const aliasGuardModels =
+              suggestedModels.length > 0 ? suggestedModels : cachedDirectModels;
+            replyText = applyAliasFeatureAmbiguityGuard(
+              msg,
+              replyText,
+              fastSourceTag,
+              aliasGuardModels,
+            );
+          }
         }
 
         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
