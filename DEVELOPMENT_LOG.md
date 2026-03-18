@@ -507,3 +507,25 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - `clasp version`：失敗（專案版本數已達 200 上限）。
 - `clasp deploy -i ...`：無法更新既有正式 deployment（回覆 `Read-only deployments may not be modified.`）。
 - 可建立新 deployment 指向舊版本（例如 `@880`），但無法產生新版本承載 `v29.5.175`。
+
+## 2026-03-18 (v29.5.176 #型號後短別稱回圈修復)
+
+### 問題背景
+- `v29.5.175` 上線後，`s9有內建kvm嗎` 可觸發型號泡泡，但在選擇 `#型號:S27C900PAC` 後，仍可能被短別稱防呆再次攔截，出現「再請選型號」回圈。
+
+### 修復內容
+- `linebot.gs` 升級為 `v29.5.176`。
+- 在 `#型號:` 的 `fast` 分流新增兩個防呆：
+  1. 選型後重寫查詢字串時，移除原問題中的短別稱（如 `S9`），避免再次命中別稱防呆。
+  2. 新增一次性旗標 `skipAliasFeatureGuard`，當輪 Fast Mode 跳過 `applyAliasFeatureAmbiguityGuard()`。
+
+### 驗證
+- TestUI `/重啟` 顯示版本：`v29.5.176`。
+- 測試路徑：
+  - 問 `s9有內建kvm嗎`：Router Log 顯示觸發型號泡泡候選 `S49C950UAC, S27C900PAC`（無 `LS...`）。
+  - 選 `#型號:S27C900PAC`：最終回覆直接給 KVM 結論，且 `AttachPDFs:false`（符合 `fast` 分流）。
+- 註：TestUI 內因 replyToken 為模擬值，Flex 發送 Log 會出現 `Invalid reply token`；此為測試環境限制，LINE 正式 webhook 會有有效 token。
+
+### 部署紀錄
+- `clasp version "v29.5.176 修復#型號後短別稱防呆回圈"`：成功（Version 883）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @884）

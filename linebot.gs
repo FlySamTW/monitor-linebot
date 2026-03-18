@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.175"; // 2026-03-18 短別稱改走型號泡泡+選型後依SOP走Fast/PDF
-const BUILD_TIMESTAMP = "2026-03-18 12:45";
+const GAS_VERSION = "v29.5.176"; // 2026-03-18 #型號後避免短別稱防呆回圈
+const BUILD_TIMESTAMP = "2026-03-18 13:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5748,6 +5748,8 @@ function handleMessage(event) {
       );
       return;
     }
+    let skipAliasFeatureGuard = false;
+
     // C. 深度搜尋確認 (已廢棄)
     // v24.1.23: 移除手動確認邏輯，全面改為自動觸發
     /*
@@ -5815,11 +5817,25 @@ function handleMessage(event) {
           }
         }
 
-        const queryText = savedTopic
-          ? `${savedTopic} (型號: ${selectedModel})`
+        let normalizedTopic = String(savedTopic || "");
+        const shortAliasesInTopic = (
+          normalizedTopic.match(/\b[SGM]\d{1,2}[A-Z]?\b/gi) || []
+        ).filter((t) => isShortAliasModelToken(t));
+        shortAliasesInTopic.forEach((tok) => {
+          const re = new RegExp(`\\b${tok}\\b`, "gi");
+          normalizedTopic = normalizedTopic.replace(re, "");
+        });
+        normalizedTopic = normalizedTopic
+          .replace(/\s{2,}/g, " ")
+          .replace(/^[,，。；;、\s]+|[,，。；;、\s]+$/g, "")
+          .trim();
+
+        const queryText = normalizedTopic
+          ? `${normalizedTopic} (型號: ${selectedModel})`
           : selectedModel;
         msg = queryText;
         userMessage = queryText;
+        skipAliasFeatureGuard = true;
 
         cache.remove(`${userId}:pending_topic`);
         cache.remove(modelSelectModeKey);
@@ -8142,14 +8158,18 @@ function handleMessage(event) {
             !aiRequestedPdfSearch && !shouldAttachPdfs && !hasExplicitTrigger;
           if (stayedInFastMode) {
             replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
-            const aliasGuardModels =
-              suggestedModels.length > 0 ? suggestedModels : cachedDirectModels;
-            replyText = applyAliasFeatureAmbiguityGuard(
-              msg,
-              replyText,
-              fastSourceTag,
-              aliasGuardModels,
-            );
+            if (!skipAliasFeatureGuard) {
+              const aliasGuardModels =
+                suggestedModels.length > 0
+                  ? suggestedModels
+                  : cachedDirectModels;
+              replyText = applyAliasFeatureAmbiguityGuard(
+                msg,
+                replyText,
+                fastSourceTag,
+                aliasGuardModels,
+              );
+            }
           }
         }
 
