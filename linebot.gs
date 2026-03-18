@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.177"; // 2026-03-18 移除SmartThings同回合強制二次查詢，避免覆蓋與雙成本
-const BUILD_TIMESTAMP = "2026-03-18 15:20";
+const GAS_VERSION = "v29.5.178"; // 2026-03-18 移除個案硬編碼，回歸通用SOP與Prompt控制
+const BUILD_TIMESTAMP = "2026-03-18 15:40";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1368,7 +1368,6 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
         finalText = sanitizeManualDeflection(finalText);
         finalText = enforceManualNumberedList(finalText);
-        finalText = postProcessSmartthingsMatterManualAnswer(finalText, msg);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -1515,10 +1514,6 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
           finalText = sanitizeManualDeflection(finalText);
           finalText = enforceManualNumberedList(finalText);
-          finalText = postProcessSmartthingsMatterManualAnswer(
-            finalText,
-            pending.originalQuery,
-          );
 
           // v27.0.0: 修復費用顯示邏輯
           // 只在有有效回答和有 lastTokenUsage 時才顯示費用
@@ -1630,10 +1625,6 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
         finalText = sanitizeManualDeflection(finalText);
         finalText = enforceManualNumberedList(finalText);
-        finalText = postProcessSmartthingsMatterManualAnswer(
-          finalText,
-          pending.originalQuery,
-        );
 
         // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
         let replyText = finalText;
@@ -2280,47 +2271,6 @@ function enforceNiTone(text) {
     .replace(/您/g, "你");
 }
 
-/**
- * SmartThings/Matter 手冊題可讀性收斂：過長/破碎時壓縮為三點結論。
- */
-function postProcessSmartthingsMatterManualAnswer(text, question) {
-  const q = String(question || "");
-  if (!/(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(q)) {
-    return enforceNiTone(text);
-  }
-
-  const raw = String(text || "").trim();
-  const sourceMatch = raw.match(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]\s*$/i);
-  const sourceTag = sourceMatch ? sourceMatch[0].trim() : "";
-  let body = sourceMatch ? raw.slice(0, sourceMatch.index).trim() : raw;
-
-  body = stripAnySourceTags(body);
-  body = sanitizeManualDeflection(body);
-  body = enforceNiTone(body);
-
-  const numberedCount = (body.match(/\n\d+\./g) || []).length;
-  const tooNoisy =
-    body.length > 320 ||
-    numberedCount >= 6 ||
-    /建議你[:：]?\s*$/.test(body) ||
-    /這是最直接且準確/.test(body);
-  const unclear = /(並未明確|未明確|未提及|無法確認|沒有直接說明|未提供相關說明)/.test(
-    body,
-  );
-
-  if (tooNoisy || unclear) {
-    body = [
-      "根據目前手冊，先給你結論：",
-      "1. 手冊沒有明確寫出這台是否內建 SmartThings Hub，或是否一定要另外買 Hub 才能接 Matter。",
-      "",
-      "2. 手冊有提到 SmartThings 中心/集線器，以及「某些型號可能需要接收器（Zigbee/Thread）」，但沒有直接對這題下結論。",
-      "",
-      "3. 所以這題目前只能判定為「手冊未明確記載」。如果你要，我可以直接幫你做下一步官方規格頁查證。",
-    ].join("\n");
-  }
-
-  return sourceTag ? `${body}\n\n${sourceTag}` : body;
-}
 // 輔助：字串分塊 (避免 Cache 單一 Key 超過 100KB)
 function chunkString(str, size) {
   const numChunks = Math.ceil(str.length / size);
@@ -5946,10 +5896,6 @@ function handleMessage(event) {
           if (relevantFiles.length > 0) {
             finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
           }
-          finalText = postProcessSmartthingsMatterManualAnswer(
-            finalText,
-            queryText,
-          );
           if (relevantFiles.length > 0) {
             finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
           }
@@ -6122,10 +6068,6 @@ function handleMessage(event) {
         if (relevantFiles.length > 0) {
           finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
-        finalText = postProcessSmartthingsMatterManualAnswer(
-          finalText,
-          lastQuestion,
-        );
         if (relevantFiles.length > 0) {
           finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
         }
@@ -6632,7 +6574,6 @@ function handleMessage(event) {
           /找不到相關的\s*PDF\s*手冊檔案|看起來像需要查手冊|找不到相關的\s*PDF/i.test(
             rawResponse,
           );
-        let forcedManualVerificationTrigger = false;
         let forcedModelSelectionTrigger = false;
         if (
           !hasAutoPdf &&
@@ -6646,24 +6587,6 @@ function handleMessage(event) {
             `[Auto Search v29.5.132] 偵測到可查手冊但 Fast Mode 誤判，強制追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
-        }
-
-        // v29.5.158: 針對 SmartThings/Matter 中樞題，若有手冊則優先強制進 PDF 查證
-        const needsManualVerification =
-          /(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(msg || "") ||
-          /(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(userMessage || "");
-        if (
-          !hasAutoPdf &&
-          !hasAutoWeb &&
-          !hasNeedDoc &&
-          hasPdfForModel &&
-
-          needsManualVerification &&
-          !isInPdfMode
-        ) {
-          writeLog(
-            `[Auto Search v29.5.177] SmartThings/Matter 題保留 Fast 回答，不在同回合強制二次 PDF 查詢；可由 #查手冊 進手冊`,
-          );
         }
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
@@ -6799,20 +6722,6 @@ function handleMessage(event) {
               `[Smart Router v29.5.175] 短別稱功能題觸發型號泡泡: ${aliasToken} -> ${aliasCandidates.join(", ")}`,
             );
           }
-        }
-
-        // v29.5.161: SmartThings/Matter 高風險題，避免先回答再跳型號選單，直接鎖定首個型號進手冊流程。
-        if (forcedManualVerificationTrigger && suggestedModels.length > 1) {
-          const lockedModel = suggestedModels[0];
-          suggestedModels = [lockedModel];
-          cache.put(
-            `${userId}:direct_search_models`,
-            JSON.stringify([lockedModel]),
-            300,
-          );
-          writeLog(
-            `[Smart Router v29.5.161] SmartThings/Matter 題強制手冊查證，鎖定首個型號: ${lockedModel}`,
-          );
         }
 
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
@@ -7032,10 +6941,7 @@ function handleMessage(event) {
                 userMessage,
                 suggestedModels,
               );
-              const modelSelectMode =
-                hasExplicitTrigger || forcedManualVerificationTrigger
-                  ? "pdf"
-                  : "fast";
+              const modelSelectMode = hasExplicitTrigger ? "pdf" : "fast";
               cache.put(`${userId}:model_select_mode`, modelSelectMode, 600);
               writeLog(
                 `[Smart Router v29.5.175] 型號泡泡選擇模式: ${modelSelectMode}`,
@@ -7051,9 +6957,7 @@ function handleMessage(event) {
               // Line Reply Token 只能用一次。必須組合成 Array。
 
               const messages = [];
-              const leadText = forcedManualVerificationTrigger
-                ? "這題屬於SmartThings/Matter手冊查證題，請先選擇完整型號，我會直接用對應官方手冊回答。"
-                : finalText;
+              const leadText = finalText;
               if (leadText && leadText.length > 0) {
                 messages.push({ type: "text", text: leadText });
               }
@@ -7432,10 +7336,6 @@ function handleMessage(event) {
                   if (filesToAttach.length > 0) {
                     finalText = appendPdfSourceTag(finalText, filesToAttach, 1);
                   }
-                  finalText = postProcessSmartthingsMatterManualAnswer(
-                    finalText,
-                    userMessage,
-                  );
                   if (filesToAttach.length > 0) {
                     finalText = ensurePdfSourceTag(finalText, filesToAttach, 1);
                   }
@@ -7606,10 +7506,6 @@ function handleMessage(event) {
                     if (matchedPdf && matchedPdf.file) {
                       finalText = appendPdfSourceTag(finalText, [matchedPdf.file], 1);
                     }
-                    finalText = postProcessSmartthingsMatterManualAnswer(
-                      finalText,
-                      userMessage,
-                    );
                     if (matchedPdf && matchedPdf.file) {
                       finalText = ensurePdfSourceTag(finalText, [matchedPdf.file], 1);
                     }
@@ -7826,10 +7722,6 @@ function handleMessage(event) {
                     if (relevantFiles.length > 0) {
                       finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
                     }
-                    finalText = postProcessSmartthingsMatterManualAnswer(
-                      finalText,
-                      userMessage,
-                    );
                     if (relevantFiles.length > 0) {
                       finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
                     }
@@ -7935,10 +7827,6 @@ function handleMessage(event) {
                           if (rescueFiles.length > 0) {
                             finalText = appendPdfSourceTag(finalText, rescueFiles, 1);
                           }
-                          finalText = postProcessSmartthingsMatterManualAnswer(
-                            finalText,
-                            userMessage,
-                          );
                           if (rescueFiles.length > 0) {
                             finalText = ensurePdfSourceTag(finalText, rescueFiles, 1);
                           }
@@ -8590,7 +8478,6 @@ function handleCommand(c, u, cid) {
         } else {
           result += "\n\n(📖 已查閱產品手冊)";
         }
-        result = postProcessSmartthingsMatterManualAnswer(result, userMsg);
         if (filesToAttach.length > 0) {
           result = ensurePdfSourceTag(result, filesToAttach, 1);
         }
@@ -11713,6 +11600,7 @@ function checkPdfCost(userMsg) {
 
   return { isHighCost: false, reason: "General Conversation" };
 }
+
 
 
 

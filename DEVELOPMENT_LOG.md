@@ -563,3 +563,31 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 部署紀錄
 - `clasp version "v29.5.177 移除SmartThings同回合二次呼叫+主流程log去重"`：成功（Version 885）
 - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @886）
+
+## 2026-03-18 (v29.5.178 移除個案硬編碼，回歸 Prompt 驅動)
+
+### 調整原則
+- 不以單一案例在程式硬編碼規則，避免規則持續膨脹。
+- 路由策略交由 `Prompt.csv` 管控，程式只保留通用機制。
+
+### 程式碼修正
+- 移除 SmartThings/Matter 專屬流程判斷（含專屬 leadText / 鎖型號分支 / 專屬路由旗標）。
+- 移除 SmartThings 專屬後處理函式在主流程中的使用，回覆整形回到通用格式器。
+- 保留「單回合單次呼叫」通用行為（不在同回合程式層強制二次查詢）。
+
+### Prompt 修正（來源控制點）
+- `Prompt.csv` 版本文字更新為 `Prompt v29.5.178`。
+- 將「SmartThings Hub 判定規則」改為通用的「聯網中樞判定規則」描述。
+- 將「SmartThings/Matter/Hub 題」改為「涉及聯網協議/中樞能力題目」的通用規則。
+
+### 驗證
+- `/重啟` 版本：`v29.5.178`
+- 測試題（M7 + Matter + Hub）：
+  - `AI Stats` 僅 1 次
+  - `AttachPDFs: true` 不觸發
+  - 無 `Auto Deep` 二次流程
+  - 無 SmartThings 專屬程式分支 log
+
+### 部署紀錄
+- `clasp version "v29.5.178 移除個案硬編碼，改由Prompt規則控制"`：成功（Version 887）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @888）
