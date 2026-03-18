@@ -375,3 +375,40 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - clasp version "v29.5.164 fix: filter manual deflection to support hotline wording"：成功（Version 854）
 - clasp version "v29.5.166 fix: manual deflection filter includes official-site/support-page wording"：成功（Version 859）
 - clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 859：成功（更新到 @859）
+
+## 2026-03-18 (v29.5.171 SmartThings/Matter 回答收斂 + 雲端 PDF 查證)
+
+### 修復內容
+- `linebot.gs`
+  - 版本更新為 `v29.5.171`。
+  - SmartThings/Matter/Hub 題在手冊路徑加上統一後處理：
+    - 強制「你」語氣（避免「您」）
+    - 統一數字列表與空行
+    - 移除手冊模式甩鍋語句
+    - 回覆過長或破碎時收斂為三點結論
+  - 補上 `ensurePdfSourceTag()`，確保手冊回答最終一定帶真實 PDF 檔名來源。
+  - 在 Auto Deep / #查手冊 路徑補上 `pdf_consulted` 旗標，避免剛查完手冊又出現「再幫你查手冊」提示。
+  - 新增 `verifySmartThingsClaimFromCloudPdf()`：
+    - 直接從 Drive 雲端資料夾抓取 `S32FM702,S32FM703,S32FM803.pdf`
+    - 上傳至 Gemini File API 後做頁碼/原文片段查證
+    - 回傳可序列化查證結果（含 Drive fileId、最後更新時間、模型 JSON 結果）。
+
+### 驗證
+- `node test_runner/verify_m7_exact_issue.js`：PASS（部署後 v29.5.171）
+  - 首輪不再回 QA 假來源
+  - 不再先跳型號選擇泡泡
+  - `#查手冊` 回覆符合數字項次+空行，且來源為真實 PDF 檔名
+- TestUI 直接呼叫 `verifySmartThingsClaimFromCloudPdf()`：
+  - Drive 檔案：`S32FM702,S32FM703,S32FM803.pdf`
+  - Drive File ID：`19B6dTtgtcMQHZEy_J_C6sayNfS9w8QAG`
+  - 模型查證結果：找到對應句意，但證據頁碼為 `page 16`（非「91-93」）
+  - 證據片段：`此功能允許 Product 連接和控制在相同空間內偵測到的各種裝置。`
+
+### 部署紀錄
+- `clasp push -f`：成功
+- `clasp version "v29.5.171 SmartThings修正與雲端PDF查證輸出序列化"`：成功（Version 874）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @875）
+
+### CSV / GAS 同步提示
+- 本次沒有修改 `CLASS_RULES.csv`、`QA.csv`、`Prompt.csv` 的內容。
+- `Prompt` 雲端儲存格版本目前仍為 `v29.5.161`（與程式版號分離）。

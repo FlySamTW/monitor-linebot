@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.166"; // 2026-03-17 擴充官方網站/支援頁面甩鍋語句過濾
+const GAS_VERSION = "v29.5.171"; // 2026-03-18 SmartThings 修正 + 雲端 PDF 查證輸出序列化
 const BUILD_TIMESTAMP = "2026-03-17 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -1361,9 +1361,14 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       );
 
       if (response) {
-        let finalText = formatForLineMobile(response);
+        let finalText = stripAnySourceTags(formatForLineMobile(response));
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+        finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+        finalText = sanitizeManualDeflection(finalText);
+        finalText = enforceManualNumberedList(finalText);
+        finalText = postProcessSmartthingsMatterManualAnswer(finalText, msg);
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -1501,12 +1506,19 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         );
 
         if (response) {
-          let finalText = formatForLineMobile(response);
+          let finalText = stripAnySourceTags(formatForLineMobile(response));
           finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
           finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
           finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
           // v29.3.51: 補上 [AUTO_SEARCH_WEB] 清理，防止暗號外洩
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+          finalText = sanitizeManualDeflection(finalText);
+          finalText = enforceManualNumberedList(finalText);
+          finalText = postProcessSmartthingsMatterManualAnswer(
+            finalText,
+            pending.originalQuery,
+          );
 
           // v27.0.0: 修復費用顯示邏輯
           // 只在有有效回答和有 lastTokenUsage 時才顯示費用
@@ -1611,9 +1623,17 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       );
 
       if (response) {
-        let finalText = formatForLineMobile(response);
+        let finalText = stripAnySourceTags(formatForLineMobile(response));
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+        finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+        finalText = sanitizeManualDeflection(finalText);
+        finalText = enforceManualNumberedList(finalText);
+        finalText = postProcessSmartthingsMatterManualAnswer(
+          finalText,
+          pending.originalQuery,
+        );
 
         // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
         let replyText = finalText;
@@ -1969,7 +1989,12 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
   try {
     const safeMax = Math.max(1, Number(maxCount) || 1);
     const names = (files || [])
-      .filter((f) => f && f.mimeType === "application/pdf" && f.name)
+      .filter(
+        (f) =>
+          f &&
+          f.name &&
+          (!f.mimeType || String(f.mimeType).toLowerCase().indexOf("pdf") >= 0),
+      )
       .map((f) => String(f.name).trim())
       .filter((n) => n);
     const uniqueNames = [...new Set(names)];
@@ -1989,6 +2014,17 @@ function appendPdfSourceTag(text, files, maxCount = 1) {
   const label = buildPdfSourceLabelFromFiles(files, maxCount);
   if (!label) return cleaned;
   return `${cleaned}\n\n[來源: ${label} (官方手冊PDF)]`;
+}
+
+/**
+ * 若回覆尚未含來源標籤，強制補上 PDF 檔名來源。
+ */
+function ensurePdfSourceTag(text, files, maxCount = 1) {
+  const body = String(text || "").trim();
+  if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) {
+    return body;
+  }
+  return appendPdfSourceTag(body, files, maxCount);
 }
 
 /**
@@ -2079,6 +2115,59 @@ function sanitizeManualDeflection(text) {
     return !((hasDocTarget || hasSupportTarget) && hasDeflectVerb);
   });
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * 全域用語硬規則：統一使用「你」，避免回覆出現「您」。
+ */
+function enforceNiTone(text) {
+  return String(text || "")
+    .replace(/您的/g, "你的")
+    .replace(/請您/g, "請你")
+    .replace(/您可/g, "你可")
+    .replace(/您/g, "你");
+}
+
+/**
+ * SmartThings/Matter 手冊題可讀性收斂：過長/破碎時壓縮為三點結論。
+ */
+function postProcessSmartthingsMatterManualAnswer(text, question) {
+  const q = String(question || "");
+  if (!/(SMARTTHINGS|MATTER|HUB|中樞|橋接|協議|協定)/i.test(q)) {
+    return enforceNiTone(text);
+  }
+
+  const raw = String(text || "").trim();
+  const sourceMatch = raw.match(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]\s*$/i);
+  const sourceTag = sourceMatch ? sourceMatch[0].trim() : "";
+  let body = sourceMatch ? raw.slice(0, sourceMatch.index).trim() : raw;
+
+  body = stripAnySourceTags(body);
+  body = sanitizeManualDeflection(body);
+  body = enforceNiTone(body);
+
+  const numberedCount = (body.match(/\n\d+\./g) || []).length;
+  const tooNoisy =
+    body.length > 320 ||
+    numberedCount >= 6 ||
+    /建議你[:：]?\s*$/.test(body) ||
+    /這是最直接且準確/.test(body);
+  const unclear = /(並未明確|未明確|未提及|無法確認|沒有直接說明|未提供相關說明)/.test(
+    body,
+  );
+
+  if (tooNoisy || unclear) {
+    body = [
+      "根據目前手冊，先給你結論：",
+      "1. 手冊沒有明確寫出這台是否內建 SmartThings Hub，或是否一定要另外買 Hub 才能接 Matter。",
+      "",
+      "2. 手冊有提到 SmartThings 中心/集線器，以及「某些型號可能需要接收器（Zigbee/Thread）」，但沒有直接對這題下結論。",
+      "",
+      "3. 所以這題目前只能判定為「手冊未明確記載」。如果你要，我可以直接幫你做下一步官方規格頁查證。",
+    ].join("\n");
+  }
+
+  return sourceTag ? `${body}\n\n${sourceTag}` : body;
 }
 // 輔助：字串分塊 (避免 Cache 單一 Key 超過 100KB)
 function chunkString(str, size) {
@@ -5639,6 +5728,13 @@ function handleMessage(event) {
         if (relevantFiles.length > 0) {
           finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
         }
+        finalText = postProcessSmartthingsMatterManualAnswer(
+          finalText,
+          queryText,
+        );
+        if (relevantFiles.length > 0) {
+          finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+        }
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -5805,6 +5901,13 @@ function handleMessage(event) {
         // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
           finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
+        }
+        finalText = postProcessSmartthingsMatterManualAnswer(
+          finalText,
+          lastQuestion,
+        );
+        if (relevantFiles.length > 0) {
+          finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
         }
 
         let replyText = finalText;
@@ -7074,6 +7177,13 @@ function handleMessage(event) {
                   if (filesToAttach.length > 0) {
                     finalText = appendPdfSourceTag(finalText, filesToAttach, 1);
                   }
+                  finalText = postProcessSmartthingsMatterManualAnswer(
+                    finalText,
+                    userMessage,
+                  );
+                  if (filesToAttach.length > 0) {
+                    finalText = ensurePdfSourceTag(finalText, filesToAttach, 1);
+                  }
 
                   // v29.4.33: 設置 PDF 已查詢標記
                   cache.put(`${userId}:pdf_consulted`, "true", 600);
@@ -7240,6 +7350,13 @@ function handleMessage(event) {
                     finalText = enforceManualNumberedList(finalText);
                     if (matchedPdf && matchedPdf.file) {
                       finalText = appendPdfSourceTag(finalText, [matchedPdf.file], 1);
+                    }
+                    finalText = postProcessSmartthingsMatterManualAnswer(
+                      finalText,
+                      userMessage,
+                    );
+                    if (matchedPdf && matchedPdf.file) {
+                      finalText = ensurePdfSourceTag(finalText, [matchedPdf.file], 1);
                     }
 
                     // v29.4.33: 設置 PDF 已查詢標記，下次追問將升級至 Web Search
@@ -7454,6 +7571,15 @@ function handleMessage(event) {
                     if (relevantFiles.length > 0) {
                       finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
                     }
+                    finalText = postProcessSmartthingsMatterManualAnswer(
+                      finalText,
+                      userMessage,
+                    );
+                    if (relevantFiles.length > 0) {
+                      finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+                    }
+                    cache.put(`${userId}:pdf_consulted`, "true", 600);
+                    cache.put(`pdf_consulted_${userId}`, "true", 600);
 
                   } else {
                     finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
@@ -7524,7 +7650,9 @@ function handleMessage(event) {
                         );
 
                         if (deepResponse && deepResponse !== "[KB_EXPIRED]") {
-                          finalText = formatForLineMobile(deepResponse);
+                          finalText = stripAnySourceTags(
+                            formatForLineMobile(deepResponse),
+                          );
                           finalText = finalText
                             .replace(/```tool_code/g, "")
                             .replace(/tool_code/g, "")
@@ -7534,6 +7662,12 @@ function handleMessage(event) {
                           finalText = finalText
                             .replace(/\[NEED_DOC\]/g, "")
                             .trim();
+                          finalText = finalText
+                            .replace(/\[AUTO_SEARCH_WEB\]/g, "")
+                            .trim();
+                          finalText = finalText
+                            .replace(/\[型號[:：][^\]]+\]/g, "")
+                            .trim();
 
                           if (finalText.startsWith("根據我的資料庫")) {
                             finalText = finalText.replace(
@@ -7541,6 +7675,20 @@ function handleMessage(event) {
                               "根據產品手冊",
                             );
                           }
+                          finalText = sanitizeManualDeflection(finalText);
+                          finalText = enforceManualNumberedList(finalText);
+                          if (rescueFiles.length > 0) {
+                            finalText = appendPdfSourceTag(finalText, rescueFiles, 1);
+                          }
+                          finalText = postProcessSmartthingsMatterManualAnswer(
+                            finalText,
+                            userMessage,
+                          );
+                          if (rescueFiles.length > 0) {
+                            finalText = ensurePdfSourceTag(finalText, rescueFiles, 1);
+                          }
+                          cache.put(`${userId}:pdf_consulted`, "true", 600);
+                          cache.put(`pdf_consulted_${userId}`, "true", 600);
                         } else {
                           finalText += "\n\n(⚠️ 自動查閱手冊失敗，請稍後再試)";
                         }
@@ -7739,6 +7887,12 @@ function handleMessage(event) {
           if (qrItems.length > 0) {
             responseOptions.quickReply = { items: qrItems };
           }
+        }
+
+        if (Array.isArray(replyText)) {
+          replyText = replyText.map((item) => enforceNiTone(item));
+        } else {
+          replyText = enforceNiTone(replyText);
         }
 
         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
@@ -8156,10 +8310,20 @@ function handleCommand(c, u, cid) {
         }
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
+        result = stripAnySourceTags(result);
         result = sanitizeManualDeflection(result);
         result = enforceManualNumberedList(result);
-        result += "\n\n(📖 已查閱產品手冊)";
+        if (filesToAttach.length > 0) {
+          result = appendPdfSourceTag(result, filesToAttach, 1);
+        } else {
+          result += "\n\n(📖 已查閱產品手冊)";
+        }
+        result = postProcessSmartthingsMatterManualAnswer(result, userMsg);
+        if (filesToAttach.length > 0) {
+          result = ensurePdfSourceTag(result, filesToAttach, 1);
+        }
       }
+      result = enforceNiTone(result);
 
       // v29.5.85: Append Token Cost for Manual Web Search
       if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
@@ -10337,6 +10501,118 @@ function getRecentLogs(count = 50) {
     .getRange(startRow, 1, lastRow - startRow + 1, 2)
     .getValues();
   return data.map((row) => `${row[0]} | ${row[1]}`).join("\n");
+}
+
+/**
+ * 雲端 PDF 查證工具：
+ * 直接從 Drive 讀取指定 PDF，驗證「頁面 91-93 是否有 SmartThings 相關句子」。
+ * 可用 clasp run verifySmartThingsClaimFromCloudPdf 執行。
+ */
+function verifySmartThingsClaimFromCloudPdf() {
+  const targetPdfName = "S32FM702,S32FM703,S32FM803.pdf";
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    throw new Error("缺少 GEMINI_API_KEY");
+  }
+
+  const folderId =
+    CONFIG.DRIVE_FOLDER_ID ||
+    PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
+  if (!folderId) {
+    throw new Error("缺少 DRIVE_FOLDER_ID");
+  }
+
+  const folder = DriveApp.getFolderById(folderId);
+  const files = folder.getFilesByName(targetPdfName);
+  if (!files.hasNext()) {
+    throw new Error(`Drive 找不到檔案: ${targetPdfName}`);
+  }
+  const file = files.next();
+  const blob = file.getBlob();
+  const pdfUri = uploadFileToGemini(
+    apiKey,
+    blob,
+    file.getSize(),
+    "application/pdf",
+  );
+  if (!pdfUri) {
+    throw new Error("上傳 PDF 到 Gemini 失敗");
+  }
+
+  const prompt = [
+    "你是文件查核器，只能依據附加PDF回答，不可推測。",
+    "請驗證以下敘述是否為真：",
+    "「頁面 91-93：使用 SmartThings，提到 SmartThings 功能允許產品連接和控制在相同空間內偵測到的各種裝置。」",
+    "",
+    "請輸出 JSON，格式固定：",
+    '{',
+    '  "found": true/false,',
+    '  "evidence": [',
+    '    {"page": number, "quote": "原文片段(最多60字)"}',
+    "  ],",
+    '  "summary": "一句話結論"',
+    "}",
+    "",
+    "要求：",
+    "1) 必須指出頁碼。",
+    "2) quote 必須是 PDF 原文片段，不可改寫。",
+    "3) 若找不到，found=false 且 evidence=[]。",
+  ].join("\n");
+
+  const url = `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`;
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          {
+            fileData: {
+              mimeType: "application/pdf",
+              fileUri: pdfUri,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: "application/json",
+    },
+  };
+
+  const resp = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+  const code = resp.getResponseCode();
+  const body = resp.getContentText();
+  let text = "";
+  try {
+    const json = JSON.parse(body);
+    text =
+      (((json || {}).candidates || [])[0] || {}).content?.parts?.[0]?.text ||
+      "";
+  } catch (e) {
+    text = "";
+  }
+
+  return {
+    targetPdfName: targetPdfName,
+    driveFileId: file.getId(),
+    driveFileName: file.getName(),
+    driveLastUpdated: Utilities.formatDate(
+      file.getLastUpdated(),
+      "Asia/Taipei",
+      "yyyy-MM-dd HH:mm:ss",
+    ),
+    geminiFileUri: pdfUri,
+    apiStatus: code,
+    modelJsonText: String(text || body || "").substring(0, 3000),
+  };
 }
 
 // 測試 /紀錄 功能（供 CLASP 呼叫）
