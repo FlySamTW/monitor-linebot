@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.173"; // 2026-03-18 修正 S9 這類短別稱功能題防誤答觸發條件
+const GAS_VERSION = "v29.5.174"; // 2026-03-18 短別稱功能題改為條列候選完整型號
 const BUILD_TIMESTAMP = "2026-03-17 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2077,6 +2077,40 @@ function isFeatureBinaryQuestion(text) {
   return hasBinaryTone && hasFeatureKeyword;
 }
 
+function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
+  try {
+    const alias = String(aliasToken || "").trim().toUpperCase();
+    if (!alias) return [];
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet) return [];
+    const values = sheet.getDataRange().getValues();
+    const bucket = [];
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r];
+      const line = row
+        .map((c) => String(c || ""))
+        .join(" ")
+        .toUpperCase();
+      if (!line) continue;
+      if (
+        !line.includes(alias) &&
+        !line.includes(`別稱_${alias}`) &&
+        !line.includes(`系列_${alias}`)
+      ) {
+        continue;
+      }
+      const sModels = line.match(/\bS\d{2}[A-Z]{1,3}\d{3}[A-Z0-9]*\b/g) || [];
+      const lsModels = line.match(/\bLS\d{2}[A-Z0-9]{6,}\b/g) || [];
+      bucket.push(...sModels, ...lsModels);
+    }
+    const unique = [...new Set(bucket)];
+    return unique.slice(0, Math.max(1, Number(limit) || 5));
+  } catch (e) {
+    writeLog(`[Alias Candidates] 讀取候選型號失敗: ${e.message}`);
+    return [];
+  }
+}
+
 /**
  * 防止「短別稱 + 功能二選一題」被誤答為肯定規格。
  * 例如：S9有KVM嗎（未給完整型號）。
@@ -2102,11 +2136,23 @@ function applyAliasFeatureAmbiguityGuard(
     !/(未記載|不確定|不支援|沒有|無法確認|未明確)/i.test(a);
   if (!saysPositive) return a;
 
-  const safe = [
+  const candidates = getAliasCandidatesFromClassRules(model, 5);
+  const lines = [
     `你問的「${model}」是系列別稱，功能可能會因完整型號而不同。`,
-    "",
-    "請給我完整型號（例如 S27... / S32... / LS...），我再幫你精準確認這個功能。",
-  ].join("\n");
+  ];
+  if (candidates.length > 0) {
+    lines.push("");
+    lines.push("先給你可選的完整型號：");
+    candidates.forEach((m, idx) => lines.push(`${idx + 1}. ${m}`));
+    lines.push("");
+    lines.push("請回覆其中一個完整型號，我再幫你精準確認這個功能。");
+  } else {
+    lines.push("");
+    lines.push(
+      "請給我完整型號（例如 S27... / S32... / LS...），我再幫你精準確認這個功能。",
+    );
+  }
+  const safe = lines.join("\n");
   return appendSourceTagIfMissing(safe, sourceTag);
 }
 

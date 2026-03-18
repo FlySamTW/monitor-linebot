@@ -447,3 +447,28 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 部署紀錄
 - `clasp version "v29.5.173 fix short alias guard for feature queries"`：成功（Version 878）
 - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @879）
+
+## 2026-03-18 (v29.5.174 別稱歧義題改為型號條列選擇)
+
+### 問題背景
+- 用戶強調 SOP：若問題可能對應多個型號，必須先讓使用者選擇型號（條列或泡泡），不能直接回答規格結論。
+- 針對 `s9有內建kvm嗎`，v29.5.173 雖已避免直接肯定，但僅要求補型號，仍未提供可選型號列表。
+
+### 修復內容
+- `linebot.gs` 升級為 `v29.5.174`。
+- 在短別稱功能題防呆中新增候選型號條列：
+  - 新增 `getAliasCandidatesFromClassRules(aliasToken)`，從 `CLASS_RULES` 提取該別稱可對應的完整型號。
+  - `applyAliasFeatureAmbiguityGuard()` 改為優先輸出「候選完整型號條列」，再請用戶回覆其中一個型號。
+- 保留來源標註：仍會附 `[來源:規格庫]`。
+
+### 驗證
+- TestUI 實測 `s9有內建kvm嗎`：
+  - 回覆為別稱歧義提示 + 候選型號條列（例如 `S49C950UAC`、`S27C900PAC`）。
+  - 不再直接回覆「S9 有 KVM」。
+  - 來源標註存在：`[來源:規格庫]`。
+
+### 部署紀錄
+- `clasp version "v29.5.174 alias ambiguity list for feature queries"`：成功（Version 880）
+- 因 GAS 版本數達上限，改用「更新既有部署版本」：
+  - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 880`
+  - 成功（更新到 @880）
