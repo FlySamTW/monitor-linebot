@@ -529,3 +529,37 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 部署紀錄
 - `clasp version "v29.5.176 修復#型號後短別稱防呆回圈"`：成功（Version 883）
 - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @884）
+
+## 2026-03-18 (v29.5.177 SmartThings/Matter 單回合單次呼叫 + 主流程Log去重)
+
+### 問題背景
+- 用戶回報：同一題先有一個 Fast 回答（`AI Raw Response`），但 LINE 最終顯示的是後續 PDF 回答，導致：
+  - 單題雙次 API 呼叫（成本翻倍）
+  - 第一個回答被覆蓋，體感像「回答二次只顯示一次」
+  - Log 列數膨脹
+
+### 根因
+- `v29.5.158` 對 SmartThings/Matter 題型會在同回合強制追加 `[AUTO_SEARCH_PDF]`，觸發第二次 LLM 呼叫覆蓋首答。
+
+### 修復內容
+- `linebot.gs` 升級為 `v29.5.177`。
+- 移除同回合強制二次查詢：
+  - SmartThings/Matter 題改為保留 Fast 回答，不再自動進 PDF。
+  - 需要手冊時改由用戶顯式 `#查手冊` 觸發。
+- 主流程 Log 去重：
+  - `[Final Reply]` 改記摘要（字數/泡泡數），不再重複全量內容。
+  - 移除主流程重複的 `[AI Reply]` 全文寫入，完整回覆由 `[Reply]` 單點記錄。
+
+### 驗證
+- TestUI 實測題目：
+  - `客戶如果想用M7串聯其他的Matt 協議的裝置,是不是要購買smart thing hub`
+- 結果：
+  - `/重啟` 顯示版本 `v29.5.177`
+  - `AI Stats` 僅 1 次
+  - `AttachPDFs: true` 不再出現
+  - 不再出現 `[Auto Deep]` 二次查詢
+  - 最終 `[Reply]` 與首輪 `AI Raw Response` 同一路徑一致
+
+### 部署紀錄
+- `clasp version "v29.5.177 移除SmartThings同回合二次呼叫+主流程log去重"`：成功（Version 885）
+- `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @886）

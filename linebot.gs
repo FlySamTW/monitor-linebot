@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.176"; // 2026-03-18 #型號後避免短別稱防呆回圈
-const BUILD_TIMESTAMP = "2026-03-18 13:45";
+const GAS_VERSION = "v29.5.177"; // 2026-03-18 移除SmartThings同回合強制二次查詢，避免覆蓋與雙成本
+const BUILD_TIMESTAMP = "2026-03-18 15:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6662,10 +6662,8 @@ function handleMessage(event) {
           !isInPdfMode
         ) {
           writeLog(
-            `[Auto Search v29.5.158] SmartThings/Matter 題需手冊查證，強制追加 [AUTO_SEARCH_PDF]`,
+            `[Auto Search v29.5.177] SmartThings/Matter 題保留 Fast 回答，不在同回合強制二次 PDF 查詢；可由 #查手冊 進手冊`,
           );
-          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
-          forcedManualVerificationTrigger = true;
         }
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
@@ -8174,10 +8172,10 @@ function handleMessage(event) {
         }
 
         // 🔥 v29.5.109: 詳細 LOG - 完整記錄最終回覆內容
-        const replyFull = Array.isArray(replyText)
-          ? `[多泡泡回覆 ${replyText.length}則] ` + replyText.join(" ||| ")
-          : replyText || "";
-        writeLog(`[Final Reply] 即將回覆: ${replyFull.replace(/\n/g, " ")}`);
+        const replySummary = Array.isArray(replyText)
+          ? `[多泡泡回覆 ${replyText.length}則]`
+          : `[文字回覆 ${String(replyText || "").length} 字]`;
+        writeLog(`[Final Reply] 即將回覆: ${replySummary}`);
 
         replyMessage(replyToken, replyText, responseOptions);
         // v25.0.2 修復：補上缺失的 user 訊息記錄
@@ -8187,11 +8185,7 @@ function handleMessage(event) {
           ? replyText.join("\n\n")
           : replyText;
         writeRecordDirectly(userId, saveText, contextId, "assistant", "");
-        // v24.1.24: 修正 Log 截斷問題，確保完整記錄 AI 回答
-        // v27.7.6: Log 回覆時包含費用資訊，方便 testMessage 顯示成本
-        // v29.5.103: 移除截斷限制，完整記錄 AI 回覆
-        var replyForLog = replyText || finalText;
-        writeLog(`[AI Reply] ${replyForLog}`);
+        // v29.5.177: 由 [Reply] 記錄完整 LINE 回覆，避免重複寫入 [AI Reply] 造成列數膨脹
 
         updateHistorySheetAndCache(contextId, history, userMsgObj, {
           role: "assistant",
