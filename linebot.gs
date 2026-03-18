@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.174"; // 2026-03-18 短別稱功能題改為條列候選完整型號
+const GAS_VERSION = "v29.5.175"; // 2026-03-18 短別稱改走型號泡泡+選型後依SOP走Fast/PDF
 const BUILD_TIMESTAMP = "2026-03-17 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2077,6 +2077,33 @@ function isFeatureBinaryQuestion(text) {
   return hasBinaryTone && hasFeatureKeyword;
 }
 
+function normalizeModelForDisplay(model) {
+  let m = String(model || "").trim().toUpperCase();
+  if (!m) return "";
+  if (/^LS\d{2}/.test(m)) {
+    m = "S" + m.slice(2);
+  }
+  // Samsung 區域尾碼常見為 XZW / XZN 等，顯示時優先保留通用 S 型號
+  m = m.replace(/X[A-Z]{2,4}$/, "");
+  return m;
+}
+
+function dedupDisplayModels(models, limit = 10) {
+  const normalized = (Array.isArray(models) ? models : [])
+    .map((m) => normalizeModelForDisplay(m))
+    .filter((m) => m && (m.length >= 7 || isShortAliasModelToken(m)));
+  const unique = [...new Set(normalized)];
+
+  // 若同時存在互為子字串型號，保留較長者
+  const dedup = [];
+  const sorted = unique.slice().sort((a, b) => b.length - a.length);
+  sorted.forEach((m) => {
+    const isSubset = dedup.some((existing) => existing.includes(m));
+    if (!isSubset) dedup.push(m);
+  });
+  return dedup.slice(0, Math.max(1, Number(limit) || 10));
+}
+
 function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
   try {
     const alias = String(aliasToken || "").trim().toUpperCase();
@@ -2099,12 +2126,30 @@ function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
       ) {
         continue;
       }
-      const sModels = line.match(/\bS\d{2}[A-Z]{1,3}\d{3}[A-Z0-9]*\b/g) || [];
-      const lsModels = line.match(/\bLS\d{2}[A-Z0-9]{6,}\b/g) || [];
-      bucket.push(...sModels, ...lsModels);
+      const sModels = line.match(/\bS\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*\b/g) || [];
+      bucket.push(...sModels);
     }
-    const unique = [...new Set(bucket)];
-    return unique.slice(0, Math.max(1, Number(limit) || 5));
+    // 若規則內只有 LS 型號，做一次退位補抓並轉成 S 顯示型號
+    if (bucket.length === 0) {
+      for (let r = 0; r < values.length; r++) {
+        const row = values[r];
+        const line = row
+          .map((c) => String(c || ""))
+          .join(" ")
+          .toUpperCase();
+        if (!line) continue;
+        if (
+          !line.includes(alias) &&
+          !line.includes(`別稱_${alias}`) &&
+          !line.includes(`系列_${alias}`)
+        ) {
+          continue;
+        }
+        const lsModels = line.match(/\bLS\d{2}[A-Z0-9]{6,}\b/g) || [];
+        bucket.push(...lsModels);
+      }
+    }
+    return dedupDisplayModels(bucket, limit);
   } catch (e) {
     writeLog(`[Alias Candidates] 讀取候選型號失敗: ${e.message}`);
     return [];
@@ -2137,22 +2182,9 @@ function applyAliasFeatureAmbiguityGuard(
   if (!saysPositive) return a;
 
   const candidates = getAliasCandidatesFromClassRules(model, 5);
-  const lines = [
-    `你問的「${model}」是系列別稱，功能可能會因完整型號而不同。`,
-  ];
-  if (candidates.length > 0) {
-    lines.push("");
-    lines.push("先給你可選的完整型號：");
-    candidates.forEach((m, idx) => lines.push(`${idx + 1}. ${m}`));
-    lines.push("");
-    lines.push("請回覆其中一個完整型號，我再幫你精準確認這個功能。");
-  } else {
-    lines.push("");
-    lines.push(
-      "請給我完整型號（例如 S27... / S32... / LS...），我再幫你精準確認這個功能。",
-    );
-  }
-  const safe = lines.join("\n");
+  const safe = candidates.length > 0
+    ? `你問的「${model}」是系列別稱，請先選擇完整型號，我再幫你精準確認功能。`
+    : `你問的「${model}」是系列別稱，請給我完整型號（例如 S27... / S32...），我再幫你精準確認功能。`;
   return appendSourceTagIfMissing(safe, sourceTag);
 }
 
@@ -5745,166 +5777,218 @@ function handleMessage(event) {
     if (msg.startsWith("#型號:")) {
       const selectedModel = msg.replace("#型號:", "").trim().toUpperCase();
       writeLog(`[Model Select v29.5.120] 🎯 用戶選擇型號: ${selectedModel}`);
+      const modelSelectModeKey = `${userId}:model_select_mode`;
+      const modelSelectMode = cache.get(modelSelectModeKey) || "pdf";
 
-      // 注入型號到 Cache
-      cache.put(
-        `${userId}:direct_search_models`,
-        JSON.stringify([selectedModel]),
-        300,
-      );
+      // v29.5.175: 依泡泡上下文決定選型後流程
+      // fast: 鎖定型號後回到一般 SOP（QA/RULE -> PDF -> WEB）
+      // pdf : 直接進 Pass 1.5（既有行為）
+      if (modelSelectMode === "fast") {
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify([selectedModel]),
+          300,
+        );
+        cache.remove(`${userId}:hit_alias_key`);
 
-      // 設置 PDF Mode
-      const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
-      cache.put(pdfModeKey, "true", 300);
-
-      // 取得保存的話題（用戶之前問的問題）
-      let savedTopic = cache.get(`${userId}:pending_topic`) || "";
-
-      // v29.5.121: 若 pending_topic 為空，從歷史找原始問題
-      if (!savedTopic) {
-        const historyForTopic = getHistoryFromCacheOrSheet(contextId);
-        const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
-        for (let i = historyForTopic.length - 1; i >= 0; i--) {
-          if (historyForTopic[i].role === "user") {
-            let content = historyForTopic[i].content || "";
-            content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
-            if (
-              content.length > 5 &&
-              !content.startsWith("#") &&
-              !content.includes("不滿意") &&
-              !content.includes("繼續問") &&
-              !content.match(/^\d$/) &&
-              !MODEL_ONLY_RE.test(content) &&
-              !content.includes("(型號:")
-            ) {
-              savedTopic = content;
-              writeLog(
-                `[Model Select v29.5.121] 從歷史找到原始問題: ${savedTopic.substring(0, 50)}`,
-              );
-              break;
+        let savedTopic = cache.get(`${userId}:pending_topic`) || "";
+        if (!savedTopic) {
+          const historyForTopic = getHistoryFromCacheOrSheet(contextId);
+          const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
+          for (let i = historyForTopic.length - 1; i >= 0; i--) {
+            if (historyForTopic[i].role === "user") {
+              let content = historyForTopic[i].content || "";
+              content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+              if (
+                content.length > 5 &&
+                !content.startsWith("#") &&
+                !content.includes("不滿意") &&
+                !content.includes("繼續問") &&
+                !content.match(/^\d$/) &&
+                !MODEL_ONLY_RE.test(content) &&
+                !content.includes("(型號:")
+              ) {
+                savedTopic = content;
+                break;
+              }
             }
           }
         }
-      }
 
-      const queryText = savedTopic
-        ? `${savedTopic} (型號: ${selectedModel})`
-        : selectedModel;
+        const queryText = savedTopic
+          ? `${savedTopic} (型號: ${selectedModel})`
+          : selectedModel;
+        msg = queryText;
+        userMessage = queryText;
 
-      showLoadingAnimation(userId, 60);
-      writeLog(
-        `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
-      );
+        cache.remove(`${userId}:pending_topic`);
+        cache.remove(modelSelectModeKey);
+        writeLog(
+          `[Model Select v29.5.175] Fast 模式：鎖定型號後回到一般流程 -> ${queryText.substring(0, 80)}`,
+        );
+      } else {
+
+        // 注入型號到 Cache
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify([selectedModel]),
+          300,
+        );
+
+        // 設置 PDF Mode
+        const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + contextId;
+        cache.put(pdfModeKey, "true", 300);
+
+        // 取得保存的話題（用戶之前問的問題）
+        let savedTopic = cache.get(`${userId}:pending_topic`) || "";
+
+      // v29.5.121: 若 pending_topic 為空，從歷史找原始問題
+        if (!savedTopic) {
+          const historyForTopic = getHistoryFromCacheOrSheet(contextId);
+          const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
+          for (let i = historyForTopic.length - 1; i >= 0; i--) {
+            if (historyForTopic[i].role === "user") {
+              let content = historyForTopic[i].content || "";
+              content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+              if (
+                content.length > 5 &&
+                !content.startsWith("#") &&
+                !content.includes("不滿意") &&
+                !content.includes("繼續問") &&
+                !content.match(/^\d$/) &&
+                !MODEL_ONLY_RE.test(content) &&
+                !content.includes("(型號:")
+              ) {
+                savedTopic = content;
+                writeLog(
+                  `[Model Select v29.5.121] 從歷史找到原始問題: ${savedTopic.substring(0, 50)}`,
+                );
+                break;
+              }
+            }
+          }
+        }
+
+        const queryText = savedTopic
+          ? `${savedTopic} (型號: ${selectedModel})`
+          : selectedModel;
+
+        showLoadingAnimation(userId, 60);
+        writeLog(
+          `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
+        );
 
       // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
-      const kbList = JSON.parse(
-        PropertiesService.getScriptProperties().getProperty(
-          CACHE_KEYS.KB_URI_LIST,
-        ) || "[]",
-      );
-      const searchMsg = { role: "user", content: queryText };
-      const kbResult = getRelevantKBFiles(
-        [searchMsg],
-        kbList,
-        userId,
-        contextId,
-        true, // forceCurrentOnly
-      );
-      const relevantFiles = Array.isArray(kbResult)
-        ? kbResult
-        : kbResult.files || [];
-      const primaryModel = Array.isArray(kbResult)
-        ? null
-        : kbResult.primaryModel || null;
-      writeLog(
-        `[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
-      );
-
-      const history = getHistoryFromCacheOrSheet(contextId);
-      const userMsgObj = { role: "user", content: queryText };
-
-      const response = callLLMWithRetry(
-        queryText,
-        [...history, userMsgObj],
-        relevantFiles, // ← 實際掛載 PDF
-        true, // attachPDFs
-        null,
-        false,
-        userId,
-        false,
-        primaryModel || selectedModel,
-      );
-
-      if (response) {
-        let finalText = stripAnySourceTags(formatForLineMobile(response));
-        finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
-        finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
-        finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
-        finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-        finalText = sanitizeManualDeflection(finalText);
-        finalText = enforceManualNumberedList(finalText);
-
-        // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
-        if (relevantFiles.length > 0) {
-          finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
-        }
-        finalText = postProcessSmartthingsMatterManualAnswer(
-          finalText,
-          queryText,
+        const kbList = JSON.parse(
+          PropertiesService.getScriptProperties().getProperty(
+            CACHE_KEYS.KB_URI_LIST,
+          ) || "[]",
         );
-        if (relevantFiles.length > 0) {
-          finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
-        }
-
-        let replyText = finalText;
-        if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-          replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
-        }
-
-        // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
-        const manualReplyAnchor = getElaborationTopicAnchor_(
-          cache,
+        const searchMsg = { role: "user", content: queryText };
+        const kbResult = getRelevantKBFiles(
+          [searchMsg],
+          kbList,
           userId,
+          contextId,
+          true, // forceCurrentOnly
+        );
+        const relevantFiles = Array.isArray(kbResult)
+          ? kbResult
+          : kbResult.files || [];
+        const primaryModel = Array.isArray(kbResult)
+          ? null
+          : kbResult.primaryModel || null;
+        writeLog(
+          `[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
+        );
+
+        const history = getHistoryFromCacheOrSheet(contextId);
+        const userMsgObj = { role: "user", content: queryText };
+
+        const response = callLLMWithRetry(
           queryText,
-        );
-        const manualElaborationCount = getElaborationCountForAnchor_(
-          cache,
+          [...history, userMsgObj],
+          relevantFiles, // ← 實際掛載 PDF
+          true, // attachPDFs
+          null,
+          false,
           userId,
-          manualReplyAnchor,
+          false,
+          primaryModel || selectedModel,
         );
-        const qrItems = [];
-        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+
+        if (response) {
+          let finalText = stripAnySourceTags(formatForLineMobile(response));
+          finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
+          finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
+          finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
+          finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
+          finalText = sanitizeManualDeflection(finalText);
+          finalText = enforceManualNumberedList(finalText);
+
+          // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
+          if (relevantFiles.length > 0) {
+            finalText = appendPdfSourceTag(finalText, relevantFiles, 1);
+          }
+          finalText = postProcessSmartthingsMatterManualAnswer(
+            finalText,
+            queryText,
+          );
+          if (relevantFiles.length > 0) {
+            finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+          }
+
+          let replyText = finalText;
+          if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
+            replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+          }
+
+          // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
+          const manualReplyAnchor = getElaborationTopicAnchor_(
+            cache,
+            userId,
+            queryText,
+          );
+          const manualElaborationCount = getElaborationCountForAnchor_(
+            cache,
+            userId,
+            manualReplyAnchor,
+          );
+          const qrItems = [];
+          if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+            qrItems.push({
+              type: "action",
+              action: {
+                type: "message",
+                label: "💬 再詳細說明",
+                text: "#再詳細說明",
+              },
+            });
+          }
           qrItems.push({
             type: "action",
             action: {
               type: "message",
-              label: "💬 再詳細說明",
-              text: "#再詳細說明",
+              label: "🌐 這題再搜網路",
+              text: "#這題再搜網路",
             },
           });
+          const qrOptions = { quickReply: { items: qrItems } };
+          replyMessage(replyToken, replyText, qrOptions);
+          writeLog(`[AI Reply] ${replyText}`);
+
+          const asstMsgObj = { role: "assistant", content: finalText };
+          updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
+          writeRecordDirectly(userId, msg, contextId, "user", "");
+          writeRecordDirectly(userId, replyText, contextId, "assistant", "");
+        } else {
+          replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
         }
-        qrItems.push({
-          type: "action",
-          action: {
-            type: "message",
-            label: "🌐 這題再搜網路",
-            text: "#這題再搜網路",
-          },
-        });
-        const qrOptions = { quickReply: { items: qrItems } };
-        replyMessage(replyToken, replyText, qrOptions);
-        writeLog(`[AI Reply] ${replyText}`);
 
-        const asstMsgObj = { role: "assistant", content: finalText };
-        updateHistorySheetAndCache(contextId, history, userMsgObj, asstMsgObj);
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, replyText, contextId, "assistant", "");
-      } else {
-        replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+        cache.remove(`${userId}:pending_topic`);
+        cache.remove(modelSelectModeKey);
+        return;
       }
-
-      cache.remove(`${userId}:pending_topic`);
-      return;
     }
 
     // ══════════════════════════════════════════════════════════
@@ -6533,6 +6617,7 @@ function handleMessage(event) {
             rawResponse,
           );
         let forcedManualVerificationTrigger = false;
+        let forcedModelSelectionTrigger = false;
         if (
           !hasAutoPdf &&
           !hasAutoWeb &&
@@ -6680,6 +6765,27 @@ function handleMessage(event) {
 
         // 去重
         suggestedModels = [...new Set(suggestedModels)];
+        suggestedModels = dedupDisplayModels(suggestedModels, 10);
+
+        // v29.5.175: 短別稱功能題（如 S9 有 KVM 嗎）必須先要求選完整型號，走型號泡泡流程
+        if (
+          suggestedModels.length === 1 &&
+          isShortAliasModelToken(suggestedModels[0]) &&
+          isFeatureBinaryQuestion(msg) &&
+          !hasExplicitTrigger
+        ) {
+          const aliasToken = suggestedModels[0];
+          const aliasCandidates = getAliasCandidatesFromClassRules(aliasToken, 10);
+          if (aliasCandidates.length > 1) {
+            forcedModelSelectionTrigger = true;
+            suggestedModels = aliasCandidates;
+            finalText = `你問的「${aliasToken}」可能對應多個完整型號，請先選型號，我再精準回答。`;
+            replyText = finalText;
+            writeLog(
+              `[Smart Router v29.5.175] 短別稱功能題觸發型號泡泡: ${aliasToken} -> ${aliasCandidates.join(", ")}`,
+            );
+          }
+        }
 
         // v29.5.161: SmartThings/Matter 高風險題，避免先回答再跳型號選單，直接鎖定首個型號進手冊流程。
         if (forcedManualVerificationTrigger && suggestedModels.length > 1) {
@@ -6855,7 +6961,13 @@ function handleMessage(event) {
             // v29.5.144: 若命中多個型號，只要有需要具體型號的意圖 (needSpecificModelIntent)，或是 AI 明確要求選擇，就強制顯示型號選單。
             if (
               suggestedModels.length > 1 &&
-              (hasExplicitTrigger || !finalText || finalText.length < 5 || needSpecificModelIntent)
+              (
+                hasExplicitTrigger ||
+                forcedModelSelectionTrigger ||
+                !finalText ||
+                finalText.length < 5 ||
+                needSpecificModelIntent
+              )
             ) {
               writeLog(
                 `[Smart Router v29.5.140] 準備顯示型號選擇泡泡 (Trigger: ${hasExplicitTrigger}, Models: ${suggestedModels.length})`,
@@ -6905,6 +7017,14 @@ function handleMessage(event) {
               const searchIntent = determineSearchIntent(
                 userMessage,
                 suggestedModels,
+              );
+              const modelSelectMode =
+                hasExplicitTrigger || forcedManualVerificationTrigger
+                  ? "pdf"
+                  : "fast";
+              cache.put(`${userId}:model_select_mode`, modelSelectMode, 600);
+              writeLog(
+                `[Smart Router v29.5.175] 型號泡泡選擇模式: ${modelSelectMode}`,
               );
               const flexMsg = createModelSelectionFlexV3(
                 suggestedModels,

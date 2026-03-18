@@ -472,3 +472,38 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - 因 GAS 版本數達上限，改用「更新既有部署版本」：
   - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V 880`
   - 成功（更新到 @880）
+
+## 2026-03-18 (v29.5.175 短別稱改回泡泡SOP + #型號流程分流)
+
+### 問題背景
+- 用戶指出 v29.5.174 仍違反 SOP：
+  - 多型號歧義時應優先顯示型號泡泡，而非讓使用者輸入數字條列。
+  - `S49...` 與 `LS49...` 實為同機，前台應使用統一顯示名稱（以 `S...` 為主）。
+  - 選型後若無手冊，不應硬進 PDF 流程再回「找不到手冊」。
+
+### 修復內容
+- `linebot.gs` 升級為 `v29.5.175`。
+- 新增型號顯示正規化：
+  - `normalizeModelForDisplay()`
+  - `dedupDisplayModels()`
+  - `getAliasCandidatesFromClassRules()` 改為優先提取 `S...` 完整型號，僅在必要時由 `LS...` 轉換為顯示型號。
+- Smart Router 新增短別稱功能題強制泡泡：
+  - `S9/G8/M7` 這類短別稱 + 功能二元問題時，改為「先選完整型號」並直接進 Flex 泡泡流程。
+- 新增選型流程模式分流：
+  - 泡泡新增 `model_select_mode`（`fast` / `pdf`）。
+  - `#型號:...` 在 `fast` 模式下不再強制 Pass 1.5，改為回到一般 SOP（QA/RULE -> PDF -> WEB）。
+  - `pdf` 模式維持既有手冊流程。
+- 防呆調整：
+  - `applyAliasFeatureAmbiguityGuard()` 改為簡短提醒，不再輸出可被誤解為「請輸入數字」的條列回覆。
+
+### 驗證
+- 程式語法檢查：`node -e "new Function(require('fs').readFileSync('linebot.gs','utf8'))"` 通過。
+- 規則資料檢查（本地 `CLASS_RULES.csv`）：
+  - `S9` 候選型號僅提取到 `S49C950UAC`、`S27C900PAC`（無 `LS...` 顯示）。
+- 端到端 TestUI（現有正式 Webhook `@880`）仍會出現舊行為，因部署版本未更新到本次程式碼（見下方部署狀態）。
+
+### 部署狀態
+- `clasp push -f`：成功（已上傳最新程式碼到 HEAD）。
+- `clasp version`：失敗（專案版本數已達 200 上限）。
+- `clasp deploy -i ...`：無法更新既有正式 deployment（回覆 `Read-only deployments may not be modified.`）。
+- 可建立新 deployment 指向舊版本（例如 `@880`），但無法產生新版本承載 `v29.5.175`。
