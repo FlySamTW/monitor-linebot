@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.178"; // 2026-03-18 移除個案硬編碼，回歸通用SOP與Prompt控制
-const BUILD_TIMESTAMP = "2026-03-18 15:40";
+const GAS_VERSION = "v29.5.179"; // 2026-03-18 通用SOP：操作/故障題 Fast不足自動進PDF
+const BUILD_TIMESTAMP = "2026-03-18 16:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2066,6 +2066,29 @@ function isFeatureBinaryQuestion(text) {
       q,
     );
   return hasBinaryTone && hasFeatureKeyword;
+}
+
+function isOperationOrTroubleshootQuery(text) {
+  const q = String(text || "");
+  return /(怎麼|如何|教學|步驟|設定|開啟|關閉|連接|安裝|操作|使用|排除|故障|無法|不能|異常|重置|恢復|閃爍|不亮|沒畫面|當機)/i.test(
+    q,
+  );
+}
+
+function isOperationAnswerInsufficient(text) {
+  const t = String(text || "");
+  const hasSteps =
+    /(^|\n)\s*1\.\s*|(^|\n)\s*2\.\s*|步驟|先.+再.+|請先|接著|然後|到.*選單|設定.*選項/i.test(
+      t,
+    );
+  const strongUncertainty =
+    /不確定|無法確認|未明確|查無|資料不足|手冊未記載|沒有資料|建議.*查手冊|可以再幫你查手冊/i.test(
+      t,
+    );
+  if (hasSteps && !strongUncertainty) {
+    return false;
+  }
+  return strongUncertainty || !hasSteps;
 }
 
 function normalizeModelForDisplay(model) {
@@ -6585,6 +6608,29 @@ function handleMessage(event) {
         ) {
           writeLog(
             `[Auto Search v29.5.132] 偵測到可查手冊但 Fast Mode 誤判，強制追加 [AUTO_SEARCH_PDF]`,
+          );
+          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+        }
+
+        // v29.5.179: 通用SOP強化（非個案）
+        // 操作/故障題先走 QA/RULE；若回答不足且型號有手冊，再自動進 PDF。
+        const operationIntent = isOperationOrTroubleshootQuery(
+          `${msg || ""}\n${userMessage || ""}`,
+        );
+        const normalizedFastAnswer = stripAnySourceTags(
+          formatForLineMobile(rawResponse),
+        );
+        if (
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          !isInPdfMode &&
+          hasPdfForModel &&
+          operationIntent &&
+          isOperationAnswerInsufficient(normalizedFastAnswer)
+        ) {
+          writeLog(
+            `[Auto Search v29.5.179] 操作/故障題 Fast 回答不足，依通用SOP追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }

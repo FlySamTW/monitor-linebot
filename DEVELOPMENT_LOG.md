@@ -591,3 +591,32 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 部署紀錄
 - `clasp version "v29.5.178 移除個案硬編碼，改由Prompt規則控制"`：成功（Version 887）
 - `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`：成功（更新到 @888）
+
+## 2026-03-18 (v29.5.179 通用流程落地：QA/RULE -> PDF -> WEB)
+
+### 目標
+- 不用個案硬編碼，回歸專案通用 SOP：
+  - 先 QA/RULE
+  - 找不到或回答不足才進 PDF
+  - PDF 不足再進 WEB
+
+### 程式調整
+- 新增通用操作題判斷函式：
+  - `isOperationOrTroubleshootQuery(text)`
+  - `isOperationAnswerInsufficient(text)`
+- 在 Fast 回答後新增通用升級條件：
+  - 只有「操作/故障題 + 有可用手冊 + Fast 回答不足」時，才自動補 `[AUTO_SEARCH_PDF]`
+  - 不包含任何 SmartThings/Matter 專屬字串或分支
+- 之前已移除的個案邏輯維持不回加。
+
+### Prompt 調整
+- `Prompt.csv` 已更新為 `Prompt v29.5.178`（維持通用描述，不做品牌個案硬規則）。
+
+### 驗證摘要
+- `M7 + Matter + Hub`：單回合單次呼叫（`AI Stats` 1 次），不再同回合二次覆蓋。
+- 操作類 QA 題（例如 Odyssey 3D、M5 YouTube）：有完整步驟時維持 Fast，不誤升級。
+
+### 部署
+- `clasp version "v29.5.179 通用SOP操作題Fast不足自動進PDF"`：成功（Version 889）
+- `clasp version "v29.5.179b 操作題不足判斷誤觸發修正"`：成功（Version 891）
+- 正式 deployment 更新至 `@892`
