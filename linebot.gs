@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.180"; // 2026-03-18 Log 精簡：壓縮 DirectDeep/KB Select 重複噪音
-const BUILD_TIMESTAMP = "2026-03-18 16:46";
+const GAS_VERSION = "v29.5.182"; // 2026-03-19 高風險能力題 Fast後強制手冊查證
+const BUILD_TIMESTAMP = "2026-03-19 19:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2054,6 +2054,13 @@ function appendSourceTagIfMissing(text, sourceTag) {
   return `${body}\n\n${tag}`;
 }
 
+function sanitizeLeadDatabasePhrase(text) {
+  return String(text || "")
+    .replace(/^\s*根據(?:我|目前|我手上)?(?:的)?資料庫[，,：: ]*/i, "")
+    .replace(/^\s*根據目前資料[，,：: ]*/i, "")
+    .trim();
+}
+
 function isShortAliasModelToken(model) {
   const m = String(model || "").trim().toUpperCase();
   if (!m) return false;
@@ -2094,6 +2101,33 @@ function isOperationAnswerInsufficient(text) {
     return false;
   }
   return strongUncertainty || !hasSteps;
+}
+
+function isCapabilityClaimQuery(text) {
+  const q = String(text || "");
+  return /(是否|有沒有|支援|內建|規格|相容|差異|更新率|刷新率|反應時間|解析度|HDR|G-?SYNC|FREESYNC|MATTER|SMARTTHINGS|HUB|BORDER\s*ROUTER|THREAD|CONTROLLER|耳機孔|喇叭|KVM)/i.test(
+    q,
+  );
+}
+
+function isManualVerificationRequiredQuery(text) {
+  const q = String(text || "");
+  return /(MATTER|THREAD|SMARTTHINGS|HUB|BORDER\s*ROUTER|CONTROLLER|ZIGBEE|中樞|集線器|協議|協定|橋接|網關|GATEWAY)/i.test(
+    q,
+  );
+}
+
+function readContextHealth(cache, userId) {
+  try {
+    if (!cache || !userId) return null;
+    const raw = cache.get(`${CACHE_KEYS.CONTEXT_HEALTH_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
 }
 
 function normalizeModelForDisplay(model) {
@@ -2388,6 +2422,12 @@ function getClassRules() {
 function buildDynamicContext(messages, userId, isPDFMode = false) {
   try {
     const cache = CacheService.getScriptCache();
+    let qaLoaded = false;
+    let qaFromCache = false;
+    let lightRulesLoaded = false;
+    let lightRulesFromCache = false;
+    let specRulesLoaded = false;
+    let specRulesFromCache = false;
 
     // 1. 組合用戶最近訊息 (用於關鍵字匹配)
     // v27.9.63: 分離「完整歷史上下文」與「最新用戶訊息」
@@ -2437,6 +2477,8 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       for (let i = 0; i < qaCount; i++) {
         fullQA += cache.get(`KB_QA_${i}`) || "";
       }
+      qaLoaded = fullQA.trim().length > 0;
+      qaFromCache = qaLoaded;
       // writeLog(`[DynamicContext Debug] Cache Hit: QA Count=${qaCount}, FullQA Length=${fullQA.length}, First 50 chars=${fullQA.substring(0, 50)}`);
     } else {
       // v27.8.7 Fallback: 若 Cache 失效，強制讀取 Sheet (防呆機制)
@@ -2460,6 +2502,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
             })
             .filter((line) => line !== "")
             .join("\n\n");
+          qaLoaded = fullQA.trim().length > 0;
         }
       } catch (e) {
         writeLog(`[Fallback Error] QA Read Failed: ${e.message}`);
@@ -2476,6 +2519,8 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       for (let i = 0; i < lightCount; i++) {
         lightRules += cache.get(`KB_RULES_LIGHT_${i}`) || "";
       }
+      lightRulesLoaded = lightRules.trim().length > 0;
+      lightRulesFromCache = lightRulesLoaded;
     } else {
       // Fallback: 嘗試讀取舊版合併 Cache (向後相容)
       const fullCount = parseInt(cache.get("KB_RULES_COUNT") || "0");
@@ -2486,6 +2531,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
         }
         // 簡單拆分：假設前 50 行是 Light? 難以精確，乾脆全當 Light (安全保底)
         lightRules = fullContent;
+        lightRulesLoaded = lightRules.trim().length > 0;
         writeLog(
           "[DynamicContext] ⚠️ Light Cache Miss, Fallback to Legacy Full Cache",
         );
@@ -2499,6 +2545,7 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
               .getRange(2, 1, Math.min(ruleSheet.getLastRow() - 1, 50), 1)
               .getValues();
             lightRules = data.map((r) => r[0]).join("\n");
+            lightRulesLoaded = lightRules.trim().length > 0;
           }
         } catch (e) {
           writeLog(`[Fallback Error] Light Rules Read Failed: ${e.message}`);
@@ -2512,15 +2559,26 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       for (let i = 0; i < specCount; i++) {
         specRules += cache.get(`KB_RULES_SPEC_${i}`) || "";
       }
+      specRulesLoaded = specRules.trim().length > 0;
+      specRulesFromCache = specRulesLoaded;
     } else {
       // Fallback: 若無 Spec Cache，嘗試讀取 Sheet (後半部)
       try {
         const ruleSheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-        if (ruleSheet && ruleSheet.getLastRow() > 50) {
-          const data = ruleSheet
-            .getRange(52, 1, ruleSheet.getLastRow() - 51, 1)
-            .getValues();
-          specRules = data.map((r) => r[0]).join("\n");
+        if (ruleSheet && ruleSheet.getLastRow() > 1) {
+          if (ruleSheet.getLastRow() > 50) {
+            const data = ruleSheet
+              .getRange(52, 1, ruleSheet.getLastRow() - 51, 1)
+              .getValues();
+            specRules = data.map((r) => r[0]).join("\n");
+          } else {
+            // v29.5.181: 若表格未達分層切點，仍以可用資料建立 Spec 層，避免誤判降級
+            const data = ruleSheet
+              .getRange(2, 1, ruleSheet.getLastRow() - 1, 1)
+              .getValues();
+            specRules = data.map((r) => r[0]).join("\n");
+          }
+          specRulesLoaded = specRules.trim().length > 0;
         }
       } catch (e) {}
     }
@@ -2569,15 +2627,22 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3️⃣ 規格層智慧檢索 (Spec Layer Smart Retrieval) v29.4.6
     // 核心目標：針對 "40吋", "144Hz" 等屬性查詢，進行加權關鍵字檢索，避免簡單篩選的雜訊
     let specContext = "";
-    let fullSpecRules = "";
-    let chunkIndex = 0;
-    while (true) {
-      const chunk = cache.get(
-        `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`,
-      );
-      if (!chunk) break;
-      fullSpecRules += chunk;
-      chunkIndex++;
+    // v29.5.181: 先用前段載入到的 specRules（含 Sheet fallback），避免 Cache Miss 時規格層直接失效
+    let fullSpecRules = specRules || "";
+    if (!fullSpecRules) {
+      let chunkIndex = 0;
+      while (true) {
+        const chunk = cache.get(
+          `${CACHE_KEYS.KB_RULES_SPEC_PREFIX}${chunkIndex}`,
+        );
+        if (!chunk) break;
+        fullSpecRules += chunk;
+        chunkIndex++;
+      }
+      if (fullSpecRules.trim().length > 0) {
+        specRulesLoaded = true;
+        specRulesFromCache = true;
+      }
     }
 
     if (fullSpecRules) {
@@ -2708,6 +2773,29 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       relevantContext += inferredModelContext + "\n";
     }
 
+    // v29.5.181: 記錄上下文健康度，供主流程判定是否需要保守升級 PDF
+    if (userId) {
+      const contextHealth = {
+        qaLoaded: !!qaLoaded,
+        qaFromCache: !!qaFromCache,
+        lightRulesLoaded: !!lightRulesLoaded,
+        lightRulesFromCache: !!lightRulesFromCache,
+        specRulesLoaded: !!specRulesLoaded,
+        specRulesFromCache: !!specRulesFromCache,
+        degraded: !(qaLoaded && lightRulesLoaded && specRulesLoaded),
+      };
+      cache.put(
+        `${CACHE_KEYS.CONTEXT_HEALTH_PREFIX}${userId}`,
+        JSON.stringify(contextHealth),
+        120,
+      );
+      if (contextHealth.degraded) {
+        writeLog(
+          `[Context Health v29.5.181] 降級模式 qa:${contextHealth.qaLoaded} light:${contextHealth.lightRulesLoaded} spec:${contextHealth.specRulesLoaded}`,
+        );
+      }
+    }
+
     // 記錄總 Context 大小
     // v29.5.0: Consolidate    // v29.5.146: 移除冗長 log
     // if (qaContext) {
@@ -2751,6 +2839,7 @@ const CACHE_KEYS = {
   KB_RULES_LIGHT_PREFIX: "KB_RULES_LIGHT_",
   KB_RULES_SPEC_PREFIX: "KB_RULES_SPEC_",
   LAST_SMART_TOKENS: "last_smart_tokens_", // v29.4.8: 保存 Smart Retrieval 關鍵字
+  CONTEXT_HEALTH_PREFIX: "ctx_health_",
 };
 
 const CONFIG = {
@@ -5308,6 +5397,13 @@ function formatForLineMobile(text) {
   // 5. 移除多餘換行 (3個以上換行合併為2個)
   processed = processed.replace(/\n{3,}/g, "\n\n");
 
+  // v29.5.181: 口吻與前綴統一防呆
+  processed = processed.replace(/您/g, "你");
+  processed = processed.replace(
+    /^\s*根據(?:我|目前|我手上)?(?:的)?資料庫[，,：: ]*/gim,
+    "",
+  );
+
   processed = formatListSpacing(processed);
   return processed.trim();
 }
@@ -6582,6 +6678,7 @@ function handleMessage(event) {
         writeLog(`[AI Raw Response] ${rawResponse}`);
 
         let finalText = stripAnySourceTags(formatForLineMobile(rawResponse));
+        finalText = sanitizeLeadDatabasePhrase(finalText);
         const fastSourceTag = normalizeSourceTagFromRaw(rawResponse);
         let replyText = finalText;
 
@@ -6622,6 +6719,12 @@ function handleMessage(event) {
         const operationIntent = isOperationOrTroubleshootQuery(
           `${msg || ""}\n${userMessage || ""}`,
         );
+        const capabilityIntent = isCapabilityClaimQuery(
+          `${msg || ""}\n${userMessage || ""}`,
+        );
+        const manualVerificationIntent = isManualVerificationRequiredQuery(
+          `${msg || ""}\n${userMessage || ""}`,
+        );
         const normalizedFastAnswer = stripAnySourceTags(
           formatForLineMobile(rawResponse),
         );
@@ -6636,6 +6739,43 @@ function handleMessage(event) {
         ) {
           writeLog(
             `[Auto Search v29.5.179] 操作/故障題 Fast 回答不足，依通用SOP追加 [AUTO_SEARCH_PDF]`,
+          );
+          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+        }
+
+        // v29.5.181b: 高風險聯網協議/中樞能力題，Fast 若僅來自 QA，必須先進 PDF 查證
+        const answerLooksFromQa =
+          fastSourceTag === "[來源:QA]" || /\[來源:\s*QA/i.test(rawResponse);
+        if (
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          !isInPdfMode &&
+          hasPdfForModel &&
+          manualVerificationIntent &&
+          answerLooksFromQa
+        ) {
+          writeLog(
+            `[Auto Search v29.5.181b] 高風險能力題 Fast僅QA來源，依SOP追加 [AUTO_SEARCH_PDF]`,
+          );
+          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+        }
+
+        // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬規格能力或操作題，
+        // 為避免 Fast Mode 在資料不完整時直接定論，按 SOP 保守升級到 PDF 驗證。
+        const contextHealth = readContextHealth(cache, userId);
+        if (
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          !isInPdfMode &&
+          hasPdfForModel &&
+          contextHealth &&
+          contextHealth.degraded &&
+          (operationIntent || capabilityIntent)
+        ) {
+          writeLog(
+            `[Auto Search v29.5.181] 上下文降級且題型高風險，依SOP追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }

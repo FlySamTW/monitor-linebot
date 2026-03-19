@@ -637,3 +637,36 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 
 ### 備註
 - 這次只做「列數精簡」，沒有改動 QA/RULE/PDF/WEB 的主流程判定邏輯。
+
+## 2026-03-19 (v29.5.181 SOP 回歸修正：快取降級自癒 + 保守升級 PDF)
+
+### 問題根因（整體）
+- 發生 `QA Cache Miss` / `Spec Rules Cache Miss` 時，Fast Mode 仍可能直接定論，造成看起來像「直接跳資料庫」。
+- `buildDynamicContext()` 中 `specRules` 雖有 Sheet fallback，但 SmartRetrieval 後段只讀 Spec Cache chunk，導致 fallback 被忽略。
+
+### 程式修正（非個案硬編碼）
+- 修復 Spec fallback 斷鏈：
+  - SmartRetrieval 改為優先使用前段已載入的 `specRules`（含 Sheet fallback），不是只看 cache chunk。
+- 新增上下文健康度記錄：
+  - `CACHE_KEYS.CONTEXT_HEALTH_PREFIX`
+  - `buildDynamicContext()` 會把 `qa/light/spec` 載入狀態寫入 cache（`degraded` 旗標）。
+- 新增保守升級守門（通用 SOP）：
+  - 當 `contextHealth.degraded=true` 且題型屬「操作/故障」或「規格能力判定」且有手冊可查時，自動補 `[AUTO_SEARCH_PDF]`。
+- 回覆口吻清理：
+  - 新增 `sanitizeLeadDatabasePhrase()`，移除「根據我的資料庫」起手語。
+
+### Prompt 修正
+- `Prompt.csv` 升級為 `Prompt v29.5.181`。
+- 移除「回答開頭要說根據我的資料庫」傾向。
+- 統一來源標籤規則為 `[來源:QA]/[來源:規格庫]/[來源:產品手冊]/[來源:網路搜尋]`，避免格式互相衝突。
+
+## 2026-03-19 (v29.5.182 高風險能力題手冊查證守門)
+
+### 目的
+- 防止「聯網協議/中樞能力」這類高風險題目被 Fast Mode 的 QA 單點定論。
+
+### 修正
+- 新增 `isManualVerificationRequiredQuery()`（通用風險類別，非個案型號）。
+- 主流程新增守門：
+  - 若題目屬高風險能力題、型號有 PDF、且 Fast 回答來源看起來僅來自 QA，則自動追加 `[AUTO_SEARCH_PDF]`。
+  - 讓流程回到 `QA/RULE → PDF → WEB` 的可驗證路徑。
