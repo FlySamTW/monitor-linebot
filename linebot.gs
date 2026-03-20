@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.197"; // 2026-03-20 型號泡泡前導文字固定化：避免先外送Fast結論
+const GAS_VERSION = "v29.5.200"; // 2026-03-20 手冊未明確回覆再收斂：納入客服/諮詢甩鍋語句
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2314,9 +2314,11 @@ function sanitizeManualDeflection(text) {
       );
     const hasSupportTarget = /(客服|客服專線|服務專線|聯絡\s*SAMSUNG|聯繫\s*SAMSUNG)/i.test(
       t,
-    );
+    ) || /(三星官方|SAMSUNG\s*官方)/i.test(t);
     const hasDeflectVerb =
-      /(參考|查詢|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問)/i.test(t);
+      /(參考|查詢|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問|確認|求證)/i.test(
+        t,
+      );
     const hasGenericDeflectionLead =
       /(如果你想確認|若你想確認|想確認.*建議你|建議你[:：]?$|最直接且準確|產品的詳細規格.*會列出)/i.test(
         t,
@@ -2347,7 +2349,7 @@ function enforceManualUncertaintyGuard(text, queryText) {
       body,
     );
   const hasDeflectRecommendation =
-    /(建議你|你可以.*(官網|手冊|產品頁|規格頁)|最直接且準確|查詢.*官網)/i.test(
+    /(建議你|你可以.*(官網|手冊|產品頁|規格頁)|最直接且準確|查詢.*官網|向\s*(SAMSUNG|三星)\s*官方確認|官方確認|客服|客服人員|諮詢)/i.test(
       body,
     );
 
@@ -11250,11 +11252,19 @@ function testMessage(msg, userId) {
   var botResponses = [];
   var seenContent = new Set();
   var hasOfficialReply = false;
+  var hasFlexSelectionFlow = TEST_LOGS.some(
+    (l) =>
+      l.indexOf("已發送 Flex Selection") > -1 ||
+      l.indexOf("型號泡泡選擇模式") > -1,
+  );
 
   // 1️⃣ 優先找 [Reply] 和 [AI Reply]
   for (var i = 0; i < TEST_LOGS.length; i++) {
     var log = TEST_LOGS[i];
     if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
+      if (hasFlexSelectionFlow && log.indexOf("[AI Reply]") > -1) {
+        continue;
+      }
       var content = parseLogContent(
         log,
         log.indexOf("[Reply]") > -1 ? "[Reply]" : "[AI Reply]",
@@ -11315,6 +11325,33 @@ function testMessage(msg, userId) {
   }
 
   // 2️⃣ 如果沒有官方回覆，檢查是否有型號選擇反問 (這是特殊情況)
+  if (!hasOfficialReply) {
+    if (hasFlexSelectionFlow) {
+      var cache = CacheService.getScriptCache();
+      var suggestedModelsRaw = cache.get(`${userId}:suggested_models`);
+      if (suggestedModelsRaw) {
+        try {
+          var mArr = JSON.parse(suggestedModelsRaw) || [];
+          if (Array.isArray(mArr) && mArr.length > 0) {
+            var preview = mArr.slice(0, 5).join("、");
+            var more = mArr.length > 5 ? "…" : "";
+            botResponses.push(
+              `🔍 已送出型號選擇泡泡，請先選完整型號（例如：${preview}${more}）。`,
+            );
+          } else {
+            botResponses.push("🔍 已送出型號選擇泡泡，請先選完整型號。");
+          }
+        } catch (e) {
+          botResponses.push("🔍 已送出型號選擇泡泡，請先選完整型號。");
+        }
+      } else {
+        botResponses.push("🔍 已送出型號選擇泡泡，請先選完整型號。");
+      }
+      hasOfficialReply = true;
+    }
+  }
+
+  // 2.5️⃣ 若仍無官方回覆，再檢查舊版型號選擇反問訊號
   if (!hasOfficialReply) {
     var hasPdfQuestion = TEST_LOGS.some(
       (l) => l.indexOf("已發送型號選擇反問") > -1,

@@ -895,3 +895,44 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 
 ### 效果
 - 多型號手冊查證場景下，先選型號再查證的 SOP 對使用者可見行為一致。
+
+## 2026-03-20 (v29.5.198 TestUI 泡泡回合判讀修正)
+
+### 問題
+- TestUI 在「已送出型號泡泡」回合會把 `[AI Reply]` 中間稿當成最終回覆，造成看起來像先亂答再追問型號。
+
+### 程式修正
+- `testMessage()` 新增 `hasFlexSelectionFlow` 偵測：
+  - 命中 Flex 型號泡泡流程時，忽略 `[AI Reply]` 中間稿提取。
+  - 改回傳「已送出型號選擇泡泡」訊息（並盡量附上候選型號預覽）。
+- 舊版 `已發送型號選擇反問` 分支保留為 fallback。
+
+### 效果
+- TestUI 顯示與實際路由一致，不再被中間稿誤導。
+
+## 2026-03-20 (v29.5.199 手冊甩鍋同義句收斂)
+
+### 問題
+- 手冊回覆仍可能出現「直接向 Samsung 官方確認」等同義甩鍋句，雖未提官網，但本質仍是把判斷責任交給使用者。
+
+### 程式修正
+- `sanitizeManualDeflection()`：
+  - `hasSupportTarget` 納入 `三星官方 / Samsung 官方`。
+  - `hasDeflectVerb` 納入 `確認 / 求證`。
+- `enforceManualUncertaintyGuard()`：
+  - `hasDeflectRecommendation` 納入 `向三星官方確認 / 官方確認`。
+
+### 效果
+- 手冊模式更穩定地避免同義甩鍋語句外送。
+
+## 2026-03-20 (v29.5.200 手冊未明確回覆收斂 - 納入客服/諮詢語句)
+
+### 問題
+- 在「手冊未明確」場景，回覆仍可能出現「直接諮詢客服」等導流語句。
+
+### 程式修正
+- `enforceManualUncertaintyGuard()` 的 `hasDeflectRecommendation` 新增：
+  - `客服`、`客服人員`、`諮詢`
+
+### 效果
+- 只要是手冊未明確且出現客服導流語句，會統一改寫為可執行下一步（再搜網路）。
