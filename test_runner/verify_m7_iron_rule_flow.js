@@ -91,6 +91,10 @@ async function main() {
       "turn3 missing real pdf source tag",
     );
     assertStep(
+      !/根據你提供的\s*PDF\s*文件|根據您提供的\s*PDF\s*文件/i.test(t3Text),
+      "turn3 still contains '你提供的PDF' wording",
+    );
+    assertStep(
       !/(建議你.*官網|自行查手冊|上官網查詢|最直接且準確)/.test(t3Text),
       "turn3 still contains manual/web self-check deflection",
     );

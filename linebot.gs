@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.200"; // 2026-03-20 手冊未明確回覆再收斂：納入客服/諮詢甩鍋語句
+const GAS_VERSION = "v29.5.201"; // 2026-03-20 手冊口吻修正：禁止「你提供的PDF」改為官方手冊口吻
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2304,7 +2304,12 @@ function enforceManualNumberedList(text) {
  * 已查閱手冊時，避免回覆仍要求用戶「自行去查手冊/官網」造成矛盾。
  */
 function sanitizeManualDeflection(text) {
-  const lines = String(text || "").split(/\n+/);
+  const normalized = String(text || "")
+    .replace(/根據你提供的\s*PDF\s*文件/gi, "根據官方手冊")
+    .replace(/根據您提供的\s*PDF\s*文件/gi, "根據官方手冊")
+    .replace(/你提供的\s*PDF\s*文件/i, "官方手冊內容")
+    .trim();
+  const lines = normalized.split(/\n+/);
   const filtered = lines.filter((line) => {
     const t = line.trim();
     if (!t) return true;
@@ -4458,7 +4463,7 @@ function constructDynamicPrompt(
     } else {
       dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊${
         targetModelName ? ` (${targetModelName})` : ""
-      }，請根據手冊內容詳細回答。\n\n【回答格式優化 (嚴格執行)】\n1. **呈現選項/步驟**: 若你需要提供多個選項或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，嚴禁使用圓點 (•) 或其他符號。\n2. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: ${sourceLabel}]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n3. **網路搜尋**: 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。\n\n【致命錯誤警告】你現在已經在閱讀原廠手冊了！嚴禁在句尾詢問用戶「需要幫你查手冊嗎」或「要不要幫你查找更詳細步驟」等類似問句。違反此項將導致系統崩潰。\n\n【內容優先級】\n1. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶是否要查手冊。\n2. 若手冊無資料，請輸出 [AUTO_SEARCH_WEB]。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
+      }，請根據手冊內容詳細回答。\n\n【回答格式優化 (嚴格執行)】\n1. **呈現選項/步驟**: 若你需要提供多個選項或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，嚴禁使用圓點 (•) 或其他符號。\n2. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: ${sourceLabel}]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n3. **網路搜尋**: 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。\n4. **口吻限制**: 禁止對用戶說「根據你提供的 PDF 文件」或類似措辭，請改用「根據官方手冊」或「根據手冊內容」。\n\n【致命錯誤警告】你現在已經在閱讀原廠手冊了！嚴禁在句尾詢問用戶「需要幫你查手冊嗎」或「要不要幫你查找更詳細步驟」等類似問句。違反此項將導致系統崩潰。\n\n【內容優先級】\n1. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶是否要查手冊。\n2. 若手冊無資料，請輸出 [AUTO_SEARCH_WEB]。(切勿自行標註網路搜尋)\n3. 若使用一般常識或推論，請標註「[來源: 一般知識]」。\n4. 優先順序：手冊 > [AUTO_SEARCH_WEB] > 一般知識。`;
     }
   } else if (imageBlob) {
     // Image Mode
