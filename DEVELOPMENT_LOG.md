@@ -787,3 +787,19 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 
 ### 效果
 - 非三星文章可維持長文清理輸出，但不會再誤觸 QA 題材邀請。
+
+## 2026-03-20 (v29.5.191 高風險聯網中樞題強制手冊查證)
+
+### 問題
+- M7 / Matter / SmartThings Hub 類問題在 Fast Mode 仍可能直接採用規格庫強結論，沒有升級到 PDF，造成錯答外送。
+
+### 程式修正
+- 將高風險題升級條件由「僅 QA 來源才升級」改為：
+  - 只要命中 `isManualVerificationRequiredQuery()`（Matter / Thread / Zigbee / Hub / 中樞 / 協議）
+  - 且該型號有 PDF，可用時就一律追加 `[AUTO_SEARCH_PDF]`。
+- 為避免多型號泡泡打斷流程：
+  - 追加 `[AUTO_SEARCH_PDF]` 時同步鎖定 `primaryModel` 到 `direct_search_models`。
+  - Smart Router 偵測到此強制升級時，略過多型號泡泡，直接用已鎖定型號進 Pass 1.5。
+
+### 效果
+- 高風險聯網能力題不再停留在 Fast 強結論，會先走手冊查證再回覆。

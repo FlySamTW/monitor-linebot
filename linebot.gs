@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.190"; // 2026-03-20 強化專案相關判定，避免非三星長文誤進QA邀請
-const BUILD_TIMESTAMP = "2026-03-20 12:36";
+const GAS_VERSION = "v29.5.191"; // 2026-03-20 高風險聯網中樞題強制手冊查證，避免Fast誤判
+const BUILD_TIMESTAMP = "2026-03-20 13:11";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6687,6 +6687,7 @@ function handleMessage(event) {
 
         // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
         let aiRequestedPdfSearch = false;
+        let forcedManualPdfVerification = false;
 
         // 🔥 v29.5.106: 詳細 LOG - 檢測暗號
         const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
@@ -6746,22 +6747,31 @@ function handleMessage(event) {
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }
 
-        // v29.5.181b: 高風險聯網協議/中樞能力題，Fast 若僅來自 QA，必須先進 PDF 查證
-        const answerLooksFromQa =
-          fastSourceTag === "[來源:QA]" || /\[來源:\s*QA/i.test(rawResponse);
+        // v29.5.191: 高風險聯網協議/中樞能力題，一律先進 PDF 查證
+        // 不再侷限於 QA 來源，避免「規格庫強結論」直接外送造成誤導。
         if (
           !hasAutoPdf &&
           !hasAutoWeb &&
           !hasNeedDoc &&
           !isInPdfMode &&
           hasPdfForModel &&
-          manualVerificationIntent &&
-          answerLooksFromQa
+          manualVerificationIntent
         ) {
           writeLog(
-            `[Auto Search v29.5.181b] 高風險能力題 Fast僅QA來源，依SOP追加 [AUTO_SEARCH_PDF]`,
+            `[Auto Search v29.5.191] 高風險能力題需手冊查證，依SOP追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+          forcedManualPdfVerification = true;
+          if (primaryModel && String(primaryModel).trim()) {
+            cache.put(
+              `${userId}:direct_search_models`,
+              JSON.stringify([primaryModel]),
+              300,
+            );
+            writeLog(
+              `[Auto Search v29.5.191] 高風險題鎖定主型號: ${primaryModel}`,
+            );
+          }
         }
 
         // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬規格能力或操作題，
@@ -6920,6 +6930,13 @@ function handleMessage(event) {
 
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
         let autoLocked = false;
+        if (forcedManualPdfVerification && primaryModel) {
+          suggestedModels = [primaryModel];
+          autoLocked = true;
+          writeLog(
+            `[Smart Router v29.5.191] 高風險題已強制手冊查證，略過多型號泡泡並鎖定: ${primaryModel}`,
+          );
+        }
 
         // Step 1: Filter out short aliases if specific models exist
         const specificModels = suggestedModels.filter((m) => m.length > 3);
