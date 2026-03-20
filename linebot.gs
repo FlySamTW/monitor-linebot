@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.182"; // 2026-03-19 高風險能力題 Fast後強制手冊查證
-const BUILD_TIMESTAMP = "2026-03-19 19:05";
+const GAS_VERSION = "v29.5.190"; // 2026-03-20 強化專案相關判定，避免非三星長文誤進QA邀請
+const BUILD_TIMESTAMP = "2026-03-20 12:36";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5567,56 +5567,93 @@ function handleMessage(event) {
       cache.put(`${userId}:last_meaningful_query`, msg, 21600); // 6 小時
     }
 
+    const draftCache = cache.get(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
+
+    // v29.5.185: 長文後 QA 編輯模式確認入口（使用者回「要」可直接進建檔）
+    const qaOfferKey = `${userId}:qa_offer_payload`;
+    const qaOfferRaw = cache.get(qaOfferKey);
+    if (qaOfferRaw && !draftCache && !isCommand && !isQuickCommand) {
+      if (isAffirmativeForQaEdit(msg)) {
+        try {
+          const qaOffer = JSON.parse(qaOfferRaw);
+          const draftSeed = String(qaOffer && qaOffer.seed ? qaOffer.seed : "").trim();
+          if (draftSeed) {
+            const draftReply = startNewEntryDraft(draftSeed, userId);
+            replyMessage(replyToken, draftReply);
+            writeRecordDirectly(userId, msg, contextId, "user", "");
+            writeRecordDirectly(userId, draftReply, contextId, "assistant", "");
+            cache.remove(qaOfferKey);
+            return;
+          }
+        } catch (e) {
+          writeLog(`[QA Offer] 解析失敗: ${e.message}`);
+          cache.remove(qaOfferKey);
+        }
+      } else if (isNegativeForQaEdit(msg)) {
+        cache.remove(qaOfferKey);
+      }
+    }
+
     // ⭐ 立即顯示 Loading 動畫（去重後、處理前）
     // v29.3.25: 移除 hasRecentAnimation 判定，強制每一題都發送動畫請求，
     // 因為 LINE 會自動處理 5s 內的重複請求，我們端點保持最高靈敏度。
     showLoadingAnimation(userId, 60);
 
-    // v27.9.64: [Smart Editor Mode] 長文自動摘要與總編模式
-    // 條件：長度 > 200 且 包含 Samsung 關鍵字 且 非指令
-    // 目標：快速摘要長文資料，繞過標準 RAG 流程
-    if (msg.length > 200 && !msg.startsWith("/")) {
-      // v27.9.67: 放寬至「科技新聞」，不再侷限三星
-      const validContent = isValidTechContent(msg);
+    // A. 建檔模式（優先於長文模式，避免草稿內容被誤判為去廣告摘要）
+    if (draftCache && !msg.startsWith("/")) {
+      handleDraftModification(msg, userId, replyToken, JSON.parse(draftCache));
+      return;
+    }
+
+    // v29.5.184: 長文去廣告模式（科技長文貼上 → 去廣告 + 摘要 + 整理後原文）
+    const isLongArticle =
+      msg.length > 200 || (msg.length > 140 && isLikelyPastedLongArticle(msg));
+    if (isLongArticle && !msg.startsWith("/") && !msg.startsWith("#")) {
+      const validContent = isValidTechContent(msg) || hasTechSignals(msg);
       if (validContent) {
         writeLog(
-          `[SmartEditor] 偵測到長文 (${msg.length} 字)，且包含相關關鍵字，啟動總編模式`,
+          `[ArticleClean] 偵測到科技長文 (${msg.length} 字)，啟動去廣告摘要模式`,
         );
 
-        // 1. 取得總編 Persona
-        let editorPersona = "";
+        let articlePersona = "";
         try {
-          // 嘗試從 Prompt.csv 讀取 (雖然 User 說會自己貼，但我們會先讀 Cache 或預設)
           const prompts = getPromptsFromCacheOrSheet();
-          editorPersona = prompts["總編模式"] || "";
+          articlePersona = prompts["長文去廣告摘要"] || "";
         } catch (e) {
-          writeLog(`[SmartEditor] Prompt Load Failed: ${e.message}`);
+          writeLog(`[ArticleClean] Prompt Load Failed: ${e.message}`);
         }
 
-        // 若沒有設定，使用預設值 (雖User會貼，但防呆)
-        if (!editorPersona) {
-          editorPersona = `你現在是專業科技編輯。用戶提供「原始長文」(可能含廣告/時間軸/廢話)。任務：1.去蕪存菁(移除廣告/訂閱提醒/無關閒聊)。2.邏輯重整(分段/下標題/列點)。3.提取關於「三星產品」的技術重點與操作步驟。4.保持客觀，不加主觀評論。輸出格式：【重點摘要】(3點)→【詳細內容】(分層結構)。若內容與三星產品無關，請回「內容似乎與三星產品無關，請提供相關資料」。`;
+        if (!articlePersona) {
+          articlePersona =
+            "你是科技內容整理助手。使用者貼上的是整篇網頁內容，通常含廣告、導購、訂閱、重複段落。\n" +
+            "任務：\n" +
+            "1. 移除廣告、導購、訂閱、與主題無關段落。\n" +
+            "2. 保留可驗證的事實與主要論點，不要編造。\n" +
+            "3. 先給【重點摘要】（3-6點）。\n" +
+            "4. 再給【去廣告原文】（依原文順序重整，保留核心內容）。\n" +
+            "5. 使用繁體中文與條列，語句清楚。\n" +
+            "6. 禁止回答客服路由標記（如[AUTO_SEARCH_PDF]）。";
         }
 
-        const editorSystemPrompt = `${editorPersona}\n\n[用戶原始長文]:\n${msg}`;
+        const articlePrompt =
+          `${articlePersona}\n\n` +
+          "請嚴格使用以下輸出結構：\n" +
+          "重要：即使內容與三星產品無關，也必須完整輸出【重點摘要】與【去廣告原文】，禁止只回覆一句「內容無關」。\n\n" +
+          "【重點摘要】\n1. ...\n2. ...\n3. ...\n\n" +
+          "【去廣告原文】\n(重整後內容)\n\n" +
+          `[使用者貼上的原文]\n${msg}`;
 
-        // 2. 呼叫 LLM (不查 QA, 不查 PDF)
-        // 這裡需要直接呼叫 chatWithGemini 但要繞過 context 組合
-        // 我們直接構造一個假的 context
-        const editorContext = `[System] ${editorPersona}`;
-
-        // 為了使用統一的 callGeminiApi，我們直接組裝
-        const modelName = "models/gemini-2.0-flash"; // 為了速度，用 Flash
+        const modelName = "models/gemini-2.0-flash";
         const payload = {
           contents: [
             {
               role: "user",
-              parts: [{ text: editorSystemPrompt }],
+              parts: [{ text: articlePrompt }],
             },
           ],
           generationConfig: {
-            temperature: 0.3, // 摘要需要穩定
-            maxOutputTokens: 2000,
+            temperature: 0.2,
+            maxOutputTokens: 2600,
           },
         };
 
@@ -5632,9 +5669,7 @@ function handleMessage(event) {
             payload: JSON.stringify(payload),
             muteHttpExceptions: true,
           });
-          const resCode = response.getResponseCode();
-          const resText = response.getContentText();
-          const result = JSON.parse(resText);
+          const result = JSON.parse(response.getContentText());
 
           let replyText = "";
           let inputTokens = 0;
@@ -5642,121 +5677,89 @@ function handleMessage(event) {
           let cost = 0;
 
           if (result.candidates && result.candidates[0].content) {
-            replyText = result.candidates[0].content.parts[0].text;
+            replyText = result.candidates[0].content.parts[0].text || "";
           }
-          // 計算 Token (若 API 有回傳 usageMetadata)
+
           if (result.usageMetadata) {
             inputTokens = result.usageMetadata.promptTokenCount || 0;
-            outputTokens = result.candidatesTokenCount || 0; // Gemini API 命名可能不同，視版本
-            if (!outputTokens && result.usageMetadata.candidatesTokenCount)
-              outputTokens = result.usageMetadata.candidatesTokenCount;
-
-            // 估算費用 (Flash Rate: In $0.1/1M, Out $0.4/1M -> NTD 32)
-            // NTD: In ~ 0.0000032, Out ~ 0.0000128
+            outputTokens = result.usageMetadata.candidatesTokenCount || 0;
             cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
           } else {
-            // 模擬計算 (1 char ~ 1 token for Chinese context safety estimate)
             inputTokens = msg.length;
             outputTokens = replyText.length;
             cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
           }
 
-          // 3. 格式化輸出 (移除 **, 調整排版)
-          if (replyText) {
-            replyText = formatForLineMobile(replyText);
+          replyText = formatForLineMobile(replyText)
+            .replace(/\[AUTO_SEARCH_PDF[^\]]*\]/gi, "")
+            .replace(/\[AUTO_SEARCH_WEB[^\]]*\]/gi, "")
+            .trim();
+          const normalizedArticleReply = ensureArticleCleanOutputFormat(
+            replyText,
+            msg,
+          );
+          if (normalizedArticleReply !== replyText) {
+            writeLog("[ArticleClean] AI 輸出非標準格式，已套用本地格式修正");
+            replyText = normalizedArticleReply;
           }
 
-          // 4. 加上強制註腳
-          // [來源: 使用者提供長文] [費用: NT$...]
-          const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2); // 最低顯示 0.01
-          const footer = `\n\n[來源: 使用者提供長文] [費用: NT$${costStr}]`;
+          const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2);
+          const footer = `\n\n[來源: 使用者提供長文] [模式: 去廣告摘要] [費用: NT$${costStr}]`;
           replyText += footer;
 
-          // v29.5.118: 統一三按鈕 Quick Reply
-          let responseOptions = {};
-          if (!msg.startsWith("/")) {
-            responseOptions.quickReply = {
-              items: [
-                {
-                  type: "action",
-                  action: {
-                    type: "message",
-                    label: "💬 再詳細說明",
-                    text: "#再詳細說明",
-                  },
-                },
-                {
-                  type: "action",
-                  action: {
-                    type: "message",
-                    label: "📖 查手冊",
-                    text: "#查手冊",
-                  },
-                },
-                {
-                  type: "action",
-                  action: {
-                    type: "message",
-                    label: "🌐 這題再搜網路",
-                    text: "#這題再搜網路",
-                  },
-                },
-              ],
-            };
+          const relatedToProject = isProjectRelevantLongContent(msg);
+          const qaCandidate = relatedToProject && isQACandidateLongContent(msg);
+          if (qaCandidate) {
+            const guide = buildQaEditInstructionText();
+            replyText +=
+              "\n\n---\n這篇內容看起來和本專案相關，也具備 QA 題材。\n要不要進入 QA 編輯模式（加入 QA）？\n\n" +
+              guide;
+
+            // 儲存可直接進建檔的草稿種子（使用長文整理結果當作起稿）
+            const seedText = `【長文整理候選QA素材】\n${replyText
+              .replace(/\[來源:[^\]]+\]/g, "")
+              .replace(/\[模式:[^\]]+\]/g, "")
+              .replace(/\[費用:[^\]]+\]/g, "")
+              .trim()}`.substring(0, 2500);
+            cache.put(
+              `${userId}:qa_offer_payload`,
+              JSON.stringify({
+                seed: seedText,
+                source: "ArticleClean",
+                ts: new Date().toISOString(),
+              }),
+              1800,
+            );
+          } else {
+            cache.remove(`${userId}:qa_offer_payload`);
           }
 
-          // v29.3.17: 使用 replyText 變數 (支援 Array)
-          // v29.3.36: 傳遞 options
-          replyMessage(replyToken, replyText, responseOptions);
-
-          // 5. 寫入 Log & Record
-          // 注意：不寫入 QA Cache，因為這是摘要
-          // v27.9.71: 修復欄位錯位問題 (Correct args: u, t, c, r, f)
-          // F欄回歸 Empty String (Boolean compatible)
+          replyMessage(replyToken, replyText);
           writeRecordDirectly(userId, msg, contextId, "user", "");
-          writeRecordDirectly(userId, replyText, contextId, "SmartEditor", "");
+          writeRecordDirectly(userId, replyText, contextId, "ArticleClean", "");
           writeLog(
-            `[SmartEditor] 完成摘要，耗時 ${
+            `[ArticleClean] 完成去廣告摘要，耗時 ${
               (new Date().getTime() - startTime) / 1000
             }s, Cost: ${costStr}`,
           );
-
-          return; // 結束，不走後面的 RAG
+          return;
         } catch (e) {
-          writeLog(`[SmartEditor] Error: ${e.message}`);
-          // 若失敗，Fallthrough 到一般流程? 或者回報錯誤?
-          // 為了保險，Fallthrough 到一般流程
+          writeLog(`[ArticleClean] Error: ${e.message}`);
         }
       } else {
-        // v27.9.67: 長文但無科技/三星關鍵字，拒絕處理
-        writeLog(`[SmartEditor] 長文但無科技/三星關鍵字，拒絕處理`);
-
-        // User v27.9.67 Requirement: 就算不符合也要回覆婉拒
-        if (msg.length > 200) {
-          writeLog(
-            "[SmartEditor] 長文 (>200) 但未偵測到科技或三星關鍵字，發送婉拒訊息。",
-          );
-          replyMessage(
-            replyToken,
-            "抱歉，我目前只能處理與「科技新聞」或「三星產品」相關的長文摘要與分析。\n\n若您分享的是一般生活新聞或非科技類內容，請原諒我無法提供服務。🙇‍♂️",
-          );
-          // 這裡必須 Return，否則會繼續往下走 RAG
-          return;
-        }
+        writeLog(`[ArticleClean] 長文但無科技關鍵字，略過去廣告模式`);
+        replyMessage(
+          replyToken,
+          "這篇看起來是長文內容。如果你希望我做「去網頁廣告 + 重點摘要 + 整理後原文」，請貼科技相關文章，我就會直接啟動這個模式。",
+        );
+        return;
       }
     }
 
     // v27.8.8: 將 Log 移到去重之後、處理之前，確保每條通過去重的訊息都有紀錄
     writeLog(`[HandleMsg] 收到: ${msg}`);
-    const draftCache = cache.get(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
     // v24.1.23: 移除 PENDING_QUERY 相關邏輯 (Auto Deep Search 取代)
     // const pendingQuery = cache.get(CACHE_KEYS.PENDING_QUERY + userId);
-
-    // A. 建檔模式
-    if (draftCache && !msg.startsWith("/")) {
-      handleDraftModification(msg, userId, replyToken, JSON.parse(draftCache));
-      return;
-    }
 
     // v29.5.118: 攔截舊版「不滿意...」按鈕（向下相容）
     const isWebSearchRequest =
@@ -11501,6 +11504,148 @@ function isValidTechContent(msg) {
     writeLog("[isValidTechContent] Error: " + e.message);
     return basicKeywords.some((key) => upper.includes(key));
   }
+}
+
+/**
+ * 判斷是否像「整篇網頁貼文」：長段落 + 多行 + 常見文章結構訊號
+ */
+function isLikelyPastedLongArticle(msg) {
+  const text = String(msg || "");
+  if (!text) return false;
+  const len = text.length;
+  const lineCount = text.split(/\n/).length;
+  const hasUrl = /(https?:\/\/|www\.)/i.test(text);
+  const hasArticleMarkers =
+    /(原文|來源|作者|發布|更新|閱讀|全文|訂閱|廣告|延伸閱讀|點此|更多內容|©|版權)/i.test(
+      text,
+    );
+  const hasPuncDensity = (text.match(/[。！？；，,:]/g) || []).length >= 12;
+
+  if (len >= 220 && (lineCount >= 5 || hasPuncDensity)) return true;
+  if (len >= 160 && hasUrl && (lineCount >= 4 || hasArticleMarkers)) return true;
+  if (len >= 260 && hasArticleMarkers) return true;
+  return false;
+}
+
+function hasTechSignals(msg) {
+  const text = String(msg || "");
+  return /(科技|TECH|AI|GPU|CPU|NPU|晶片|半導體|手機|筆電|PC|電腦|螢幕|顯示器|面板|OLED|MINI\s*LED|NVIDIA|AMD|INTEL|APPLE|GOOGLE|MICROSOFT|SAMSUNG|GALAXY|ODYSSEY)/i.test(
+    text,
+  );
+}
+
+function isProjectRelevantLongContent(msg) {
+  const text = String(msg || "");
+  const hasSamsungBrand = /(SAMSUNG|三星)/i.test(text);
+  const hasModelCode = /\b(?:LS)?S\d{2}[A-Z0-9]{4,}\b/i.test(text);
+  const hasProjectSeries =
+    /(ODYSSEY|SMART\s*MONITOR|VIEWFINITY|SMARTTHINGS|GALAXY\s*WATCH)/i.test(
+      text,
+    );
+  const hasSamsungCategory =
+    hasSamsungBrand &&
+    /(螢幕|顯示器|洗衣機|冰箱|吸塵器|MONITOR|DISPLAY|WASHER|DRYER|VACUUM|APPLIANCE)/i.test(
+      text,
+    );
+  const hasMatterSamsungContext =
+    /MATTER/i.test(text) && /(SMARTTHINGS|SAMSUNG|三星)/i.test(text);
+
+  return (
+    hasModelCode ||
+    hasProjectSeries ||
+    hasSamsungCategory ||
+    hasMatterSamsungContext
+  );
+}
+
+function isQACandidateLongContent(msg) {
+  const text = String(msg || "");
+  const hasQuestionLike =
+    /(如何|怎麼|是否|有沒有|支援|內建|差異|比較|設定|開啟|關閉|故障|排除|為什麼|可以嗎|\?|？)/i.test(
+      text,
+    );
+  const hasActionable =
+    /(步驟|教學|設定|規格|更新率|解析度|HDR|KVM|PIP|PBP|SmartThings|Matter|集線器|中樞|保固|維修|連接埠|接口|線材)/i.test(
+      text,
+    );
+  return hasQuestionLike || hasActionable;
+}
+
+function isAffirmativeForQaEdit(msg) {
+  const t = String(msg || "").trim();
+  return /^(要|好|好的|好啊|可以|進入|進入QA|進入QA編輯模式|加入QA|存成QA)$/i.test(
+    t,
+  );
+}
+
+function isNegativeForQaEdit(msg) {
+  const t = String(msg || "").trim();
+  return /^(不要|先不要|不用|暫時不用|略過|跳過)$/i.test(t);
+}
+
+function buildQaEditInstructionText() {
+  return (
+    "【QA編輯模式操作方式】\n" +
+    "1. 回覆「要」：直接進入 QA 編輯模式\n\n" +
+    "2. 也可手動輸入：/記錄 <內容>（或 /紀錄 <內容>）\n\n" +
+    "3. 進入後可直接回覆文字持續修稿\n\n" +
+    "4. 確認存檔：/記錄\n\n" +
+    "5. 取消離開：/取消"
+  );
+}
+
+function ensureArticleCleanOutputFormat(aiText, originalText) {
+  const text = String(aiText || "").trim();
+  const hasSummary = text.includes("【重點摘要】");
+  const hasCleanedOriginal = text.includes("【去廣告原文】");
+  if (hasSummary && hasCleanedOriginal) return text;
+
+  const cleaned = buildHeuristicCleanArticleText(originalText);
+  const points = buildHeuristicSummaryPoints(cleaned);
+  const summaryBlock = points
+    .slice(0, 4)
+    .map((p, i) => `${i + 1}. ${p}`)
+    .join("\n\n");
+
+  return `【重點摘要】\n${summaryBlock}\n\n【去廣告原文】\n${cleaned}`;
+}
+
+function buildHeuristicCleanArticleText(originalText) {
+  const text = String(originalText || "");
+  const adPattern =
+    /(廣告|訂閱|立即訂閱|點此|延伸閱讀|更多內容|贊助|sponsored|advertisement|優惠|折扣)/i;
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s && !adPattern.test(s));
+
+  const cleaned = (lines.length > 0 ? lines.join("\n") : text.trim()).trim();
+  if (!cleaned) return "（原文內容不足，無法整理）";
+  if (cleaned.length > 3600) return `${cleaned.substring(0, 3600)}...`;
+  return cleaned;
+}
+
+function buildHeuristicSummaryPoints(cleanedText) {
+  const text = String(cleanedText || "");
+  const sentenceCandidates = text
+    .split(/[。！？\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 12)
+    .slice(0, 8);
+
+  const picked = [];
+  for (let i = 0; i < sentenceCandidates.length && picked.length < 4; i++) {
+    const item = sentenceCandidates[i];
+    if (!picked.includes(item)) {
+      picked.push(item);
+    }
+  }
+
+  if (picked.length === 0) {
+    return ["這篇內容已完成去廣告整理，可依下方原文快速閱讀重點。"];
+  }
+  return picked;
 }
 
 /**

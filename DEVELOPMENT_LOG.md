@@ -670,3 +670,120 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - 主流程新增守門：
   - 若題目屬高風險能力題、型號有 PDF、且 Fast 回答來源看起來僅來自 QA，則自動追加 `[AUTO_SEARCH_PDF]`。
   - 讓流程回到 `QA/RULE → PDF → WEB` 的可驗證路徑。
+
+## 2026-03-20 (v29.5.184 科技長文改為去廣告摘要模式)
+
+### 目標
+- 使用者貼上整篇科技網頁內容時，不走一般客服問答，而是執行：
+  - 去除廣告/導購/訂閱/重複段落
+  - 輸出【重點摘要】與【去廣告原文】
+
+### 程式修正
+- `handleMessage()` 長文入口改為 `ArticleClean` 模式：
+  - 觸發條件：長文 + 非指令 + 科技訊號
+  - 輸出格式：固定兩段（摘要 + 整理後原文）
+  - 防呆：清除 `[AUTO_SEARCH_PDF]` / `[AUTO_SEARCH_WEB]` 內部標記，避免外洩
+- 新增/使用輔助判斷：
+  - `isLikelyPastedLongArticle()`
+  - `hasTechSignals()`
+
+### Prompt 同步
+- `Prompt.csv` 增加 `長文貼文處理 v29.5.184` 規則說明。
+
+## 2026-03-20 (v29.5.185 長文後 QA 題材判定與建檔引導)
+
+### 目標
+- 科技長文整理完成後，系統自動判斷：
+  - 是否與本專案（三星螢幕/智慧家電）相關
+  - 是否可作為 QA 題材
+- 若符合，主動詢問是否進入 QA 編輯模式，並先列出完整操作指令。
+
+### 程式修正
+- 新增判定函式：
+  - `isProjectRelevantLongContent()`
+  - `isQACandidateLongContent()`
+  - `isAffirmativeForQaEdit()` / `isNegativeForQaEdit()`
+  - `buildQaEditInstructionText()`
+- `ArticleClean` 回覆尾段新增 QA 引導：
+  - 顯示「是否進入 QA 編輯模式」＋操作步驟與指令
+  - 快取 `qa_offer_payload`（草稿種子）18 分鐘
+- 新增一鍵進建檔流程：
+  - 用戶回「要」會直接呼叫 `startNewEntryDraft()` 進入建檔草稿模式
+  - 回「不要/先不要」會清除邀請快取
+
+## 2026-03-20 (v29.5.186 QA 草稿模式優先權修正)
+
+### 目標
+- 避免使用者已進入 QA 草稿編輯時，輸入較長內容被 `ArticleClean` 長文機制誤攔截。
+
+### 程式修正
+- `handleMessage()` 調整執行順序：
+  - 先讀取 `draftCache`
+  - 若目前在建檔模式且非 `/` 指令，優先進 `handleDraftModification()`
+  - 之後才進入 `ArticleClean` 長文判斷
+- `qa_offer_payload` 入口加上防呆：
+  - 若已有 `draftCache`，不再處理「回覆要進 QA 編輯」入口，避免重入與流程衝突。
+- `Prompt.csv` 清理：
+  - 版本抬升為 `Prompt v29.5.186`
+  - 移除長文規則前方誤植的 `\n` 字元，避免貼回 Sheet 時出現異常字串。
+
+### 效果
+- QA 編輯模式下的修稿回覆穩定走草稿流程，不會被長文摘要流程打斷。
+
+## 2026-03-20 (v29.5.187 長文模式移除舊總編回退)
+
+### 目標
+- 落實「科技長文一律走去廣告摘要+原文」設計，不再被舊版 `總編模式` Prompt 行為干擾。
+
+### 程式修正
+- `ArticleClean` 的 Prompt 載入改為：
+  - 只讀 `prompts["長文去廣告摘要"]`
+  - 若不存在，直接用程式內建 fallback（去廣告摘要模板）
+  - 不再 fallback 到 `prompts["總編模式"]`
+
+### 效果
+- 非本專案科技長文也能維持標準輸出結構（摘要+原文），僅在 QA 候選判定階段決定是否追加 QA 編輯邀請。
+
+## 2026-03-20 (v29.5.188 長文輸出硬規則強化)
+
+### 問題
+- 部分 Prompt 內容仍可能導致模型在「非三星長文」時只回一句「內容無關」，未輸出摘要與整理原文。
+
+### 程式修正
+- `ArticleClean` 組裝的 `articlePrompt` 新增硬規則：
+  - 即使內容與三星無關，也必須完整輸出 `【重點摘要】` 與 `【去廣告原文】`
+  - 禁止只回覆「內容無關」單句。
+
+### 效果
+- 長文處理輸出格式更穩定，不受既有 Prompt 歷史內容影響。
+
+## 2026-03-20 (v29.5.189 長文格式保底器)
+
+### 問題
+- 即使已加硬規則，模型仍可能回傳非結構化單句（例：只回「內容無關」）。
+
+### 程式修正
+- 新增 `ensureArticleCleanOutputFormat(aiText, originalText)`：
+  - 若 AI 回覆缺少 `【重點摘要】` 或 `【去廣告原文】`，自動套用本地保底重整。
+- 新增 `buildHeuristicCleanArticleText()`：
+  - 先去除常見廣告/導購行，再保留可讀原文。
+- 新增 `buildHeuristicSummaryPoints()`：
+  - 由清理後內容抽取 1~4 個重點句，組成數字清單。
+- `ArticleClean` 主流程整合：
+  - AI 回覆格式不符時，寫 log 並改用保底輸出。
+
+### 效果
+- 長文模式永遠會輸出兩段結構（摘要 + 去廣告原文），不再退化為單句回覆。
+
+## 2026-03-20 (v29.5.190 專案相關判定去除通用詞誤判)
+
+### 問題
+- `isProjectRelevantLongContent()` 先前把通用詞（如「螢幕」）納入，導致非三星科技長文也可能被誤判為本專案相關，進而錯誤觸發 QA 編輯邀請。
+
+### 程式修正
+- 重寫 `isProjectRelevantLongContent()` 判定邏輯：
+  - 以「三星品牌訊號、三星系列訊號、型號碼、SmartThings/Matter 的三星脈絡」為主。
+  - 移除單靠通用品類詞就判定相關的規則。
+
+### 效果
+- 非三星文章可維持長文清理輸出，但不會再誤觸 QA 題材邀請。
