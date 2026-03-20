@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.191"; // 2026-03-20 高風險聯網中樞題強制手冊查證，避免Fast誤判
-const BUILD_TIMESTAMP = "2026-03-20 13:11";
+const GAS_VERSION = "v29.5.194"; // 2026-03-20 手冊不確定結論防呆：禁止「未明確卻直接定論」
+const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2320,6 +2320,33 @@ function sanitizeManualDeflection(text) {
     return !((hasDocTarget || hasSupportTarget) && hasDeflectVerb);
   });
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * 手冊查證一致性防呆：
+ * 若同時出現「手冊未明確」與「直接下結論(可直接/不需額外Hub)」，改為保守說法。
+ */
+function enforceManualUncertaintyGuard(text, queryText) {
+  let body = String(text || "").trim();
+  if (!body) return body;
+  if (!isManualVerificationRequiredQuery(String(queryText || ""))) return body;
+
+  const hasUncertainSignal =
+    /(手冊未明確|未明確提及|並未明確|未直接提及|無法確認|手冊未記載|文件中並未明確指出)/i.test(
+      body,
+    );
+  const hasSpeculativeConclusion =
+    /(理論上|通常會|應該可以|所以不需要|因此不需要|無需額外|不需要另外購買|可以直接連接)/i.test(
+      body,
+    );
+
+  if (hasUncertainSignal && hasSpeculativeConclusion) {
+    body =
+      "目前手冊未明確記載是否一定不需額外 SmartThings Hub，無法直接下定論。\n\n" +
+      "若裝置走 Zigbee、Thread 或非 Wi-Fi 的 Matter 情境，可能仍需接收器或外部 Hub。\n\n" +
+      "你可以點「🌐 這題再搜網路」，我再補官方與相容性資料給你。";
+  }
+  return body;
 }
 
 /**
@@ -6017,6 +6044,7 @@ function handleMessage(event) {
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
           finalText = sanitizeManualDeflection(finalText);
+          finalText = enforceManualUncertaintyGuard(finalText, queryText);
           finalText = enforceManualNumberedList(finalText);
 
           // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
@@ -6189,6 +6217,7 @@ function handleMessage(event) {
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
         finalText = sanitizeManualDeflection(finalText);
+        finalText = enforceManualUncertaintyGuard(finalText, lastQuestion);
         finalText = enforceManualNumberedList(finalText);
 
         // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
@@ -6687,7 +6716,8 @@ function handleMessage(event) {
 
         // v27.9.12: 追蹤 AI 是否明確要求 PDF 搜尋
         let aiRequestedPdfSearch = false;
-        let forcedManualPdfVerification = false;
+        let forcedSopPdfVerification = false;
+        let forcedSopNeedsModelSelection = false;
 
         // 🔥 v29.5.106: 詳細 LOG - 檢測暗號
         const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
@@ -6729,6 +6759,9 @@ function handleMessage(event) {
         const manualVerificationIntent = isManualVerificationRequiredQuery(
           `${msg || ""}\n${userMessage || ""}`,
         );
+        const hasSopModelContext =
+          (primaryModel && String(primaryModel).trim().length > 0) ||
+          hitAliasKeys.length > 0;
         const normalizedFastAnswer = stripAnySourceTags(
           formatForLineMobile(rawResponse),
         );
@@ -6747,31 +6780,22 @@ function handleMessage(event) {
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }
 
-        // v29.5.191: 高風險聯網協議/中樞能力題，一律先進 PDF 查證
-        // 不再侷限於 QA 來源，避免「規格庫強結論」直接外送造成誤導。
+        // v29.5.193: 鐵律SOP - 產品能力/規格/操作題，先 QA/規格，再官方手冊查證
+        // 不使用「高風險」人工分類，改為統一路由鐵律。
         if (
           !hasAutoPdf &&
           !hasAutoWeb &&
           !hasNeedDoc &&
           !isInPdfMode &&
           hasPdfForModel &&
-          manualVerificationIntent
+          hasSopModelContext &&
+          (operationIntent || capabilityIntent || manualVerificationIntent)
         ) {
           writeLog(
-            `[Auto Search v29.5.191] 高風險能力題需手冊查證，依SOP追加 [AUTO_SEARCH_PDF]`,
+            `[Auto Search v29.5.193] 命中SOP鐵律(QA/規格→手冊)，追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
-          forcedManualPdfVerification = true;
-          if (primaryModel && String(primaryModel).trim()) {
-            cache.put(
-              `${userId}:direct_search_models`,
-              JSON.stringify([primaryModel]),
-              300,
-            );
-            writeLog(
-              `[Auto Search v29.5.191] 高風險題鎖定主型號: ${primaryModel}`,
-            );
-          }
+          forcedSopPdfVerification = true;
         }
 
         // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬規格能力或操作題，
@@ -6930,11 +6954,15 @@ function handleMessage(event) {
 
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
         let autoLocked = false;
-        if (forcedManualPdfVerification && primaryModel) {
-          suggestedModels = [primaryModel];
-          autoLocked = true;
+        if (forcedSopPdfVerification && suggestedModels.length > 1) {
+          // 鐵律：命中 SOP 手冊查證且多型號時，必須先選型號
+          forcedSopNeedsModelSelection = true;
+          forcedModelSelectionTrigger = true;
+          finalText =
+            "這題需要依型號查官方手冊，先選完整型號，我再繼續查證。";
+          replyText = finalText;
           writeLog(
-            `[Smart Router v29.5.191] 高風險題已強制手冊查證，略過多型號泡泡並鎖定: ${primaryModel}`,
+            `[Smart Router v29.5.193] 命中SOP手冊查證且多型號，強制先選型號`,
           );
         }
 
@@ -7028,7 +7056,7 @@ function handleMessage(event) {
             const shouldSkipBubble =
               (listIntent && !needSpecificModelIntent) || tooMany;
 
-            if (shouldSkipBubble) {
+            if (shouldSkipBubble && !forcedSopNeedsModelSelection) {
               writeLog(
                 `[Smart Router v29.5.105] 偵測到列表意圖(${listIntent})/數量過多(${suggestedModels.length})，且無操作需求，跳過選單泡泡。`,
               );
@@ -7543,6 +7571,7 @@ function handleMessage(event) {
                     .trim();
                   finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
                   finalText = sanitizeManualDeflection(finalText);
+                  finalText = enforceManualUncertaintyGuard(finalText, msg);
                   finalText = enforceManualNumberedList(finalText);
                   if (filesToAttach.length > 0) {
                     finalText = appendPdfSourceTag(finalText, filesToAttach, 1);
@@ -7713,6 +7742,7 @@ function handleMessage(event) {
                       .replace(/\[型號[:：][^\]]+\]/g, "")
                       .trim();
                     finalText = sanitizeManualDeflection(finalText);
+                    finalText = enforceManualUncertaintyGuard(finalText, msg);
                     finalText = enforceManualNumberedList(finalText);
                     if (matchedPdf && matchedPdf.file) {
                       finalText = appendPdfSourceTag(finalText, [matchedPdf.file], 1);
@@ -7927,6 +7957,7 @@ function handleMessage(event) {
                       );
                     }
                     finalText = sanitizeManualDeflection(finalText);
+                    finalText = enforceManualUncertaintyGuard(finalText, msg);
                     finalText = enforceManualNumberedList(finalText);
 
                     // v29.5.158: 來源標註改為真實 PDF 檔名
@@ -8034,6 +8065,7 @@ function handleMessage(event) {
                             );
                           }
                           finalText = sanitizeManualDeflection(finalText);
+                          finalText = enforceManualUncertaintyGuard(finalText, msg);
                           finalText = enforceManualNumberedList(finalText);
                           if (rescueFiles.length > 0) {
                             finalText = appendPdfSourceTag(finalText, rescueFiles, 1);
