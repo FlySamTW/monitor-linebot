@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.194"; // 2026-03-20 手冊不確定結論防呆：禁止「未明確卻直接定論」
+const GAS_VERSION = "v29.5.197"; // 2026-03-20 型號泡泡前導文字固定化：避免先外送Fast結論
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2317,7 +2317,14 @@ function sanitizeManualDeflection(text) {
     );
     const hasDeflectVerb =
       /(參考|查詢|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問)/i.test(t);
-    return !((hasDocTarget || hasSupportTarget) && hasDeflectVerb);
+    const hasGenericDeflectionLead =
+      /(如果你想確認|若你想確認|想確認.*建議你|建議你[:：]?$|最直接且準確|產品的詳細規格.*會列出)/i.test(
+        t,
+      );
+    return !(
+      ((hasDocTarget || hasSupportTarget) && hasDeflectVerb) ||
+      hasGenericDeflectionLead
+    );
   });
   return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -2339,12 +2346,20 @@ function enforceManualUncertaintyGuard(text, queryText) {
     /(理論上|通常會|應該可以|所以不需要|因此不需要|無需額外|不需要另外購買|可以直接連接)/i.test(
       body,
     );
+  const hasDeflectRecommendation =
+    /(建議你|你可以.*(官網|手冊|產品頁|規格頁)|最直接且準確|查詢.*官網)/i.test(
+      body,
+    );
 
   if (hasUncertainSignal && hasSpeculativeConclusion) {
     body =
       "目前手冊未明確記載是否一定不需額外 SmartThings Hub，無法直接下定論。\n\n" +
       "若裝置走 Zigbee、Thread 或非 Wi-Fi 的 Matter 情境，可能仍需接收器或外部 Hub。\n\n" +
       "你可以點「🌐 這題再搜網路」，我再補官方與相容性資料給你。";
+  } else if (hasUncertainSignal && hasDeflectRecommendation) {
+    body =
+      "目前手冊對這題仍是未明確記載，暫時無法直接下定論。\n\n" +
+      "你可以點「🌐 這題再搜網路」，我再補官方頁面的相容性資訊給你。";
   }
   return body;
 }
@@ -6781,7 +6796,7 @@ function handleMessage(event) {
         }
 
         // v29.5.193: 鐵律SOP - 產品能力/規格/操作題，先 QA/規格，再官方手冊查證
-        // 不使用「高風險」人工分類，改為統一路由鐵律。
+        // 以固定路由鐵律判定，不使用主觀分類。
         if (
           !hasAutoPdf &&
           !hasAutoWeb &&
@@ -6798,7 +6813,7 @@ function handleMessage(event) {
           forcedSopPdfVerification = true;
         }
 
-        // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬規格能力或操作題，
+        // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬 SOP 查證題型，
         // 為避免 Fast Mode 在資料不完整時直接定論，按 SOP 保守升級到 PDF 驗證。
         const contextHealth = readContextHealth(cache, userId);
         if (
@@ -6809,10 +6824,10 @@ function handleMessage(event) {
           hasPdfForModel &&
           contextHealth &&
           contextHealth.degraded &&
-          (operationIntent || capabilityIntent)
+          (operationIntent || capabilityIntent || manualVerificationIntent)
         ) {
           writeLog(
-            `[Auto Search v29.5.181] 上下文降級且題型高風險，依SOP追加 [AUTO_SEARCH_PDF]`,
+            `[Auto Search v29.5.181] 上下文降級且命中SOP查證題型，依SOP追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
         }
@@ -7196,7 +7211,9 @@ function handleMessage(event) {
               // Line Reply Token 只能用一次。必須組合成 Array。
 
               const messages = [];
-              const leadText = finalText;
+              const leadText = forcedSopNeedsModelSelection
+                ? "這題需要先確認完整型號，我再依官方手冊查證給你。"
+                : finalText;
               if (leadText && leadText.length > 0) {
                 messages.push({ type: "text", text: leadText });
               }
