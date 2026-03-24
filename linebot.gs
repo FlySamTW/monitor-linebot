@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.201"; // 2026-03-20 手冊口吻修正：禁止「你提供的PDF」改為官方手冊口吻
+const GAS_VERSION = "v29.5.203"; // 2026-03-24 回歸通用操作句型判定，移除題面詞硬編碼
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2082,7 +2082,7 @@ function isFeatureBinaryQuestion(text) {
 
 function isOperationOrTroubleshootQuery(text) {
   const q = String(text || "");
-  return /(怎麼|如何|教學|步驟|設定|開啟|關閉|連接|安裝|操作|使用|排除|故障|無法|不能|異常|重置|恢復|閃爍|不亮|沒畫面|當機)/i.test(
+  return /(怎麼|如何|教學|步驟|設定|開啟|關閉|關掉|連接|安裝|操作|使用|排除|故障|無法|不能|異常|重置|恢復|閃爍|不亮|沒畫面|當機|調整|調到|調低|調小|切換|切到|叫出|進入選單|打開選單|進不去)/i.test(
     q,
   );
 }
@@ -6781,9 +6781,21 @@ function handleMessage(event) {
         const manualVerificationIntent = isManualVerificationRequiredQuery(
           `${msg || ""}\n${userMessage || ""}`,
         );
+        let hasCachedDirectModelContext = false;
+        try {
+          const rawDirectModels = cache.get(`${userId}:direct_search_models`);
+          const parsedDirectModels = rawDirectModels
+            ? JSON.parse(rawDirectModels)
+            : [];
+          hasCachedDirectModelContext =
+            Array.isArray(parsedDirectModels) && parsedDirectModels.length > 0;
+        } catch (e) {
+          hasCachedDirectModelContext = false;
+        }
         const hasSopModelContext =
           (primaryModel && String(primaryModel).trim().length > 0) ||
-          hitAliasKeys.length > 0;
+          hitAliasKeys.length > 0 ||
+          hasCachedDirectModelContext;
         const normalizedFastAnswer = stripAnySourceTags(
           formatForLineMobile(rawResponse),
         );
@@ -6872,8 +6884,14 @@ function handleMessage(event) {
           );
         }
 
+        const userHasModelSignal =
+          extractModelNumbers(`${msg || ""}\n${userMessage || ""}`).length > 0 ||
+          hitAliasKeys.length > 0 ||
+          !!primaryModel;
+
         // v29.5.06: Priority 3 - Fallback extraction from AI text
-        if (suggestedModels.length === 0) {
+        // 只在用戶本來就有型號/別稱訊號時才允許，避免把 AI 自舉範例型號誤當成候選型號。
+        if (suggestedModels.length === 0 && userHasModelSignal) {
           // v29.4.11: Fallback Extraction (若 AI 忘了打標籤，嘗試從內文中提取)
           // 匹配常見三星型號格式: S32... or M7... (需嚴謹，避免匹配到雜訊)
           // v29.4.15 Fix: 放寬正則，允許無後綴的型號 (e.g. S32BM702)
