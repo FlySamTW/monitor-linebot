@@ -257,7 +257,7 @@ async function run() {
     for (const s of scenarios) {
       await runScenario(frame, s);
       // Avoid hammering the web-app too aggressively.
-      await sleep(1500);
+      await sleep(15000);
     }
   } catch (e) {
     console.error("TEST ERROR:", e);

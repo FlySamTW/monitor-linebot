@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.204"; // 2026-05-27 修正 /紀錄 寫入 QA 回傳訊息 Bug
+const GAS_VERSION = "v29.5.208"; // 2026-05-27 提問與重啟快取徹底清理優化，解決狀態殘留錯亂 Bug
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -6027,12 +6027,14 @@ function handleMessage(event) {
           ) || "[]",
         );
         const searchMsg = { role: "user", content: queryText };
+        const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+        const hasModelInQuery = checkModelRegex.test(queryText);
         const kbResult = getRelevantKBFiles(
           [searchMsg],
           kbList,
           userId,
           contextId,
-          true, // forceCurrentOnly
+          hasModelInQuery, // 智慧設定：有型號時只查當前，無型號時允許沿用歷史
         );
         const relevantFiles = Array.isArray(kbResult)
           ? kbResult
@@ -6202,12 +6204,14 @@ function handleMessage(event) {
         ) || "[]",
       );
       const searchMsg = { role: "user", content: lastQuestion };
+      const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+      const hasModelInQuery = checkModelRegex.test(lastQuestion);
       const kbResult = getRelevantKBFiles(
         [searchMsg],
         kbList,
         userId,
         contextId,
-        true,
+        hasModelInQuery,
       );
       const relevantFiles = Array.isArray(kbResult)
         ? kbResult
@@ -7072,6 +7076,14 @@ function handleMessage(event) {
           // Case B: 多個型號 -> 顯示泡泡 (Flex Selection)
           // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
           else if (suggestedModels.length > 1) {
+            // 💡 智慧比較推薦安全閥 v29.5.207
+            // 如果偵測到比較、推薦、選購意圖（包括「哪一台」、「哪一款」），允許多型號直接比較，跳過選單泡泡
+            const isComparisonQuery = /哪一台|哪一款|偏向|推薦|比較|差異|差別|不同|vs|versus|選購/i.test(userMessage);
+            if (isComparisonQuery) {
+              writeLog(`[Smart Router] 偵測到比較/推薦意圖(${userMessage.substring(0, 30)})，跳過選單泡泡，允許直接進行多型號回答`);
+              suggestedModels = []; // 清空以跳過選單泡泡
+            }
+            
             // v29.5.105: 改善追問機制 - 更精準判斷何時該跳過泡泡
             //
             // 【跳過泡泡的情況】:
@@ -7903,6 +7915,17 @@ function handleMessage(event) {
                   }
                 }
 
+                // 💡 智慧安全閥 v29.5.206
+                // 如果當前訊息完全沒有提及型號代碼，我們就認定這必然是話題延續，強制開啟使用歷史！
+                if (!useHistory) {
+                  const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+                  const hasModelInMsg = checkModelRegex.test(msg);
+                  if (!hasModelInMsg) {
+                    useHistory = true;
+                    writeLog(`[Topic Check] 當前訊息(${msg.substring(0, 30)})無明確型號，安全閥自動判定為話題追問，啟用歷史型號`);
+                  }
+                }
+
                 if (useHistory) {
                   writeLog(
                     "[Auto Search] 偵測到「同一話題」，使用對話歷史匹配 PDF",
@@ -8462,6 +8485,21 @@ function handleCommand(c, u, cid) {
     // v29.5.27: 清除不滿意計數器與 PDF 狀態，避免測試時卡住
     cache.remove(`dissatisfied_count_${u}`);
     cache.remove(`pdf_consulted_${u}`);
+    
+    // v29.5.208: 全面清除一般使用者提問與智慧追問相關快取
+    cache.remove(`${u}:pdf_consulted`);
+    cache.remove(`${u}:elaboration_state`);
+    cache.remove(`${u}:last_meaningful_query`);
+    cache.remove(`${u}:direct_search_models`);
+    cache.remove(`${u}:hit_alias_key`);
+    cache.remove(`${u}:pending_topic`);
+    cache.remove(`${u}:model_select_mode`);
+    cache.remove(`${u}:qa_offer_payload`);
+    cache.remove(`${u}:suggested_models`);
+    cache.remove(`${u}:pending_pdf_query`);
+    cache.remove(`model_selection_${u}`);
+    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
+    cache.remove(pdfModeKey);
 
     // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
     // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
@@ -8483,7 +8521,11 @@ function handleCommand(c, u, cid) {
     if (!draftCache) {
       return "⚠️ 目前沒有正在進行的建檔草稿喔！請先輸入「/紀錄 <內容>」開始建檔。";
     }
-    const result = saveDraftToSheet(JSON.parse(draftCache));
+    const draftObj = JSON.parse(draftCache);
+    if (draftObj.pendingMergeChoice === true) {
+      return "⚠️ 存檔失敗：偵測到相似的既存 QA，請先輸入 1、2 或 3 決定如何處置！\n\n1️⃣ 採用合併版\n2️⃣ 另開新條\n3️⃣ 取代舊 QA\n(你也可以直接發送對話以進行補充修改，或輸入 /取消 退出)";
+    }
+    const result = saveDraftToSheet(draftObj);
     return "📝 存檔結果：\n" + result;
   }
 
@@ -8950,7 +8992,12 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     if (currentDraft.pendingMergeChoice === true) {
       var choice = feedback.trim();
 
-      if (choice === "1" || choice === "１") {
+      var cleanChoice = choice.replace(/[\s.、️⃣]/g, "");
+      var isOne = /^[1１一]$/.test(cleanChoice);
+      var isTwo = /^[2２二]$/.test(cleanChoice);
+      var isThree = /^[3３三]$/.test(cleanChoice);
+
+      if (isOne) {
         // 選擇合併版，刪除舊 QA
         writeLog(`[DraftMod] 用戶選擇 1: 採用合併版`);
         deleteQARows(currentDraft.matchedQARows);
@@ -8975,7 +9022,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         replyMessage(replyToken, preview);
         writeLog(`[DraftMod Reply] 採用合併版`);
         return;
-      } else if (choice === "2" || choice === "２") {
+      } else if (isTwo) {
         // 選擇純新版，保留舊 QA
         writeLog(`[DraftMod] 用戶選擇 2: 另開新條`);
 
@@ -8999,16 +9046,15 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         replyMessage(replyToken, preview);
         writeLog(`[DraftMod Reply] 另開新條`);
         return;
-      } else if (choice === "3" || choice === "３") {
+      } else if (isThree) {
         // 選擇 3: 取代舊 QA
-        // 邏輯: 刪除舊 QA (同選項1)，但寫入 freshVersion (而非 mergedVersion)
         writeLog(`[DraftMod] 用戶選擇 3: 取代舊 QA`);
         deleteQARows(currentDraft.matchedQARows);
 
         var newDraft = {
           originalContent: currentDraft.originalContent,
           conversation: [],
-          currentQA: currentDraft.freshVersion, // 注意這裡用 freshVersion
+          currentQA: currentDraft.freshVersion,
           userId: userId,
           pendingMergeChoice: false,
         };
@@ -9026,12 +9072,54 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         writeLog(`[DraftMod Reply] 取代舊 QA`);
         return;
       } else {
-        // 不是 1, 2 或 3，提醒用戶
-        replyMessage(
-          replyToken,
-          "請輸入 1, 2 或 3 選擇：\n1️⃣ 採用合併版（刪除舊的）\n2️⃣ 另開新條（保留舊的）\n3️⃣ 取代舊 QA（刪除舊的，用新的）",
+        // 💡 智慧融入補充說明模式
+        writeLog(`[DraftMod] 偵測到選擇階段的補充修改: ${feedback}`);
+        
+        // 將補充回饋融入到新版 (freshVersion) 與合併版 (mergedVersion) 中
+        const updatedFresh = callGeminiToModify(currentDraft.freshVersion, feedback);
+        const updatedMerged = callGeminiToModify(currentDraft.mergedVersion, feedback);
+        
+        var conversation = currentDraft.conversation || [];
+        conversation.push(feedback);
+
+        var updatedDraft = {
+          originalContent: currentDraft.originalContent + "\n[補充] " + feedback,
+          conversation: conversation,
+          currentQA: updatedFresh,
+          userId: userId,
+          pendingMergeChoice: true, // 依然在選擇階段
+          mergedVersion: updatedMerged,
+          freshVersion: updatedFresh,
+          matchedQARows: currentDraft.matchedQARows,
+          matchedQATexts: currentDraft.matchedQATexts
+        };
+
+        CacheService.getScriptCache().put(
+          CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
+          JSON.stringify(updatedDraft),
+          CONFIG.DRAFT_TTL_SEC,
         );
-        writeLog(`[DraftMod Reply] 提醒用戶選擇 1/2`);
+
+        var replyMsg = "🔄 已為你將最新補充說明融入選項中！\n\n";
+        replyMsg += "🔍 找到相似的現有 QA：\n";
+        for (var i = 0; i < currentDraft.matchedQATexts.length; i++) {
+          replyMsg += "• " + currentDraft.matchedQATexts[i].substring(0, 80) + "...\n";
+        }
+        replyMsg += "\n【建議合併成（已融入補充）】\n" + updatedMerged + "\n\n";
+        replyMsg += "【你的新內容（已融入補充）】\n" + updatedFresh + "\n\n";
+        replyMsg += "請重新選擇：\n";
+        replyMsg += "1️⃣ 採用合併版（會刪除舊 QA）\n";
+        replyMsg += "2️⃣ 另開新條（保留舊 QA）\n";
+        replyMsg += "3️⃣ 取代舊 QA（刪除舊的，直接用新的）\n\n";
+        replyMsg += "👉 繼續補充修改 → 直接回覆對話\n👉 取消建檔 → 輸入 /取消";
+
+        // 費用標記
+        if (lastTokenUsage && lastTokenUsage.costTWD) {
+          replyMsg += `\n\n---\n本次修改預估花費：NT$${lastTokenUsage.costTWD.toFixed(4)}`;
+        }
+
+        replyMessage(replyToken, replyMsg);
+        writeLog(`[DraftMod Reply] 智慧融入補充成功，等待重新選擇`);
         return;
       }
     }
@@ -11467,8 +11555,19 @@ function clearTestSession(userId) {
   userId = userId || "TEST_DEV_001";
   cache.remove(`${userId}:context`);
   cache.remove(`${userId}:pdf_mode`);
+  cache.remove(`${userId}:pdf_consulted`);
+  cache.remove(`pdf_consulted_${userId}`);
+  cache.remove(`dissatisfied_count_${userId}`);
   cache.remove(`${userId}:direct_search_models`);
   cache.remove(`${userId}:hit_alias_key`);
+  cache.remove(`${userId}:elaboration_state`);
+  cache.remove(`${userId}:last_meaningful_query`);
+  cache.remove(`${userId}:pending_topic`);
+  cache.remove(`${userId}:model_select_mode`);
+  cache.remove(`${userId}:qa_offer_payload`);
+  cache.remove(`${userId}:suggested_models`);
+  cache.remove(`model_selection_${userId}`);
+  cache.remove(`${userId}:pending_pdf_query`);
   return { success: true, msg: "✅ 髒資料已清除" };
 }
 
