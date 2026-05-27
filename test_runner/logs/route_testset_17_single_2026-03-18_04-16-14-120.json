@@ -1,0 +1,146 @@
+{
+  "summary": {
+    "total": 17,
+    "passed": 7,
+    "failed": 10,
+    "pass_rate": "41.2%"
+  },
+  "results": [
+    {
+      "id": 1,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "Odyssey OLED G8 的 S32DG802SC 跟 S32FG812SC 有 3.5mm 耳機孔嗎？",
+      "reply_preview": "有的，\n\nS32DG802SC 和 S32FG812SC 這兩款 Odyssey OLED G8 電競顯示器都有 3.5mm 耳機孔。\n\n---\n本次對話預估花費：\nNT$0.0813\n(In:25204/Out:48=25252)\n\n(資料庫內有93筆型號)\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!\n\n[來源:規格庫]"
+    },
+    {
+      "id": 2,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "Smart Monitor 的 M5、M7、M8、M9 都有內建喇叭嗎，而且有喇叭的話還會有耳機孔嗎？",
+      "reply_preview": "Smart Monitor 的 M5、M7、M8、M9 系列螢幕都有內建喇叭喔！\n\n不過，因為內建喇叭的關係，\n\n這幾個型號通常沒有另外設置耳機孔。\n\n只有 Odyssey Ark G97NB 這款比較特別，它雖然是 Smart 系列，但有保留耳機孔。\n\n---\n本次對話預估花費：\nNT$0.0827\n(In:25523/Out:83=25606)\n\n(資料庫內有93筆型號)\n\n💡 如果以上資訊"
+    },
+    {
+      "id": 3,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "你可以幫我比較 Odyssey OLED G9 的 G95SC 跟 G93SC 在更新率、反應時間和 Smart 功能差異嗎？",
+      "reply_preview": "好的，\n\n幫你比較一下 Odyssey OLED G9 的 G95SC 和 G93SC 在更新率、反應時間和智慧功能上的差異：\n\n1. 更新率：\n\n• G95SC：\n\n最高支援 240Hz\n• G93SC：\n\n最高支援 240Hz\n\n2. 反應時間：\n\n• G95SC：\n\n0.03ms (GtG)\n\n• G93SC：\n\n0.03ms (GtG)\n\n3. 智慧功能：\n\n• 兩者都內建 Tizen 作"
+    },
+    {
+      "id": 4,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "Smart Monitor M9 跟 M8 最主要的規格差異是什麼，包含面板、更新率和反應時間？",
+      "reply_preview": "Smart Monitor M9 和 M8 主要的規格差異在於面板、更新率和反應時間：\n\n1. 面板：\n\n• M9 使用的是 OLED 面板。\n\n• M8 使用的是 VA 面板。\n\n2. 更新率：\n\n• M9 的更新率最高可達 165Hz。\n\n• M8 的更新率最高為 60Hz。\n\n3. 反應時間：\n\n• M9 的反應時間非常快，\n\n僅需 0.03ms (GtG)。\n\n• M8 的反應時間為 4m"
+    },
+    {
+      "id": 5,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "三星 G5/G6/G7/G8/G9/S8/S9 裡有哪些型號有 4K 以上、0.03ms 或 G-Sync？",
+      "reply_preview": "好的，\n\n幫你整理一下三星 G5/G6/G7/G8/G9/S8/S9 系列中，\n\n符合「4K 以上解析度」、「0.03ms 反應時間」或「支援 G-Sync」條件的型號：\n\n具備 4K 以上解析度、0.03ms 反應時間或 G-Sync 的型號：\n\n1. Odyssey OLED G8 系列 (G80SD / G81SF)\n\n• 解析度：\n\n4K UHD (3840x2160)\n• 反應時間：\n\n"
+    },
+    {
+      "id": 6,
+      "expected_route": "PDF",
+      "actual_route": "QA",
+      "pass": false,
+      "user_question": "S27C900PAC 原廠盒內附哪些線材，還有 Mini DP 和 Mac 要什麼條件才能穩定輸出 5K？",
+      "reply_preview": "S27C900PAC 原廠盒內只會附 Thunderbolt 4 線材，\n\n不會附贈 Mini DP 線材喔。\n\n關於 Mini DP 和 Mac 的 5K 穩定輸出條件，請參考以下資訊：\n\n1. Mini DP 線材版本與速率：\n\n• S27C900PAC 的 Mini DisplayPort 介面是 1.4 版本，頻寬為 32.4Gbps。\n\n• 若要確保 5K 畫質能穩定輸出，\n\n請務必選購"
+    },
+    {
+      "id": 7,
+      "expected_route": "PDF",
+      "actual_route": "QA",
+      "pass": false,
+      "user_question": "Smart 螢幕內建瀏覽器要怎麼把工具列和標籤列隱藏到接近全螢幕？",
+      "reply_preview": "要讓 Smart 螢幕內建瀏覽器接近全螢幕，可以這樣設定：\n\n1. 開啟三星螢幕瀏覽器。\n\n2. 點擊右上角的齒輪圖示進入「瀏覽器設定」。\n\n3. 選擇「一般」選項。\n\n4. 啟用「隱藏選單」或「自動隱藏標籤和工具列」的功能。\n\n5. 重新整理頁面後，工具列和標籤列就會隱藏起來，讓畫面更接近全螢幕。\n\n這個設定在開機後會持續保留，不會自動重置。\n\n如果想要達到真正的全螢幕效果，可以在頁面載入後，\n"
+    },
+    {
+      "id": 8,
+      "expected_route": "PDF",
+      "actual_route": "PDF",
+      "pass": true,
+      "user_question": "M8 的 SlimFit Camera 要怎麼接和設定，電腦端的 Google Meet 才讀得到畫面？",
+      "reply_preview": ""
+    },
+    {
+      "id": 9,
+      "expected_route": "PDF",
+      "actual_route": "PDF",
+      "pass": true,
+      "user_question": "三星螢幕的 Multi View 要怎麼開，像 G80SD 在訊號源數量和畫面比例有什麼限制？",
+      "reply_preview": ""
+    },
+    {
+      "id": 10,
+      "expected_route": "PDF",
+      "actual_route": "QA",
+      "pass": false,
+      "user_question": "三星電競螢幕的電競模式或超級電競模式 UX 要去哪裡開啟？",
+      "reply_preview": "三星電競螢幕的電競模式或超級電競模式 UX，\n\n通常可以在螢幕的「遊戲」選單裡找到並開啟。\n\n1. 開啟螢幕選單。\n\n2. 找到並進入「遊戲」選單。\n\n3. 在遊戲選單裡，\n\n尋找「電競模式」或「超級電競模式 UX」(Super Arena Gaming UX) 的選項。\n\n4. 選擇啟用即可。\n\n不同型號的螢幕操作介面可能略有差異，如果找不到，可以參考你螢幕的使用手冊。\n\n---\n本次對話預估花"
+    },
+    {
+      "id": 11,
+      "expected_route": "PDF",
+      "actual_route": "QA",
+      "pass": false,
+      "user_question": "三星螢幕 KVM 的運作邏輯是什麼，PBP 下要怎麼用一組鍵鼠切兩台電腦？",
+      "reply_preview": "三星螢幕的 KVM 功能，讓你只需要一組鍵盤滑鼠，就能控制連接到螢幕的兩台電腦。\n\n這個功能在螢幕支援 PBP (Picture-by-Picture) 畫面分割時特別實用，\n\n可以讓你同時顯示兩台電腦的畫面，並在它們之間切換鍵鼠控制。\n\n運作邏輯大致如下：\n\n1. 硬體連接：\n\n• 你需要將兩台電腦分別連接到螢幕的影像輸入埠（例如 HDMI、DisplayPort）。\n\n• 同時，\n\n你需要將你"
+    },
+    {
+      "id": 12,
+      "expected_route": "PDF",
+      "actual_route": "PDF",
+      "pass": true,
+      "user_question": "Odyssey 3D G90XF 用 Odyssey Hub 開遊戲時如果視窗跑到背景又沒 3D 效果要怎麼排除？",
+      "reply_preview": "根據目前手冊，先給你結論：\n1. 手冊沒有明確寫出這台是否內建 SmartThings Hub，或是否一定要另外買 Hub 才能接 Matter。\n\n2. 手冊有提到 SmartThings 中心/集線器，以及「某些型號可能需要接收器（Zigbee/Thread）」，但沒有直接對這題下結論。\n\n3. 所以這題目前只能判定為「手冊未明確記載」。如果你要，我可以直接幫你做下一步官方規格頁查證。\n\n[來"
+    },
+    {
+      "id": 13,
+      "expected_route": "PDF",
+      "actual_route": "PDF",
+      "pass": true,
+      "user_question": "Smart 系列忘記 PIN 碼不能重設時，有哪些按鍵或遠端方式可以處理？",
+      "reply_preview": "如果忘記 Smart 系列螢幕的 PIN 碼，別擔心，有兩種方式可以處理喔：\n\n1. 遠端重設：\n\n1. 直接撥打三星客服專線 0800。\n\n2. 請客服人員協助你進行遠端連線。\n\n3. 客服人員會透過遠端操作，幫你重設 PIN 碼。\n\n2. 實體按鍵重設 (若遠端無法處理)：\n\n• 這個方法比較少用，通常客服會優先處理遠端重設。\n\n如果遠端重設無法成功，\n\n客服可能會引導你進行特定按鍵操作。\n\n"
+    },
+    {
+      "id": 14,
+      "expected_route": "QA",
+      "actual_route": "PDF",
+      "pass": false,
+      "user_question": "M50 系列手動轉直後為什麼不會自動旋轉，哪些型號才有陀螺儀？",
+      "reply_preview": "M50 系列螢幕只有 M50A、M50B、M50C、M50D 這幾款有內建陀螺儀，\n\n可以讓顯示內容隨著螢幕旋轉而自動調整為直向或橫向顯示。\n\n不過，\n\nM50A、M50B、M50C、M50D、M50F 這幾款螢幕的底座是固定的，\n\n沒有高度調整 (HAS) 功能，所以即使有陀螺儀，也無法實際旋轉螢幕。\n\nM50F 這款本身也沒有內建陀螺儀。\n\n簡單來說：\n\n• 有陀螺儀 (可自動旋轉顯示)：\n\n"
+    },
+    {
+      "id": 15,
+      "expected_route": "QA",
+      "actual_route": "QA",
+      "pass": true,
+      "user_question": "WA21A8377GV 洗完衣服後上蓋要保持開啟嗎，平常槽洗淨建議怎麼做？",
+      "reply_preview": "WA21A8377GV 洗完衣服後，建議將上蓋保持開啟狀態，這樣可以讓內部保持通風乾燥，避免產生異味。\n\n至於「槽洗淨」功能，建議你這樣做：\n\n1. 定期執行：\n\n建議每個月至少執行一次槽洗淨，\n\n特別是如果你經常洗深色衣物或有小孩的家庭，可以更頻繁一些。\n\n2. 選擇適當時間：\n\n可以在洗衣行程結束後，\n\n或是預計一段時間內不會使用洗衣機時執行。\n\n3. 執行步驟：\n\n1. 確認洗衣槽內是空的，"
+    },
+    {
+      "id": 16,
+      "expected_route": "PDF",
+      "actual_route": "PDF",
+      "pass": true,
+      "user_question": "Smart Monitor M7 和 M8 要串 Matter 裝置時一定要另外買 SmartThings Hub 嗎？",
+      "reply_preview": "根據目前手冊，先給你結論：\n1. 手冊沒有明確寫出這台是否內建 SmartThings Hub，或是否一定要另外買 Hub 才能接 Matter。\n\n2. 手冊有提到 SmartThings 中心/集線器，以及「某些型號可能需要接收器（Zigbee/Thread）」，但沒有直接對這題下結論。\n\n3. 所以這題目前只能判定為「手冊未明確記載」。如果你要，我可以直接幫你做下一步官方規格頁查證。\n\n[來"
+    },
+    {
+      "id": 17,
+      "expected_route": "QA",
+      "actual_route": "QA",
+      "pass": true,
+      "user_question": "Galaxy Watch 跟三星智慧螢幕連動後可以做哪些事，像運動資料同步和智慧家庭控制有支援嗎？",
+      "reply_preview": "Galaxy Watch 和三星智慧螢幕連動後，\n\n可以做到運動資料同步和智慧家庭控制喔！\n\n以下是你可以透過連動實現的功能：\n\n1. 運動資料同步與顯示：\n\n• 你可以將 Galaxy Watch 記錄的運動數據（例如步數、心率、運動時間等）同步到三星智慧螢幕上。\n\n• 在螢幕上就能直接查看你的運動成果，方便追蹤健身目標。\n\n2. 智慧家庭控制：\n\n• 如果你的智慧螢幕支援 SmartThing"
+    }
+  ]
+}

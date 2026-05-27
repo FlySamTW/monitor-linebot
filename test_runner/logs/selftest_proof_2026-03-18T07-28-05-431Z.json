@@ -1,0 +1,92 @@
+[
+  {
+    "id": "C01",
+    "question": "客戶如果想用M7串聯其他的Matt 協議的裝置,是不是要購買smart thing hub",
+    "answer": "M7螢幕本身內建了SmartThings Hub的功能，\n\n所以不需要另外購買SmartThings Hub就可以串聯Matter協議的裝置喔！\n\n😎👍\n\n---\n本次對話預估花費：\nNT$0.0828\n(In:25716/Out:39=25755)\n\n(資料庫內有93筆型號)\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!\n\n[來源:QA]",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": "[15:26:00.016] [General] [Final Reply] 即將回覆: [文字回覆 196 字]"
+  },
+  {
+    "id": "C02",
+    "question": "s9有內建kvm嗎",
+    "answer": "",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": ""
+  },
+  {
+    "id": "C03-1",
+    "question": "s9有內建kvm嗎",
+    "answer": "S9（ViewFinity S9）螢幕內建KVM Switch功能，可以讓你用一套鍵盤滑鼠控制連接到螢幕的兩台電腦。\n\n[來源:產品規格表]",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": ""
+  },
+  {
+    "id": "C03-2",
+    "question": "#型號:S27C900PAC",
+    "answer": "有的，\n\nS27C900PAC 這款螢幕內建了 KVM 切換器功能喔！\n\n😎👍\n\n這表示你可以用同一組鍵盤和滑鼠，輕鬆控制連接到螢幕的兩台電腦。\n\n---\n本次對話預估花費：\nNT$0.0813\n(In:25164/Out:60=25224)\n\n(資料庫內有93筆型號)\n\n[來源:規格庫]",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": "[15:26:38.128] [General] [Final Reply] 即將回覆: [文字回覆 147 字]"
+  },
+  {
+    "id": "C04",
+    "question": "使用Odyssey 3D螢幕從Odyssey Hub開遊戲但在背景且沒3D要怎麼排除",
+    "answer": "如果你的 Odyssey 3D 螢幕在使用 Odyssey Hub 開啟遊戲後，切換到背景卻沒有 3D 效果，可以嘗試以下步驟排除問題：\n\n1. 確認 Odyssey Hub 執行中並啟用 3D 模式：\n\n• 請確保 Odyssey Hub 軟體正在電腦上執行。\n\n• 在 Odyssey Hub 中，\n\n確認已啟用「Convert to 3D in full screen」或類似的選項，\n\n確保 3D 轉換功能是開啟狀態。\n\n2. 避免其他程式干擾：\n\n• 有些程式（例如顯示卡監控軟體、遊戲內建的 FPS 顯示器等）可能會設定為「最上層顯示」，\n\n這可能會干擾 Odyssey Hub 的 3D 運作。\n\n請嘗試關閉這些可能會干擾的程式，看看是否能恢復 3D 效果。\n\n3. 電腦從休眠恢復後 3D 失效的處理：\n\n• 如果你的電腦從休眠模式恢復後，3D 功能失效，\n\n請嘗試重新插拔連接螢幕的 USB B to A 線，或是重新啟動電腦，這通常能恢復 3D 效果。\n\n4. 確認螢幕設定：\n\n• 螢幕旋轉：\n\nOdyssey 3D 的 3D 功能在螢幕旋轉至直立模式時將無法啟用。\n\n請確保螢幕是水平放置的。\n\n• 解析度與效能：\n\n在啟用 3D 後，\n\n解析度可能會降低、影片播放可能會有卡頓、文字顯示可能稍微模糊，\n\n這是因為 3D 顯示需要將每個像素點分成兩個影像，屬於正常現象。\n\n5. 檢查 Odyssey Hub 選單顯示：\n\n• 當 Odyssey Hub 在全螢幕模式下運作時，\n\n螢幕右下角應該會提示「3D Side by Side」或「2D」模式。\n\n如果沒有顯示，\n\n可能表示 Odyssey Hub 並未成功啟用 3D 模式。\n\n如果以上步驟都嘗試過後問題仍然存在，\n\n可以考慮重新安裝 Odyssey Hub 軟體，\n\n或檢查顯示卡的驅動程式是否有更新。\n\n---\n本次對話預估花費：\nNT$0.0878\n(In:25508/Out:480=25988)\n\n(資料庫內有93筆型號)\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!\n\n[來源:QA]",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": "[15:26:57.745] [General] [Final Reply] 即將回覆: [文字回覆 913 字]"
+  },
+  {
+    "id": "C05",
+    "question": "M5如何開啟YouTube?",
+    "answer": "",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": ""
+  },
+  {
+    "id": "C06",
+    "question": "S27CG552EC電源燈一直閃爍該怎麼排除?",
+    "answer": "S27CG552EC 電源燈閃爍，有可能是以下幾種情況：\n\n1. 電源線接觸不良：\n\n1. 請檢查螢幕電源線與插座、以及螢幕本身的連接是否都已牢固插好。\n\n2. 嘗試更換一個插座，排除插座供電問題。\n\n3. 如果可能，嘗試更換一條電源線，確認是否為電源線損壞。\n\n2. 螢幕進入待機模式：\n\n1. 當螢幕沒有接收到訊號時，電源燈可能會閃爍，表示進入待機狀態。\n\n2. 請確認螢幕的訊號線（HDMI 或 DisplayPort）已正確連接到電腦，並且電腦已開機並正常輸出影像。\n\n3. 嘗試重新啟動電腦和螢幕。\n\n3. 內部零件問題：\n\n1. 如果以上步驟都無法排除問題，\n\n可能是螢幕內部電源模組或其他零件出現故障。\n\n建議步驟：\n\n1. 先確認電源線連接是否穩固，並嘗試更換插座。\n\n2. 確認訊號線連接正常，並嘗試重新啟動電腦與螢幕。\n\n如果電源燈持續閃爍，且無法排除，\n\n建議你聯絡三星客服尋求專業協助。\n\n---\n本次對話預估花費：\nNT$0.0529\n(In:15314/Out:305=15619)\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!\n\n[來源:QA]",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": "[15:27:30.242] [General] [Final Reply] 即將回覆: [文字回覆 510 字]"
+  },
+  {
+    "id": "C07",
+    "question": "S27FG532搭配5090顯示卡接DP更新率只有60Hz要怎麼調整?",
+    "answer": "",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": ""
+  },
+  {
+    "id": "C08",
+    "question": "S27FG532要如何更新螢幕韌體?",
+    "answer": "",
+    "version": "📦 系統版本：v29.5.179",
+    "ai_stats_count": 1,
+    "attach_pdf_true": false,
+    "auto_deep": false,
+    "final_reply_log": ""
+  }
+]
