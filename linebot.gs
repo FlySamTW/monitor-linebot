@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.222"; // 2026-05-28 學習價格監控表專案引入官方 Product Finder API、徹底杜絕掃描時規格提取幻覺
-const BUILD_TIMESTAMP = "2026-03-20 13:44";
+const GAS_VERSION = "v29.5.223"; // 2026-05-28 簡化新機型掃描為僅寫入佔位行，徹底防範 AI 幻覺，並清理工作流
+const BUILD_TIMESTAMP = "2026-05-28 20:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3769,115 +3769,13 @@ function scanOfficialWebsiteForNewMonitors() {
       return;
     }
     
-    // 3. 處理每款新機型
+    // 3. 處理每款新機型 - v29.5.223: 簡化為僅寫入佔位行，不呼叫 AI 且不下載手冊，杜絕幻覺
     newProducts.forEach(product => {
       const model = product.model;
-      const detailUrl = product.detailUrl;
-      const displayName = product.displayName;
       try {
-        writeLog(`[Auto Crawler] 正在處理新產品: ${model} (${displayName})`);
-        writeLog(`[Auto Crawler] 100% 精確詳情頁 URL: ${detailUrl}`);
-        
-        // 加載產品詳情頁 HTML
-        let detailsHtml = "";
-        try {
-          const detailRes = UrlFetchApp.fetch(detailUrl, { muteHttpExceptions: true });
-          if (detailRes.getResponseCode() === 200) {
-            detailsHtml = detailRes.getContentText();
-          }
-        } catch (e) {
-          writeLog(`[Auto Crawler Error] 詳情頁加載失敗: ${e.message}`);
-        }
-        
-        if (!detailsHtml) return;
-        
-        // 4. 下載繁中手冊 PDF 並存入 Google Drive
-        let fileId = "";
-        const pdfRegex = /https:\/\/org\.downloadcenter\.samsung\.com\/downloadfile\/ContentsFile\.aspx\?[^"']*(?:_ZW_|_ZW)[^"']*\.pdf/gi;
-        const pdfMatch = detailsHtml.match(pdfRegex);
-        if (pdfMatch && pdfMatch[0]) {
-          const pdfUrl = pdfMatch[0].replace(/&amp;/g, "&");
-          writeLog(`[Auto Crawler PDF] 🎯 找到繁體中文手冊連結: ${pdfUrl}`);
-          
-          const folderId = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
-          if (folderId) {
-            try {
-              const folder = DriveApp.getFolderById(folderId);
-              const pdfBlob = UrlFetchApp.fetch(pdfUrl).getBlob();
-              const fileName = `${model.replace(/XZW$/, "")}_User_Manual_ZW.pdf`;
-              const file = folder.createFile(pdfBlob).setName(fileName);
-              fileId = file.getId();
-              writeLog(`[Auto Crawler PDF] ✅ 手冊下載上傳成功！ID: ${fileId}`);
-            } catch (err) {
-              writeLog(`[Auto Crawler PDF Error] 上傳失敗: ${err.message}`);
-            }
-          }
-        }
-        
-        // 5. 調用 Gemini API 將詳情頁 HTML 規格整理去蕪存菁
-        const cleanText = detailsHtml
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .substring(0, 15000);
-          
-        const GEMINI_API_KEY = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-        if (GEMINI_API_KEY) {
-          const prompt = `
-你是三星電腦顯示器規格對齊與提取專家。
-任務：
-請閱讀以下三星螢幕產品詳情頁的規格文字，將其去蕪存菁，提取出核心有用規格，並輸出為「一整行 CSV 格式的規格行」。
-
-必須遵守的規則：
-1. 第一部分必須是完整型號後綴大寫，格式為：LS[型號]XZW，例如：LS32DG802SCXZW
-2. 第二部分必須以「型號：S[型號]」開始，例如：型號：S32DG802SC
-3. 第三部分是中文品名與詳細硬體規格。
-4. 【超級重要】所有規格特徵必須以半形逗號「,」分隔，絕對不可以有任何換行或多餘的引號！
-5. 規格順序請高度對齊三星經典格式，依序包含：[尺寸面板比例] [解析度/更新率] [亮度/對比/HDR] [反應時間/可視角/色彩/色域] [特色功能: FreeSync/G-Sync/護眼] [自動來源切換/電競UX/PBP-PIP] [Tizen智慧系統/智慧功能] [傳輸介面: DP/HDMI/Type-C/USB Hub] [人體工學與安裝: HAS高度/前後傾斜/左右旋轉/垂直旋轉/VESA壁掛] [電源與耗電/機身尺寸/淨重/配件]。
-6. 不要編造任何規格，僅根據以下內容提取。
-
-經典格式範例：
-LS32DG802SCXZW,型號：S32DG802SC,32吋Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160),亮度典型250 cd㎡/最低200 cd㎡,原生對比1,000,000:1,動態對比Mega DCR,HDR10+ Gaming,更新頻率最高240Hz,反應時間0.03ms(GtG),可視角度178°(H)/178°(V),色彩支援10.7億色,色域覆蓋99%(CIE1976),低藍光模式,零閃屏,金屬量子點顯色技術,PIP/PBP多畫面分割,Windows 11認證,AMD FreeSync Premium Pro支援,G-Sync相容,Off Timer Plus,虛擬準心,Core Sync,Game Bar 2.0,HDMI-CEC,自動來源切換 Auto Source Switch+,智慧偵測環境光源,超寬遊戲螢幕支援,Tizen作業系統,Bixby語音助理,SmartThings Hub，多裝置及遠端存取功能,WiFi5與藍牙5.2,10W立體聲喇叭,Adaptive Sound Pro智慧音效,操作溫度0~40℃,濕度10~80%,銀色機身與HAS PIVOT底座(120mm高),前後傾斜-2°~25°,左右旋轉-30°~+30°,垂直旋轉-92°~+92°,VESA壁掛100x100mm,再生資源塑料含量,電源AC 100~240V外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,包裝尺寸815x200x530mm,重量含底座8.4kg,不含底座5.3kg,包裝重量12.0kg,配件含1.5m電源線、HDMI線、DP線、USB 3.0線及太陽能智慧遙控器。
-
-待處理的內容：
----
-產品網址: ${detailUrl}
-${cleanText}
----
-
-請直接輸出最終的 CSV 單行文字，不要包含 \`\`\`csv 或 \`\`\` 標記，也不要有任何前導或後續文字。
-`;
-
-          const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-          const gPayload = {
-            contents: [{
-              role: "user",
-              parts: [{ text: prompt }]
-            }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2000
-            }
-          };
-          
-          const gRes = UrlFetchApp.fetch(gUrl, {
-            method: "post",
-            contentType: "application/json",
-            payload: JSON.stringify(gPayload),
-            muteHttpExceptions: true
-          });
-          
-          if (gRes.getResponseCode() === 200) {
-            const gJson = JSON.parse(gRes.getContentText());
-            let refinedText = gJson.candidates[0].content.parts[0].text || "";
-            refinedText = refinedText.trim().replace(/\n/g, "");
-            
-            // 寫入 Google Sheet
-            sheet.appendRow([refinedText]);
-            writeLog(`[Auto Crawler Sheet] ✅ 規格成功寫入 Sheet 末行: ${refinedText.substring(0, 80)}...`);
-          }
-        }
+        const placeholderLine = `${model},型號：尚無資訊`;
+        sheet.appendRow([placeholderLine]);
+        writeLog(`[Auto Crawler Sheet] ✅ 成功寫入佔位行: ${placeholderLine}`);
       } catch (err) {
         writeLog(`[Auto Crawler Product Error] 處理產品 ${model} 失敗: ${err.message}`);
       }
