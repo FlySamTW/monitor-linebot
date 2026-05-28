@@ -17,7 +17,7 @@ jobs:
       - name: 設定 Node.js 環境
         uses: actions/setup-node@v4
         with:
-          node-size: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: test_runner/package-lock.json
 
@@ -29,6 +29,7 @@ jobs:
       - name: 執行官網新機型偵測爬蟲
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NODE_PATH: test_runner/node_modules
         run: |
           node tools/monitor_crawler.js --webhook-url=${{ secrets.WEBHOOK_URL }}
 
