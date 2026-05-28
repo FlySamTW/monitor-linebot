@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.218"; // 2026-05-28 實作實體交叉比對防謊器 (Fake-Source Validator) 徹底封印 AI 對 6K/8K 螢幕的自我幻覺說謊行為
+const GAS_VERSION = "v29.5.219"; // 2026-05-28 修正第 142 列新機 G80HS (LS32HG806ESXZW) 真實 IPS 6K 規格並完美重新寫入雲端防護庫
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
