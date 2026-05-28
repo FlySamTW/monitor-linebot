@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.219"; // 2026-05-28 修正第 142 列新機 G80HS (LS32HG806ESXZW) 真實 IPS 6K 規格並完美重新寫入雲端防護庫
+const GAS_VERSION = "v29.5.220"; // 2026-05-28 全面封殺背景自動聯網改為互動詢問、注入最新 5/18 發布之 4 款 G8/G7/S8 新機規格、加強重啟強制實體寫入機制
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -7517,91 +7517,26 @@ function handleMessage(event) {
           `[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`,
         );
 
-        // 若沒有 suggestedModels (或已被 auto-redirect 清空)，繼續原本邏輯
-        // v29.5.130: 先處理 [AUTO_SEARCH_WEB]，避免「PDF→WEB 升級」後被 hasExplicitTrigger 擋住
-        // v29.5.216: 實體程式碼過濾 - 若問題命中了新機/新品/6K 等敏感詞，直接拒絕網路搜尋，強制降級回極速模式答案以遵守規格庫鐵律
-        const preventWebSearch = /新機|新品|推薦|最新|上市|熱門|最近|6K/i.test(userMessage);
-        if (finalText.includes("[AUTO_SEARCH_WEB]") && preventWebSearch) {
-          writeLog("[Auto Web] 🛑 偵測到新品/新機/6K 等敏感詞，實體過濾拒絕網路搜尋。強制原地降級為極速模式回答。");
+        // 🆕 v29.5.220: 全面封殺背景自動聯網，改為「主動詢問用戶『需要網路搜尋嗎？』」的零信任控制權機制
+        // 當 Fast Mode AI 判定需要網路搜尋 (含有 [AUTO_SEARCH_WEB]，通常表示官方資料庫中查無此機型或規格)，
+        // 我們拒絕在背景悄悄自動發起聯網。而是直接將回答改寫為誠實無資料的警示引導，
+        // 並主動提供 LINE 底部 [🌐 這題再搜網路] 按鈕，交由用戶決定是否進行網路搜尋。
+        if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+          writeLog("[Auto Web Block] 🛑 偵測到 AI 企圖背景聯網，強行攔截改寫為『主動詢問用戶』");
+          
+          let specHint = "";
+          if (/6K|8K/i.test(userMessage)) {
+            specHint = "目前台灣三星官方規格庫中，尚未登記任何 6K 或 8K 的螢幕規格資訊。";
+          } else {
+            specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
+          }
+          
+          finalText = `抱歉，${specHint}需要幫您在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我將為您擴大檢索最新網路資訊與記憶庫答案喔！)`;
+          
+          // 清除任何暗號標記，乾淨呈現在 UI 上
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
           replyText = finalText;
-        } else if (finalText.includes("[AUTO_SEARCH_WEB]")) {
-          writeLog(
-            "[Auto Web] 🌐 Fast Mode 觸發 [AUTO_SEARCH_WEB] -> 開始 Pass 2 網路搜尋",
-          );
-
-          // v27.8.16 Cost Fix: 保存 Pass 1 費用以便累加
-          const pass1Usage =
-            typeof lastTokenUsage === "object"
-              ? { ...lastTokenUsage }
-              : { input: 0, output: 0, total: 0, costTWD: 0 };
-
-          // 執行 Pass 2 (Force Web Search)
-          const searchResponse = callLLMWithRetry(
-            userMessage,
-            [...history, userMsgObj],
-            [], // filesToAttach
-            false, // attachPDFs
-            null, // imageBlob
-            true, // isRetry (Pass 2 treated as retry/deep)
-            userId,
-            true, // forceWebSearch
-          );
-
-          // 累加費用
-          if (lastTokenUsage && pass1Usage.total > 0) {
-            lastTokenUsage.input += pass1Usage.input;
-            lastTokenUsage.output += pass1Usage.output;
-            lastTokenUsage.total += pass1Usage.total;
-            lastTokenUsage.costTWD += pass1Usage.costTWD;
-            writeLog(
-              `[Cost Accumulation] Total: NT$${lastTokenUsage.costTWD.toFixed(
-                4,
-              )}`,
-            );
-          }
-
-          if (searchResponse && searchResponse !== "[KB_EXPIRED]") {
-            // v29.4.9: Fast Mode 也要支援二次泡泡
-            // Fix: 若 Pass 1 僅包含標籤 (replace 後為空)，則只發送 Pass 2，避免 LINE API 400 Error
-            // v29.5.127: 移除 LLM 自帶的來源標籤，避免與程式加的重複
-            let cleanSearchResponse = formatForLineMobile(searchResponse)
-              .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
-              .trim();
-            const pass2Bubble =
-              cleanSearchResponse + "\n\n(🔍 網路搜尋補充資料)";
-
-            let pass1Bubble = formatForLineMobile(rawResponse)
-              .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
-              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
-              .replace(/\[NEED_DOC\]/gi, "")
-              .replace(/\[型號[:：][^\]]+\]/g, "")
-              .trim();
-
-            if (pass1Bubble.length > 0) {
-              replyText = [pass1Bubble, pass2Bubble];
-            } else {
-              replyText = pass2Bubble;
-              writeLog("[Auto Web] Pass 1 為空，僅發送 Pass 2");
-            }
-
-            isDualBubbleComplete = true; // v29.3.29: 標記已完成雙泡泡賦值
-            writeLog("[Auto Web] Fast Mode 二次泡泡賦值成功");
-          } else {
-            finalText = formatForLineMobile(rawResponse)
-              .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
-              .replace(/\[NEED_DOC\]/gi, "")
-              .replace(/\[型號[:：][^\]]+\]/g, "")
-              .trim();
-            finalText += "\n\n(⚠️ 網路搜尋連線逾時)";
-            replyText = finalText;
-          }
-
-          // 跳過後續 PDF Logic
-          writeLog("[Auto Web] 已完成搜尋，跳過 PDF Logic");
-          // 這裡直接跳到底部
+          isDualBubbleComplete = false; // 允許正常後續流程去產生 Quick Reply
         } else if (hasExplicitTrigger) {
           // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
           // 這裡維持原本邏輯 (可能後續會走 Auto Search PDF)
@@ -8874,13 +8809,18 @@ function handleCommand(c, u, cid) {
         "LS32FG502ECXZW,型號：S32FG502EC,32吋Odyssey G5 平面電競顯示器 G50F,32吋16:9平面螢幕,QHD(2560x1440) Fast IPS面板,可視面積698.112x392.688mm,亮度300/240 cd/㎡(典型/最小),原生對比1000:1,HDR10,色彩支援16.7M,色域sRGB 99%,更新頻率Max 180Hz,反應時間1ms(GtG),178°/178°視角,支援AMD FreeSync,G-Sync相容,低藍光模式,零閃屏,黑平衡,虛擬準心,自動來源切換+,Off Timer Plus,介面:DisplayPort 1.2 x1(HDCP 2.2),HDMI 2.0 x1(HDCP 2.2),耳機孔x1,操作溫度10~40℃/濕度10~80%,黑色機身,HAS升降底座(105mm),前後傾斜-2°~25°,左右旋轉-45°~45°,垂直旋轉-92°~92°,100x100mm 壁掛,電源AC 100~240V 外接電源變壓器,最高耗電59W,機身含底座尺寸714.6x625.9x250.2mm,不含底座714.6x418.4x45.7mm,包裝尺寸790x124x565mm,重量含底座4.9kg,不含底座3.6kg,包裝重量8.0kg,配件:1.5m電源線、HDMI連接線、DP連接線。",
         "LS27H704EACXZW,型號：S27H704EAC,27吋 ViewFinity S7 平面高解析度顯示器 S70H,27吋16:9 IPS平面螢幕,4K UHD(3840x2160)解析度,最大60Hz更新頻率,5ms反應時間,350 cd/㎡亮度(典型),原生對比1000:1,HDR10,178°寬廣視角,10.7億色彩支援,sRGB 99%色域,低藍光模式,零閃屏,智慧偵測環境光源(Adaptive Picture),Windows 11認證,自動來源切換 Auto Source Switch+,HAS高度調整支架(120mm),前後傾斜-2°~25°,左右旋轉-30°~30°,垂直旋轉-92°~92°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電50W,尺寸含底座612.9x538.1x220.0mm,不含底座612.9x367.7x48.5mm,重量含底座4.9kg,不含底座3.4kg,配件電源線、HDMI線",
         "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比1000000:1(Typ),HDR10+ Gaming,178°寬廣視角,10.7億色彩支援,色域DCI 99%,低藍光模式,零閃屏,AMD FreeSync Premium Pro,G-Sync相容,自動來源切換 Auto Source Switch+,智慧作業系統Tizen,Bixby語音助理,SmartThings Hub,WiFi5與藍牙5.2,10W立體聲喇叭,介面：HDMI 2.1 x2、DisplayPort 1.4 x1、USB Hub,HAS高度調整支架(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,包裝尺寸815x200x530mm,重量含底座8.4kg,不含底座5.3kg,包裝重量12.0kg,配件電源線、HDMI線、DP線、遙控器",
-        "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey OLED G8 雙模平面電競顯示器 G80HS,32吋16:9 OLED平面螢幕,雙模 4K 240Hz / FHD 480Hz,0.03ms(GtG)反應時間,亮度典型250 cd/㎡,原生對比1000000:1,HDR10+,178°視角,10.7億色彩,DCI 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,Tizen智慧系統,WiFi5與藍牙5.2,介面：HDMI 2.1 x2、DP 1.4 x1,HAS升降底座(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,重量含底座8.4kg,不含底座5.3kg,配件電源線、HDMI線、DP線",
-        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器"
+        "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8 雙模平面電競顯示器 G80HS,32吋16:9 IPS平面螢幕,雙模 6K 165Hz / 3K 330Hz,1ms(GtG)反應時間,亮度典型350 cd/㎡/峰值400 cd/㎡,原生對比1000:1,HDR10+ Gaming,178°/178°視角,10.7億色彩,sRGB 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,介面：DisplayPort 2.1 x1、HDMI 2.1 x2、USB 3.2 Hub、耳機孔,HAS人體工學升降底座(120mm),前後傾斜-5.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器,尺寸含底座714.5x584.6x263.5mm,不含底座714.5x422.3x59.6mm,重量含底座8.4kg,不含底座4.9kg,配件電源線、HDMI線、DP線",
+        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器",
+        "LS27HG806FEXZW,型號：S27HG806FE,27吋 Odyssey IPS G8 雙模平面電競顯示器 G80HF,27吋16:9 IPS平面螢幕,雙模 5K 180Hz / QHD 360Hz,1ms(GtG)反應時間,亮度典型350 cd/㎡,原生對比1000:1,HDR10+ Gaming,178°/178°視角,10.7億色彩,sRGB 99%,FreeSync Premium,G-Sync相容,自動來源切換+,介面：DisplayPort 2.1 x1、HDMI 2.1 x2、USB 3.2 Hub、耳機孔,HAS人體工學升降底座(120mm),前後傾斜-5.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器",
+        "LS32DG730SCXZW,型號：S32DG730SC,32吋 Odyssey OLED G7 雙模平面電競顯示器 G73SH,32吋16:9 OLED平面螢幕,雙模 4K 165Hz / FHD 330Hz,0.03ms(GtG)反應時間,亮度典型250 cd/㎡,原生對比1000000:1,VESA DisplayHDR True Black 400,178°/178°視角,10.7億色彩,DCI-P3 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,介面：HDMI 2.1 x2、DP 1.4 x1,HAS升降底座(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm",
+        "LS40DG850UCXZW,型號：S40DG850UC,40吋 ViewFinity S8 曲面商用顯示器 S85TH,40吋21:9 VA曲面螢幕,WUHD(5120x2160),最高144Hz更新頻率,5ms反應時間,亮度典型350 cd/㎡,對比3000:1,HDR10,178°/178°視角,sRGB 100%,Thunderbolt 5 (80Gbps & 140W供電),DisplayPort,HDMI,內建喇叭,HAS可調式人體工學支架",
+        "LS27DG800ECXZW,型號：S27DG800EC,27吋 ViewFinity S8 平面商用顯示器 S80HF,27吋16:9 IPS平面螢幕,5K(5120x2880)解析度,60Hz更新頻率,5ms反應時間,亮度典型600 cd/㎡,對比1000:1,HDR支援,178°/178°視角,DCI-P3 99%,USB-C (90W充電),Mini-DP,DisplayPort"
         ];
         // 為了避免大字串寫入時的 API 限制，我們每次寫入整塊資料
         const range = sheet.getRange(1, 1, fullRules.length, 1);
         const writeData = fullRules.map(r => [r]);
         range.setValues(writeData);
+        SpreadsheetApp.flush(); // 🆕 強制立即同步寫入，確保 100% 同步且不因 429 崩回滾
         writeLog(`[Self Heal] 完璧歸趙！成功還原且同步 ${fullRules.length} 列完整規格 (含新機型)`);
       }
     } catch(err) {
