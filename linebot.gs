@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.213"; // 2026-05-28 異步重建防止 LINE 5秒超時無回應 Bug，並優化補齊新機型流程
+const GAS_VERSION = "v29.5.214"; // 2026-05-28 修正 Sheet 儲存架構相容性，全面回歸單欄位 CSV 規格庫大字串儲存架構
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -8717,8 +8717,9 @@ function handleCommand(c, u, cid) {
         
         newMonitors.forEach(row => {
           const model = row.split(",")[0].toUpperCase();
-          if (!existing.includes(model)) {
-            sheet.appendRow(row.split(","));
+          const alreadyExists = existing.some(line => line.startsWith(model));
+          if (!alreadyExists) {
+            sheet.appendRow([row]); // v29.5.214: 回歸原汁原味 A 欄單欄位大字串設計
             writeLog(`[Force Sync] 補齊新機型 ${model} 成功`);
           }
         });
@@ -11041,10 +11042,9 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
       
-      // 追加寫入末列 (v29.5.212: 修復 CSV 單欄位寫入 Bug，展開為複數欄位)
+      // 追加寫入末列 (v29.5.214: 回歸原汁原味 A 欄單欄位大字串設計)
       const newRuleText = json.content;
-      const csvArray = newRuleText.split(",");
-      sheet.appendRow(csvArray);
+      sheet.appendRow([newRuleText]);
       
       // 自動觸發快取與別稱字典重建
       const syncResult = syncGeminiKnowledgeBase(false);
