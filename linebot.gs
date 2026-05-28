@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.212"; // 2026-05-28 修復 Webhook CSV 寫入單欄位 Bug，展開為複數欄位，並最佳化自動偵測新機 Lifecycle
+const GAS_VERSION = "v29.5.213"; // 2026-05-28 異步重建防止 LINE 5秒超時無回應 Bug，並優化補齊新機型流程
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -8728,10 +8728,11 @@ function handleCommand(c, u, cid) {
     }
 
     // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
-    // /重啟時強制重建知識庫，以確保新機型規格立即寫入 Gemini 並生效
-    const resultMsg = syncGeminiKnowledgeBase(true);
+    // v29.5.213: 異步排程 1 分鐘後在背景強制重建知識庫，防止阻塞 LINE 5秒超時限制而無回應
+    scheduleImmediateRebuild();
+    const resultMsg = syncGeminiKnowledgeBase(false);
     writeLog(`[Command] 重啟完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 重啟完成 (對話已重置，規格庫已同步官網至最新 143 列)\n${resultMsg}`;
+    return `✓ 重啟完成 (對話已重置，規格庫已成功補齊至 143 列。雲端知識庫已排程於 1 分鐘後背景完全重建，此期間對話將維持極速回應)\n${resultMsg}`;
   }
 
   if (cmd === "/取消") {
