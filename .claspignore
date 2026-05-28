@@ -1,8 +1,8 @@
 
 **/node_modules/**
 test_runner/**
-.git/**
-*.js
+tools/**
+**/*.js
 !linebot.gs
 !TestUI.html
 !appsscript.json
