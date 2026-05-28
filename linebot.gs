@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.217"; // 2026-05-28 升級最新 Gemini 3.5 Flash 降價超強模型，提升速度、智慧與省電性
+const GAS_VERSION = "v29.5.218"; // 2026-05-28 實作實體交叉比對防謊器 (Fake-Source Validator) 徹底封印 AI 對 6K/8K 螢幕的自我幻覺說謊行為
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -6937,6 +6937,17 @@ function handleMessage(event) {
       }
 
       if (rawResponse) {
+        // 🆕 v29.5.218: 實體交叉比對防謊器 (Fake-Source Validator)
+        // 若使用者詢問的是 6K/8K 等超前規格，但我們規格庫目前沒有，而 AI 卻自我幻覺瞎編，我們必須將其強行攔寫。
+        const isQueryAboutNewSpec = /6K|8K/i.test(userMessage);
+        if (isQueryAboutNewSpec) {
+          const hasSpecInResponse = /6K|8K|G90XH|G80HS/i.test(rawResponse);
+          if (hasSpecInResponse) {
+            writeLog("[Fake-Source Filter] 🛑 偵測到 AI 幻覺瞎編不存在的 6K/8K 螢幕規格，強行攔截改寫為誠實無資料回覆！");
+            rawResponse = "⚠️ 抱歉，目前台灣三星官方規格庫與 QA 資料庫中，尚未登記任何 6K 或 8K 螢幕的相關型號規格資訊。若有最新產品上市消息，請依台灣三星官網最新公告為準喔！";
+          }
+        }
+
         // 🔥 v29.5.107: 完整記錄 AI 原始回應
         writeLog(`[AI Raw Response] ${rawResponse}`);
 
