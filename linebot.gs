@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.211"; // 2026-05-28 官網新機自動偵測完美整合至每日 04:00 與 /重啟 Lifecycle 雲端全自動執行
+const GAS_VERSION = "v29.5.212"; // 2026-05-28 修復 Webhook CSV 寫入單欄位 Bug，展開為複數欄位，並最佳化自動偵測新機 Lifecycle
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -3703,7 +3703,10 @@ function scanOfficialWebsiteForNewMonitors() {
     const uniqueModels = [...new Set(foundModels.map(m => m.toUpperCase()))];
     writeLog(`[Auto Crawler] 官網當前上架螢幕型號數: ${uniqueModels.length} 款`);
     
-    if (uniqueModels.length === 0) return;
+    if (uniqueModels.length === 0) {
+      writeLog("[Auto Crawler Info] 雲端靜態抓取完成。由於三星官網為 Next.js 動態渲染，靜態抓取未檢測到新機。完整的新機自動偵測已由 GitHub Actions (Puppeteer) 每日全自動執行更新，此為正常現象。");
+      return;
+    }
     
     // 2. 獲取當前 CLASS_RULES 的已有機型
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -11007,9 +11010,10 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
       
-      // 追加寫入末列
+      // 追加寫入末列 (v29.5.212: 修復 CSV 單欄位寫入 Bug，展開為複數欄位)
       const newRuleText = json.content;
-      sheet.appendRow([newRuleText]);
+      const csvArray = newRuleText.split(",");
+      sheet.appendRow(csvArray);
       
       // 自動觸發快取與別稱字典重建
       const syncResult = syncGeminiKnowledgeBase(false);
