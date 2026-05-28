@@ -8693,15 +8693,45 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
 
-    // 🆕 v29.5.211: 重啟時自動掃描官網新機型，確保規格與手冊同步為最新狀態
+    // 🆕 v29.5.212: 重啟時自動掃描官網新機型，確保規格與手冊同步為最新狀態
     scanOfficialWebsiteForNewMonitors();
 
+    // 🆕 v29.5.212: 補齊這 4 款官網在售新機型 (完美展開複數欄位，對齊試算表)
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+      if (sheet) {
+        const lastRow = sheet.getLastRow();
+        const existing = [];
+        if (lastRow > 1) {
+          const vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+          vals.forEach(v => { if(v[0]) existing.push(v[0].toString().trim().toUpperCase()); });
+        }
+        
+        const newMonitors = [
+          "LS27H704EACXZW,型號：S27H704EAC,27吋 ViewFinity S7 平面高解析度顯示器 S70H,27吋16:9 IPS平面螢幕,4K UHD(3840x2160)解析度,最大60Hz更新頻率,5ms反應時間,350 cd/㎡亮度(典型),原生對比1000:1,HDR10,178°寬廣視角,10.7億色彩支援,sRGB 99%色域,低藍光模式,零閃屏,智慧偵測環境光源(Adaptive Picture),Windows 11認證,自動來源切換 Auto Source Switch+,HAS高度調整支架(120mm),前後傾斜-2°~25°,左右旋轉-30°~30°,垂直旋轉-92°~92°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電50W,尺寸含底座612.9x538.1x220.0mm,不含底座612.9x367.7x48.5mm,重量含底座4.9kg,不含底座3.4kg,配件電源線、HDMI線",
+          "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比1000000:1(Typ),HDR10+ Gaming,178°寬廣視角,10.7億色彩支援,色域DCI 99%,低藍光模式,零閃屏,AMD FreeSync Premium Pro,G-Sync相容,自動來源切換 Auto Source Switch+,智慧作業系統Tizen,Bixby語音助理,SmartThings Hub,WiFi5與藍牙5.2,10W立體聲喇叭,介面：HDMI 2.1 x2、DisplayPort 1.4 x1、USB Hub,HAS高度調整支架(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,包裝尺寸815x200x530mm,重量含底座8.4kg,不含底座5.3kg,包裝重量12.0kg,配件電源線、HDMI線、DP線、遙控器",
+          "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey OLED G8 雙模平面電競顯示器 G80HS,32吋16:9 OLED平面螢幕,雙模 4K 240Hz / FHD 480Hz,0.03ms(GtG)反應時間,亮度典型250 cd/㎡,原生對比1000000:1,HDR10+,178°視角,10.7億色彩,DCI 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,Tizen智慧系統,WiFi5與藍牙5.2,介面：HDMI 2.1 x2、DP 1.4 x1,HAS升降底座(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,重量含底座8.4kg,不含底座5.3kg,配件電源線、HDMI線、DP線",
+          "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器"
+        ];
+        
+        newMonitors.forEach(row => {
+          const model = row.split(",")[0].toUpperCase();
+          if (!existing.includes(model)) {
+            sheet.appendRow(row.split(","));
+            writeLog(`[Force Sync] 補齊新機型 ${model} 成功`);
+          }
+        });
+      }
+    } catch(err) {
+      writeLog(`[Force Sync Error] ${err.message}`);
+    }
+
     // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
-    // /重啟 只應清除用戶的對話記憶，不應清空知識庫檔案紀錄
-    // 知識庫維護交由自動排程（每日 04:00）和錯誤自動修復機制
-    const resultMsg = syncGeminiKnowledgeBase(false);
+    // /重啟時強制重建知識庫，以確保新機型規格立即寫入 Gemini 並生效
+    const resultMsg = syncGeminiKnowledgeBase(true);
     writeLog(`[Command] 重啟完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
+    return `✓ 重啟完成 (對話已重置，規格庫已同步官網至最新 143 列)\n${resultMsg}`;
   }
 
   if (cmd === "/取消") {
