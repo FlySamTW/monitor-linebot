@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.220"; // 2026-05-28 全面封殺背景自動聯網改為互動詢問、注入最新 5/18 發布之 4 款 G8/G7/S8 新機規格、加強重啟強制實體寫入機制
+const GAS_VERSION = "v29.5.221"; // 2026-05-28 移除重啟時的官網自動掃描、修復詳情頁爬取幻覺 Bug、完璧還原規格至 143 列
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -3757,8 +3757,8 @@ function scanOfficialWebsiteForNewMonitors() {
           detailUrl = urlMatch[0];
           writeLog(`[Auto Crawler] 找到產品詳情頁: ${detailUrl}`);
         } else {
-          detailUrl = `https://www.samsung.com/tw/search/?searchvalue=${model}`;
-          writeLog(`[Auto Crawler Warning] 未能找到精確詳情頁，改用搜尋頁: ${detailUrl}`);
+          writeLog(`[Auto Crawler Warning] 未能找到 ${model} 的精確詳情頁，跳過規格提取。`);
+          return;
         }
         
         // 加載產品詳情頁 HTML
@@ -8658,10 +8658,7 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
 
-    // 🆕 v29.5.212: 重啟時自動掃描官網新機型，確保規格與手冊同步為最新狀態
-    scanOfficialWebsiteForNewMonitors();
-
-    // 🆕 v29.5.215: 補齊這 4 款官網在售新機型，並在寫入前「自動清掃殘缺行/重複行」以自癒
+    // 🆕 v29.5.221: 重啟時完璧歸趙還原並同步乾淨的 143 列完整規格，確保無虛假新機型，不執行自動官網掃描
     try {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
@@ -8810,11 +8807,7 @@ function handleCommand(c, u, cid) {
         "LS27H704EACXZW,型號：S27H704EAC,27吋 ViewFinity S7 平面高解析度顯示器 S70H,27吋16:9 IPS平面螢幕,4K UHD(3840x2160)解析度,最大60Hz更新頻率,5ms反應時間,350 cd/㎡亮度(典型),原生對比1000:1,HDR10,178°寬廣視角,10.7億色彩支援,sRGB 99%色域,低藍光模式,零閃屏,智慧偵測環境光源(Adaptive Picture),Windows 11認證,自動來源切換 Auto Source Switch+,HAS高度調整支架(120mm),前後傾斜-2°~25°,左右旋轉-30°~30°,垂直旋轉-92°~92°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電50W,尺寸含底座612.9x538.1x220.0mm,不含底座612.9x367.7x48.5mm,重量含底座4.9kg,不含底座3.4kg,配件電源線、HDMI線",
         "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比1000000:1(Typ),HDR10+ Gaming,178°寬廣視角,10.7億色彩支援,色域DCI 99%,低藍光模式,零閃屏,AMD FreeSync Premium Pro,G-Sync相容,自動來源切換 Auto Source Switch+,智慧作業系統Tizen,Bixby語音助理,SmartThings Hub,WiFi5與藍牙5.2,10W立體聲喇叭,介面：HDMI 2.1 x2、DisplayPort 1.4 x1、USB Hub,HAS高度調整支架(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,包裝尺寸815x200x530mm,重量含底座8.4kg,不含底座5.3kg,包裝重量12.0kg,配件電源線、HDMI線、DP線、遙控器",
         "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8 雙模平面電競顯示器 G80HS,32吋16:9 IPS平面螢幕,雙模 6K 165Hz / 3K 330Hz,1ms(GtG)反應時間,亮度典型350 cd/㎡/峰值400 cd/㎡,原生對比1000:1,HDR10+ Gaming,178°/178°視角,10.7億色彩,sRGB 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,介面：DisplayPort 2.1 x1、HDMI 2.1 x2、USB 3.2 Hub、耳機孔,HAS人體工學升降底座(120mm),前後傾斜-5.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器,尺寸含底座714.5x584.6x263.5mm,不含底座714.5x422.3x59.6mm,重量含底座8.4kg,不含底座4.9kg,配件電源線、HDMI線、DP線",
-        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器",
-        "LS27HG806FEXZW,型號：S27HG806FE,27吋 Odyssey IPS G8 雙模平面電競顯示器 G80HF,27吋16:9 IPS平面螢幕,雙模 5K 180Hz / QHD 360Hz,1ms(GtG)反應時間,亮度典型350 cd/㎡,原生對比1000:1,HDR10+ Gaming,178°/178°視角,10.7億色彩,sRGB 99%,FreeSync Premium,G-Sync相容,自動來源切換+,介面：DisplayPort 2.1 x1、HDMI 2.1 x2、USB 3.2 Hub、耳機孔,HAS人體工學升降底座(120mm),前後傾斜-5.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器",
-        "LS32DG730SCXZW,型號：S32DG730SC,32吋 Odyssey OLED G7 雙模平面電競顯示器 G73SH,32吋16:9 OLED平面螢幕,雙模 4K 165Hz / FHD 330Hz,0.03ms(GtG)反應時間,亮度典型250 cd/㎡,原生對比1000000:1,VESA DisplayHDR True Black 400,178°/178°視角,10.7億色彩,DCI-P3 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,介面：HDMI 2.1 x2、DP 1.4 x1,HAS升降底座(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm",
-        "LS40DG850UCXZW,型號：S40DG850UC,40吋 ViewFinity S8 曲面商用顯示器 S85TH,40吋21:9 VA曲面螢幕,WUHD(5120x2160),最高144Hz更新頻率,5ms反應時間,亮度典型350 cd/㎡,對比3000:1,HDR10,178°/178°視角,sRGB 100%,Thunderbolt 5 (80Gbps & 140W供電),DisplayPort,HDMI,內建喇叭,HAS可調式人體工學支架",
-        "LS27DG800ECXZW,型號：S27DG800EC,27吋 ViewFinity S8 平面商用顯示器 S80HF,27吋16:9 IPS平面螢幕,5K(5120x2880)解析度,60Hz更新頻率,5ms反應時間,亮度典型600 cd/㎡,對比1000:1,HDR支援,178°/178°視角,DCI-P3 99%,USB-C (90W充電),Mini-DP,DisplayPort"
+        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器"
         ];
         // 為了避免大字串寫入時的 API 限制，我們每次寫入整塊資料
         const range = sheet.getRange(1, 1, fullRules.length, 1);
