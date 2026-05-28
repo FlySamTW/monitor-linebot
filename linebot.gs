@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.216"; // 2026-05-28 /重啟 完美完璧歸趙還原 CSV 規格、程式碼實體過濾聯網、加強極速模式防幻覺防新品聯網鐵律
+const GAS_VERSION = "v29.5.217"; // 2026-05-28 升級最新 Gemini 3.5 Flash 降價超強模型，提升速度、智慧與省電性
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -31,9 +31,9 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output
+const GEMINI_MODEL_FAST = "models/gemini-3.5-flash";
+const PRICE_FAST_INPUT = 0.075; // $0.075 per 1M Input (3.5 Flash 大降價)
+const PRICE_FAST_OUTPUT = 0.3; // $0.30 per 1M Output (3.5 Flash 大降價)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -44,9 +44,9 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
-const PRICE_THINK_INPUT = 0.1;
-const PRICE_THINK_OUTPUT = 0.4;
+const GEMINI_MODEL_THINK = "models/gemini-3.5-flash";
+const PRICE_THINK_INPUT = 0.075; // $0.075 per 1M Input (3.5 Flash 大降價)
+const PRICE_THINK_OUTPUT = 0.3; // $0.30 per 1M Output (3.5 Flash 大降價)
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
