@@ -338,6 +338,22 @@ writeLog(`[API Stats] 1.2s | In: 25K / Out: 200 | Cost: NT$0.08`);
 writeLog(`[Fatal] ${error.message}`);
 ```
 
+## ⛔️ 雲端安全與超時崩潰防禦鐵律 (NEVER FORGET)
+
+為了確保生產環境 Webhook 的 100% 絕對穩定存活，任何開發者/AI 代理人必須死守以下三條崩潰防禦紅線：
+
+### 1. 徹底隔離非 GAS 執行代碼 (Clasp Glob 排除)
+* **現象**：GAS 雲端不支援 `.js`，使用 `clasp push` 時會自動把子目錄下的本地工具（如 `tools/*.js`）強制轉換為雲端 `*.gs` 加載，引發變數重複宣告（如 `CONFIG`）的致命 `SyntaxError`，導致整個 Webhook 於編譯階段當場癱瘓。
+* **鐵律**：必須在 `.claspignore` 中以 `**/*.js` 與 `tools/**` 進行地毯式過濾，確保非 GAS 的本地測試/爬蟲腳本絕不推送上雲。
+
+### 2. 嚴格杜絕 LINE Webhook 同步超時 (5秒回應紅線)
+* **現象**：LINE Webhook 規定伺服器必須在 5 秒內返回 HTTP 回應。若在 LINE 回應的主線程中執行重型同步任務（如 `syncGeminiKnowledgeBase(true)` 強制完全重建），將因執行超時被 LINE 斷開，造成用戶端「完全沒有反應」。
+* **鐵律**：主線程中禁止執行大於 2 秒的重型任務！重建與同步任務必須呼叫 `scheduleImmediateRebuild()`，以雲端背景非同步自癒的方式在 1 分鐘後執行，讓 doPost 立即在 0.2 秒內返回回應。
+
+### 3. 對齊專案既有 A 欄 CSV 大字串儲存架構
+* **現象**：`CLASS_RULES` 在 Google Sheet 上的既有設計是「整行逗號分隔的 CSV 字串通通塞在 A 欄，並不展開」。若自作聰明展開寫入，會導致 GAS 在處理時因欄位錯位拋出 Runtime Exception 崩潰。
+* **鐵律**：追加新機型時必須保持 A 欄單欄位大字串寫入。防重複比對必須使用 `existing.some(line => line.startsWith(model))`，確保架構 100% 完美相容。
+
 ---
 
 _This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability._
