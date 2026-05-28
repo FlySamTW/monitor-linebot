@@ -1,0 +1,40 @@
+name: 三星官網新機型自動偵測與維護
+
+on:
+  schedule:
+    # 每天台灣時間凌晨 04:00 執行 (國際標準時間 UTC 20:00)
+    - cron: '0 20 * * *'
+  workflow_dispatch: # 允許在 GitHub 網頁端手動點擊按鈕即時觸發
+
+jobs:
+  crawl-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 檢出儲存庫代碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 環境
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+          cache: 'npm'
+          cache-dependency-path: test_runner/package-lock.json
+
+      - name: 安裝相依性套件
+        run: |
+          cd test_runner
+          npm install
+
+      - name: 執行官網新機型偵測爬蟲
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node tools/monitor_crawler.js --webhook-url=${{ secrets.WEBHOOK_URL }}
+
+      - name: 自動提交並推送規格庫更新 (若有變更)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add CLASS_RULES.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "⚙️ [Auto-Sync] 自動同步官網最新機型規格" && git push)
