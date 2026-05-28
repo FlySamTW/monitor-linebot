@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.214"; // 2026-05-28 修正 Sheet 儲存架構相容性，全面回歸單欄位 CSV 規格庫大字串儲存架構
+const GAS_VERSION = "v29.5.215"; // 2026-05-28 實作 /重啟 自動清掃自癒與補齊 143 列規格，並加入極速模式防幻覺與誠實來源鐵律
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2043,6 +2043,8 @@ function normalizeSourceTagFromRaw(rawText) {
   if (/QA/i.test(src)) return "[來源:QA]";
   if (/規格|產品規格|規格表/i.test(src)) return "[來源:規格庫]";
   if (/網路|Web/i.test(src)) return "[來源:網路搜尋]";
+  if (/一般知識|通用知識/i.test(src)) return "[來源:一般知識]";
+  if (/手冊|PDF/i.test(src)) return "[來源:產品手冊]";
   return "";
 }
 
@@ -4642,6 +4644,16 @@ function constructDynamicPrompt(
     if (targetModelName) {
       dynamicPrompt += `\n【已確認對象型號】系統已在背景確認用戶正在詢問的型號為「${targetModelName}」。你必須直接針對此型號回答，絕對禁止再反問用戶「請告訴我你的螢幕型號」。\n`;
     }
+
+    // 🆕 v29.5.215: 極速模式防幻覺與誠實來源鐵律
+    dynamicPrompt += `\n⚠️【極速模式防幻覺與誠實來源鐵律】
+1. **未載入 PDF 手冊，嚴禁瞎編操作步驟**：當前為「極速模式（未加載 PDF 手冊）」。若用戶詢問具體的操作設定、配對步驟、故障排除等深度問題，且當前的【精選 QA & 規格】中**沒有**現成的完整步驟，你**絕對不准**憑藉一般知識編造步驟！更**絕對不准**瞎編或假裝有手冊並標註 [來源:產品手冊]。
+2. **誠實引導與自動升級**：若無現成 QA/規格支援回答該操作或設定步驟，你必須誠實表示資料庫無記載，但手冊有此資料，並**必須在回答末尾輸出 \`[AUTO_SEARCH_PDF]\` 暗號**。這樣系統會引導用戶使用 Quick Reply 按鈕 '📖 查PDF手冊' 進入手冊搜尋模式。
+3. **來源標記真實誠實原則**：回答末尾的來源標記必須與你的實際參考來源 100% 一致：
+   - 僅當引用了 QA 資料庫的內容時，標註 \`[來源:QA]\`。
+   - 僅當引用了規格庫 (CLASS_RULES) 的規格時，標註 \`[來源:規格庫]\`。
+   - 當使用你自己的通用知識/閒聊回答時，標註 \`[來源:一般知識]\`。
+   - **當前極速模式下未加載手冊，絕對、100% 禁止標註 \`[來源:產品手冊]\`！**\n`;
 
     // Removed hardcoded Prompt for Fast Mode. Handled by Prompt.csv
   } else if (kbFiles.length > 0) {
@@ -8696,12 +8708,28 @@ function handleCommand(c, u, cid) {
     // 🆕 v29.5.212: 重啟時自動掃描官網新機型，確保規格與手冊同步為最新狀態
     scanOfficialWebsiteForNewMonitors();
 
-    // 🆕 v29.5.212: 補齊這 4 款官網在售新機型 (完美展開複數欄位，對齊試算表)
+    // 🆕 v29.5.215: 補齊這 4 款官網在售新機型，並在寫入前「自動清掃殘缺行/重複行」以自癒
     try {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
       if (sheet) {
-        const lastRow = sheet.getLastRow();
+        let lastRow = sheet.getLastRow();
+        
+        // 1. 自下而上清掃殘缺行、空行或以新機型開合的舊資料，確保完美自癒
+        const targetsToClean = ["LS27H704EAC", "LS32HG802SC", "LS32HG806ES", "LS32FM501EC", "LS03FWXX"];
+        for (let i = lastRow; i >= 2; i--) {
+          const val = sheet.getRange(i, 1).getValue().toString().trim();
+          const shouldDelete = !val || 
+                               val.length < 100 || 
+                               targetsToClean.some(t => val.toUpperCase().startsWith(t));
+          if (shouldDelete) {
+            sheet.deleteRow(i);
+            writeLog(`[Self Heal] 刪除殘缺或舊新機型行: ${val.substring(0, 40)}...`);
+          }
+        }
+        
+        // 重新讀取剩餘的已存在機型
+        lastRow = sheet.getLastRow();
         const existing = [];
         if (lastRow > 1) {
           const vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
@@ -8719,7 +8747,7 @@ function handleCommand(c, u, cid) {
           const model = row.split(",")[0].toUpperCase();
           const alreadyExists = existing.some(line => line.startsWith(model));
           if (!alreadyExists) {
-            sheet.appendRow([row]); // v29.5.214: 回歸原汁原味 A 欄單欄位大字串設計
+            sheet.appendRow([row]); // 回歸原汁原味 A 欄單欄位大字串設計
             writeLog(`[Force Sync] 補齊新機型 ${model} 成功`);
           }
         });
