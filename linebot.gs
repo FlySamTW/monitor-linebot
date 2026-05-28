@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.208"; // 2026-05-27 提問與重啟快取徹底清理優化，解決狀態殘留錯亂 Bug
+const GAS_VERSION = "v29.5.209"; // 2026-05-28 官網新機型自動偵測與 Webhook 規格追加手冊自動下載功能
 const BUILD_TIMESTAMP = "2026-03-20 13:44";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -8509,6 +8509,25 @@ function handleCommand(c, u, cid) {
     return `✓ 重啟完成 (對話已重置)\n${resultMsg}`;
   }
 
+  if (cmd === "/check_monitors" || cmd === "/check") {
+    writeLog(`[Command] /check_monitors by ${u}`);
+    const totalCount = PropertiesService.getScriptProperties().getProperty("TOTAL_MODEL_COUNT") || "93";
+    const driveFolder = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID") ? "✅ 已設定" : "❌ 未設定";
+    return `🔍 [官網新機型自動比對系統]
+━━━━━━━━
+📄 目前規格庫容量：${totalCount} 組機型
+📁 雲端手冊資料夾：${driveFolder}
+━━━━━━━━
+💡 提示：本系統每天 04:00 自動在本地偵測伺服器排程掃描三星台灣官網。
+若您需要手動即時同步官網新螢幕，請在本地終端機執行：
+node tools/monitor_crawler.js --api-key=<你的GEMINI金鑰>
+
+若有任何新機型，系統將會：
+1. 自動使用 Gemini 整理去蕪存菁規格
+2. 自動追加至 CLASS_RULES 規格庫末行
+3. 自動下載繁體中文使用手冊 (PDF) 並直接傳送上傳至您的 Google Drive！`;
+  }
+
   if (cmd === "/取消") {
     CacheService.getScriptCache().remove(draftKey);
     CacheService.getScriptCache().remove(CACHE_KEYS.PENDING_QUERY + u);
@@ -10799,6 +10818,62 @@ function doPost(e) {
     const postData = e && e.postData ? e.postData : {};
     const contents = postData.contents || "{}";
     const json = JSON.parse(contents);
+
+    // 🆕 v29.5.209: 自訂的爬蟲與維護者 Webhook 入口
+    if (json.action === "append_class_rule") {
+      const authKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+      if (!json.secret || json.secret !== authKey) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Unauthorized" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Sheet CLASS_RULES not found" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      // 追加寫入末列
+      const newRuleText = json.content;
+      sheet.appendRow([newRuleText]);
+      
+      // 自動觸發快取與別稱字典重建
+      const syncResult = syncGeminiKnowledgeBase(false);
+      writeLog(`[Webhook Appended] 成功自官網更新新機型規格: ${newRuleText.substring(0, 100)}... 狀態: ${syncResult}`);
+      
+      return ContentService.createTextOutput(JSON.stringify({ success: true, sync: syncResult }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (json.action === "upload_manual_pdf") {
+      const authKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+      if (!json.secret || json.secret !== authKey) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Unauthorized" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      const folderId = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
+      if (!folderId) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "DRIVE_FOLDER_ID Script Property is not set" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      try {
+        const folder = DriveApp.getFolderById(folderId);
+        const pdfBytes = Utilities.base64Decode(json.pdfBase64);
+        const blob = Utilities.newBlob(pdfBytes, "application/pdf", json.fileName);
+        const file = folder.createFile(blob);
+        writeLog(`[Webhook PDF] 成功上傳手冊 PDF: ${json.fileName} (ID: ${file.getId()})`);
+        return ContentService.createTextOutput(JSON.stringify({ success: true, fileId: file.getId() }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        writeLog(`[Webhook PDF Error] 上傳失敗: ${err.message}`);
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     const events = json.events || [];
 
     events.forEach(function (event) {
