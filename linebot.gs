@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.227"; // 2026-05-29 徹底關閉一般知識漏洞與台中展示店幻覺
-const BUILD_TIMESTAMP = "2026-05-29 18:10";
+const GAS_VERSION = "v29.5.228"; // 2026-05-29 徹底封鎖一般知識來源標籤之物理防線
+const BUILD_TIMESTAMP = "2026-05-29 18:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2043,7 +2043,10 @@ function normalizeSourceTagFromRaw(rawText) {
   if (/QA/i.test(src)) return "[來源:QA]";
   if (/規格|產品規格|規格表/i.test(src)) return "[來源:規格庫]";
   if (/網路|Web/i.test(src)) return "[來源:網路搜尋]";
-  if (/一般知識|通用知識/i.test(src)) return "[來源:一般知識]";
+  if (/一般知識|通用知識|常識/i.test(src)) {
+    writeLog(`[Anti-Hallucination] 🛑 偵測到 AI 自帶「一般知識」來源標記，強行封殺！`);
+    return "";
+  }
   if (/手冊|PDF/i.test(src)) return "[來源:產品手冊]";
   return "";
 }
