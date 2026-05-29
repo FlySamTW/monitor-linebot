@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.229"; // 2026-05-29 防幻覺無懈可擊五層縱深防禦
-const BUILD_TIMESTAMP = "2026-05-29 18:55";
+const GAS_VERSION = "v29.5.230"; // 2026-05-29 防幻覺無懈可擊五層縱深防禦
+const BUILD_TIMESTAMP = "2026-05-29 21:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8734,7 +8734,47 @@ function handleCommand(c, u, cid) {
         "LS27H704EACXZW,型號：S27H704EAC,27吋 ViewFinity S7 平面高解析度顯示器 S70H,27吋16:9 IPS平面螢幕,4K UHD(3840x2160)解析度,最大60Hz更新頻率,5ms反應時間,350 cd/㎡亮度(典型),原生對比1000:1,HDR10,178°寬廣視角,10.7億色彩支援,sRGB 99%色域,低藍光模式,零閃屏,智慧偵測環境光源(Adaptive Picture),Windows 11認證,自動來源切換 Auto Source Switch+,HAS高度調整支架(120mm),前後傾斜-2°~25°,左右旋轉-30°~30°,垂直旋轉-92°~92°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電50W,尺寸含底座612.9x538.1x220.0mm,不含底座612.9x367.7x48.5mm,重量含底座4.9kg,不含底座3.4kg,配件電源線、HDMI線",
         "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比1000000:1(Typ),HDR10+ Gaming,178°寬廣視角,10.7億色彩支援,色域DCI 99%,低藍光模式,零閃屏,AMD FreeSync Premium Pro,G-Sync相容,自動來源切換 Auto Source Switch+,智慧作業系統Tizen,Bixby語音助理,SmartThings Hub,WiFi5與藍牙5.2,10W立體聲喇叭,介面：HDMI 2.1 x2、DisplayPort 1.4 x1、USB Hub,HAS高度調整支架(120mm),前後傾斜-2.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電180W,尺寸含底座719.7x584.6x263.5mm,不含底座719.7x414.7x49.2mm,包裝尺寸815x200x530mm,重量含底座8.4kg,不含底座5.3kg,包裝重量12.0kg,配件電源線、HDMI線、DP線、遙控器",
         "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8 雙模平面電競顯示器 G80HS,32吋16:9 IPS平面螢幕,雙模 6K 165Hz / 3K 330Hz,1ms(GtG)反應時間,亮度典型350 cd/㎡/峰值400 cd/㎡,原生對比1000:1,HDR10+ Gaming,178°/178°視角,10.7億色彩,sRGB 99%,FreeSync Premium Pro,G-Sync相容,自動來源切換+,介面：DisplayPort 2.1 x1、HDMI 2.1 x2、USB 3.2 Hub、耳機孔,HAS人體工學升降底座(120mm),前後傾斜-5.0°~25.0°,左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°,VESA 100x100mm壁掛,外接變壓器,尺寸含底座714.5x584.6x263.5mm,不含底座714.5x422.3x59.6mm,重量含底座8.4kg,不含底座4.9kg,配件電源線、HDMI線、DP線",
-        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器"
+        "LS32FM501ECXZW,型號：S32FM501EC,32吋 Smart Monitor M5 智慧聯網螢幕 M50F,32吋16:9 VA平面螢幕,FHD(1920x1080)解析度,最大60Hz更新頻率,4ms(GtG)反應時間,亮度典型250 cd/㎡/最小200 cd/㎡,原生對比3000:1(Typ),HDR10,178°寬廣視角,1670萬色彩支援,低藍光模式,零閃屏,影像尺寸調整,智慧偵測環境光源(Adaptive Picture),自動來源切換+,Tizen™作業系統,SmartThings支援,行動裝置鏡射,Wireless Display,WiFi5與藍牙5.2,介面：HDMI 2.0 x2、USB 2.0 x2,內建立體聲喇叭,前後傾斜-2.0°~22.0°,VESA 100x100mm壁掛,電源AC 100~240V內置電源,最大耗電50W,尺寸含底座716.1x517.0x193.5mm,不含底座716.1x424.5x41.8mm,包裝尺寸842x133x487mm,重量含底座6.2kg,不含底座5.0kg,包裝重量8.0kg,配件電源線、HDMI線、遙控器",
+        "LS27HG806EFXZW,型號：27吋 Odyssey G8 G80HF 5K 180Hz / QHD 360Hz 平面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g8-g80hf-27-inch-dual-mode-5k-180hz-qhd-360hz-ls27hg806efxzw/ ",
+        "LS27HG802SCXZW,型號：27吋 Odyssey OLED G8 G80SH 4K UHD 平面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g80sh-27-inch-4k-uhd-240hz-ls27hg802scxzw/ ",
+        "LS27HG612SCXZW,型號：27吋 Odyssey OLED G6 G61SH QHD 平面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g6-g61sh-27-inch-240hz-oled-qhd-ls27hg612scxzw/ ",
+        "LS27FG502ECXZW,型號：27吋 Odyssey G5 平面電競顯示器 G50F，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g5-g50f-27-inch-180hz-qhd-ls27fg502ecxzw/ ",
+        "LS32FM500ECXZW,型號：32吋智慧聯網螢幕 M5 M50F，規格網址： https://www.samsung.com/tw/monitors/smart/smart-monitor-m5-32-inch-smart-tv-apps-ls32fm500ecxzw/ ",
+        "LS22D400GACXZW,型號：22吋 S4 IPS 平面顯示器 S40GD，規格網址： https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s4-s40gd-22-inch-fhd-ips-100hz-ls22d400gacxzw/ ",
+        "LS24D400GACXZW,型號：24吋 S4 IPS 平面顯示器 S40GD，規格網址： https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s4-s40gd-24-inch-fhd-ips-100hz-ls24d400gacxzw/ ",
+        "LS24D300GACXZW,型號：24吋 S3 IPS 平面顯示器 S30GD，規格網址： https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s3-s30gd-24-inch-fhd-ips-100hz-ls24d300gacxzw/ ",
+        "LS24D362GACXZW,型號：24吋 S3 曲面顯示器 S36GD，規格網址： https://www.samsung.com/tw/monitors/curved/essential-monitor-s3-24-inch-100hz-ls24d362gacxzw/ ",
+        "LS27D806UACXZW,型號：27吋 ViewFinity S8 UHD 高解析度平面顯示器 S80UD，規格網址： https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-27-inch-uhd-usbc-easysetupstand-ls27d806uacxzw/ ",
+        "LS32D707EACXZW,型號：32吋 ViewFinity S7 UHD 高解析度平面顯示器 S70D，規格網址： https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s7-32-inch-uhd-hdr10-easysetupstand-ls32d707eacxzw/ ",
+        "LS27D706EACXZW,型號：27吋 ViewFinity S7 UHD 高解析度平面顯示器 S70D，規格網址： https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s7-27-inch-uhd-hdr10-easysetupstand-ls27d706eacxzw/ ",
+        "LS24D604UACXZW,型號：24吋 ViewFinity S6 QHD 高解析度平面顯示器 S60UD，規格網址： https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s6-24-inch-qhd-100hz-easysetupstand-ls24d604uacxzw/ ",
+        "LS27D606UACXZW,型號：27吋 ViewFinity S6 QHD 高解析度平面顯示器 S60UD，規格網址： https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s6-27-inch-qhd-100hz-easysetupstand-ls27d606uacxzw/ ",
+        "LS32CM801UCXZW,型號：32吋智慧聯網螢幕 M8 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-m80c-32-inch-uhd-4k-smart-tv-apps-ls32cm801ucxzw/ ",
+        "LS32CM80GUCXZW,型號：32吋智慧聯網螢幕 M8 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-m80c-32-inch-uhd-4k-smart-tv-apps-ls32cm80gucxzw/ ",
+        "LS32CM80BUCXZW,型號：32吋智慧聯網螢幕 M8 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-m80c-32-inch-uhd-4k-smart-tv-apps-ls32cm80bucxzw/ ",
+        "LS32CM80PUCXZW,型號：32吋智慧聯網螢幕 M8 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-m80c-32-inch-uhd-4k-smart-tv-apps-ls32cm80pucxzw/ ",
+        "LS27CM703UCXZW,型號：27吋智慧聯網螢幕 M7 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-m70c-27-inch-uhd-4k-smart-tv-apps-ls27cm703ucxzw/ ",
+        "LS32CM703UCXZW,型號：32吋智慧聯網螢幕 M7 (2023)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-m70c-32-inch-uhd-4k-smart-tv-apps-ls32cm703ucxzw/ ",
+        "LS27CM501ECXZW,型號：27吋智慧聯網螢幕 M5 (2023)，規格網址： https://www.samsung.com/tw/monitors/flat/smart-monitor-m5-27-inch-smart-tv-apps-ls27cm501ecxzw/ ",
+        "LS27CM500ECXZW,型號：27吋智慧聯網螢幕 M5 (2023)，規格網址： https://www.samsung.com/tw/monitors/flat/smart-monitor-m5-27-inch-smart-tv-apps-ls27cm500ecxzw/ ",
+        "LS24A600NACXZW,型號：24吋 S6 QHD 高解析度平面顯示器 (ENERGY STAR)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/s60a-24--24-inch-ips-uhd-4k-ls24a600nacxzw/ ",
+        "LS27A600NACXZW,型號：27吋 S6 QHD 高解析度平面顯示器 (ENERGY STAR)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/s60a-27--27-inch-ips-uhd-4k-ls27a600nacxzw/ ",
+        "LS34A650UBCXZW,型號：34吋 S6 Ultra WQHD 高解析度曲面顯示器 (ENERGY STAR)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/s65ua-34-inch-ls34a650ubcxzw/ ",
+        "LC32G55TQBCXZW,型號：32吋 Odyssey G5 1000R 曲面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g5-32-inch-144hz-1ms-curved-lc32g55tqbcxzw/ ",
+        "LC27G55TQBCXZW,型號：27吋 Odyssey G5 1000R 曲面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g5-27-inch-144hz-1ms-curved-lc27g55tqbcxzw/ ",
+        "LS28BG700ECXZW,型號：28吋 Odyssey G7 平面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g70b-g7-28-inch-ips-144hz-1ms-uhd-4k-ls28bg700ecxzw/ ",
+        "LS27BG650ECXZW,型號：27吋 Odyssey G6 1000R 曲面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g65b-g6-27-inch-240hz-1ms-curved-qhd-1440p-ls27bg650ecxzw/ ",
+        "LS49A950UICXZW,型號：49吋 S9 高解析度超寬曲面顯示器，規格網址： https://www.samsung.com/tw/monitors/high-resolution/s95ua-49-inch-dqhd-curved-ls49a950uicxzw/ ",
+        "LS43BM700UCXZW,型號：43吋智慧聯網螢幕 M7 (2022)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-43-inch-smart-tv-experience-ls43bm700ucxzw/ ",
+        "LS27AG320NCXZW,型號：27吋 Odyssey G3 平面電競顯示器，規格網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g32a-g3-27-inch-165hz---freesync-ls27ag320ncxzw/ ",
+        "LS27BM500ECXZW,型號：27吋智慧聯網螢幕 M5 (2022)，規格網址： https://www.samsung.com/tw/monitors/flat/smart-m5-27-inch-smart-tv-experience-ls27bm500ecxzw/ ",
+        "LS32BM801UCXZW,型號：32吋智慧聯網螢幕 M8 (2022)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm801ucxzw/ ",
+        "LS32BM80GUCXZW,型號：32吋智慧聯網螢幕 M8 (2022)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80gucxzw/ ",
+        "LS32BM80BUCXZW,型號：32吋智慧聯網螢幕 M8 (2022)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80bucxzw/ ",
+        "LS32BM80PUCXZW,型號：32吋智慧聯網螢幕 M8 (2022)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80pucxzw/ ",
+        "LS32AM703UCXZW,型號：32吋智慧聯網螢幕 M7 (白色)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-32-inch-ls32am703ucxzw/ ",
+        "LS24AM506NCXZW,型號：24吋智慧聯網螢幕 M5，規格網址： https://www.samsung.com/tw/monitors/flat/smart-m5-24-inch-smart-tv-apps-ls24am506ncxzw/ ",
+        "LS27A600NWCXZW,型號：27吋 S6 QHD 高解析度平面顯示器 (ENERGY STAR)，規格網址： https://www.samsung.com/tw/monitors/high-resolution/s60a-27-27-inch-ips-uhd-4k-ls27a600nwcxzw/ "
         ];
         // 為了避免大字串寫入時的 API 限制，我們每次寫入整塊資料
         const range = sheet.getRange(1, 1, fullRules.length, 1);
