@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.228"; // 2026-05-29 徹底封鎖一般知識來源標籤之物理防線
-const BUILD_TIMESTAMP = "2026-05-29 18:20";
+const GAS_VERSION = "v29.5.229"; // 2026-05-29 防幻覺無懈可擊五層縱深防禦
+const BUILD_TIMESTAMP = "2026-05-29 18:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -4509,11 +4509,11 @@ function constructDynamicPrompt(
 3. **格式要求**：
    - 使用數字列表 (1., 2., 3., 4.) 而非圓點
    - 在回答末尾標註「[來源: 網路搜尋]」
-4. **嚴禁推託**：
-   - ❌ 禁止說「查無資料」、「無法確認」
-   - ❌ 禁止反問用戶更多細節
-   - ✅ 必須提供基於搜尋的具體答案
-   - ✅ 若特定型號資訊少，提供該系列或品牌的通用解答
+4. **優先搜尋，允許誠實**：
+   - ✅ 必須使用 google_search 工具實際搜尋，基於搜尋結果回答
+   - ✅ 若搜到資訊不足，可提供該系列的「已搜到的」資訊
+   - ✅ 若搜尋後真的無結果，誠實說「搜尋了網路但這方面的確沒有更詳細的官方說明，建議問問 Sam」
+   - ❌ 嚴禁編造未搜到的內容，嚴禁用 LLM 內建知識填補搜尋空白
 
 【搜尋示例】
 - 規格問題：搜尋官方規格表、產品對比
@@ -4535,7 +4535,7 @@ function constructDynamicPrompt(
   }
 
   // System Protocols
-  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n`;
+  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n4. 若以上來源均無資料，嚴禁使用 LLM 內建知識（通用知識/一般知識/常識）編造任何具體資訊（包含地址、電話、營業時間、設定步驟），必須誠實告知無資料或輸出 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB]。\n`;
   dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
 
   // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
@@ -7472,21 +7472,9 @@ function handleMessage(event) {
           !replyText.toString().includes("(🔍 網路搜尋補充資料)") &&
           !replyText.toString().includes("(⚠️ 網路搜尋連線逾時)")
         ) {
-          // v24.5.4: 檢測是否為「不需要 PDF 的問題」
-          // 包括：1) 硬體規格定義  2) 通識知識  3) 技術概念解釋
-          // 這些問題 CLASS_RULES/QA 沒寫或 LLM 可用通用知識回答，不該查 PDF
-          // v29.4 Cleanup: 移除硬編碼過濾，讓 Smart Router 決定
-          // const nonPdfPatterns = [...];
-          const isNonPdfQuestion = false; // 強制放行
-
-          if (isNonPdfQuestion) {
-            // 不需要 PDF 的問題：使用 CLASS_RULES 或 LLM 通用知識回答
-            writeLog(
-              "[Non-PDF Q] 通識/規格定義問題，不進 PDF，直接用極速模式答案",
-            );
-            // finalText 已經是極速模式的回答，直接用
-            replyText = finalText;
-          } else {
+          // [已廢棄 v29.5.229] 舊版「不需要 PDF 的問題」跳過邏輯已徹底移除
+          // 所有問題均強制放行到 Smart Router，禁止跳過 PDF 查詢
+          {
             // v24.5.0: 優先檢查是否有 PDF 記憶（已選過型號）
             // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
             const currentMsgModels = extractModelNumbers(msg);
