@@ -40,8 +40,12 @@ for /f "tokens=*" %%i in ('powershell -Command "Get-Date -Format 'yyyy-MM-dd HH:
 call clasp version "%TIMESTAMP% deploy"
 
 echo.
+echo [3/3] Deploying to webhook...
+call clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+
+echo.
 echo ========================================
-echo [DONE] Code pushed successfully!
+echo [DONE] Code pushed and deployed successfully!
 echo [DONE] Version: %TIMESTAMP%
 echo ========================================
 echo.

@@ -1,6 +1,21 @@
 # PDF 手冊資料夾（大檔案，不納入版本控制）
 01_使用手冊forGAS-LineBot客服/
-
-# 其他可能需要忽略的資料夾
 使用手冊/
 *.pdf
+
+# Node & dependencies
+node_modules/
+test_runner/node_modules/
+
+# Backups & temp files
+*.bak
+linebot.js
+diff.txt
+diff_history.txt
+diff_utf8.txt
+func_dump.txt
+zzz_test.txt
+logs/
+
+# Clasp / Local credentials
+.clasp.json.bak

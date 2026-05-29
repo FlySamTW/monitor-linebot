@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.234"; // 2026-05-29 防幻覺無懈可擊五層縱深防禦
-const BUILD_TIMESTAMP = "2026-05-30 00:13";
+const GAS_VERSION = "v29.5.235"; // 2026-05-30 修復指令超時與部署漏洞，實現非同步自癒
+const BUILD_TIMESTAMP = "2026-05-30 01:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8562,13 +8562,12 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
     
-    // 完璧歸趙！同步最新規格庫，並上傳 PDF 與同步知識庫 (使用者原本的重啟)
+    // 完璧歸趙！同步最新規格庫，並安排背景自癒重建 (解決 Webhook 5 秒超時致命問題)
     const ruleLen = restoreClassRulesToSheet();
-    scheduleImmediateRebuild();
-    const resultMsg = syncGeminiKnowledgeBase(false);
+    scheduleImmediateRebuild(); // 🚀 1分鐘後非同步重建知識庫
     
-    writeLog(`[Command] 重啟自癒同步完成 by ${u}`);
-    return `✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。已自動將新上傳的 PDF 手冊與 QA 同步至 Gemini 知識庫)\n\n${resultMsg}`;
+    writeLog(`[Command] 重啟自癒排程完成 by ${u}`);
+    return `✓ 重啟與自癒同步已成功排程！\n\n對話歷史與模式快取已完全重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。系統已排程於 1 分鐘內在背景重建雲端知識庫，您可以重新開始提問囉！😊👍`;
   }
 
   if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
@@ -8591,12 +8590,11 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
 
-    // 🆕 v29.5.234: 呼叫重構後的統一自癒還原函數
+    // 🆕 v29.5.235: 呼叫重構後的統一自癒還原與非同步重建
     const ruleLen = restoreClassRulesToSheet();
-    scheduleImmediateRebuild();
-    const resultMsg = syncGeminiKnowledgeBase(false);
-    writeLog(`[Command] 重設規格庫完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。雲端知識庫已同步更新)\n${resultMsg}`;
+    scheduleImmediateRebuild(); // 🚀 1分鐘後非同步重建知識庫
+    writeLog(`[Command] 重設規格庫排程完成`);
+    return `✓ 規格庫還原與同步已成功排程！\n\n對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。系統已排程於 1 分鐘內在背景重建雲端知識庫！😊`;
   }
 
   if (cmd === "/取消") {
