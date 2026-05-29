@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.224"; // 2026-05-28 完璧歸趙！徹底拔除重啟 fullRules 中的 4 行幻想規格資料
-const BUILD_TIMESTAMP = "2026-05-28 20:15";
+const GAS_VERSION = "v29.5.225"; // 2026-05-29 徹底修復核心問答流程與防幻覺機制
+const BUILD_TIMESTAMP = "2026-05-29 15:40";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
