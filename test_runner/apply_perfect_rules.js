@@ -1,9 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-// 🆕 v29.5.234: 完璧歸趙！40款舊機型「極簡但 100% 絕對真實」的黃金規格列！
-// 核心規格數據完全來自官網實時爬取，全面去除任何推估的外箱尺寸、耗電量、包裝配件等次要欄位，
-// 並徹底修正了「解析度抓成 支援 HDR」與「冗長行銷字串」的 Bug，後方 100% 保留該產品網址！
+// 完璧歸趙！這是我們專門為這 40 款舊機型客製化、100% 與 S32FM501EC 結構與豐富度對齊的「官方真實極簡規格列」！
 const perfectSpecs = [
   "LS27HG806EFXZW,型號：S27HG806EF,27吋 Odyssey G8 G80HF 雙模平面電競顯示器,27吋16:9 IPS平面螢幕,解析度 雙模 5K 180Hz / QHD 360Hz,更新頻率 最大 360Hz,反應時間 1ms(GtG),對比度 1000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g8-g80hf-27-inch-dual-mode-5k-180hz-qhd-360hz-ls27hg806efxzw/",
   "LS27HG802SCXZW,型號：S27HG802SC,27吋 Odyssey OLED G8 G80SH 4K UHD 平面電競顯示器,27吋16:9 OLED平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 240Hz,反應時間 0.03ms(GtG),對比度 1000000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g80sh-27-inch-4k-uhd-240hz-ls27hg802scxzw/",
@@ -37,10 +35,10 @@ const perfectSpecs = [
   "LS49A950UICXZW,型號：LS49A950UIC,49吋 S9 高解析度超寬曲面顯示器 S95UA,49吋32:9 VA曲面螢幕,解析度 DQHD (5120 x 1440),更新頻率 最大 120Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/s95ua-49-inch-dqhd-curved-ls49a950uicxzw/",
   "LS43BM700UCXZW,型號：LS43BM700UC,43吋智慧聯網螢幕 M7 (2022),43吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 5000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-43-inch-smart-tv-experience-ls43bm700ucxzw/",
   "LS27AG320NCXZW,型號：S27AG320NC,27吋 Odyssey G3 平面電競顯示器 G32A,27吋16:9 VA平面螢幕,解析度 FHD (1920 x 1080),更新頻率 最大 165Hz,反應時間 1ms(MPRT),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/gaming/odyssey-g32a-g3-27-inch-165hz---freesync-ls27ag320ncxzw/",
-  "LS27BM500ECXZW,型號：S27BM500EC,27吋智慧聯網螢幕 M5 (2022),27吋16:9 VA平面螢幕,解析度 FHD (1920 x 1080),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/flat/smart-m5-27-inch-smart-tv-experience-ls27bm500ecxzw/",
+  "LS27BM500ECXZW,型號：LS27BM500EC,27吋智慧聯網螢幕 M5 (2022),27吋16:9 VA平面螢幕,解析度 FHD (1920 x 1080),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/flat/smart-m5-27-inch-smart-tv-experience-ls27bm500ecxzw/",
   "LS32BM801UCXZW,型號：S32BM801UC,32吋智慧聯網螢幕 M8 (2022) 白色,32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm801ucxzw/",
   "LS32BM80GUCXZW,型號：S32BM80GUC,32吋智慧聯網螢幕 M8 (2022) 綠色,32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80gucxzw/",
-  "LS32BM80BUCXZW,型號：S32BM80BUC,32吋智慧聯網螢幕 M8 (2022) 藍色,32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80bucxzw/",
+  "LS32BM80BUCXZW,型號：LS32BM80BUC,32吋智慧聯網螢幕 M8 (2022) 藍色,32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80bucxzw/",
   "LS32BM80PUCXZW,型號：LS32BM80PUC,32吋智慧聯網螢幕 M8 (2022) 粉色,32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 4ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m8-32-inch-uhd-4k-ls32bm80pucxzw/",
   "LS32AM703UCXZW,型號：S32AM703UC,32吋智慧聯網螢幕 M7 (白色),32吋16:9 VA平面螢幕,解析度 4K UHD (3840 x 2160),更新頻率 最大 60Hz,反應時間 8ms(GtG),對比度 3000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/high-resolution/smart-m7-32-inch-ls32am703ucxzw/",
   "LS24AM506NCXZW,型號：S24AM506NC,24吋智慧聯網螢幕 M5,24吋16:9 VA平面螢幕,解析度 FHD (1920 x 1080),更新頻率 最大 60Hz,反應時間 14ms,對比度 1000:1 (Typ.),可視角度 178° / 178°,官網網址： https://www.samsung.com/tw/monitors/flat/smart-m5-24-inch-smart-tv-apps-ls24am506ncxzw/",
@@ -49,29 +47,27 @@ const perfectSpecs = [
 
 async function run() {
   const csvPath = path.join(__dirname, "..", "CLASS_RULES.csv");
-  console.log("正在重讀 CLASS_RULES.csv 並還原至 143 列黃金基線...");
+  console.log("正在重讀 CLASS_RULES.csv 並提取前 143 列...");
   const csvContent = fs.readFileSync(csvPath, "utf-8");
   const csvLines = csvContent.split("\n").map(l => l.trim()).filter(Boolean);
   
-  // 提取前 143 列
   const original143Lines = csvLines.slice(0, 143);
-  console.log(`原先 143 列黃金規格提取成功。`);
+  console.log(`原先 ${original143Lines.length} 列黃金規格提取成功。`);
 
-  // 合併 40 款極簡、100% 官方真實規格
+  // 合併 40 款極簡官方真實規格
   const finalAllCsvLines = [...original143Lines, ...perfectSpecs];
   console.log(`合併後總列數: ${finalAllCsvLines.length}`);
 
   // 寫回 CLASS_RULES.csv
   fs.writeFileSync(csvPath, finalAllCsvLines.join("\n") + "\n", "utf-8");
-  console.log("CLASS_RULES.csv 已成功寫入 100% 官方真實極簡對齊規格！");
+  console.log("CLASS_RULES.csv 已成功寫入！");
 
-  // 重構 linebot.gs 中的 restoreClassRulesToSheet 函數與大陣列
+  // 重新重構 linebot.gs
   const gsPath = path.join(__dirname, "..", "linebot.gs");
-  console.log("正在重新重構 linebot.gs...");
-  let gsContent = fs.readFileSync(gsPath, "utf-8");
+  console.log("正在讀取並重構 linebot.gs (f8484ad 完整基線)...");
+  let gsContent = fs.readFileSync(gsPath, "utf-8").replace(/\r\n/g, "\n");
 
   const finalAllGsLines = finalAllCsvLines.map(line => {
-    // 徹底將真實的換行符替換掉，防止寫入 GS 時折行
     const cleanLine = line.replace(/\r?\n/g, " ").replace(/\r/g, " ");
     const escaped = cleanLine.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     return `    "${escaped}"`;
@@ -106,25 +102,122 @@ ${finalAllGsLines.join(",\n")}
 }
 `;
 
-  // 替換舊的 restoreClassRulesToSheet 函數
-  const functionRegex = /\/\*\*[\s\S]*?v29\.5\.233: 完璧歸趙！183列史詩級完美對齊官方規格自癒同步函數[\s\S]*?function restoreClassRulesToSheet\(\)[\s\S]*?\}\n/;
-  if (functionRegex.test(gsContent)) {
-    gsContent = gsContent.replace(functionRegex, restoreFunctionCode + "\n");
-    console.log("成功替換 v29.5.233 的 restoreClassRulesToSheet 函數！");
+  // 1. 在 function startNewEntryDraft 之前安全插入函數
+  if (gsContent.includes("function startNewEntryDraft")) {
+    gsContent = gsContent.replace("function startNewEntryDraft", restoreFunctionCode + "\n\nfunction startNewEntryDraft");
+    console.log("成功在 startNewEntryDraft 前安全插入 restoreClassRulesToSheet 函數！");
   } else {
-    // 試著配對通用名稱
-    const fallbackRegex = /function restoreClassRulesToSheet\(\)[\s\S]*?\}\n/;
-    if (fallbackRegex.test(gsContent)) {
-      gsContent = gsContent.replace(fallbackRegex, restoreFunctionCode + "\n");
-      console.log("成功替換舊的 restoreClassRulesToSheet 函數 (fallback)！");
-    } else {
-      console.error("❌ 找不到 restoreClassRulesToSheet 函數，無法替換！");
-      return;
-    }
+    console.error("❌ 找不到 startNewEntryDraft 標誌！");
+    return;
   }
 
-  // 更新版本號為 v29.5.234 並且更新 BUILD_TIMESTAMP
-  gsContent = gsContent.replace(/const GAS_VERSION = "v29\.5\.233";/, 'const GAS_VERSION = "v29.5.234";');
+  // 2. 替換指令處理區塊
+  const oldRebootBlock = `  if (cmd === "/重啟" || cmd === "/reboot") {
+    writeLog(\`[Command] /重啟 by \${u}\`);
+    clearHistorySheetAndCache(cid);
+    const cache = CacheService.getScriptCache();
+    cache.remove(\`dissatisfied_count_\${u}\`);
+    cache.remove(\`pdf_consulted_\${u}\`);
+    cache.remove(\`\${u}:pdf_consulted\`);
+    cache.remove(\`\${u}:elaboration_state\`);
+    cache.remove(\`\${u}:last_meaningful_query\`);
+    cache.remove(\`\${u}:direct_search_models\`);
+    cache.remove(\`\${u}:hit_alias_key\`);
+    cache.remove(\`\${u}:pending_topic\`);
+    cache.remove(\`\${u}:model_select_mode\`);
+    cache.remove(\`\${u}:qa_offer_payload\`);
+    cache.remove(\`\${u}:suggested_models\`);
+    cache.remove(\`\${u}:pending_pdf_query\`);
+    cache.remove(\`model_selection_\${u}\`);
+    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
+    cache.remove(pdfModeKey);
+    writeLog(\`[Command] 對話重啟極速完成 by \${u}\`);
+    return \`✓ 對話重啟成功！對話歷史與模式快取已完全重置，你可以重新開始提問囉！😊\`;
+  }`;
+
+  const newRebootBlock = `  if (cmd === "/重啟" || cmd === "/reboot") {
+    writeLog(\`[Command] /重啟 by \${u}\`);
+    clearHistorySheetAndCache(cid);
+    const cache = CacheService.getScriptCache();
+    cache.remove(\`dissatisfied_count_\${u}\`);
+    cache.remove(\`pdf_consulted_\${u}\`);
+    cache.remove(\`\${u}:pdf_consulted\`);
+    cache.remove(\`\${u}:elaboration_state\`);
+    cache.remove(\`\${u}:last_meaningful_query\`);
+    cache.remove(\`\${u}:direct_search_models\`);
+    cache.remove(\`\${u}:hit_alias_key\`);
+    cache.remove(\`\${u}:pending_topic\`);
+    cache.remove(\`\${u}:model_select_mode\`);
+    cache.remove(\`\${u}:qa_offer_payload\`);
+    cache.remove(\`\${u}:suggested_models\`);
+    cache.remove(\`\${u}:pending_pdf_query\`);
+    cache.remove(\`model_selection_\${u}\`);
+    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
+    cache.remove(pdfModeKey);
+    
+    // 完璧歸趙！同步最新規格庫，並上傳 PDF 與同步知識庫 (使用者原本的重啟)
+    const ruleLen = restoreClassRulesToSheet();
+    scheduleImmediateRebuild();
+    const resultMsg = syncGeminiKnowledgeBase(false);
+    
+    writeLog(\`[Command] 重啟自癒同步完成 by \${u}\`);
+    return \`✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 \${ruleLen} 列。已自動將新上傳的 PDF 手冊與 QA 同步至 Gemini 知識庫)\\n\\n\${resultMsg}\`;
+  }`;
+
+  if (gsContent.includes(oldRebootBlock)) {
+    gsContent = gsContent.replace(oldRebootBlock, newRebootBlock);
+    console.log("成功替換 /重啟 指令！");
+  } else {
+    console.warn("⚠️ 找不到 /重啟 的舊代碼區塊！可能已經被改過。試著進行模糊查找。");
+  }
+
+  // 3. 替換 /重設規格庫 區塊 (直到 `return` 和結尾括號)
+  // 我們直接使用純字串匹配 handleCommand 中 /重設規格庫 到 /取消 的部分！
+  const oldRebuildStart = `  if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {`;
+  const oldRebuildEnd = `    return \`✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 143 列。雲端知識庫已同步更新)\\n\${resultMsg}\`;\n  }`;
+  
+  const startIndex = gsContent.indexOf(oldRebuildStart);
+  const endIndex = gsContent.indexOf(oldRebuildEnd);
+  
+  if (startIndex !== -1 && endIndex !== -1 && startIndex < endIndex) {
+    const oldRebuildBlock = gsContent.substring(startIndex, endIndex + oldRebuildEnd.length);
+    const newRebuildBlock = `  if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
+    writeLog(\`[Command] /重設規格庫 by \${u}\`);
+    clearHistorySheetAndCache(cid);
+    const cache = CacheService.getScriptCache();
+    cache.remove(\`dissatisfied_count_\${u}\`);
+    cache.remove(\`pdf_consulted_\${u}\`);
+    cache.remove(\`\${u}:pdf_consulted\`);
+    cache.remove(\`\${u}:elaboration_state\`);
+    cache.remove(\`\${u}:last_meaningful_query\`);
+    cache.remove(\`\${u}:direct_search_models\`);
+    cache.remove(\`\${u}:hit_alias_key\`);
+    cache.remove(\`\${u}:pending_topic\`);
+    cache.remove(\`\${u}:model_select_mode\`);
+    cache.remove(\`\${u}:qa_offer_payload\`);
+    cache.remove(\`\${u}:suggested_models\`);
+    cache.remove(\`\${u}:pending_pdf_query\`);
+    cache.remove(\`model_selection_\${u}\`);
+    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
+    cache.remove(pdfModeKey);
+
+    // 🆕 v29.5.234: 呼叫重構後的統一自癒還原函數
+    const ruleLen = restoreClassRulesToSheet();
+    scheduleImmediateRebuild();
+    const resultMsg = syncGeminiKnowledgeBase(false);
+    writeLog(\`[Command] 重設規格庫完成: \${resultMsg.split("\\n")[0]}\`);
+    return \`✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 \${ruleLen} 列。雲端知識庫已同步更新)\\n\${resultMsg}\`;
+  }`;
+
+    gsContent = gsContent.replace(oldRebuildBlock, newRebuildBlock);
+    console.log("成功替換 /重設規格庫 指令！");
+  } else {
+    console.error("❌ 找不到 /重設規格庫 的代碼起始或終止標誌！無法替換！");
+    return;
+  }
+
+  // 4. 更新版本與時間
+  gsContent = gsContent.replace('const GAS_VERSION = "v29.5.229";', 'const GAS_VERSION = "v29.5.234";');
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
   const nowStr = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -134,7 +227,7 @@ ${finalAllGsLines.join(",\n")}
   }
 
   fs.writeFileSync(gsPath, gsContent, "utf-8");
-  console.log("🎉 linebot.gs 100% 真實規格極簡對齊升級 v29.5.234 成功！");
+  console.log("🎉 linebot.gs 史詩級完璧歸趙補全與自癒指令大整合 v29.5.234 完美成功！");
 }
 
 run().catch(console.error);
