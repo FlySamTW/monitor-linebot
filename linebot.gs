@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.231"; // 2026-05-29 防幻覺無懈可擊五層縱深防禦
-const BUILD_TIMESTAMP = "2026-05-29 22:16";
+const GAS_VERSION = "v29.5.232"; // 2026-05-29 完美還原重啟之增量 PDF 同步功能
+const BUILD_TIMESTAMP = "2026-05-29 22:56";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8562,12 +8562,13 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
     
-    // 🆕 v29.5.231: 重啟對話的同時，也自動極速自癒同步最新規格庫到 Sheet
+    // 完璧歸趙！同步最新規格庫，並上傳 PDF 與同步知識庫 (使用者原本的重啟)
     const ruleLen = restoreClassRulesToSheet();
     scheduleImmediateRebuild();
+    const resultMsg = syncGeminiKnowledgeBase(false);
     
-    writeLog(`[Command] 對話重啟極速完成 by ${u}`);
-    return `✓ 對話重啟成功！對話歷史與模式快取已完全重置，最新 ${ruleLen} 列黃金規格庫已完全同步還原，你可以重新開始提問囉！😊`;
+    writeLog(`[Command] 重啟自癒同步完成 by ${u}`);
+    return `✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。已自動將新上傳的 PDF 手冊與 QA 同步至 Gemini 知識庫)\n\n${resultMsg}`;
   }
 
   if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
