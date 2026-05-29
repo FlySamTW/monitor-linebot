@@ -26,13 +26,15 @@ function formatReply(text) {
 
 async function findUiFrame(page) {
   const inputSelector = "#msg-input";
-  await sleep(5000); // iframes may spawn late
-
-  for (const f of page.frames()) {
-    try {
-      const el = await f.$(inputSelector);
-      if (el) return f;
-    } catch (_) {}
+  console.log("Waiting for UI Frame to spawn...");
+  for (let i = 0; i < 10; i++) {
+    await sleep(2000);
+    for (const f of page.frames()) {
+      try {
+        const el = await f.$(inputSelector);
+        if (el) return f;
+      } catch (_) {}
+    }
   }
   return null;
 }

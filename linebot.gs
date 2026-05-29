@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.225"; // 2026-05-29 徹底修復核心問答流程與防幻覺機制
-const BUILD_TIMESTAMP = "2026-05-29 15:40";
+const GAS_VERSION = "v29.5.226"; // 2026-05-29 /重啟與/重設規格庫極速優化
+const BUILD_TIMESTAMP = "2026-05-29 16:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8552,13 +8552,32 @@ function handleCommand(c, u, cid) {
   if (cmd === "/重啟" || cmd === "/reboot") {
     writeLog(`[Command] /重啟 by ${u}`);
     clearHistorySheetAndCache(cid);
-    // v24.1.7: 清除動畫計時器，讓重啟後第一次詢問能顯示動畫
     const cache = CacheService.getScriptCache();
-    // v29.5.27: 清除不滿意計數器與 PDF 狀態，避免測試時卡住
     cache.remove(`dissatisfied_count_${u}`);
     cache.remove(`pdf_consulted_${u}`);
-    
-    // v29.5.208: 全面清除一般使用者提問與智慧追問相關快取
+    cache.remove(`${u}:pdf_consulted`);
+    cache.remove(`${u}:elaboration_state`);
+    cache.remove(`${u}:last_meaningful_query`);
+    cache.remove(`${u}:direct_search_models`);
+    cache.remove(`${u}:hit_alias_key`);
+    cache.remove(`${u}:pending_topic`);
+    cache.remove(`${u}:model_select_mode`);
+    cache.remove(`${u}:qa_offer_payload`);
+    cache.remove(`${u}:suggested_models`);
+    cache.remove(`${u}:pending_pdf_query`);
+    cache.remove(`model_selection_${u}`);
+    const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
+    cache.remove(pdfModeKey);
+    writeLog(`[Command] 對話重啟極速完成 by ${u}`);
+    return `✓ 對話重啟成功！對話歷史與模式快取已完全重置，你可以重新開始提問囉！😊`;
+  }
+
+  if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
+    writeLog(`[Command] /重設規格庫 by ${u}`);
+    clearHistorySheetAndCache(cid);
+    const cache = CacheService.getScriptCache();
+    cache.remove(`dissatisfied_count_${u}`);
+    cache.remove(`pdf_consulted_${u}`);
     cache.remove(`${u}:pdf_consulted`);
     cache.remove(`${u}:elaboration_state`);
     cache.remove(`${u}:last_meaningful_query`);
@@ -8573,7 +8592,7 @@ function handleCommand(c, u, cid) {
     const pdfModeKey = CACHE_KEYS.PDF_MODE_PREFIX + cid;
     cache.remove(pdfModeKey);
 
-    // 🆕 v29.5.221: 重啟時完璧歸趙還原並同步乾淨的 143 列完整規格，確保無虛假新機型，不執行自動官網掃描
+    // 🆕 v29.5.221: 重設規格庫時完璧歸趙還原並同步乾淨的 143 列完整規格，確保無虛假新機型，不執行自動官網掃描
     try {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
@@ -8731,12 +8750,11 @@ function handleCommand(c, u, cid) {
       writeLog(`[Force Sync Error] ${err.message}`);
     }
 
-    // v27.2.2: 修復 forceRebuild = true 導致的不必要的完全重建
-    // v29.5.213: 異步排程 1 分鐘後在背景強制重建知識庫，防止阻塞 LINE 5秒超時限制而無回應
+    // v29.5.226: 規格庫重設完成
     scheduleImmediateRebuild();
     const resultMsg = syncGeminiKnowledgeBase(false);
-    writeLog(`[Command] 重啟完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 重啟完成 (對話已重置，規格庫已成功補齊至 143 列。雲端知識庫已排程於 1 分鐘後背景完全重建，此期間對話將維持極速回應)\n${resultMsg}`;
+    writeLog(`[Command] 重設規格庫完成: ${resultMsg.split("\n")[0]}`);
+    return `✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 143 列。雲端知識庫已同步更新)\n${resultMsg}`;
   }
 
   if (cmd === "/取消") {
