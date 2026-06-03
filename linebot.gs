@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.236"; // 2026-05-30 完璧歸趙！完全還原重啟同步上傳 PDF 知識庫之完整行為
-const BUILD_TIMESTAMP = "2026-05-30 01:17";
+const GAS_VERSION = "v29.5.238"; // 2026-06-03 擴充圖片讀取與對話歷史整合功能
+const BUILD_TIMESTAMP = "2026-05-30 01:28";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -4535,7 +4535,7 @@ function constructDynamicPrompt(
   }
 
   // System Protocols
-  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。\n4. 若以上來源均無資料，嚴禁使用 LLM 內建知識（通用知識/一般知識/常識）編造任何具體資訊（包含地址、電話、營業時間、設定步驟），必須誠實告知無資料或輸出 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB]。\n`;
+  dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。對話歷史僅供理解脈絡，嚴禁將過去對話中的任何瞎編資訊當作事實繼續回答。\n4. 若以上來源均無資料，嚴禁使用 LLM 內建知識（通用知識/一般知識/常識）編造任何具體資訊（包含地址、電話、營業時間、設定步驟），必須誠實告知無資料或輸出 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB]。\n`;
   dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
 
   // v24.1.20: 移除硬編碼 Prompt，改為引用 Prompt.csv 中的定義
@@ -4669,22 +4669,7 @@ function callLLMWithRetry(
     targetModelName,
   );
 
-  const geminiContents = [];
-  // if (imageBlob) { // imageBlob is handled outside this function now
-  //   const imageBase64 = Utilities.base64Encode(imageBlob.getBytes());
-  //   geminiContents.push({
-  //     role: "user",
-  //     parts: [
-  //       { text: `【任務】分析圖片:\n${c3Prompt}` },
-  //       {
-  //         inline_data: {
-  //           mime_type: imageBlob.getContentType(),
-  //           data: imageBase64,
-  //         },
-  //       },
-  //     ],
-  //   });
-  // } else {
+  // 刪除舊的註解掉的 imageBlob 邏輯
   let first = true;
   effectiveMessages.forEach((msg) => {
     if (msg.role === "system") return;
@@ -4729,7 +4714,26 @@ function callLLMWithRetry(
     });
   });
   if (first) geminiContents.push({ role: "user", parts: [{ text: "你好" }] });
-  // }
+
+  // v29.5.xxx: 確保 imageBlob 正確插入至最後一個 user 訊息中
+  if (imageBlob) {
+    try {
+      const imageBase64 = Utilities.base64Encode(imageBlob.getBytes());
+      for (let i = geminiContents.length - 1; i >= 0; i--) {
+        if (geminiContents[i].role === "user") {
+          geminiContents[i].parts.push({
+            inline_data: {
+              mime_type: imageBlob.getContentType() || "image/jpeg",
+              data: imageBase64,
+            },
+          });
+          break;
+        }
+      }
+    } catch (err) {
+      writeLog(`[Image Attach Error] 圖片轉換 Base64 失敗: ${err.message}`);
+    }
+  }
 
   // v24.5.4: 成本優化
   // v27.0.0: 恢復原始邏輯（Thinking Mode 修復）
@@ -4991,6 +4995,8 @@ function callLLMWithRetry(
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
+        connectTimeout: 5000, // 5秒連接超時防掛起
+        readTimeout: 10000    // 10秒讀取超時防掛起
       });
       const endTime = new Date().getTime();
       const code = response.getResponseCode();
@@ -8505,9 +8511,13 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       { headers: { Authorization: "Bearer " + token } },
     ).getBlob();
 
+    const history = getHistoryFromCacheOrSheet(contextId);
+    const analysisQuery = "這是一張使用者傳送的圖片。請結合我們的對話歷史，詳細分析這張圖片，包含任何可見的螢幕型號、錯誤代碼、警告訊息、畫面異常情形（如亮線、黑屏）或指示燈狀態。請直接條列分析結果與解決建議，不需開場白。這將作為後續客服判斷的依據。";
+    const messages = [...history, { role: "user", content: analysisQuery }];
+
     const analysis = callLLMWithRetry(
       null, // query
-      [{ role: "user", content: "分析圖片" }], // messages stub
+      messages, // messages
       [], // filesToAttach
       false, // attachPDFs
       blob, // imageBlob
@@ -8521,7 +8531,6 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
 
     // writeRecordDirectly(userId, final, contextId, 'assistant', '');
 
-    const history = getHistoryFromCacheOrSheet(contextId);
     updateHistorySheetAndCache(
       contextId,
       history,
