@@ -79,6 +79,17 @@ npm run check:webhook-version
 - 若版本不同，拒絕繼續跑線上 TestUI 測試
 - 避免用舊部署結果誤判新版回答邏輯
 
+### 本機 SOP 靜態守門
+```
+cd test_runner
+npm run test:static
+```
+效果：
+- 檢查 API 失敗訊息不可假標來源
+- 檢查部署流程不可自動覆蓋 Google Sheet `Prompt!C3`
+- 檢查 Prompt 同步工具必須明確指定來源檔並確認覆蓋
+- 檢查線上 TestUI 回歸必須先通過正式 Webhook 版本守門
+
 ### 下載 LOG（根目錄）
 ```
 download_log.bat
