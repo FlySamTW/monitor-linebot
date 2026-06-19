@@ -64,6 +64,31 @@ function Invoke-Clasp {
   return $text
 }
 
+function Get-ClaspVersionCount {
+  $output = & clasp versions 2>&1
+  $exitCode = $LASTEXITCODE
+  $text = ($output | Out-String).Trim()
+  if ($exitCode -ne 0) {
+    $error = "clasp versions failed with exit code $exitCode."
+    if ($text) {
+      $error += " $text"
+    }
+    throw $error
+  }
+  $match = [regex]::Match($text, "Found\s+(\d+)\s+versions")
+  if (-not $match.Success) {
+    throw "Could not parse Apps Script version count from clasp versions output."
+  }
+  return [int]$match.Groups[1].Value
+}
+
+function Stop-ForVersionLimit {
+  Write-Host "[BLOCKED] Apps Script has reached the 200-version limit." -ForegroundColor Yellow
+  Write-Host "Delete old unused versions in Apps Script Project History, then run this script again."
+  Write-Host "Do not create a new deployment ID."
+  exit 2
+}
+
 function New-GasVersion {
   param([string]$Description)
 
@@ -73,10 +98,7 @@ function New-GasVersion {
   } catch {
     $message = $_.Exception.Message
     if ($message -match "Cannot create more versions") {
-      Write-Host "[BLOCKED] Apps Script has reached the 200-version limit." -ForegroundColor Yellow
-      Write-Host "Delete old unused versions in Apps Script Project History, then run this script again."
-      Write-Host "Do not create a new deployment ID."
-      exit 2
+      Stop-ForVersionLimit
     }
     throw
   } finally {
@@ -116,6 +138,14 @@ Write-Host "=== Deploy Existing GAS Webhook ==="
 Write-Host "Local version : $($build.Version) [$($build.Build)]"
 Write-Host "Deployment ID : $DeploymentId"
 Write-Host "Prompt source : Google Sheet Prompt!C3 (not Prompt.csv)"
+Write-Host ""
+
+Write-Host "[Preflight] Check Apps Script version capacity before pushing HEAD..."
+$versionCount = Get-ClaspVersionCount
+Write-Host "Current Apps Script version count: $versionCount"
+if ($versionCount -ge 200) {
+  Stop-ForVersionLimit
+}
 Write-Host ""
 
 Write-Host "[1/4] Push code to Apps Script HEAD..."

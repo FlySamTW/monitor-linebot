@@ -45,6 +45,7 @@
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
+- `tools/deploy_existing_webhook.ps1`: 版本數滿 200 時改為在 `clasp push -f` 之前先停止，避免留下「Apps Script HEAD 已更新、正式 LINE webhook 仍是舊版」的半部署狀態。
 - `deploy.bat`: 改為 Windows 雙擊入口，轉呼叫 `tools/deploy_existing_webhook.ps1`，避免批次檔與自動化腳本維護兩套部署流程。
 - `tools/sync_prompt_c3.ps1`: 改為必須明確指定 `-PromptPath` 並加上 `-ConfirmOverwrite` 才會寫入 Google Sheet `Prompt!C3`，避免獨立工具被誤執行時覆蓋正式 Prompt。
 - `verify_m7_mute_current.js`: `/重啟` 版本檢查改為讀取 `linebot.gs` 目前 `GAS_VERSION`，避免正式部署更新後仍因測試寫死舊版本而假失敗。

@@ -79,6 +79,18 @@ assertStep(
 );
 
 assertStep(
+  /Get-ClaspVersionCount/.test(deployExistingWebhook) &&
+    /Check Apps Script version capacity before pushing HEAD/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must preflight version capacity before pushing HEAD",
+);
+
+assertStep(
+  deployExistingWebhook.indexOf("Check Apps Script version capacity before pushing HEAD") <
+    deployExistingWebhook.indexOf('Invoke-Clasp -Arguments @("push", "-f")'),
+  "deploy_existing_webhook.ps1 must not push HEAD before checking the 200-version limit",
+);
+
+assertStep(
   /PromptPath is required/.test(syncPrompt) && /ConfirmOverwrite/.test(syncPrompt),
   "sync_prompt_c3.ps1 must require explicit PromptPath and ConfirmOverwrite",
 );
