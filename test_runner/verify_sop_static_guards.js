@@ -109,6 +109,48 @@ assertStep(
   "Fast Mode should discard AI-provided PDF/manual source tags when no PDF is attached",
 );
 
+const sourceNormalizeCode = [
+  "const writeLog = () => {};",
+  extractFunction(linebot, "normalizeSourceTagFromRaw"),
+  `
+  globalThis.__sourceNormalizeResult = {
+    exactQa: normalizeSourceTagFromRaw("[來源:QA]"),
+    exactRules: normalizeSourceTagFromRaw("[來源:規格庫]"),
+    fuzzyQaDb: normalizeSourceTagFromRaw("[來源:QA資料庫]"),
+    fuzzySpecTable: normalizeSourceTagFromRaw("[來源:產品規格表]"),
+    manual: normalizeSourceTagFromRaw("[來源:產品手冊]")
+  };
+  `,
+].join("\n\n");
+const sourceNormalizeContext = {};
+vm.createContext(sourceNormalizeContext);
+vm.runInContext(sourceNormalizeCode, sourceNormalizeContext);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactQa === "[來源:QA]",
+  "Fast Mode should still accept exact [來源:QA]",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactRules === "[來源:規格庫]",
+  "Fast Mode should still accept exact [來源:規格庫]",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.fuzzyQaDb === "",
+  "Fast Mode must reject fuzzy [來源:QA資料庫] labels",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.fuzzySpecTable === "",
+  "Fast Mode must reject fuzzy product-spec-table labels",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.manual === "",
+  "Fast Mode must reject manual/PDF source labels when no PDF is attached",
+);
+
 const modelDisplayCode = [
   extractFunction(linebot, "isShortAliasModelToken"),
   extractFunction(linebot, "normalizeModelForDisplay"),

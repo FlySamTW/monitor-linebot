@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.268"; // 2026-06-20 無型號操作題防止 Fast Mode 泛猜
-const BUILD_TIMESTAMP = "2026-06-20 05:14";
+const GAS_VERSION = "v29.5.269"; // 2026-06-20 Fast Mode 來源標籤改為精確白名單
+const BUILD_TIMESTAMP = "2026-06-20 05:19";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2055,9 +2055,13 @@ function normalizeSourceTagFromRaw(rawText) {
   const m = raw.match(/[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/i);
   if (!m || !m[1]) return "";
   const src = m[1].trim();
-  if (/QA/i.test(src)) return "[來源:QA]";
-  if (/規格|產品規格|規格表/i.test(src)) return "[來源:規格庫]";
-  if (/網路|Web/i.test(src)) return "[來源:網路搜尋]";
+  if (/^QA$/i.test(src)) return "[來源:QA]";
+  if (/^規格庫$/.test(src)) return "[來源:規格庫]";
+  if (/^網路搜尋$|^Web$/i.test(src)) return "[來源:網路搜尋]";
+  if (/QA|規格|產品規格|規格表|資料庫/i.test(src)) {
+    writeLog(`[Anti-Hallucination] 🛑 Fast Mode 偵測到 AI 自帶模糊來源標記「${src}」，拒絕洗白為可信來源！`);
+    return "";
+  }
   if (/一般知識|通用知識|常識/i.test(src)) {
     writeLog(`[Anti-Hallucination] 🛑 偵測到 AI 自帶「一般知識」來源標記，強行封殺！`);
     return "";
