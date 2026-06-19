@@ -24,8 +24,8 @@ function extractApiFailureRegex() {
 const apiFailureRegex = extractApiFailureRegex();
 
 assertStep(
-  /const GAS_VERSION = "v29\.5\.265"/.test(source),
-  "linebot.gs version should be v29.5.265",
+  /const GAS_VERSION = "v29\.5\.266"/.test(source),
+  "linebot.gs version should be v29.5.266",
 );
 
 assertStep(

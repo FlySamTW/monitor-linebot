@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.265"; // 2026-06-20 API失敗來源防呆與客服語氣補漏
-const BUILD_TIMESTAMP = "2026-06-20 06:45";
+const GAS_VERSION = "v29.5.266"; // 2026-06-20 Fast Mode 禁止洗白假手冊來源
+const BUILD_TIMESTAMP = "2026-06-20 04:57";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2062,7 +2062,10 @@ function normalizeSourceTagFromRaw(rawText) {
     writeLog(`[Anti-Hallucination] 🛑 偵測到 AI 自帶「一般知識」來源標記，強行封殺！`);
     return "";
   }
-  if (/手冊|PDF/i.test(src)) return "[來源:產品手冊]";
+  if (/手冊|PDF/i.test(src)) {
+    writeLog(`[Anti-Hallucination] 🛑 Fast Mode 偵測到 AI 自帶「手冊/PDF」來源標記，未掛載 PDF 時禁止洗白為產品手冊來源！`);
+    return "";
+  }
   return "";
 }
 

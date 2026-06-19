@@ -44,6 +44,22 @@ assertStep(
   "active dynamic prompt section should document Prompt!C3 as the runtime prompt source",
 );
 
+const normalizeStart = linebot.indexOf("function normalizeSourceTagFromRaw");
+const normalizeEnd = linebot.indexOf("function appendSourceTagIfMissing", normalizeStart);
+assertStep(normalizeStart >= 0, "normalizeSourceTagFromRaw not found");
+assertStep(normalizeEnd > normalizeStart, "normalizeSourceTagFromRaw section end not found");
+const normalizeSourceSection = linebot.slice(normalizeStart, normalizeEnd);
+
+assertStep(
+  !/手冊\|PDF[\s\S]*return\s+"\[來源:產品手冊\]"/.test(normalizeSourceSection),
+  "Fast Mode must not normalize AI-provided PDF/manual source tags into product-manual sources",
+);
+
+assertStep(
+  /手冊\|PDF[\s\S]*return\s+""/.test(normalizeSourceSection),
+  "Fast Mode should discard AI-provided PDF/manual source tags when no PDF is attached",
+);
+
 assertStep(
   /const alreadyConsultedPdf\s*=\s*[\s\S]*?cache\.get\(`\$\{userId\}:pdf_consulted`\)\s*===\s*"true"/.test(
     linebot,
