@@ -14,7 +14,7 @@
 - `v29.5.242`: `#查手冊` 明確寫出 `forceCurrentOnly=true` 防污染 log；API 配額/暫時失敗訊息不再補上 PDF 來源標籤。
 - `v29.5.243`: 修正同步失敗時 PDF 索引歸零的風險；強制重建時保留舊 PDF URI 清單，只有新清單成功含 PDF 時才覆蓋。
 - `v29.5.244`: 移除 QA 同步重複注入，新增 `KB_URI_LIST_BACKUP` 與 `PDF_MODEL_INDEX_BACKUP`，同步異常時可用備份回復 PDF 索引；新增受保護的 `update_prompt_c3` 維護入口與 `tools/sync_prompt_c3.ps1`，讓 `Prompt.csv` 可同步到 Google Sheet `Prompt!C3`。
-- `deploy.bat` 改為四步驟：推送程式、建立版本、更新既有 Webhook、若本機有 `GAS_ADMIN_SECRET` 則同步 Prompt!C3。
+- `deploy.bat` 改為四步驟：推送程式、建立版本、更新既有 Webhook、提示 Prompt 正式來源在 Google Sheet `Prompt!C3`；部署流程不再自動同步或覆蓋 Prompt。
 - `v29.5.245`: 回歸測試發現目前雲端 PDF URI 清單已是 0，單靠「不覆蓋」不足；新增單本 PDF 即時補回機制，依目前查詢型號從 Drive 找 PDF、上傳 Gemini File API 並回填 `KB_URI_LIST` / `PDF_MODEL_INDEX`。
 - `v29.5.246`: 新增 `?kb=1` 知識庫健康診斷，協助判斷目前是 Drive 資料夾未設定、Drive PDF 為 0、或 Gemini URI/索引快取為 0。
 - `v29.5.247`: Fast Mode 若遇 API 配額/暫時錯誤，但 Smart Router 已取得多個候選型號，改為保留型號選擇流程，不直接回覆死路錯誤。
@@ -37,6 +37,7 @@
 - `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
 - `v29.5.265`: `isApiFailureReply()` 納入新的客服友善 API 失敗文案，避免「系統暫時忙碌」類訊息被 PDF 模式補上假的官方手冊來源；並清理型號泡泡/網路搜尋提示中的「您」語氣殘留。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
+- `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - 新增 `tools/check_deploy_readiness.ps1`：比對本機 `linebot.gs` 版本、Apps Script 遠端 HEAD、正式 Webhook health、`clasp versions` 數量與目前 deployments，避免 HEAD 已推但正式部署未切換時誤判。
 
 ### 部署

@@ -5,7 +5,7 @@
 | 工具 | 用途 |
 |------|------|
 | `setup_clasp.bat` | 一次性設定 CLASP 環境（首次使用） |
-| `deploy.bat` | 一鍵推送程式碼 + 建立新版本 |
+| `deploy.bat` | 一鍵推送程式碼 + 建立新版本 + 更新既有 Webhook |
 | `download_log.bat` | 下載 LOG + 對話紀錄 |
 | `pdf_keyword_extractor.py` | PDF 關鍵字擷取 |
 | `sheet_sync.py` | Sheet 讀寫工具 |
@@ -57,7 +57,8 @@ deploy.bat
 效果：
 - 推送 `linebot.gs` 到 GAS
 - 自動建立新版本（時間戳記）
-- 提醒你到 GAS 更新部署（如需更新 Webhook）
+- 更新既有正式 Webhook Deployment ID
+- 不會修改 Google Sheet `Prompt!C3`，避免本地 `Prompt.csv` 誤覆蓋正式 Prompt
 
 ### 下載 LOG（根目錄）
 ```

@@ -75,18 +75,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] Syncing Prompt.csv to Google Sheet Prompt!C3...
-if "%GAS_ADMIN_SECRET%"=="" (
-    echo [SKIP] GAS_ADMIN_SECRET is not set. Prompt!C3 was not changed.
-) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\sync_prompt_c3.ps1"
-    if errorlevel 1 (
-        echo.
-        echo [ERROR] Prompt!C3 sync failed!
-        pause
-        exit /b 1
-    )
-)
+echo [4/4] Prompt source reminder...
+echo [INFO] Prompt lives in Google Sheet Prompt!C3.
+echo [INFO] deploy.bat does not modify Prompt!C3 or upload Prompt.csv.
+echo [INFO] If Prompt needs changes, update the Sheet intentionally and verify /重啟 shows the expected prompt version.
 
 echo.
 echo ========================================
