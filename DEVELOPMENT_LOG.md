@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.263 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.264 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -34,10 +34,14 @@
 - `v29.5.261`: 新增早期 Scope Guard；競品-only、三洋、競品 Excel/價格表等問題在價格防呆與 LLM 前先回覆專案範圍。
 - `v29.5.262`: 新增早期時效資訊路由；近期活動/最新上市/CES/延長保固等問題先導官方頁與網路搜尋，不進 Fast Mode 型號泡泡。
 - `v29.5.263`: 型號選擇/補型號回覆不再追加查手冊提醒或查手冊按鈕，避免使用者尚未選型號時流程自相矛盾。
+- `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
+- `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.263` (`@1054`)
+- 最終正式部署版本：`v29.5.263` (`@1054`)。
+- `v29.5.264` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
+- 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -62,6 +66,7 @@
 - `v29.5.263`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `v29.5.263`：`verify_m7_mute_current.js` 通過；M7 型號選擇回覆不再混入提早查手冊提醒。
 - `v29.5.263`：`verify_route_testset_17_single.js` 通過 17/17；MODEL_SELECT/ASK_MODEL 回覆均不得帶提早查手冊提醒。
+- `v29.5.264`：本機 `node --check` 與 `git diff --check` 通過；正式線上驗證需待刪除舊 GAS 版本後更新既有 deployment。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
@@ -93,11 +98,12 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 部署 `v29.5.263`，並通過 M7 操作題與 17 題路由回歸測試。
-- **目前進度**: 正式 Webhook 已更新至 `v29.5.263`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
+- **最後動作**: 完成 `v29.5.264` API 保護回覆文案修正與 `deploy.bat` 版本上限防呆；`clasp push -f` 已成功。
+- **目前進度**: 正式 Webhook 目前仍為 `v29.5.263`；本機/Apps Script HEAD 已是 `v29.5.264`，但 Apps Script 200 版本上限阻止建立新版本與正式部署切換。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。
+    - [ ] 到 Apps Script Project History 批次刪除未被 active deployment 使用的舊版本，然後重跑 `deploy.bat` 更新既有正式 deployment。
     - [ ] 等 Gemini 配額/檔案 API 恢復後，進一步確認 PDF 深度回答能產出完整手冊答案。
 
 ---

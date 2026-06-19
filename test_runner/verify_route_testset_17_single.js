@@ -62,6 +62,12 @@ function hasPrematureManualReminder(replies) {
   );
 }
 
+function hasInternalApiFailureText(replies) {
+  return /升級付費方案|您的請求|AI\s*暫時無法處理/i.test(
+    (replies || []).join("\n"),
+  );
+}
+
 async function findUiFrame(page) {
   await new Promise((r) => setTimeout(r, 4000));
   for (const f of page.frames()) {
@@ -115,6 +121,7 @@ async function main() {
       const pass =
         (actual === item.expected_route ||
           (apiGuarded && item.accept_api_guarded === true && !hasFakeSourceOnApiGuard(replies))) &&
+        !hasInternalApiFailureText(replies) &&
         !(
           (actual === "MODEL_SELECT" || actual === "ASK_MODEL") &&
           hasPrematureManualReminder(replies)
@@ -126,6 +133,7 @@ async function main() {
         actual_route: actual,
         pass,
         api_guarded: apiGuarded,
+        internal_api_failure_text: hasInternalApiFailureText(replies),
         premature_manual_reminder: hasPrematureManualReminder(replies),
         user_question: item.user_question,
         reply_preview: (replies[0] || "").slice(0, 200),

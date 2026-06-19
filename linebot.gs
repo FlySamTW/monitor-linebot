@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.263"; // 2026-06-20 型號選擇回覆不追加查手冊尾巴
-const BUILD_TIMESTAMP = "2026-06-20 05:35";
+const GAS_VERSION = "v29.5.264"; // 2026-06-20 API 忙碌訊息改為客服友善語氣
+const BUILD_TIMESTAMP = "2026-06-20 06:28";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5862,7 +5862,7 @@ function callLLMWithRetry(
       }
       if (code === 429) {
         writeLog(`[API 429] 配額限制: ${text.substring(0, 200)}`);
-        return "目前請求過於頻繁或已達配額限制，請稍後再試，或考慮升級付費方案。";
+        return "系統暫時忙碌，這次查詢暫時無法處理，請稍後再試一次。";
       }
       if (code === 500 || code === 503) {
         writeLog(`[API ${code}] Google 伺服器錯誤，重試中...`);
@@ -9051,7 +9051,7 @@ function handleMessage(event) {
     } catch (apiErr) {
       // v29.5.83: User-Friendly Error Message (Hide technical details)
       const userFriendlyError =
-        "⚠️ 抱歉，AI 暫時無法處理您的請求。\n(可能原因：網路連線逾時或系統忙碌)\n\n請稍後再試一次，或嘗試換個更具體的問法！💪";
+        "⚠️ 抱歉，系統暫時忙碌，這次查詢暫時無法處理。\n\n請稍後再試一次，或換個更具體的問法。";
       replyMessage(replyToken, userFriendlyError);
       writeLog(
         `[Handle API Error] ${apiErr.message} (Sent friendly error to user)`,

@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
 echo ========================================
@@ -37,17 +37,36 @@ if errorlevel 1 (
 echo.
 echo [2/4] Creating version...
 for /f "tokens=*" %%i in ('powershell -Command "Get-Date -Format 'yyyy-MM-dd HH:mm'"') do set TIMESTAMP=%%i
-call clasp version "%TIMESTAMP% deploy"
+set "VERSION_LOG=%TEMP%\clasp_version_%RANDOM%.txt"
+call clasp version "%TIMESTAMP% deploy" > "%VERSION_LOG%" 2>&1
+type "%VERSION_LOG%"
 if errorlevel 1 (
     echo.
     echo [ERROR] Version creation failed!
+    findstr /i /c:"Cannot create more versions" "%VERSION_LOG%" >nul 2>&1
+    if not errorlevel 1 (
+        echo.
+        echo [ACTION REQUIRED] Apps Script has reached the 200-version limit.
+        echo Open Apps Script Project History and bulk-delete old versions that are not used by active deployments.
+        echo Then run deploy.bat again. Do not create a new deployment ID.
+    )
+    del "%VERSION_LOG%" >nul 2>&1
+    pause
+    exit /b 1
+)
+for /f "tokens=3" %%v in ('findstr /r /c:"Created version" "%VERSION_LOG%"') do set "GAS_VERSION_NUMBER=%%v"
+set "GAS_VERSION_NUMBER=!GAS_VERSION_NUMBER:,=!"
+del "%VERSION_LOG%" >nul 2>&1
+if "%GAS_VERSION_NUMBER%"=="" (
+    echo.
+    echo [ERROR] Could not parse created GAS version number.
     pause
     exit /b 1
 )
 
 echo.
-echo [3/4] Deploying to existing webhook...
-call clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+echo [3/4] Deploying version %GAS_VERSION_NUMBER% to existing webhook...
+call clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V %GAS_VERSION_NUMBER%
 if errorlevel 1 (
     echo.
     echo [ERROR] Deployment update failed!

@@ -58,7 +58,7 @@ async function main() {
     console.log("TURN 1 /重啟");
     resetReplies.forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
     assertStep(resetReplies.length === 1, "/重啟 should produce one TestUI reply");
-    assertStep(/系統版本：v29\.5\.263/.test(resetReplies[0]), "reset did not show v29.5.263");
+    assertStep(/系統版本：v29\.5\.264/.test(resetReplies[0]), "reset did not show v29.5.264");
 
     const noModel = await send("沒有遙控器怎麼關聲音");
     const noModelText = (noModel.replies || []).join("\n");
@@ -79,6 +79,10 @@ async function main() {
     assertStep(
       !/再幫你查查「?官方產品手冊|如果以上資訊不夠.*查.*手冊/i.test(aliasText),
       "model-selection reply should not append premature manual-search reminder",
+    );
+    assertStep(
+      !/升級付費方案|您的請求|AI\s*暫時無法處理/i.test([noModelText, aliasText].join("\n")),
+      "user-facing API fallback should not expose internal billing wording or formal pronouns",
     );
 
     console.log("\nPASS: verify_m7_mute_current");
