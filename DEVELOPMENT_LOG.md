@@ -42,6 +42,7 @@
 - `v29.5.269`: Fast Mode 來源標籤改為精確白名單，只接受 `[來源:QA]` / `[來源:規格庫]` / `[來源:網路搜尋]`；`[來源:QA資料庫]`、`[來源:產品規格表]` 等模糊標籤不再被洗白為可信來源。
 - `v29.5.270`: 價格防呆的型號解析保留完整尾碼，例如 `S34BG850SC3` 不再被截短；本機靜態測試新增價格題不回覆金額、導官方搜尋頁與完整型號 token 檢查。
 - `v29.5.271`: `sanitizeManualDeflection()` 擴充清理「根據你/您提供的 PDF/手冊/文件/檔案」等變體，深度模式回覆統一改用「根據官方手冊」的客服視角。
+- `v29.5.272`: 無型號操作/故障題若未命中可信 QA，會先要求補完整型號；即使 AI 自行輸出 `[AUTO_SEARCH_PDF]` / `[AUTO_SEARCH_WEB]` / `[NEED_DOC]` 也不可越過此守門，家電題則改請補家電完整型號。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。

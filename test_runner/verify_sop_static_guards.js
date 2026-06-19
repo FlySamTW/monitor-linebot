@@ -213,14 +213,14 @@ assertStep(
   "model selection UI must normalize and deduplicate model display names before rendering buttons",
 );
 
-const operationGuardIndex = linebot.indexOf("[Operation Guard v29.5.268]");
+const operationGuardIndex = linebot.indexOf("v29.5.272: 無型號操作/故障題");
 const fallbackExtractionIndex = linebot.indexOf("Priority 3 - Fallback extraction from AI text");
 assertStep(operationGuardIndex >= 0, "no-model operation guard not found");
 assertStep(fallbackExtractionIndex > operationGuardIndex, "fallback extraction marker should appear after no-model operation guard");
 
 const operationGuardSection = linebot.slice(
   Math.max(0, operationGuardIndex - 900),
-  Math.min(linebot.length, operationGuardIndex + 500),
+  Math.min(linebot.length, operationGuardIndex + 900),
 );
 
 assertStep(
@@ -231,8 +231,20 @@ assertStep(
 );
 
 assertStep(
-  /finalText\s*=\s*buildNeedModelForOperationReply\(\)/.test(operationGuardSection),
-  "no-model operation guard should reuse the standard full-model request reply",
+  !/!\s*hasAutoPdf|!\s*hasAutoWeb|!\s*hasNeedDoc/.test(operationGuardSection),
+  "no-model operation guard must not let AI AUTO_SEARCH_PDF/AUTO_SEARCH_WEB/NEED_DOC bypass the model request",
+);
+
+assertStep(
+  /buildNeedModelForOperationReply\(\)/.test(operationGuardSection),
+  "no-model operation guard should reuse the standard monitor full-model request reply",
+);
+
+assertStep(
+  /isSamsungHomeApplianceQuery[\s\S]*buildNeedApplianceModelForOperationReply[\s\S]*buildNeedModelForOperationReply/.test(
+    operationGuardSection,
+  ),
+  "no-model operation guard should ask appliance questions for appliance model numbers, not monitor model numbers",
 );
 
 assertStep(

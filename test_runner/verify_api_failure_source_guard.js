@@ -22,10 +22,19 @@ function extractApiFailureRegex() {
 }
 
 const apiFailureRegex = extractApiFailureRegex();
+const versionMatch = source.match(/const GAS_VERSION = "v(\d+)\.(\d+)\.(\d+)"/);
 
 assertStep(
-  /const GAS_VERSION = "v29\.5\.271"/.test(source),
-  "linebot.gs version should be v29.5.271",
+  !!versionMatch,
+  "linebot.gs must contain a semantic GAS_VERSION",
+);
+
+assertStep(
+  Number(versionMatch[1]) > 29 ||
+    (Number(versionMatch[1]) === 29 &&
+      (Number(versionMatch[2]) > 5 ||
+        (Number(versionMatch[2]) === 5 && Number(versionMatch[3]) >= 271))),
+  "linebot.gs version should not move below the API failure source guard baseline v29.5.271",
 );
 
 assertStep(

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.271"; // 2026-06-20 清理你提供PDF/手冊等非客服口吻
-const BUILD_TIMESTAMP = "2026-06-20 05:27";
+const GAS_VERSION = "v29.5.272"; // 2026-06-20 無型號操作題禁止被AI暗號越過
+const BUILD_TIMESTAMP = "2026-06-20 06:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -7587,22 +7587,22 @@ function handleMessage(event) {
           hitAliasKeys.length > 0 ||
           !!primaryModel;
 
-        // v29.5.268: 無型號操作/故障題若未命中可信 QA，不能讓 Fast Mode 用泛用常識猜步驟。
-        // 先請使用者提供完整型號，避免後續 fallback 從 AI 舉例文字誤抓型號。
+        // v29.5.272: 無型號操作/故障題若未命中可信 QA，不能讓 Fast Mode 用泛用常識猜步驟，
+        // 也不能被 AI 自行輸出的 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB] 暗號越過。
+        // 先請使用者提供完整型號，避免後續 fallback 從 AI 舉例文字誤抓型號或誤進 PDF。
         if (
           operationIntent &&
           !userHasModelSignal &&
-          !hasAutoPdf &&
-          !hasAutoWeb &&
-          !hasNeedDoc &&
           !isInPdfMode &&
           fastSourceTag !== "[來源:QA]"
         ) {
-          finalText = buildNeedModelForOperationReply();
+          finalText = isSamsungHomeApplianceQuery(`${msg || ""}\n${userMessage || ""}`)
+            ? buildNeedApplianceModelForOperationReply()
+            : buildNeedModelForOperationReply();
           replyText = finalText;
           suggestedModels = [];
           writeLog(
-            `[Operation Guard v29.5.268] 操作/故障題無型號且非可信QA來源，改請使用者補完整型號`,
+            `[Operation Guard v29.5.272] 操作/故障題無型號且非可信QA來源，清除AI暗號並改請使用者補完整型號`,
           );
         }
 
