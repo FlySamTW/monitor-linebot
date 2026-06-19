@@ -39,6 +39,8 @@
 - `v29.5.266`: Fast Mode 未掛載 PDF 時，不再把 AI 自帶的「手冊/PDF」來源標籤正規化成 `[來源:產品手冊]`，避免假手冊來源被洗白。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
+- `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
+- `deploy.bat`: 改為 Windows 雙擊入口，轉呼叫 `tools/deploy_existing_webhook.ps1`，避免批次檔與自動化腳本維護兩套部署流程。
 - `tools/sync_prompt_c3.ps1`: 改為必須明確指定 `-PromptPath` 並加上 `-ConfirmOverwrite` 才會寫入 Google Sheet `Prompt!C3`，避免獨立工具被誤執行時覆蓋正式 Prompt。
 - `verify_m7_mute_current.js`: `/重啟` 版本檢查改為讀取 `linebot.gs` 目前 `GAS_VERSION`，避免正式部署更新後仍因測試寫死舊版本而假失敗。
 - `ensure_formal_version_current.js`: 新增 TestUI 線上回歸守門，先比對本機 `GAS_VERSION` 與正式 Webhook `?health=1`，版本不同時拒絕跑線上回歸，避免拿舊部署誤判新版回答。
@@ -79,6 +81,7 @@
 - `v29.5.265`：`verify_api_failure_source_guard.js` 通過；確認新 API 忙碌文案會被視為 API 失敗，不會被補 PDF 來源，且 `linebot.gs` 不含舊內部付費文案。
 - `v29.5.266`：`npm run test:static` 通過；確認 Fast Mode 不會把 AI 自帶的「手冊/PDF」來源標籤洗白為 `[來源:產品手冊]`。
 - `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.266`、遠端 HEAD `v29.5.266`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `tools/deploy_existing_webhook.ps1`：新增後已納入 `npm run test:static` 靜態守門；確認部署腳本使用既有 Deployment ID + `-V`、不碰 `Prompt!C3`、版本上限時會停止而不是新建部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。

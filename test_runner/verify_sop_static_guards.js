@@ -15,6 +15,7 @@ function assertStep(condition, message) {
 
 const linebot = read("linebot.gs");
 const deployBat = read("deploy.bat");
+const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
 const syncPrompt = read("tools/sync_prompt_c3.ps1");
 const packageJson = JSON.parse(read("test_runner/package.json"));
 
@@ -25,8 +26,38 @@ assertStep(dynamicPromptEnd > dynamicPromptStart, "constructDynamicPrompt sectio
 const dynamicPromptSection = linebot.slice(dynamicPromptStart, dynamicPromptEnd);
 
 assertStep(
-  !/sync_prompt_c3|GAS_ADMIN_SECRET|Prompt\.csv\s+to\s+Google Sheet/i.test(deployBat),
-  "deploy.bat must not sync Prompt.csv or depend on GAS_ADMIN_SECRET",
+  !/sync_prompt_c3|GAS_ADMIN_SECRET|Prompt\.csv\s+to\s+Google Sheet/i.test(
+    deployBat + deployExistingWebhook,
+  ),
+  "deployment scripts must not sync Prompt.csv or depend on GAS_ADMIN_SECRET",
+);
+
+assertStep(
+  /deploy_existing_webhook\.ps1/.test(deployBat),
+  "deploy.bat should delegate to the non-interactive existing-webhook deploy script",
+);
+
+assertStep(
+  /clasp",\s*"-i",\s*\$DeploymentId,\s*"-V"/.test(deployExistingWebhook) ||
+    /"deploy",\s*"-i",\s*\$DeploymentId,\s*"-V"/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must update an existing deployment with -i and -V",
+);
+
+assertStep(
+  !/"deploy"\s*\)/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must not create a new deployment without -i",
+);
+
+assertStep(
+  /Prompt source\s*:\s*Google Sheet Prompt!C3/.test(deployExistingWebhook) &&
+    /Prompt was not modified/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must explicitly preserve Google Sheet Prompt!C3",
+);
+
+assertStep(
+  /Cannot create more versions/.test(deployExistingWebhook) &&
+    /Do not create a new deployment ID/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must block safely at the Apps Script version limit",
 );
 
 assertStep(
