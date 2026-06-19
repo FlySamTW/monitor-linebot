@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "verify_linebot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check:webhook-version": "node ensure_formal_version_current.js",
+    "test:current": "node ensure_formal_version_current.js && node verify_route_testset_17_single.js",
+    "test:static": "node verify_api_failure_source_guard.js"
   },
   "keywords": [],
   "author": "",

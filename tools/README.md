@@ -69,6 +69,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -Pr
 - 必須設定 `GAS_ADMIN_SECRET`
 - 必須明確指定 `-PromptPath` 與 `-ConfirmOverwrite`，避免誤覆蓋正式 Prompt
 
+### TestUI 線上回歸前版本檢查
+```
+cd test_runner
+npm run check:webhook-version
+```
+效果：
+- 比對本機 `linebot.gs` 的 `GAS_VERSION` 與正式 Webhook `?health=1`
+- 若版本不同，拒絕繼續跑線上 TestUI 測試
+- 避免用舊部署結果誤判新版回答邏輯
+
 ### 下載 LOG（根目錄）
 ```
 download_log.bat
