@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const vm = require("vm");
 
 const root = path.join(__dirname, "..");
 
@@ -11,6 +12,23 @@ function assertStep(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function extractFunction(source, functionName) {
+  const start = source.indexOf(`function ${functionName}`);
+  assertStep(start >= 0, `${functionName} not found`);
+  const braceStart = source.indexOf("{", start);
+  assertStep(braceStart > start, `${functionName} opening brace not found`);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+    if (depth === 0) {
+      return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`${functionName} closing brace not found`);
 }
 
 const linebot = read("linebot.gs");
@@ -89,6 +107,56 @@ assertStep(
 assertStep(
   /手冊\|PDF[\s\S]*return\s+""/.test(normalizeSourceSection),
   "Fast Mode should discard AI-provided PDF/manual source tags when no PDF is attached",
+);
+
+const modelDisplayCode = [
+  extractFunction(linebot, "isShortAliasModelToken"),
+  extractFunction(linebot, "normalizeModelForDisplay"),
+  extractFunction(linebot, "dedupDisplayModels"),
+  `
+  globalThis.__modelDisplayResult = {
+    normalizedLs49: normalizeModelForDisplay("LS49C950UACXZW"),
+    normalizedS49: normalizeModelForDisplay("S49C950UAC"),
+    deduped: dedupDisplayModels([
+      "S49C950UAC",
+      "LS49C950UACXZW",
+      "S27C900PAC",
+      "LS27C900PACXZW"
+    ], 10)
+  };
+  `,
+].join("\n\n");
+const modelDisplayContext = {};
+vm.createContext(modelDisplayContext);
+vm.runInContext(modelDisplayCode, modelDisplayContext);
+
+assertStep(
+  modelDisplayContext.__modelDisplayResult.normalizedLs49 === "S49C950UAC",
+  "LS regional model codes should display as user-facing S model codes",
+);
+
+assertStep(
+  modelDisplayContext.__modelDisplayResult.normalizedS49 === "S49C950UAC",
+  "S model codes should remain stable after display normalization",
+);
+
+assertStep(
+  JSON.stringify(modelDisplayContext.__modelDisplayResult.deduped) ===
+    JSON.stringify(["S49C950UAC", "S27C900PAC"]),
+  "model display deduplication should not show S and LS variants as separate choices",
+);
+
+const modelSelectionStart = linebot.indexOf("function createModelSelectionFlexV3");
+const modelSelectionEnd = linebot.indexOf("function replyFlex", modelSelectionStart);
+assertStep(modelSelectionStart >= 0, "createModelSelectionFlexV3 not found");
+assertStep(modelSelectionEnd > modelSelectionStart, "createModelSelectionFlexV3 section end not found");
+const modelSelectionSection = linebot.slice(modelSelectionStart, modelSelectionEnd);
+
+assertStep(
+  /const uniqueModels\s*=\s*dedupDisplayModels\(models,\s*100\)/.test(
+    modelSelectionSection,
+  ),
+  "model selection UI must normalize and deduplicate model display names before rendering buttons",
 );
 
 assertStep(

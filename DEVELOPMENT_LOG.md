@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.266 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.267 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -37,6 +37,7 @@
 - `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
 - `v29.5.265`: `isApiFailureReply()` 納入新的客服友善 API 失敗文案，避免「系統暫時忙碌」類訊息被 PDF 模式補上假的官方手冊來源；並清理型號泡泡/網路搜尋提示中的「您」語氣殘留。
 - `v29.5.266`: Fast Mode 未掛載 PDF 時，不再把 AI 自帶的「手冊/PDF」來源標籤正規化成 `[來源:產品手冊]`，避免假手冊來源被洗白。
+- `v29.5.267`: 型號選擇 Flex UI 產生按鈕前也會執行 `dedupDisplayModels()`，避免 `S49...` 與 `LS49...XZW` 這類同款料號被顯示成兩個選項；靜態測試新增直接執行型號顯示正規化函式的防回歸檢查。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
@@ -51,8 +52,9 @@
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
 - 最終正式部署版本：`v29.5.263` (`@1054`)。
 - `v29.5.266` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
+- `v29.5.267` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
 - 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
-- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.266 [2026-06-20 04:57]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
+- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.267 [2026-06-20 05:07]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -80,7 +82,8 @@
 - `v29.5.264`：本機 `node --check` 與 `git diff --check` 通過；正式線上驗證需待刪除舊 GAS 版本後更新既有 deployment。
 - `v29.5.265`：`verify_api_failure_source_guard.js` 通過；確認新 API 忙碌文案會被視為 API 失敗，不會被補 PDF 來源，且 `linebot.gs` 不含舊內部付費文案。
 - `v29.5.266`：`npm run test:static` 通過；確認 Fast Mode 不會把 AI 自帶的「手冊/PDF」來源標籤洗白為 `[來源:產品手冊]`。
-- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.266`、遠端 HEAD `v29.5.266`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `v29.5.267`：`node --check` 與 `npm run test:static` 通過；確認型號選擇 UI 最後一關會做 `S/LS` 顯示去重。
+- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.267`、遠端 HEAD `v29.5.267`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
 - `tools/deploy_existing_webhook.ps1`：新增後已納入 `npm run test:static` 靜態守門；確認部署腳本使用既有 Deployment ID + `-V`、不碰 `Prompt!C3`、版本上限時會停止而不是新建部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。

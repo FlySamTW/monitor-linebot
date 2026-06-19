@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.266"; // 2026-06-20 Fast Mode 禁止洗白假手冊來源
-const BUILD_TIMESTAMP = "2026-06-20 04:57";
+const GAS_VERSION = "v29.5.267"; // 2026-06-20 型號選擇顯示層去除 S/LS 重複
+const BUILD_TIMESTAMP = "2026-06-20 05:07";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -13059,17 +13059,10 @@ function determineSearchIntent(msg, models = []) {
  * v29.5.50: Support dynamic intentConfig
  */
 function createModelSelectionFlexV3(models, intentConfig = null) {
-  // 1. Strict Deduplication (Case Insensitive)
-  const uniqueModels = [];
-  const seen = new Set();
-
-  models.forEach((m) => {
-    const key = m.trim().toUpperCase();
-    if (key && !seen.has(key)) {
-      seen.add(key);
-      uniqueModels.push(m.trim());
-    }
-  });
+  // 1. Display-safe deduplication.
+  // Even if an upstream branch sends both Sxx and LSxx regional codes, the
+  // selection UI must show the user-facing S model only once.
+  const uniqueModels = dedupDisplayModels(models, 100);
 
   // v29.5.23: 降冪排列（Z-A）
   uniqueModels.sort((a, b) => b.localeCompare(a));
