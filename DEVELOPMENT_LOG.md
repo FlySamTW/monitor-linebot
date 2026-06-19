@@ -57,6 +57,7 @@
 - `v29.5.261`：待部署後驗證 `verify_62_compact.js`，確認三洋與競品 Excel/價格表題會命中 Scope Guard。
 - `v29.5.262`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.262 [2026-06-20 05:05]`。
 - `v29.5.262`：`verify_62_compact.js` 通過 9/9；確認三洋與競品 Excel/價格表題會命中 Scope Guard，促銷/最新資訊題會命中 Force Web Intent 或 Price Guard，家電題不再要求 S32/S27 螢幕型號。
+- 測試基準更新：`verify_route_testset_17_single.js` 新增 `MODEL_SELECT`、`ASK_MODEL`、`API_GUARDED` 分類，資料集保留原問句但依現行 SOP 更新預期路由；回歸結果 17/17 通過。此項僅更新測試與文件，未改 GAS、未部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.262 [2026-06-20 05:05]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
@@ -88,8 +89,8 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 部署 `v29.5.262` 並通過 compact 回歸測試。
-- **目前進度**: 正式 Webhook 已更新至 `v29.5.262`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
+- **最後動作**: 更新 17 題路由測試基準並通過 17/17 回歸；未改 GAS、未部署。
+- **目前進度**: 正式 Webhook 維持 `v29.5.262`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。

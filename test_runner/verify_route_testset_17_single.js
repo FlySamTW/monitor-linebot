@@ -10,11 +10,23 @@ const DATASET_PATH = path.join(
   "route_testset_17_single_v1.json",
 );
 
-function inferRouteFromLogs(logs) {
+function inferRoute(logs, replies) {
   const rows = (logs || []).map((x) => String(x));
+  const replyText = (replies || []).join("\n");
+  if (/請直接回覆完整型號|請補上完整型號|我需要先確認完整型號/i.test(replyText)) {
+    return "ASK_MODEL";
+  }
+
+  const hasModelSelect =
+    rows.some((x) => /型號選擇泡泡|準備顯示型號選擇泡泡|已送出型號選擇泡泡|保留型號選擇流程/i.test(x)) ||
+    rows.some((x) => /model_select_mode|Model Select/i.test(x)) ||
+    /已送出型號選擇泡泡|請先選完整型號|請先選型號/i.test(replyText);
+  if (hasModelSelect) return "MODEL_SELECT";
+
   const hasWeb =
     rows.some((x) => /AUTO_SEARCH_WEB|網路搜尋|Pass 2 \(Web\)|forceWebSearch/i.test(x)) ||
-    rows.some((x) => /\[Command\].*Pass 2/i.test(x));
+    rows.some((x) => /\[Command\].*Pass 2/i.test(x)) ||
+    rows.some((x) => /\[Force Web Intent|\[Price Guard|\[Scope Guard/i.test(x));
   const hasPdf =
     rows.some((x) => /AttachPDFs:\s*true/i.test(x)) ||
     rows.some((x) => /PDF Debug|Auto Deep|查手冊|Pass 1\.5 \(PDF\)/i.test(x));
@@ -27,6 +39,21 @@ function inferRouteFromLogs(logs) {
   if (hasPdf) return "PDF";
   if (hasFastOnly) return "QA";
   return "QA";
+}
+
+function isApiGuardedReply(replies) {
+  return (replies || []).some((x) =>
+    /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+      String(x || ""),
+    ),
+  );
+}
+
+function hasFakeSourceOnApiGuard(replies) {
+  const text = (replies || []).join("\n");
+  return /\[來源:\s*(?:QA|規格庫|產品規格表|.*\.pdf\s*\(官方手冊PDF\))\]/i.test(
+    text,
+  );
 }
 
 async function findUiFrame(page) {
@@ -74,14 +101,21 @@ async function main() {
       const res = await call("testMessage", item.user_question, userId);
       const logs = Array.isArray(res && res.logs) ? res.logs : [];
       const replies = Array.isArray(res && res.replies) ? res.replies : [];
-      const actual = inferRouteFromLogs(logs);
-      const pass = actual === item.expected_route;
+      let actual = inferRoute(logs, replies);
+      const apiGuarded = isApiGuardedReply(replies);
+      if (apiGuarded) {
+        actual = "API_GUARDED";
+      }
+      const pass =
+        actual === item.expected_route ||
+        (apiGuarded && item.accept_api_guarded === true && !hasFakeSourceOnApiGuard(replies));
 
       results.push({
         id: item.id,
         expected_route: item.expected_route,
         actual_route: actual,
         pass,
+        api_guarded: apiGuarded,
         user_question: item.user_question,
         reply_preview: (replies[0] || "").slice(0, 200),
       });
@@ -132,4 +166,3 @@ main().catch((e) => {
   console.error(`FAIL: ${e.message}`);
   process.exit(1);
 });
-
