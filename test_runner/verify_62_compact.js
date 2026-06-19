@@ -131,7 +131,9 @@ async function run() {
     const logs = Array.isArray(res && res.logs) ? res.logs : [];
 
     const scopeLog = hasPattern(logs, /\[Scope Guard v29\.5\.156\]/);
-    const forceWebLog = hasPattern(logs, /\[Force Web Intent v29\.5\.156\]/);
+    const forceWebLog =
+      hasPattern(logs, /\[Force Web Intent v29\.5\.156\]/) ||
+      hasPattern(logs, /\[Price Guard v29\.5\.157\]/);
 
     const checks = [];
     checks.push({ ok: replies.length > 0, name: "has_reply" });
@@ -147,6 +149,15 @@ async function run() {
 
     if (c.expectForceWeb) {
       checks.push({ ok: forceWebLog, name: "force_web_triggered" });
+    }
+    if (c.id === "Q45_APPLIANCE_ALLOWED") {
+      const replyText = replies.join("\n");
+      checks.push({
+        ok: !/S32FM703UC|S27FG812SC|螢幕.*完整型號|完整型號.*S32|完整型號.*S27/i.test(
+          replyText,
+        ),
+        name: "appliance_not_forced_to_monitor_model",
+      });
     }
 
     const pass = checks.every((x) => x.ok);

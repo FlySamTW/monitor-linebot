@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.259 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.262 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -30,10 +30,13 @@
 - `v29.5.257`: TestUI 截斷預覽去重改為正規化尾端標點後比對前綴，修正「。...」與「。」未被視為同一回覆的問題。
 - `v29.5.258`: TestUI 截斷預覽與完整版在尾端標點正規化後完全相同時，優先保留完整版，移除截斷預覽。
 - `v29.5.259`: Quick Reply 的「📖 查手冊」改回只有 `hasPdfForModel=true` 且尚未查過 PDF 時才顯示；操作/故障題若還沒有型號或未確認手冊，不再先給可能落空的手冊按鈕。
+- `v29.5.260`: 新增 WA/WD/VR 等家電型號提取與家電題 API 暫失敗防呆，避免洗衣機題被誤套用螢幕型號補問模板。
+- `v29.5.261`: 新增早期 Scope Guard；競品-only、三洋、競品 Excel/價格表等問題在價格防呆與 LLM 前先回覆專案範圍。
+- `v29.5.262`: 新增早期時效資訊路由；近期活動/最新上市/CES/延長保固等問題先導官方頁與網路搜尋，不進 Fast Mode 型號泡泡。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.259` (`@1049`)
+- 最終部署版本：`v29.5.262` (`@1053`)
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -50,8 +53,12 @@
 - `v29.5.258`：`verify_manual_continuity.js` 通過配額防護路徑；Gemini 配額不足時不偽造 PDF 來源。
 - `v29.5.259`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.259 [2026-06-20 04:10]`。
 - `v29.5.259`：`verify_m7_mute_current.js` 通過；未指定型號操作題會先請使用者補完整型號，不再顯示未確認手冊的「查手冊」按鈕；M7 多型號別稱仍進型號選擇。
+- `v29.5.260`：待部署後驗證 `verify_62_compact.js`，確認家電題不再要求 S32/S27 螢幕型號。
+- `v29.5.261`：待部署後驗證 `verify_62_compact.js`，確認三洋與競品 Excel/價格表題會命中 Scope Guard。
+- `v29.5.262`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.262 [2026-06-20 05:05]`。
+- `v29.5.262`：`verify_62_compact.js` 通過 9/9；確認三洋與競品 Excel/價格表題會命中 Scope Guard，促銷/最新資訊題會命中 Force Web Intent 或 Price Guard，家電題不再要求 S32/S27 螢幕型號。
 - `node --check` 通過。
-- 健康檢查回傳：`OK - Current Version: v29.5.259 [2026-06-20 04:10]`。
+- 健康檢查回傳：`OK - Current Version: v29.5.262 [2026-06-20 05:05]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
 - `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
 - `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
@@ -81,8 +88,8 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 部署 `v29.5.259` Quick Reply 手冊按鈕防呆，並通過 M7 操作題回歸測試。
-- **目前進度**: 正式 Webhook 已更新至 `v29.5.259`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
+- **最後動作**: 部署 `v29.5.262` 並通過 compact 回歸測試。
+- **目前進度**: 正式 Webhook 已更新至 `v29.5.262`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.259"; // 2026-06-20 Quick Reply只在有手冊時顯示查手冊
-const BUILD_TIMESTAMP = "2026-06-20 04:10";
+const GAS_VERSION = "v29.5.262"; // 2026-06-20 時效資訊早期路由
+const BUILD_TIMESTAMP = "2026-06-20 05:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1876,6 +1876,11 @@ function extractModelNumbers(text) {
         needValidate: false,
       }, // 長型號直接放行
       {
+        pattern:
+          /(?:^|[^A-Z0-9])((?:WA|WD|VR)\d{2}[A-Z0-9]{5,})(?:$|[^A-Z0-9])/g,
+        needValidate: false,
+      }, // 家電型號（洗衣機/乾衣機/掃地機等）直接放行
+      {
         pattern: /(?:^|[^A-Z0-9])([MG][1-9]\d{0,1}[A-Z]?)(?:$|[^A-Z0-9])/g,
         needValidate: true,
       }, // 短型號需查核
@@ -2125,6 +2130,80 @@ function buildNeedModelForOperationReply() {
     "請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。",
     "",
     "收到型號後，我會依 QA/規格庫先查；如果仍不足，再接著查官方手冊。",
+  ].join("\n");
+}
+
+function isSamsungHomeApplianceQuery(text) {
+  const q = String(text || "");
+  return /(洗衣機|乾衣機|烘衣機|冰箱|吸塵器|掃地機|空氣清淨機|除濕機|家電|WASHER|DRYER|REFRIGERATOR|VACUUM|APPLIANCE|\bWA\d{2}|\bWD\d{2}|\bVR\d{2})/i.test(
+    q,
+  );
+}
+
+function buildNeedApplianceModelForOperationReply() {
+  return [
+    "這題是三星家電相關問題，不會套用螢幕型號來判斷。",
+    "",
+    "目前 AI 暫時無法穩定查證，請稍後再試；如果要我精準比對功能或操作方式，也可以補上家電完整型號（例如 WA、WD、VR 開頭的型號）。",
+  ].join("\n");
+}
+
+function isOutOfProjectScopeQuery(text) {
+  const q = String(text || "");
+  const hasSamsungContext =
+    /(SAMSUNG|三星|ODYSSEY|VIEWFINITY|SMART\s*MONITOR|GALAXY|SMARTTHINGS|\bS\d{2}[A-Z0-9]{4,}|\bM[5789]\b|\bG[56789]\b)/i.test(
+      q,
+    );
+  if (hasSamsungContext) {
+    return false;
+  }
+
+  const mentionsSanyo = /三洋|SANYO/i.test(q);
+  const mentionsCompetitor =
+    /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC)/i.test(
+      q,
+    );
+  const asksMonitorOrPriceOrTable =
+    /(螢幕|顯示器|MONITOR|DISPLAY|售價|價格|報價|最低價|促銷|Excel|表格|列出|比較|規格|更新率|刷新率|解析度|TYPE-?C)/i.test(
+      q,
+    );
+
+  return (mentionsSanyo || mentionsCompetitor) && asksMonitorOrPriceOrTable;
+}
+
+function buildOutOfProjectScopeReply(text) {
+  const q = String(text || "");
+  const maybeSanyo = /三洋|SANYO/i.test(q);
+  return [
+    maybeSanyo
+      ? "我這邊主要回答三星產品；如果你說的「三洋」其實是指「三星」，請再用三星或完整型號問我一次。"
+      : "我這邊主要回答三星產品與本專案已整理的三星相關資料，不能代替你整理競品品牌清單或即時市場報價。",
+    "",
+    "你可以改問三星螢幕、Smart Monitor、Odyssey、ViewFinity、Galaxy Watch 與三星家電相關問題；若需要價格，我會引導到三星官方頁面，不會直接回覆市場數字價格。",
+    "",
+    "[來源:專案範圍規則]",
+  ].join("\n");
+}
+
+function isTimelyWebInfoQuery(text) {
+  const q = String(text || "");
+  return /(最新上市|最新型號|新機型|新品|近期|最近|CES|雙11|雙12|黑五|BLACK\s*FRIDAY|12月份|促銷|活動|抽獎|登錄|延長保固|保固活動)/i.test(
+    q,
+  );
+}
+
+function buildTimelyWebInfoReply(text) {
+  return [
+    "這題屬於近期活動、上市資訊或保固活動，內容會隨時間變動，我不能用舊資料直接下結論。",
+    "",
+    "你可以先看這些官方頁面：",
+    "1. 三星台灣優惠活動：https://www.samsung.com/tw/offer/",
+    "2. 三星台灣螢幕產品頁：https://www.samsung.com/tw/monitors/all-monitors/",
+    "3. 三星台灣新聞中心：https://news.samsung.com/tw/",
+    "",
+    "如果你要我幫你查最新資料，請按「🌐 這題再搜網路」。",
+    "",
+    "[來源:即時資訊路由]",
   ].join("\n");
 }
 
@@ -6428,6 +6507,50 @@ function handleMessage(event) {
       return;
     }
 
+    if (!msg.startsWith("#") && isOutOfProjectScopeQuery(msg)) {
+      const scopeReply = buildOutOfProjectScopeReply(msg);
+      writeLog(`[Scope Guard v29.5.156] 攔截非專案範圍問題`);
+      replyMessage(replyToken, scopeReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, scopeReply, contextId, "assistant", "");
+      const scopeHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        scopeHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: scopeReply },
+      );
+      return;
+    }
+
+    if (!msg.startsWith("#") && isTimelyWebInfoQuery(msg)) {
+      const timelyReply = buildTimelyWebInfoReply(msg);
+      writeLog(`[Force Web Intent v29.5.156] 時效資訊題，改走官網/網路搜尋引導`);
+      replyMessage(replyToken, timelyReply, {
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: {
+                type: "message",
+                label: "🌐 這題再搜網路",
+                text: "#這題再搜網路",
+              },
+            },
+          ],
+        },
+      });
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, timelyReply, contextId, "assistant", "");
+      const timelyHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        timelyHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: timelyReply },
+      );
+      return;
+    }
 
     if (!msg.startsWith("#") && isPriceQueryIntent_(msg)) {
       const priceReply = buildNoPriceReply_(msg);
@@ -7552,7 +7675,9 @@ function handleMessage(event) {
           !userHasModelSignal &&
           suggestedModels.length === 0
         ) {
-          finalText = buildNeedModelForOperationReply();
+          finalText = isSamsungHomeApplianceQuery(`${msg || ""}\n${userMessage || ""}`)
+            ? buildNeedApplianceModelForOperationReply()
+            : buildNeedModelForOperationReply();
           replyText = finalText;
           writeLog(
             `[Operation Guard v29.5.253] 操作/故障題遇 API 暫失敗且無型號，改請使用者補完整型號`,
