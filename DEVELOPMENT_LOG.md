@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.248 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.250 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -19,10 +19,12 @@
 - `v29.5.246`: 新增 `?kb=1` 知識庫健康診斷，協助判斷目前是 Drive 資料夾未設定、Drive PDF 為 0、或 Gemini URI/索引快取為 0。
 - `v29.5.247`: Fast Mode 若遇 API 配額/暫時錯誤，但 Smart Router 已取得多個候選型號，改為保留型號選擇流程，不直接回覆死路錯誤。
 - `v29.5.248`: API 暫時失敗後的型號選擇泡泡，選型模式改為 `pdf`，選定完整型號後接回官方手冊查證。
+- `v29.5.249`: `PDF_MODEL_INDEX` 改由 Drive PDF 手冊檔名建立，不再依賴 Gemini File URI 快取；`/重啟` 顯示分拆 Drive 手冊數與 Gemini URI 快取數。
+- `v29.5.250`: `/重啟` 與 `/重設規格庫` 前導文字改為依實際同步結果產生，避免 Gemini URI 快取為 0 時仍誤稱已同步至 Gemini。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.248` (`@1025`)
+- 最終部署版本：`v29.5.250` (`@1029`)
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -32,7 +34,7 @@
 - `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
 - `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
 - `verify_m7_exact_issue.js` 已更新為符合目前 SOP：M7 多型號需先選型號；遇到 API 配額錯誤時只驗證來源誠實性。
-- `?kb=1` 診斷確認：Drive PDF 資料夾可讀且有 56 本 PDF；目前 Gemini File URI 快取與備份仍為 0，需等待 Gemini File API 可用時由單本補回或下次同步逐步恢復。
+- `?kb=1` 診斷確認：Drive PDF 資料夾可讀且有 56 本 PDF；`PDF_MODEL_INDEX` / 備份已恢復為 75 組；目前 Gemini File URI 快取仍為 0，需等待 Gemini File API 可用時由單本補回或下次同步逐步恢復。
 
 ### 注意
 - 測試期間 Gemini 回覆多次出現配額限制，這屬外部 API 狀態；目前程式已避免把此類錯誤訊息標成官方手冊來源。

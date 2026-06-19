@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.248"; // 2026-06-20 API暫失敗後選型接回PDF流程
-const BUILD_TIMESTAMP = "2026-06-20 01:48";
+const GAS_VERSION = "v29.5.250"; // 2026-06-20 重啟訊息依實際PDF同步狀態顯示
+const BUILD_TIMESTAMP = "2026-06-20 02:08";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3709,6 +3709,8 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // --- B. Drive PDF 同步 ---
     let uploadCount = 0;
     let skipCount = 0;
+    let driveScanSucceeded = false;
+    const drivePdfCatalog = [];
 
     if (CONFIG.DRIVE_FOLDER_ID) {
       try {
@@ -3726,6 +3728,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             writeLog(`[Sync] ⚠️ 跳過過大檔案: ${fileName}`);
             continue;
           }
+
+          drivePdfCatalog.push({
+            name: fileName,
+            mimeType: "application/pdf",
+          });
 
           if (existingFilesMap.has(fileName)) {
             newKbList.push({
@@ -3760,6 +3767,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         if (uploadedFiles.length > 0) {
           writeLog(`[Sync] 正在上傳: ${uploadedFiles.join(",")}`);
         }
+        driveScanSucceeded = true;
       } catch (driveErr) {
         writeLog(`[Sync] ⚠️ Drive 讀取失敗: ${driveErr.message}`);
       }
@@ -3790,15 +3798,23 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       );
     }
 
-    const uniquePdfModels = extractPdfModelIndexFromKbList(kbListToPersist);
+    const pdfIndexSourceList = drivePdfCatalog.some(isPdfKbFile)
+      ? drivePdfCatalog
+      : kbListToPersist;
+    const uniquePdfModels = extractPdfModelIndexFromKbList(pdfIndexSourceList);
     const props = PropertiesService.getScriptProperties();
     const shouldPersistPdfState =
       kbListToPersist.some(isPdfKbFile) || !CONFIG.DRIVE_FOLDER_ID;
-    if (shouldPersistPdfState) {
+    const shouldPersistPdfIndex =
+      uniquePdfModels.length > 0 ||
+      !CONFIG.DRIVE_FOLDER_ID ||
+      driveScanSucceeded;
+    if (shouldPersistPdfIndex) {
       props.setProperty("PDF_MODEL_INDEX", JSON.stringify(uniquePdfModels));
     }
     syncLogs.push(`PDF索引: ${uniquePdfModels.length}`);
     syncLogs.push(`PDF來源: ${pdfListSource}`);
+    syncLogs.push(`Drive手冊: ${drivePdfCatalog.length}`);
 
     // 更新 Cache。只有確定有 PDF 清單時才覆蓋正式索引；避免同步異常把可用索引洗成空。
     if (shouldPersistPdfState) {
@@ -3813,6 +3829,12 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           JSON.stringify(uniquePdfModels),
         );
       }
+    }
+    if (uniquePdfModels.length > 0) {
+      props.setProperty(
+        CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
+        JSON.stringify(uniquePdfModels),
+      );
     }
 
     // Extract Prompt version and info
@@ -3832,9 +3854,10 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       `📝 指令版本：v${promptVersion}`,
       `🌡️ 創意溫度：${tempSetting}`,
       "━━━━━━━━",
-      `📁 PDF 索引：${uniquePdfModels.length} 本`,
+      `📁 PDF 型號索引：${uniquePdfModels.length} 組`,
       `📄 規格型號：${allExistModels.length} 組`,
-      `📑 雲端手冊：${uploadCount + skipCount} 本`,
+      `📑 Drive 手冊：${drivePdfCatalog.length} 本`,
+      `☁️ Gemini URI 快取：${uploadCount + skipCount} 本`,
       "━━━━━━━━",
       "💡 對話記憶已清空...",
     ].join("\n");
@@ -4597,8 +4620,11 @@ function getRelevantKBFiles(
     // 靜默失敗
   }
 
-  // v29.5.245: 若索引空掉或沒有命中，先嘗試從 Drive 即時補回當前型號的 PDF URI。
-  if (!hasDedicatedPdf && primaryModel) {
+  // v29.5.245/v29.5.249: 若索引空掉、沒有命中，或索引有命中但 URI 清單沒有檔案，
+  // 先嘗試從 Drive 即時補回當前型號的 PDF URI。
+  const shouldRecoverPdfUri =
+    primaryModel && (!hasDedicatedPdf || (hasDedicatedPdf && !kbList.some(isPdfKbFile)));
+  if (shouldRecoverPdfUri) {
     const recoveredFiles = recoverRelevantPdfUrisFromDrive(
       exactModels,
       primaryModel,
@@ -8922,8 +8948,19 @@ function handleCommand(c, u, cid) {
     scheduleImmediateRebuild();
     const resultMsg = syncGeminiKnowledgeBase(false);
     
+    const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
+    const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
+    const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
+    const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
+    const syncNote =
+      uriCount > 0
+        ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
+        : driveCount > 0
+          ? "已建立 Drive 手冊型號索引；Gemini URI 會在查手冊時單本補回"
+          : "目前未偵測到可用 Drive 手冊，請檢查 PDF 資料夾設定";
+
     writeLog(`[Command] 重啟自癒同步完成 by ${u}`);
-    return `✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。已自動將新上傳的 PDF 手冊與 QA 同步至 Gemini 知識庫)\n\n${resultMsg}`;
+    return `✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已補齊至 ${ruleLen} 列。${syncNote})\n\n${resultMsg}`;
   }
 
   if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
@@ -8950,8 +8987,19 @@ function handleCommand(c, u, cid) {
     const ruleLen = restoreClassRulesToSheet();
     scheduleImmediateRebuild();
     const resultMsg = syncGeminiKnowledgeBase(false);
+    const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
+    const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
+    const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
+    const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
+    const syncNote =
+      uriCount > 0
+        ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
+        : driveCount > 0
+          ? "已建立 Drive 手冊型號索引；Gemini URI 會在查手冊時單本補回"
+          : "目前未偵測到可用 Drive 手冊，請檢查 PDF 資料夾設定";
+
     writeLog(`[Command] 重設規格庫完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已完璧歸趙補齊至 ${ruleLen} 列。雲端知識庫已同步更新)\n${resultMsg}`;
+    return `✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已補齊至 ${ruleLen} 列。${syncNote})\n${resultMsg}`;
   }
 
   if (cmd === "/取消") {
