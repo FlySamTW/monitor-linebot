@@ -56,6 +56,12 @@ function hasFakeSourceOnApiGuard(replies) {
   );
 }
 
+function hasPrematureManualReminder(replies) {
+  return /再幫你查查「?官方產品手冊「?|如果以上資訊不夠.*查.*手冊/i.test(
+    (replies || []).join("\n"),
+  );
+}
+
 async function findUiFrame(page) {
   await new Promise((r) => setTimeout(r, 4000));
   for (const f of page.frames()) {
@@ -107,8 +113,12 @@ async function main() {
         actual = "API_GUARDED";
       }
       const pass =
-        actual === item.expected_route ||
-        (apiGuarded && item.accept_api_guarded === true && !hasFakeSourceOnApiGuard(replies));
+        (actual === item.expected_route ||
+          (apiGuarded && item.accept_api_guarded === true && !hasFakeSourceOnApiGuard(replies))) &&
+        !(
+          (actual === "MODEL_SELECT" || actual === "ASK_MODEL") &&
+          hasPrematureManualReminder(replies)
+        );
 
       results.push({
         id: item.id,
@@ -116,6 +126,7 @@ async function main() {
         actual_route: actual,
         pass,
         api_guarded: apiGuarded,
+        premature_manual_reminder: hasPrematureManualReminder(replies),
         user_question: item.user_question,
         reply_preview: (replies[0] || "").slice(0, 200),
       });

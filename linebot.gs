@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.262"; // 2026-06-20 時效資訊早期路由
-const BUILD_TIMESTAMP = "2026-06-20 05:05";
+const GAS_VERSION = "v29.5.263"; // 2026-06-20 型號選擇回覆不追加查手冊尾巴
+const BUILD_TIMESTAMP = "2026-06-20 05:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2205,6 +2205,12 @@ function buildTimelyWebInfoReply(text) {
     "",
     "[來源:即時資訊路由]",
   ].join("\n");
+}
+
+function isModelSelectionOrNeedModelReply(text) {
+  return /(請先選型號|請先選完整型號|型號選擇泡泡|請直接回覆完整型號|需要先確認完整型號|請補上完整型號)/i.test(
+    String(text || ""),
+  );
 }
 
 function shouldEscalateFastAnswerToPdf(intentInfo) {
@@ -8903,6 +8909,10 @@ function handleMessage(event) {
           let currentReplyTextForUi = Array.isArray(replyText)
             ? replyText.join("\n")
             : String(replyText || "");
+          const isWaitingForModelSelection =
+            forcedModelSelectionTrigger ||
+            forcedSopNeedsModelSelection ||
+            isModelSelectionOrNeedModelReply(currentReplyTextForUi);
           const currentReplyAnchor = getElaborationTopicAnchor_(
             cache,
             userId,
@@ -8920,7 +8930,11 @@ function handleMessage(event) {
           // 不用操作題關鍵字硬開按鈕，避免使用者點了才被告知找不到手冊。
           const alreadyConsultedPdf =
             cache.get(`${userId}:pdf_consulted`) === "true";
-          if (hasPdfForModel && !alreadyConsultedPdf) {
+          if (
+            hasPdfForModel &&
+            !alreadyConsultedPdf &&
+            !isWaitingForModelSelection
+          ) {
             qrItems.push({
               type: "action",
               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
