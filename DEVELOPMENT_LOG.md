@@ -36,7 +36,7 @@
 - `v29.5.263`: 型號選擇/補型號回覆不再追加查手冊提醒或查手冊按鈕，避免使用者尚未選型號時流程自相矛盾。
 - `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
-- 新增 `tools/check_deploy_readiness.ps1`：比對本機 `linebot.gs` 版本、正式 Webhook health、`clasp versions` 數量與目前 deployments，避免 HEAD 已推但正式部署未切換時誤判。
+- 新增 `tools/check_deploy_readiness.ps1`：比對本機 `linebot.gs` 版本、Apps Script 遠端 HEAD、正式 Webhook health、`clasp versions` 數量與目前 deployments，避免 HEAD 已推但正式部署未切換時誤判。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
@@ -69,7 +69,7 @@
 - `v29.5.263`：`verify_m7_mute_current.js` 通過；M7 型號選擇回覆不再混入提早查手冊提醒。
 - `v29.5.263`：`verify_route_testset_17_single.js` 通過 17/17；MODEL_SELECT/ASK_MODEL 回覆均不得帶提早查手冊提醒。
 - `v29.5.264`：本機 `node --check` 與 `git diff --check` 通過；正式線上驗證需待刪除舊 GAS 版本後更新既有 deployment。
-- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.264`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.264`、遠端 HEAD `v29.5.264`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
