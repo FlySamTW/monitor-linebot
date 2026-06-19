@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.270"; // 2026-06-20 價格防呆保留完整型號搜尋目標
-const BUILD_TIMESTAMP = "2026-06-20 05:23";
+const GAS_VERSION = "v29.5.271"; // 2026-06-20 清理你提供PDF/手冊等非客服口吻
+const BUILD_TIMESTAMP = "2026-06-20 05:27";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2485,9 +2485,10 @@ function enforceManualNumberedList(text) {
  */
 function sanitizeManualDeflection(text) {
   const normalized = String(text || "")
-    .replace(/根據你提供的\s*PDF\s*文件/gi, "根據官方手冊")
-    .replace(/根據您提供的\s*PDF\s*文件/gi, "根據官方手冊")
-    .replace(/你提供的\s*PDF\s*文件/i, "官方手冊內容")
+    .replace(/根據[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "根據官方手冊")
+    .replace(/[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "官方手冊內容")
+    .replace(/根據(?:這份|該份|提供的)\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "根據官方手冊")
+    .replace(/依照[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "依照官方手冊")
     .trim();
   const lines = normalized.split(/\n+/);
   const filtered = lines.filter((line) => {

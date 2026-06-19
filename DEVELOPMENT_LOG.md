@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.270 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.271 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -41,6 +41,7 @@
 - `v29.5.268`: 操作/故障題若沒有任何型號訊號且 Fast Mode 未命中可信 QA，會先請使用者補完整型號，不再讓 LLM 用泛用常識猜操作步驟；補型號回覆補上 `[來源:專案流程規則]`。
 - `v29.5.269`: Fast Mode 來源標籤改為精確白名單，只接受 `[來源:QA]` / `[來源:規格庫]` / `[來源:網路搜尋]`；`[來源:QA資料庫]`、`[來源:產品規格表]` 等模糊標籤不再被洗白為可信來源。
 - `v29.5.270`: 價格防呆的型號解析保留完整尾碼，例如 `S34BG850SC3` 不再被截短；本機靜態測試新增價格題不回覆金額、導官方搜尋頁與完整型號 token 檢查。
+- `v29.5.271`: `sanitizeManualDeflection()` 擴充清理「根據你/您提供的 PDF/手冊/文件/檔案」等變體，深度模式回覆統一改用「根據官方手冊」的客服視角。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
@@ -55,9 +56,9 @@
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
 - 最終正式部署版本：`v29.5.263` (`@1054`)。
 - `v29.5.266` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
-- `v29.5.270` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
+- `v29.5.271` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
 - 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
-- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.270 [2026-06-20 05:23]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
+- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.271 [2026-06-20 05:27]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -89,7 +90,8 @@
 - `v29.5.268`：`node --check` 與 `npm run test:static` 通過；確認無型號操作題防呆存在於 AI 文字 fallback 型號提取之前，且非可信 QA 來源時會要求補完整型號。
 - `v29.5.269`：`node --check` 與 `npm run test:static` 通過；確認 Fast Mode 只接受精確來源標籤，模糊 QA/規格來源不會被洗白。
 - `v29.5.270`：`node --check` 與 `npm run test:static` 通過；確認價格防呆保留 `S34BG850SC3` 完整型號、不輸出數字金額並導三星官方搜尋頁。
-- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.270`、遠端 HEAD `v29.5.270`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `v29.5.271`：`node --check` 與 `npm run test:static` 通過；確認「你/您提供的 PDF/手冊/文件/檔案」會被改寫為官方手冊口吻。
+- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.271`、遠端 HEAD `v29.5.271`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
 - `tools/deploy_existing_webhook.ps1`：新增後已納入 `npm run test:static` 靜態守門；確認部署腳本使用既有 Deployment ID + `-V`、不碰 `Prompt!C3`、版本上限時會停止而不是新建部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。

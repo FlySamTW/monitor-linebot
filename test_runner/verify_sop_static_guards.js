@@ -230,6 +230,33 @@ assertStep(
   "full-model request reply should carry a true project-flow source tag",
 );
 
+const manualDeflectionCode = [
+  extractFunction(linebot, "sanitizeManualDeflection"),
+  `
+  globalThis.__manualDeflectionResult = [
+    sanitizeManualDeflection("根據你提供的 PDF 文件，請照以下步驟操作。"),
+    sanitizeManualDeflection("根據您提供的PDF，內容如下。"),
+    sanitizeManualDeflection("依照你提供的手冊內容，可以這樣處理。"),
+    sanitizeManualDeflection("根據這份 PDF 檔案，功能如下。")
+  ].join("\\n");
+  `,
+].join("\n\n");
+const manualDeflectionContext = {};
+vm.createContext(manualDeflectionContext);
+vm.runInContext(manualDeflectionCode, manualDeflectionContext);
+
+assertStep(
+  !/[你您]提供的\s*(PDF|手冊|文件|檔案)/i.test(
+    manualDeflectionContext.__manualDeflectionResult,
+  ),
+  "manual/PDF replies must not speak as if the user provided the manual",
+);
+
+assertStep(
+  /官方手冊/.test(manualDeflectionContext.__manualDeflectionResult),
+  "manual/PDF deflection sanitizer should rewrite user-provided-manual phrasing to official-manual phrasing",
+);
+
 const priceGuardCode = [
   `
   const CACHE_KEYS = { KEYWORD_MAP: "keyword_map" };
