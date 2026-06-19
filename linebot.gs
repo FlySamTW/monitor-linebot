@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.267"; // 2026-06-20 型號選擇顯示層去除 S/LS 重複
-const BUILD_TIMESTAMP = "2026-06-20 05:07";
+const GAS_VERSION = "v29.5.268"; // 2026-06-20 無型號操作題防止 Fast Mode 泛猜
+const BUILD_TIMESTAMP = "2026-06-20 05:14";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2133,6 +2133,8 @@ function buildNeedModelForOperationReply() {
     "請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。",
     "",
     "收到型號後，我會依 QA/規格庫先查；如果仍不足，再接著查官方手冊。",
+    "",
+    "[來源:專案流程規則]",
   ].join("\n");
 }
 
@@ -7579,6 +7581,25 @@ function handleMessage(event) {
           extractModelNumbers(`${msg || ""}\n${userMessage || ""}`).length > 0 ||
           hitAliasKeys.length > 0 ||
           !!primaryModel;
+
+        // v29.5.268: 無型號操作/故障題若未命中可信 QA，不能讓 Fast Mode 用泛用常識猜步驟。
+        // 先請使用者提供完整型號，避免後續 fallback 從 AI 舉例文字誤抓型號。
+        if (
+          operationIntent &&
+          !userHasModelSignal &&
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          !isInPdfMode &&
+          fastSourceTag !== "[來源:QA]"
+        ) {
+          finalText = buildNeedModelForOperationReply();
+          replyText = finalText;
+          suggestedModels = [];
+          writeLog(
+            `[Operation Guard v29.5.268] 操作/故障題無型號且非可信QA來源，改請使用者補完整型號`,
+          );
+        }
 
         // v29.5.06: Priority 3 - Fallback extraction from AI text
         // 只在用戶本來就有型號/別稱訊號時才允許，避免把 AI 自舉範例型號誤當成候選型號。

@@ -159,6 +159,35 @@ assertStep(
   "model selection UI must normalize and deduplicate model display names before rendering buttons",
 );
 
+const operationGuardIndex = linebot.indexOf("[Operation Guard v29.5.268]");
+const fallbackExtractionIndex = linebot.indexOf("Priority 3 - Fallback extraction from AI text");
+assertStep(operationGuardIndex >= 0, "no-model operation guard not found");
+assertStep(fallbackExtractionIndex > operationGuardIndex, "fallback extraction marker should appear after no-model operation guard");
+
+const operationGuardSection = linebot.slice(
+  Math.max(0, operationGuardIndex - 900),
+  Math.min(linebot.length, operationGuardIndex + 500),
+);
+
+assertStep(
+  /operationIntent[\s\S]*!\s*userHasModelSignal[\s\S]*fastSourceTag\s*!==\s*"\[來源:QA\]"/.test(
+    operationGuardSection,
+  ),
+  "no-model operation guard must ask for a model unless Fast Mode used a trusted QA source",
+);
+
+assertStep(
+  /finalText\s*=\s*buildNeedModelForOperationReply\(\)/.test(operationGuardSection),
+  "no-model operation guard should reuse the standard full-model request reply",
+);
+
+assertStep(
+  /function buildNeedModelForOperationReply[\s\S]*\[來源:專案流程規則\]/.test(
+    linebot,
+  ),
+  "full-model request reply should carry a true project-flow source tag",
+);
+
 assertStep(
   /const alreadyConsultedPdf\s*=\s*[\s\S]*?cache\.get\(`\$\{userId\}:pdf_consulted`\)\s*===\s*"true"/.test(
     linebot,
