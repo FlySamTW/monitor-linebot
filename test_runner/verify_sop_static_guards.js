@@ -242,6 +242,20 @@ assertStep(
   "comparison questions with operation/setup intent must keep the model-selection bubble",
 );
 
+assertStep(
+  /const leadText\s*=\s*\[[\s\S]*\[來源:專案流程規則\][\s\S]*\]\.join\("\\n"\)/.test(
+    linebot,
+  ),
+  "model-selection lead text must be deterministic and carry a project-flow source tag",
+);
+
+assertStep(
+  !/const leadText\s*=\s*forcedSopNeedsModelSelection[\s\S]*:\s*finalText/.test(
+    linebot,
+  ),
+  "model-selection lead text must not reuse an unverified AI finalText answer",
+);
+
 const operationGuardIndex = linebot.indexOf("v29.5.272: 無型號操作/故障題");
 const fallbackExtractionIndex = linebot.indexOf("Priority 3 - Fallback extraction from AI text");
 assertStep(operationGuardIndex >= 0, "no-model operation guard not found");

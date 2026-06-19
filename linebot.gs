@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.273"; // 2026-06-20 比較題不可越過操作型號選擇
-const BUILD_TIMESTAMP = "2026-06-20 06:55";
+const GAS_VERSION = "v29.5.274"; // 2026-06-20 型號泡泡前導文字固定來源
+const BUILD_TIMESTAMP = "2026-06-20 07:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8008,9 +8008,15 @@ function handleMessage(event) {
               // Line Reply Token 只能用一次。必須組合成 Array。
 
               const messages = [];
-              const leadText = forcedSopNeedsModelSelection
-                ? "這題需要先確認完整型號，我再依官方手冊查證給你。"
-                : finalText;
+              const leadText = [
+                modelSelectMode === "pdf"
+                  ? "這題需要先確認完整型號，我再依官方手冊查證給你。"
+                  : needSpecificModelIntent
+                    ? "這題會因完整型號不同而有不同操作方式，請先選型號，我再依該型號回答。"
+                    : "你問的內容可能對應多個完整型號，請先選型號，我再精準回答。",
+                "",
+                "[來源:專案流程規則]",
+              ].join("\n");
               if (leadText && leadText.length > 0) {
                 messages.push({ type: "text", text: leadText });
               }
