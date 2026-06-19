@@ -1,7 +1,11 @@
 const puppeteer = require("puppeteer");
+const fs = require("fs");
+const path = require("path");
 
 const TEST_URL =
   "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const SOURCE = fs.readFileSync(path.join(__dirname, "..", "linebot.gs"), "utf8");
+const EXPECTED_VERSION = (SOURCE.match(/const GAS_VERSION = "([^"]+)"/) || [])[1];
 
 function assertStep(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -58,7 +62,11 @@ async function main() {
     console.log("TURN 1 /重啟");
     resetReplies.forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
     assertStep(resetReplies.length === 1, "/重啟 should produce one TestUI reply");
-    assertStep(/系統版本：v29\.5\.264/.test(resetReplies[0]), "reset did not show v29.5.264");
+    assertStep(EXPECTED_VERSION, "could not read GAS_VERSION from linebot.gs");
+    assertStep(
+      resetReplies[0].includes(`系統版本：${EXPECTED_VERSION}`),
+      `reset did not show ${EXPECTED_VERSION}`,
+    );
 
     const noModel = await send("沒有遙控器怎麼關聲音");
     const noModelText = (noModel.replies || []).join("\n");
