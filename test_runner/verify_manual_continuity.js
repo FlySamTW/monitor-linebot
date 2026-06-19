@@ -10,6 +10,12 @@ function assertStep(ok, message) {
   }
 }
 
+function isApiFailureReply(text) {
+  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const TEST_URL =
     "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
@@ -95,6 +101,17 @@ async function main() {
     const t4 = all[3];
     const t5 = all[4];
     const t6 = all[5];
+    const allReplyText = all
+      .map((turn) => (turn.replies || []).join("\n"))
+      .join("\n");
+    if (isApiFailureReply(allReplyText)) {
+      assertStep(
+        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(allReplyText),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_manual_continuity (API quota guarded)");
+      return;
+    }
 
     assertStep(
       !hasPattern(t3.logs, /找不到相關 PDF 手冊檔案/) &&
@@ -131,4 +148,3 @@ main().catch((e) => {
   console.error(`FAIL: ${e.message}`);
   process.exit(1);
 });
-

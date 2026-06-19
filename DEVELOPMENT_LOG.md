@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.253 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.258 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -24,10 +24,15 @@
 - `v29.5.251`: Gemini File API 上傳失敗時記錄 HTTP 狀態碼與錯誤摘要；若單本 PDF 小於保守上限且 File API 無 URI，當回合改用 Gemini 官方支援的 `inline_data` 掛載 PDF。
 - `v29.5.252`: inline PDF fallback 的 base64 不再寫入 Cache，避免 Apps Script `以下引數過大：value` 中斷。
 - `v29.5.253`: 操作/故障題在沒有型號且 Fast Mode 遇到 API/配額暫時失敗時，改請使用者提供完整型號；TestUI 去除同一正式回覆的截斷預覽，避免誤判為重複回覆。
+- `v29.5.254`: 長文去廣告摘要進入 QA 編輯模式時，草稿種子改用乾淨的整理素材，不再把 QA 編輯邀請語、操作說明或費用尾註寫入草稿。
+- `v29.5.255`: `clearTestSession()` 補清 QA 建檔草稿、pending query、PDF selection、history cache 與 hit alias keys，避免 TestUI 回歸被前一輪草稿狀態污染。
+- `v29.5.256`: TestUI 回覆收集在最終回傳前再次去除截斷預覽，避免 `/取消` 等指令被誤顯示成兩次回覆。
+- `v29.5.257`: TestUI 截斷預覽去重改為正規化尾端標點後比對前綴，修正「。...」與「。」未被視為同一回覆的問題。
+- `v29.5.258`: TestUI 截斷預覽與完整版在尾端標點正規化後完全相同時，優先保留完整版，移除截斷預覽。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.253` (`@1035`)
+- 最終部署版本：`v29.5.258` (`@1047`)
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -38,8 +43,12 @@
 - `v29.5.253`：`verify_m7_mute_current.js` 通過；TestUI `/重啟` 只回一段正式回覆，無型號操作題遇 API 暫失敗時改請補完整型號，M7 操作題會先要求選完整型號。
 - `v29.5.253`：`verify_s9_kvm_alias_guard.js` 通過；`s9有內建kvm嗎` 會先要求完整型號，不再直接肯定 S9 支援 KVM。
 - `v29.5.253`：`verify_price_no_number.js` 與 `verify_m7_iron_rule_flow.js` 仍通過。
+- `v29.5.258`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.258 [2026-06-20 03:58]`。
+- `v29.5.258`：`verify_long_article_qa_mode.js` 通過；長文 QA 編輯模式可進草稿、修稿、取消，且 `/取消` 只回一段正式回覆。
+- `v29.5.258`：`verify_long_article_non_project.js` 通過；非專案長文只做去廣告摘要與原文整理，不進 QA 編輯邀請。
+- `v29.5.258`：`verify_manual_continuity.js` 通過配額防護路徑；Gemini 配額不足時不偽造 PDF 來源。
 - `node --check` 通過。
-- 健康檢查回傳：`OK - Current Version: v29.5.252 [2026-06-20 02:28]`。
+- 健康檢查回傳：`OK - Current Version: v29.5.258 [2026-06-20 03:58]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
 - `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
 - `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
@@ -69,8 +78,8 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 部署 `v29.5.253` 至既有 GAS Webhook，補上操作題 API 失敗時的型號防呆、TestUI 去重與 S9/KVM 短別稱回歸測試。
-- **目前進度**: 正式 Webhook 已更新至 `v29.5.253`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
+- **最後動作**: 部署 `v29.5.258` 並通過長文 QA 編輯模式回歸測試。
+- **目前進度**: 正式 Webhook 已更新至 `v29.5.258`；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。

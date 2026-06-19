@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.253"; // 2026-06-20 操作題API失敗時先補型號、TestUI去重
-const BUILD_TIMESTAMP = "2026-06-20 02:45";
+const GAS_VERSION = "v29.5.258"; // 2026-06-20 TestUI截斷與完整版相同時去重
+const BUILD_TIMESTAMP = "2026-06-20 03:58";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6322,6 +6322,7 @@ function handleMessage(event) {
             replyText = normalizedArticleReply;
           }
 
+          const articleBodyForQaSeed = replyText.trim();
           const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2);
           const footer = `\n\n[來源: 使用者提供長文] [模式: 去廣告摘要] [費用: NT$${costStr}]`;
           replyText += footer;
@@ -6334,12 +6335,11 @@ function handleMessage(event) {
               "\n\n---\n這篇內容看起來和本專案相關，也具備 QA 題材。\n要不要進入 QA 編輯模式（加入 QA）？\n\n" +
               guide;
 
-            // 儲存可直接進建檔的草稿種子（使用長文整理結果當作起稿）
-            const seedText = `【長文整理候選QA素材】\n${replyText
-              .replace(/\[來源:[^\]]+\]/g, "")
-              .replace(/\[模式:[^\]]+\]/g, "")
-              .replace(/\[費用:[^\]]+\]/g, "")
-              .trim()}`.substring(0, 2500);
+            // 儲存可直接進建檔的草稿種子：只放整理後素材，不放邀請語、操作說明或費用來源尾註。
+            const seedText = `【長文整理候選QA素材】\n${articleBodyForQaSeed}`.substring(
+              0,
+              2500,
+            );
             cache.put(
               `${userId}:qa_offer_payload`,
               JSON.stringify({
@@ -12266,21 +12266,7 @@ function testMessage(msg, userId) {
     }
   }
 
-  botResponses = botResponses.filter(function (item, idx, arr) {
-    var text = String(item || "").trim();
-    if (!text.endsWith("...") && !text.endsWith("…")) {
-      return true;
-    }
-    var prefix = text.replace(/[.。…]+$/g, "").trim();
-    if (!prefix) {
-      return true;
-    }
-    return !arr.some(function (other, otherIdx) {
-      if (otherIdx === idx) return false;
-      var otherText = String(other || "").trim();
-      return otherText.length > text.length && otherText.indexOf(prefix) === 0;
-    });
-  });
+  botResponses = dedupeTestUiReplies(botResponses);
 
   // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
   if (!hasOfficialReply) {
@@ -12411,6 +12397,7 @@ function testMessage(msg, userId) {
     }
   }
 
+  botResponses = dedupeTestUiReplies(botResponses);
   IS_TEST_MODE = false;
 
   return {
@@ -12432,6 +12419,11 @@ function parseLogContent(logLine, keyword) {
 function clearTestSession(userId) {
   var cache = CacheService.getScriptCache();
   userId = userId || "TEST_DEV_001";
+  cache.remove(`${CACHE_KEYS.HISTORY_PREFIX}${userId}`);
+  cache.remove(CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId);
+  cache.remove(CACHE_KEYS.PENDING_QUERY + userId);
+  cache.remove(CACHE_KEYS.PENDING_PDF_SELECTION + userId);
+  cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + userId);
   cache.remove(`${userId}:context`);
   cache.remove(`${userId}:pdf_mode`);
   cache.remove(`${userId}:pdf_consulted`);
@@ -12439,6 +12431,7 @@ function clearTestSession(userId) {
   cache.remove(`dissatisfied_count_${userId}`);
   cache.remove(`${userId}:direct_search_models`);
   cache.remove(`${userId}:hit_alias_key`);
+  cache.remove(`${userId}:hit_alias_keys`);
   cache.remove(`${userId}:elaboration_state`);
   cache.remove(`${userId}:last_meaningful_query`);
   cache.remove(`${userId}:pending_topic`);
@@ -12787,6 +12780,34 @@ function getPromptsFromCacheOrSheet() {
   // 寫入 Cache (1小時)
   cache.put("KB_PROMPTS_JSON", JSON.stringify(prompts), 3600);
   return prompts;
+}
+
+function dedupeTestUiReplies(items) {
+  return (items || []).filter(function (item, idx, arr) {
+    var text = String(item || "").trim();
+    var normalizedText = text.replace(/[.。…\s]+$/g, "").trim();
+    var isTruncatedPreview = /(?:\.\.\.|…)$/g.test(text);
+    if (!normalizedText) {
+      return true;
+    }
+    return !arr.some(function (other, otherIdx) {
+      if (otherIdx === idx) return false;
+      var otherText = String(other || "").trim();
+      var normalizedOther = otherText.replace(/[.。…\s]+$/g, "").trim();
+      var otherIsTruncated = /(?:\.\.\.|…)$/g.test(otherText);
+      if (
+        isTruncatedPreview &&
+        !otherIsTruncated &&
+        normalizedOther === normalizedText
+      ) {
+        return true;
+      }
+      return (
+        normalizedOther.length > normalizedText.length &&
+        normalizedOther.indexOf(normalizedText) === 0
+      );
+    });
+  });
 }
 
 function adminUpdatePromptC3(newPrompt) {

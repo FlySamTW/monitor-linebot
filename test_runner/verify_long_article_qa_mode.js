@@ -112,8 +112,8 @@ async function main() {
     const t4Logs = t4.logs || [];
 
     assertStep(
-      !/【重點摘要】/.test(t4Text),
-      "turn4 wrongly intercepted by ArticleClean",
+      !/要不要進入 QA 編輯模式|【QA編輯模式操作方式】/.test(t4Text),
+      "turn4 draft should not contain QA mode offer/instructions",
     );
     assertStep(
       t4Logs.some((x) => /\[DraftMod\]/.test(String(x))),
@@ -125,6 +125,7 @@ async function main() {
     (t5.replies || []).forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
     const t5Text = (t5.replies || []).join("\n");
     assertStep(/已取消建檔/.test(t5Text), "turn5 failed to leave draft mode");
+    assertStep((t5.replies || []).length === 1, "turn5 should produce one TestUI reply");
 
     console.log("\nPASS: verify_long_article_qa_mode");
   } finally {
