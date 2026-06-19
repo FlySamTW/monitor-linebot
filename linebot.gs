@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.252"; // 2026-06-20 inline PDF不寫入Cache避免值過大
-const BUILD_TIMESTAMP = "2026-06-20 02:28";
+const GAS_VERSION = "v29.5.253"; // 2026-06-20 操作題API失敗時先補型號、TestUI去重
+const BUILD_TIMESTAMP = "2026-06-20 02:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2116,6 +2116,16 @@ function isOperationAnswerInsufficient(text) {
     return false;
   }
   return strongUncertainty || !hasSteps;
+}
+
+function buildNeedModelForOperationReply() {
+  return [
+    "這題會跟不同型號的按鍵配置、選單路徑或遙控器設計有關，我需要先確認完整型號，才不會給你錯的操作步驟。",
+    "",
+    "請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。",
+    "",
+    "收到型號後，我會依 QA/規格庫先查；如果仍不足，再接著查官方手冊。",
+  ].join("\n");
 }
 
 function shouldEscalateFastAnswerToPdf(intentInfo) {
@@ -7536,6 +7546,19 @@ function handleMessage(event) {
           );
         }
 
+        if (
+          isApiFailureReply(rawResponse) &&
+          operationIntent &&
+          !userHasModelSignal &&
+          suggestedModels.length === 0
+        ) {
+          finalText = buildNeedModelForOperationReply();
+          replyText = finalText;
+          writeLog(
+            `[Operation Guard v29.5.253] 操作/故障題遇 API 暫失敗且無型號，改請使用者補完整型號`,
+          );
+        }
+
         // v29.5.175: 短別稱功能題（如 S9 有 KVM 嗎）必須先要求選完整型號，走型號泡泡流程
         if (
           suggestedModels.length === 1 &&
@@ -12242,6 +12265,22 @@ function testMessage(msg, userId) {
       }
     }
   }
+
+  botResponses = botResponses.filter(function (item, idx, arr) {
+    var text = String(item || "").trim();
+    if (!text.endsWith("...") && !text.endsWith("…")) {
+      return true;
+    }
+    var prefix = text.replace(/[.。…]+$/g, "").trim();
+    if (!prefix) {
+      return true;
+    }
+    return !arr.some(function (other, otherIdx) {
+      if (otherIdx === idx) return false;
+      var otherText = String(other || "").trim();
+      return otherText.length > text.length && otherText.indexOf(prefix) === 0;
+    });
+  });
 
   // 1.5️⃣ 檢查是否有 PDF 選擇日誌（表示 handlePdfSelectionReply 已執行）
   if (!hasOfficialReply) {
