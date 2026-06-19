@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.243 SOP 路由與 Prompt Sheet 同步修復)
+## 2026-06-20 (v29.5.239-v29.5.248 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -13,10 +13,16 @@
 - `v29.5.241`: 新增短追問展開邏輯，讓「那 M8 呢 / How about M8」沿用上一題主題，只更換詢問對象，避免改答一般規格概覽。
 - `v29.5.242`: `#查手冊` 明確寫出 `forceCurrentOnly=true` 防污染 log；API 配額/暫時失敗訊息不再補上 PDF 來源標籤。
 - `v29.5.243`: 修正同步失敗時 PDF 索引歸零的風險；強制重建時保留舊 PDF URI 清單，只有新清單成功含 PDF 時才覆蓋。
+- `v29.5.244`: 移除 QA 同步重複注入，新增 `KB_URI_LIST_BACKUP` 與 `PDF_MODEL_INDEX_BACKUP`，同步異常時可用備份回復 PDF 索引；新增受保護的 `update_prompt_c3` 維護入口與 `tools/sync_prompt_c3.ps1`，讓 `Prompt.csv` 可同步到 Google Sheet `Prompt!C3`。
+- `deploy.bat` 改為四步驟：推送程式、建立版本、更新既有 Webhook、若本機有 `GAS_ADMIN_SECRET` 則同步 Prompt!C3。
+- `v29.5.245`: 回歸測試發現目前雲端 PDF URI 清單已是 0，單靠「不覆蓋」不足；新增單本 PDF 即時補回機制，依目前查詢型號從 Drive 找 PDF、上傳 Gemini File API 並回填 `KB_URI_LIST` / `PDF_MODEL_INDEX`。
+- `v29.5.246`: 新增 `?kb=1` 知識庫健康診斷，協助判斷目前是 Drive 資料夾未設定、Drive PDF 為 0、或 Gemini URI/索引快取為 0。
+- `v29.5.247`: Fast Mode 若遇 API 配額/暫時錯誤，但 Smart Router 已取得多個候選型號，改為保留型號選擇流程，不直接回覆死路錯誤。
+- `v29.5.248`: API 暫時失敗後的型號選擇泡泡，選型模式改為 `pdf`，選定完整型號後接回官方手冊查證。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.243` (`@1015`)
+- 最終部署版本：`v29.5.248` (`@1025`)
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -26,6 +32,7 @@
 - `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
 - `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
 - `verify_m7_exact_issue.js` 已更新為符合目前 SOP：M7 多型號需先選型號；遇到 API 配額錯誤時只驗證來源誠實性。
+- `?kb=1` 診斷確認：Drive PDF 資料夾可讀且有 56 本 PDF；目前 Gemini File URI 快取與備份仍為 0，需等待 Gemini File API 可用時由單本補回或下次同步逐步恢復。
 
 ### 注意
 - 測試期間 Gemini 回覆多次出現配額限制，這屬外部 API 狀態；目前程式已避免把此類錯誤訊息標成官方手冊來源。

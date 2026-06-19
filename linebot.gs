@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.243"; // 2026-06-20 修正同步失敗時 PDF 索引歸零保護
-const BUILD_TIMESTAMP = "2026-05-30 01:28";
+const GAS_VERSION = "v29.5.248"; // 2026-06-20 API暫失敗後選型接回PDF流程
+const BUILD_TIMESTAMP = "2026-06-20 01:48";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2951,6 +2951,8 @@ const SHEET_NAMES = {
 
 const CACHE_KEYS = {
   KB_URI_LIST: "kb_list_v15_0",
+  KB_URI_LIST_BACKUP: "kb_list_v15_0_backup",
+  PDF_MODEL_INDEX_BACKUP: "pdf_model_index_backup_v1",
   KEYWORD_MAP: "keyword_map_v1",
   STRONG_KEYWORDS: "strong_keywords_v1",
   HISTORY_PREFIX: "hist:",
@@ -3118,6 +3120,219 @@ function buildNoPriceReply_(msg) {
   lines.push("[來源:三星官網]");
   return lines.join("\n");
 }
+
+function isPdfKbFile(file) {
+  return file && file.mimeType === "application/pdf";
+}
+
+function extractPdfModelIndexFromKbList(kbList) {
+  let pdfModels = [];
+  (Array.isArray(kbList) ? kbList : []).forEach((file) => {
+    if (!isPdfKbFile(file)) {
+      return;
+    }
+
+    const fileName = String(file.name || "").toUpperCase();
+    const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g) || [];
+    const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
+    const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
+    const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
+    pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels);
+  });
+  return [...new Set(pdfModels)];
+}
+
+function persistPdfKbState(kbList) {
+  const listToPersist = Array.isArray(kbList) ? kbList : [];
+  const pdfModels = extractPdfModelIndexFromKbList(listToPersist);
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(CACHE_KEYS.KB_URI_LIST, JSON.stringify(listToPersist));
+  props.setProperty("PDF_MODEL_INDEX", JSON.stringify(pdfModels));
+
+  if (listToPersist.some(isPdfKbFile)) {
+    props.setProperty(
+      CACHE_KEYS.KB_URI_LIST_BACKUP,
+      JSON.stringify(listToPersist),
+    );
+    props.setProperty(
+      CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
+      JSON.stringify(pdfModels),
+    );
+  }
+  return pdfModels;
+}
+
+function pdfFileNameMatchesModels(fileName, exactModels) {
+  const upperName = String(fileName || "").toUpperCase();
+  return (Array.isArray(exactModels) ? exactModels : []).some((model) => {
+    const upperModel = String(model || "").toUpperCase();
+    if (!upperModel) {
+      return false;
+    }
+    if (upperName.includes(upperModel)) {
+      return true;
+    }
+    if (upperModel.startsWith("S") && upperModel.length >= 7) {
+      const coreModel = upperModel.replace(/^S\d{2}/, "");
+      const compactName = upperName.replace(/[^A-Z0-9]/g, "");
+      return compactName.includes(coreModel);
+    }
+    return false;
+  });
+}
+
+function recoverRelevantPdfUrisFromDrive(exactModels, primaryModel, limit) {
+  if (!CONFIG.DRIVE_FOLDER_ID || !exactModels || exactModels.length === 0) {
+    return [];
+  }
+
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    writeLog("[PDF Recovery] 缺少 GEMINI_API_KEY，無法即時補回 PDF URI");
+    return [];
+  }
+
+  const candidates = [];
+  try {
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const files = folder.getFilesByType(MimeType.PDF);
+    while (files.hasNext()) {
+      const file = files.next();
+      const fileName = file.getName();
+      if (pdfFileNameMatchesModels(fileName, exactModels)) {
+        candidates.push(file);
+      }
+    }
+  } catch (err) {
+    writeLog(`[PDF Recovery] Drive 讀取失敗: ${err.message}`);
+    return [];
+  }
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const primary = String(primaryModel || "").toUpperCase();
+  candidates.sort((a, b) => {
+    const aName = a.getName().toUpperCase();
+    const bName = b.getName().toUpperCase();
+    const score = (name) => {
+      if (primary && name.includes(primary)) {
+        return 100;
+      }
+      if (exactModels.some((m) => /^S\d{2}/.test(m) && name.includes(m))) {
+        return 50;
+      }
+      return 10;
+    };
+    return score(bName) - score(aName);
+  });
+
+  const recovered = [];
+  const maxFiles = Math.max(1, Math.min(Number(limit) || 1, 2));
+  for (let i = 0; i < candidates.length && recovered.length < maxFiles; i++) {
+    const file = candidates[i];
+    const fileSize = file.getSize();
+    if (fileSize > 48 * 1024 * 1024) {
+      writeLog(`[PDF Recovery] 跳過過大檔案: ${file.getName()}`);
+      continue;
+    }
+
+    const uri = uploadFileToGemini(
+      apiKey,
+      file.getBlob(),
+      fileSize,
+      "application/pdf",
+    );
+    if (uri) {
+      recovered.push({
+        name: file.getName(),
+        uri: uri,
+        mimeType: "application/pdf",
+      });
+    }
+  }
+
+  if (recovered.length > 0) {
+    const props = PropertiesService.getScriptProperties();
+    let currentList = [];
+    try {
+      const currentJson = props.getProperty(CACHE_KEYS.KB_URI_LIST);
+      currentList = currentJson ? JSON.parse(currentJson) : [];
+      if (!Array.isArray(currentList)) {
+        currentList = [];
+      }
+    } catch (e) {
+      currentList = [];
+    }
+
+    const byName = {};
+    currentList.forEach((item) => {
+      if (item && item.name) {
+        byName[item.name] = item;
+      }
+    });
+    recovered.forEach((item) => {
+      byName[item.name] = item;
+    });
+    persistPdfKbState(Object.keys(byName).map((name) => byName[name]));
+    writeLog(
+      `[PDF Recovery] 即時補回手冊 URI: ${recovered
+        .map((f) => f.name)
+        .join(", ")}`,
+    );
+  }
+
+  return recovered;
+}
+
+function getKbHealthSummary() {
+  const props = PropertiesService.getScriptProperties();
+  const parseList = (key) => {
+    try {
+      const raw = props.getProperty(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const kbList = parseList(CACHE_KEYS.KB_URI_LIST);
+  const backupList = parseList(CACHE_KEYS.KB_URI_LIST_BACKUP);
+  const pdfIndex = parseList("PDF_MODEL_INDEX");
+  const backupIndex = parseList(CACHE_KEYS.PDF_MODEL_INDEX_BACKUP);
+
+  let drivePdfCount = null;
+  let driveError = "";
+  if (CONFIG.DRIVE_FOLDER_ID) {
+    try {
+      const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+      const files = folder.getFilesByType(MimeType.PDF);
+      drivePdfCount = 0;
+      while (files.hasNext()) {
+        files.next();
+        drivePdfCount++;
+      }
+    } catch (err) {
+      driveError = err.message;
+    }
+  }
+
+  return {
+    gasVersion: GAS_VERSION,
+    buildTimestamp: BUILD_TIMESTAMP,
+    hasDriveFolderId: !!CONFIG.DRIVE_FOLDER_ID,
+    drivePdfCount: drivePdfCount,
+    driveError: driveError,
+    kbUriPdfCount: kbList.filter(isPdfKbFile).length,
+    kbBackupPdfCount: backupList.filter(isPdfKbFile).length,
+    pdfModelIndexCount: pdfIndex.length,
+    pdfModelIndexBackupCount: backupIndex.length,
+  };
+}
+
 function syncGeminiKnowledgeBase(forceRebuild = false) {
   const lock = LockService.getScriptLock();
   let hasLock = false;
@@ -3160,6 +3375,19 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     }
     const fallbackKbList = Array.isArray(oldKbList) ? oldKbList.slice() : [];
 
+    let backupKbList = [];
+    const backupJson = PropertiesService.getScriptProperties().getProperty(
+      CACHE_KEYS.KB_URI_LIST_BACKUP,
+    );
+    if (backupJson) {
+      try {
+        const parsedBackup = JSON.parse(backupJson);
+        backupKbList = Array.isArray(parsedBackup) ? parsedBackup : [];
+      } catch (e) {
+        writeLog("[Sync Guard v29.5.244] PDF 備份清單解析失敗，略過備份");
+      }
+    }
+
     // 如果強制重建，不先清掉舊 PDF URI；新清單成功後再覆蓋，避免失敗時歸零
     if (forceRebuild) {
       writeLog("[Sync] 強制重建模式：保留舊 PDF 清單，待新清單成功後才覆蓋");
@@ -3199,7 +3427,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           return `QA: ${text}`;
         })
         .filter((line) => line !== "");
-      qaContent += qaRows.join("\n\n");
       qaContent += qaRows.join("\n\n");
       // v29.5.0: Log Optimization
       // writeLog(
@@ -3539,52 +3766,54 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     }
 
     // v29.5.53: PDF Model Index - 從 PDF 檔名提取型號建立索引
-    const hasPdfInNewKbList = newKbList.some(
-      (file) => file && file.mimeType === "application/pdf",
-    );
-    const hasPdfInFallback = fallbackKbList.some(
-      (file) => file && file.mimeType === "application/pdf",
-    );
-    const kbListToPersist =
-      !hasPdfInNewKbList && hasPdfInFallback ? fallbackKbList : newKbList;
+    const hasPdfInNewKbList = newKbList.some(isPdfKbFile);
+    const hasPdfInFallback = fallbackKbList.some(isPdfKbFile);
+    const hasPdfInBackup = backupKbList.some(isPdfKbFile);
+
+    let kbListToPersist = newKbList;
+    let pdfListSource = "new";
     if (!hasPdfInNewKbList && hasPdfInFallback) {
+      kbListToPersist = fallbackKbList;
+      pdfListSource = "current";
       writeLog(
-        "[Sync Guard v29.5.243] 新 PDF 清單為 0，保留舊 KB_URI_LIST，避免 PDF 索引被覆蓋成 0",
+        "[Sync Guard v29.5.244] 新 PDF 清單為 0，保留既有 KB_URI_LIST，避免 PDF 索引被覆蓋成 0",
+      );
+    } else if (!hasPdfInNewKbList && !hasPdfInFallback && hasPdfInBackup) {
+      kbListToPersist = backupKbList;
+      pdfListSource = "backup";
+      writeLog(
+        "[Sync Guard v29.5.244] 新/既有 PDF 清單皆為 0，改用備份 KB_URI_LIST 回復 PDF 索引",
+      );
+    } else if (!hasPdfInNewKbList && !hasPdfInFallback && !hasPdfInBackup && CONFIG.DRIVE_FOLDER_ID) {
+      writeLog(
+        "[Sync Guard v29.5.244] 新/既有/備份 PDF 清單皆為 0，保留原屬性不寫入空索引",
       );
     }
 
-    let pdfModels = [];
-    kbListToPersist.forEach((file) => {
-      if (file.mimeType === "application/pdf") {
-        const fileName = file.name.toUpperCase();
-
-        // v29.5.78: 改進 Regex 以支援逗號分隔與不定長度後綴
-        // 原本: /S\d{2}[A-Z]{2}\d{3}[A-Z]{0,2}/g (限制後綴最多2碼)
-        // 修正: /S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g (允許更長後綴，並確保逗號不會截斷識別)
-        const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g) || [];
-
-        // 提取 G-models (e.g. G90XF, G80SD, G5)
-        const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
-        // 提取 M-models (e.g. M70D, M50F)
-        const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
-        // v29.5.142: 提取家電型號 (WA, WD, VR)
-        const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
-
-        pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels);
-      }
-    });
-    const uniquePdfModels = [...new Set(pdfModels)];
-    PropertiesService.getScriptProperties().setProperty(
-      "PDF_MODEL_INDEX",
-      JSON.stringify(uniquePdfModels),
-    );
+    const uniquePdfModels = extractPdfModelIndexFromKbList(kbListToPersist);
+    const props = PropertiesService.getScriptProperties();
+    const shouldPersistPdfState =
+      kbListToPersist.some(isPdfKbFile) || !CONFIG.DRIVE_FOLDER_ID;
+    if (shouldPersistPdfState) {
+      props.setProperty("PDF_MODEL_INDEX", JSON.stringify(uniquePdfModels));
+    }
     syncLogs.push(`PDF索引: ${uniquePdfModels.length}`);
+    syncLogs.push(`PDF來源: ${pdfListSource}`);
 
-    // 更新 Cache
-    PropertiesService.getScriptProperties().setProperty(
-      CACHE_KEYS.KB_URI_LIST,
-      JSON.stringify(kbListToPersist),
-    );
+    // 更新 Cache。只有確定有 PDF 清單時才覆蓋正式索引；避免同步異常把可用索引洗成空。
+    if (shouldPersistPdfState) {
+      props.setProperty(CACHE_KEYS.KB_URI_LIST, JSON.stringify(kbListToPersist));
+      if (kbListToPersist.some(isPdfKbFile)) {
+        props.setProperty(
+          CACHE_KEYS.KB_URI_LIST_BACKUP,
+          JSON.stringify(kbListToPersist),
+        );
+        props.setProperty(
+          CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
+          JSON.stringify(uniquePdfModels),
+        );
+      }
+    }
 
     // Extract Prompt version and info
     const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
@@ -4366,6 +4595,24 @@ function getRelevantKBFiles(
     }
   } catch (e) {
     // 靜默失敗
+  }
+
+  // v29.5.245: 若索引空掉或沒有命中，先嘗試從 Drive 即時補回當前型號的 PDF URI。
+  if (!hasDedicatedPdf && primaryModel) {
+    const recoveredFiles = recoverRelevantPdfUrisFromDrive(
+      exactModels,
+      primaryModel,
+      MAX_PDF_COUNT,
+    );
+    if (recoveredFiles.length > 0) {
+      kbList = [].concat(kbList || [], recoveredFiles);
+      hasDedicatedPdf = true;
+      writeLog(
+        `[KB Select v29.5.245] 已由 Drive 即時補回 PDF，繼續載入手冊: ${recoveredFiles
+          .map((f) => f.name)
+          .join(", ")}`,
+      );
+    }
   }
 
   // v29.5.57: 若所有型號都沒有專屬 PDF，不載入任何 PDF
@@ -7193,6 +7440,21 @@ function handleMessage(event) {
         suggestedModels = [...new Set(suggestedModels)];
         suggestedModels = dedupDisplayModels(suggestedModels, 10);
 
+        const apiFailureNeedsModelSelection =
+          isApiFailureReply(rawResponse) &&
+          suggestedModels.length > 1 &&
+          userHasModelSignal;
+        if (apiFailureNeedsModelSelection) {
+          forcedModelSelectionTrigger = true;
+          forcedSopNeedsModelSelection = true;
+          finalText =
+            "目前 AI 回答暫時受限，但我已先抓到可能的完整型號。請先選型號，我再依這個型號繼續查證。";
+          replyText = finalText;
+          writeLog(
+            `[Smart Router v29.5.247] API 暫失敗但已有多型號候選，保留型號選擇流程`,
+          );
+        }
+
         // v29.5.175: 短別稱功能題（如 S9 有 KVM 嗎）必須先要求選完整型號，走型號泡泡流程
         if (
           suggestedModels.length === 1 &&
@@ -7325,7 +7587,11 @@ function handleMessage(event) {
             const shouldSkipBubble =
               (listIntent && !needSpecificModelIntent) || tooMany;
 
-            if (shouldSkipBubble && !forcedSopNeedsModelSelection) {
+            if (
+              shouldSkipBubble &&
+              !forcedSopNeedsModelSelection &&
+              !forcedModelSelectionTrigger
+            ) {
               writeLog(
                 `[Smart Router v29.5.105] 偵測到列表意圖(${listIntent})/數量過多(${suggestedModels.length})，且無操作需求，跳過選單泡泡。`,
               );
@@ -7449,7 +7715,10 @@ function handleMessage(event) {
                 userMessage,
                 suggestedModels,
               );
-              const modelSelectMode = hasExplicitTrigger ? "pdf" : "fast";
+              const modelSelectMode =
+                hasExplicitTrigger || forcedSopNeedsModelSelection
+                  ? "pdf"
+                  : "fast";
               cache.put(`${userId}:model_select_mode`, modelSelectMode, 600);
               writeLog(
                 `[Smart Router v29.5.175] 型號泡泡選擇模式: ${modelSelectMode}`,
@@ -11242,6 +11511,25 @@ function doPost(e) {
       }
     }
 
+    if (json.action === "update_prompt_c3") {
+      const authKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+      if (!json.secret || json.secret !== authKey) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Unauthorized" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      try {
+        const syncResult = adminUpdatePromptC3(json.content || json.prompt || "");
+        writeLog(`[Prompt Sync] Prompt!C3 已更新: v${syncResult.version}, ${syncResult.length} chars`);
+        return ContentService.createTextOutput(JSON.stringify({ success: true, result: syncResult }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        writeLog(`[Prompt Sync Error] ${err.message}`);
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     const events = json.events || [];
 
     events.forEach(function (event) {
@@ -11753,6 +12041,12 @@ function doGet(e) {
         "viewport",
         "width=device-width, initial-scale=1, user-scalable=no",
       );
+  }
+
+  if (e && e.parameter && e.parameter.kb === "1") {
+    return ContentService.createTextOutput(
+      JSON.stringify(getKbHealthSummary()),
+    ).setMimeType(ContentService.MimeType.JSON);
   }
 
   // 預設：返回健康檢查（給 LINE Verify 用）
