@@ -213,6 +213,35 @@ assertStep(
   "model selection UI must normalize and deduplicate model display names before rendering buttons",
 );
 
+const smartRouterMultiModelStart = linebot.indexOf("// Case B: 多個型號 -> 顯示泡泡");
+const smartRouterMultiModelEnd = linebot.indexOf("// Re-check length", smartRouterMultiModelStart);
+assertStep(smartRouterMultiModelStart >= 0, "multi-model smart router block not found");
+assertStep(smartRouterMultiModelEnd > smartRouterMultiModelStart, "multi-model smart router block end not found");
+const smartRouterMultiModelSection = linebot.slice(
+  smartRouterMultiModelStart,
+  smartRouterMultiModelEnd,
+);
+
+assertStep(
+  smartRouterMultiModelSection.indexOf("const needSpecificModelIntent") <
+    smartRouterMultiModelSection.indexOf("const isComparisonQuery"),
+  "multi-model routing must decide operation-specific intent before comparison skip logic",
+);
+
+assertStep(
+  /isComparisonQuery\s*&&\s*!\s*needSpecificModelIntent[\s\S]*suggestedModels\s*=\s*\[\]/.test(
+    smartRouterMultiModelSection,
+  ),
+  "comparison/recommendation skip must not clear model choices when the question needs a specific model",
+);
+
+assertStep(
+  /isComparisonQuery\s*&&\s*needSpecificModelIntent[\s\S]*保留型號選單泡泡/.test(
+    smartRouterMultiModelSection,
+  ),
+  "comparison questions with operation/setup intent must keep the model-selection bubble",
+);
+
 const operationGuardIndex = linebot.indexOf("v29.5.272: 無型號操作/故障題");
 const fallbackExtractionIndex = linebot.indexOf("Priority 3 - Fallback extraction from AI text");
 assertStep(operationGuardIndex >= 0, "no-model operation guard not found");

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.272"; // 2026-06-20 無型號操作題禁止被AI暗號越過
-const BUILD_TIMESTAMP = "2026-06-20 06:35";
+const GAS_VERSION = "v29.5.273"; // 2026-06-20 比較題不可越過操作型號選擇
+const BUILD_TIMESTAMP = "2026-06-20 06:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -7819,12 +7819,26 @@ function handleMessage(event) {
           // Case B: 多個型號 -> 顯示泡泡 (Flex Selection)
           // v29.5.20: 單一型號不顯示泡泡（沒意義），只有多型號才顯示
           else if (suggestedModels.length > 1) {
-            // 💡 智慧比較推薦安全閥 v29.5.207
-            // 如果偵測到比較、推薦、選購意圖（包括「哪一台」、「哪一款」），允許多型號直接比較，跳過選單泡泡
+            const needSpecificModelIntent =
+              /(怎麼|如何|設定|故障|無法|不能|操作|步驟|重置|reset|閃爍|亮燈|不亮|連接|安裝|調整|開啟|關閉|使用|方法|教學)/i.test(
+                userMessage,
+              );
+
+            // 💡 智慧比較推薦安全閥 v29.5.273
+            // 比較/推薦題可以直接多型號回答；但若同時是操作/故障/設定題，仍要保留型號泡泡。
             const isComparisonQuery = /哪一台|哪一款|偏向|推薦|比較|差異|差別|不同|vs|versus|選購/i.test(userMessage);
-            if (isComparisonQuery) {
+            if (
+              isComparisonQuery &&
+              !needSpecificModelIntent &&
+              !forcedSopNeedsModelSelection &&
+              !forcedModelSelectionTrigger
+            ) {
               writeLog(`[Smart Router] 偵測到比較/推薦意圖(${userMessage.substring(0, 30)})，跳過選單泡泡，允許直接進行多型號回答`);
               suggestedModels = []; // 清空以跳過選單泡泡
+            } else if (isComparisonQuery && needSpecificModelIntent) {
+              writeLog(
+                `[Smart Router v29.5.273] 比較/推薦題同時含操作需求，保留型號選單泡泡。`,
+              );
             }
             
             // v29.5.105: 改善追問機制 - 更精準判斷何時該跳過泡泡
@@ -7839,10 +7853,6 @@ function handleMessage(event) {
 
             const listIntent =
               /(推薦|介紹|有哪些|列表|清單|差異|比較|认证|認證|列出|整理|選擇)/i.test(
-                userMessage,
-              );
-            const needSpecificModelIntent =
-              /(怎麼|如何|設定|故障|無法|不能|操作|步驟|重置|reset|閃爍|亮燈|不亮|連接|安裝|調整|開啟|關閉|使用|方法|教學)/i.test(
                 userMessage,
               );
             const tooMany = suggestedModels.length > 10;
