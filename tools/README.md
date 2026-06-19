@@ -60,6 +60,15 @@ deploy.bat
 - 更新既有正式 Webhook Deployment ID
 - 不會修改 Google Sheet `Prompt!C3`，避免本地 `Prompt.csv` 誤覆蓋正式 Prompt
 
+### 手動同步 Prompt（只在明確維護 Prompt 時使用）
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -PromptPath .\Prompt.csv -ConfirmOverwrite
+```
+效果：
+- 將指定檔案內容寫入 Google Sheet `Prompt!C3`
+- 必須設定 `GAS_ADMIN_SECRET`
+- 必須明確指定 `-PromptPath` 與 `-ConfirmOverwrite`，避免誤覆蓋正式 Prompt
+
 ### 下載 LOG（根目錄）
 ```
 download_log.bat

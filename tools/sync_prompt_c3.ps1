@@ -1,12 +1,17 @@
 param(
   [string]$WebAppUrl = "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec",
-  [string]$PromptPath = ""
+  [string]$PromptPath = "",
+  [switch]$ConfirmOverwrite
 )
 
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($PromptPath)) {
-  $PromptPath = Join-Path (Split-Path -Parent $PSScriptRoot) "Prompt.csv"
+  throw "PromptPath is required. This tool writes to Google Sheet Prompt!C3, so the source file must be explicit."
+}
+
+if (-not $ConfirmOverwrite) {
+  throw "Refusing to update Prompt!C3 without -ConfirmOverwrite. This prevents accidental Prompt.csv uploads."
 }
 
 if (-not (Test-Path -LiteralPath $PromptPath)) {
