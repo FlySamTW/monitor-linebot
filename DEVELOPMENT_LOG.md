@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.250 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.252 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -21,15 +21,20 @@
 - `v29.5.248`: API 暫時失敗後的型號選擇泡泡，選型模式改為 `pdf`，選定完整型號後接回官方手冊查證。
 - `v29.5.249`: `PDF_MODEL_INDEX` 改由 Drive PDF 手冊檔名建立，不再依賴 Gemini File URI 快取；`/重啟` 顯示分拆 Drive 手冊數與 Gemini URI 快取數。
 - `v29.5.250`: `/重啟` 與 `/重設規格庫` 前導文字改為依實際同步結果產生，避免 Gemini URI 快取為 0 時仍誤稱已同步至 Gemini。
+- `v29.5.251`: Gemini File API 上傳失敗時記錄 HTTP 狀態碼與錯誤摘要；若單本 PDF 小於保守上限且 File API 無 URI，當回合改用 Gemini 官方支援的 `inline_data` 掛載 PDF。
+- `v29.5.252`: inline PDF fallback 的 base64 不再寫入 Cache，避免 Apps Script `以下引數過大：value` 中斷。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終部署版本：`v29.5.250` (`@1029`)
+- 最終部署版本：`v29.5.252` (`@1033`)
 - 沒有新建 GAS 部署。
 
 ### 驗證
+- `v29.5.252`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.252 [2026-06-20 02:28]`。
+- `v29.5.252`：M7 / SmartThings Hub 測試通過「配額防護」路徑；當 Gemini 配額不足時不再偽造 PDF/規格來源，且不再因 inline PDF base64 寫入 Cache 導致中斷。
+- `v29.5.252`：價格題防明確數字測試通過。
 - `node --check` 通過。
-- 健康檢查回傳：`OK - Current Version: v29.5.243`。
+- 健康檢查回傳：`OK - Current Version: v29.5.252 [2026-06-20 02:28]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
 - `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
 - `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
@@ -58,11 +63,13 @@
 ---
 
 ## 當前狀態 (Current Status)
-- **最後更新時間**: 2026-01-19
-- **最後動作**: 建立開發紀錄檔與狀態追蹤機制。
-- **目前進度**: 基礎建設完成，等待用戶指派新任務。
-- **下一步 (Next Steps)**: 
-    - [x] 等待用戶指令
+- **最後更新時間**: 2026-06-20
+- **最後動作**: 部署 `v29.5.252` 至既有 GAS Webhook，並完成 PDF 索引/Prompt Sheet 同步工具/inline PDF fallback 防護紀錄。
+- **目前進度**: 正式 Webhook 已更新；Drive 手冊索引正常，Gemini URI 快取目前為 0，查手冊時會單本補回或使用 inline PDF fallback。
+- **下一步 (Next Steps)**:
+    - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
+    - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。
+    - [ ] 等 Gemini 配額/檔案 API 恢復後，進一步確認 PDF 深度回答能產出完整手冊答案。
 
 ---
 

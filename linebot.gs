@@ -13,11 +13,12 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.250"; // 2026-06-20 重啟訊息依實際PDF同步狀態顯示
-const BUILD_TIMESTAMP = "2026-06-20 02:08";
+const GAS_VERSION = "v29.5.252"; // 2026-06-20 inline PDF不寫入Cache避免值過大
+const BUILD_TIMESTAMP = "2026-06-20 02:28";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
+const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -3162,6 +3163,19 @@ function persistPdfKbState(kbList) {
   return pdfModels;
 }
 
+function stripInlinePdfDataForCache(files) {
+  return (Array.isArray(files) ? files : []).map((file) => {
+    if (!file) {
+      return file;
+    }
+    const copy = Object.assign({}, file);
+    if (copy.inlineDataBase64) {
+      copy.inlineDataBase64 = "[inline-data-omitted]";
+    }
+    return copy;
+  });
+}
+
 function pdfFileNameMatchesModels(fileName, exactModels) {
   const upperName = String(fileName || "").toUpperCase();
   return (Array.isArray(exactModels) ? exactModels : []).some((model) => {
@@ -3250,11 +3264,27 @@ function recoverRelevantPdfUrisFromDrive(exactModels, primaryModel, limit) {
         name: file.getName(),
         uri: uri,
         mimeType: "application/pdf",
+        source: "file_api",
       });
+    } else if (fileSize <= INLINE_PDF_FALLBACK_MAX_BYTES) {
+      recovered.push({
+        name: file.getName(),
+        inlineDataBase64: Utilities.base64Encode(file.getBlob().getBytes()),
+        mimeType: "application/pdf",
+        source: "inline_fallback",
+      });
+      writeLog(
+        `[PDF Recovery] File API 無 URI，改用 inline PDF fallback: ${file.getName()} (${fileSize} bytes)`,
+      );
+    } else {
+      writeLog(
+        `[PDF Recovery] File API 無 URI，且檔案超過 inline fallback 上限: ${file.getName()} (${fileSize} bytes)`,
+      );
     }
   }
 
-  if (recovered.length > 0) {
+  const uriRecovered = recovered.filter((item) => item.uri);
+  if (uriRecovered.length > 0) {
     const props = PropertiesService.getScriptProperties();
     let currentList = [];
     try {
@@ -3273,12 +3303,12 @@ function recoverRelevantPdfUrisFromDrive(exactModels, primaryModel, limit) {
         byName[item.name] = item;
       }
     });
-    recovered.forEach((item) => {
+    uriRecovered.forEach((item) => {
       byName[item.name] = item;
     });
     persistPdfKbState(Object.keys(byName).map((name) => byName[name]));
     writeLog(
-      `[PDF Recovery] 即時補回手冊 URI: ${recovered
+      `[PDF Recovery] 即時補回手冊 URI: ${uriRecovered
         .map((f) => f.name)
         .join(", ")}`,
     );
@@ -3902,6 +3932,11 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     });
 
     if (initReq.getResponseCode() !== 200) {
+      writeLog(
+        `[Gemini File Upload] start failed ${initReq.getResponseCode()} ${blob.getName()}: ${initReq
+          .getContentText()
+          .substring(0, 240)}`,
+      );
       return null;
     }
 
@@ -3918,6 +3953,11 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     });
 
     if (uploadReq.getResponseCode() !== 200) {
+      writeLog(
+        `[Gemini File Upload] upload failed ${uploadReq.getResponseCode()} ${blob.getName()}: ${uploadReq
+          .getContentText()
+          .substring(0, 240)}`,
+      );
       return null;
     }
 
@@ -3937,6 +3977,9 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     if (state === "ACTIVE") {
       return fileRes.file.uri;
     } else {
+      writeLog(
+        `[Gemini File Upload] processing not active (${state}) ${blob.getName()}`,
+      );
       return null;
     }
   } catch (e) {
@@ -4756,7 +4799,11 @@ function getRelevantKBFiles(
   const cache = CacheService.getScriptCache();
   // v29.5.49: primaryModel defined at top
 
-  cache.put(`${userId}:last_kb_files`, JSON.stringify(filesToAttach), 600);
+  cache.put(
+    `${userId}:last_kb_files`,
+    JSON.stringify(stripInlinePdfDataForCache(filesToAttach)),
+    600,
+  );
   return {
     files: filesToAttach,
     exactModels: exactModels,
@@ -5041,6 +5088,14 @@ function callLLMWithRetry(
                 file_uri: k.uri,
               },
             });
+          } else if (k.inlineDataBase64 && k.inlineDataBase64.length > 0) {
+            parts.push({
+              inline_data: {
+                mime_type: k.mimeType || "application/pdf",
+                data: k.inlineDataBase64,
+              },
+            });
+            writeLog(`[API Attach] 使用 inline PDF fallback: ${k.name}`);
           } else {
             writeLog(`[API Protection] ⚠️ 跳過無效 URI: ${k.name}`);
           }
