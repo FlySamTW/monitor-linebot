@@ -328,14 +328,37 @@ assertStep(
 
 assertStep(
   packageJson.scripts &&
-    /ensure_formal_version_current\.js/.test(packageJson.scripts["test:current"] || ""),
-  "online TestUI regression script must run the formal-version guard first",
+    /run_current_test\.js\s+verify_route_testset_17_single\.js/.test(
+      packageJson.scripts["test:current"] || "",
+    ),
+  "online TestUI regression script must use run_current_test.js",
+);
+
+assertStep(
+  packageJson.scripts &&
+    /run_current_test\.js\s+verify_m7_exact_issue\.js/.test(
+      packageJson.scripts["test:m7"] || "",
+    ),
+  "M7 online regression script must use run_current_test.js",
+);
+
+assertStep(
+  packageJson.scripts &&
+    /run_current_test\.js\s+verify_price_no_number\.js/.test(
+      packageJson.scripts["test:price"] || "",
+    ),
+  "price online regression script must use run_current_test.js",
 );
 
 assertStep(
   packageJson.scripts &&
     packageJson.scripts["check:webhook-version"] === "node ensure_formal_version_current.js",
   "package.json must expose check:webhook-version",
+);
+
+assertStep(
+  fs.existsSync(path.join(root, "test_runner", "run_current_test.js")),
+  "run_current_test.js must exist as the guarded online TestUI wrapper",
 );
 
 console.log("PASS: verify_sop_static_guards");

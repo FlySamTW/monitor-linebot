@@ -49,6 +49,8 @@
 - `tools/sync_prompt_c3.ps1`: 改為必須明確指定 `-PromptPath` 並加上 `-ConfirmOverwrite` 才會寫入 Google Sheet `Prompt!C3`，避免獨立工具被誤執行時覆蓋正式 Prompt。
 - `verify_m7_mute_current.js`: `/重啟` 版本檢查改為讀取 `linebot.gs` 目前 `GAS_VERSION`，避免正式部署更新後仍因測試寫死舊版本而假失敗。
 - `ensure_formal_version_current.js`: 新增 TestUI 線上回歸守門，先比對本機 `GAS_VERSION` 與正式 Webhook `?health=1`，版本不同時拒絕跑線上回歸，避免拿舊部署誤判新版回答。
+- `run_current_test.js`: 新增線上 TestUI 測試包裝器；所有正式網址回歸測試要先通過正式版本比對，才會執行指定 `verify_*.js`。
+- `package.json`: `test:current` / `test:m7` / `test:price` 改走 `run_current_test.js`，避免直接測到舊部署。
 - `verify_sop_static_guards.js`: 新增本機 SOP 靜態守門，檢查部署不覆蓋 Prompt、Prompt 同步需確認、TestUI 線上回歸需版本守門，以及查手冊提醒不得在已查 PDF 或等待選型時出現。
 - 新增 `tools/check_deploy_readiness.ps1`：比對本機 `linebot.gs` 版本、Apps Script 遠端 HEAD、正式 Webhook health、`clasp versions` 數量與目前 deployments，避免 HEAD 已推但正式部署未切換時誤判。
 
