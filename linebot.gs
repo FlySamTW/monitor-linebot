@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.264"; // 2026-06-20 API 忙碌訊息改為客服友善語氣
-const BUILD_TIMESTAMP = "2026-06-20 06:28";
+const GAS_VERSION = "v29.5.265"; // 2026-06-20 API失敗來源防呆與客服語氣補漏
+const BUILD_TIMESTAMP = "2026-06-20 06:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1737,7 +1737,7 @@ function createModelSelectionFlexV2(aliasName, matchedPdfs) {
 
   return {
     type: "flex",
-    altText: `請選擇您的 ${aliasName} 型號`,
+    altText: `請選擇你的 ${aliasName} 型號`,
     contents: {
       type: "bubble",
       size: "giga",
@@ -1762,7 +1762,7 @@ function createModelSelectionFlexV2(aliasName, matchedPdfs) {
           },
           {
             type: "text",
-            text: "請點擊您的型號開頭：",
+            text: "請點擊你的型號開頭：",
             size: "xs",
             color: "#aaaaaa",
             wrap: true,
@@ -2010,7 +2010,7 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
  * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
  */
 function isApiFailureReply(text) {
-  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
+  return /目前請求過於頻繁|已達配額限制|系統暫時忙碌|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
     String(text || ""),
   );
 }
@@ -5081,7 +5081,7 @@ function constructDynamicPrompt(
       ? `${targetModelName} 產品手冊`
       : "產品手冊";
     if (kbFiles.length === 0) {
-      dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認您詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
+      dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認你詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
     } else {
       dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊${
         targetModelName ? ` (${targetModelName})` : ""
@@ -5437,7 +5437,7 @@ function callLLMWithRetry(
         const userContent = payload.contents.find((c) => c.role === "user");
         if (userContent && userContent.parts) {
           const systemNote =
-            "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據您的知識庫回答)";
+            "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據你的知識庫回答)";
           const textPart = userContent.parts.find((p) => p.text);
           if (textPart) {
             textPart.text += systemNote;
@@ -5833,7 +5833,7 @@ function callLLMWithRetry(
       if (code === 400) {
         // v29.3.43: 精確區分 API Key 錯誤與參數錯誤 (Bad Request)
         if (text.includes("API_KEY_INVALID")) {
-          return "您的 API Key 無效，請檢查設定。";
+          return "你的 API Key 無效，請檢查設定。";
         }
         if (text.includes("INVALID_ARGUMENT")) {
           writeLog(`[API 400] 參數錯誤: ${text.substring(0, 200)}`);
@@ -5891,7 +5891,7 @@ function callLLMWithRetry(
   if (lastError) {
     writeLog(`[API Fail] 重試 3 次仍失敗，最後錯誤: ${lastError}`);
     if (forceWebSearch) {
-      return "非常抱歉，網路搜尋服務暫時無法連線。您可以參考上方提供的資料，或稍後再試。";
+      return "非常抱歉，網路搜尋服務暫時無法連線。你可以參考上方提供的資料，或稍後再試。";
     }
     return "⚠️ 系統忙碌中，請稍後再試。";
   }
@@ -8036,7 +8036,7 @@ function handleMessage(event) {
             specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
           }
           
-          finalText = `抱歉，${specHint}需要幫您在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我將為您擴大檢索最新網路資訊與記憶庫答案喔！)`;
+          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)`;
           
           // 清除任何暗號標記，乾淨呈現在 UI 上
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
@@ -13019,7 +13019,7 @@ function determineSearchIntent(msg, models = []) {
       // 若包含無手冊型號，標題降級
       return {
         headerText: "🔍 請選擇型號以查閱說明或規格",
-        footerText: "點選型號後AI將為您深入分析",
+        footerText: "點選型號後 AI 會幫你深入分析",
       };
     }
   }
@@ -13028,7 +13028,7 @@ function determineSearchIntent(msg, models = []) {
   if (m.match(/多少錢|價格|價錢|售價|哪裡買|costco|pchome|momo|通路/)) {
     return {
       headerText: "🔍 請選擇型號以查詢價格/通路",
-      footerText: "將為您搜尋網路公開資訊",
+      footerText: "會幫你搜尋網路公開資訊",
     };
   }
 

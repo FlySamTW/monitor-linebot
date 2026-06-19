@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.264 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.265 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -35,15 +35,16 @@
 - `v29.5.262`: 新增早期時效資訊路由；近期活動/最新上市/CES/延長保固等問題先導官方頁與網路搜尋，不進 Fast Mode 型號泡泡。
 - `v29.5.263`: 型號選擇/補型號回覆不再追加查手冊提醒或查手冊按鈕，避免使用者尚未選型號時流程自相矛盾。
 - `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
+- `v29.5.265`: `isApiFailureReply()` 納入新的客服友善 API 失敗文案，避免「系統暫時忙碌」類訊息被 PDF 模式補上假的官方手冊來源；並清理型號泡泡/網路搜尋提示中的「您」語氣殘留。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - 新增 `tools/check_deploy_readiness.ps1`：比對本機 `linebot.gs` 版本、Apps Script 遠端 HEAD、正式 Webhook health、`clasp versions` 數量與目前 deployments，避免 HEAD 已推但正式部署未切換時誤判。
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
 - 最終正式部署版本：`v29.5.263` (`@1054`)。
-- `v29.5.264` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
+- `v29.5.265` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
 - 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
-- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.264 [2026-06-20 06:28]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
+- Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.265 [2026-06-20 06:45]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
 - 沒有新建 GAS 部署。
 
 ### 驗證
@@ -69,7 +70,8 @@
 - `v29.5.263`：`verify_m7_mute_current.js` 通過；M7 型號選擇回覆不再混入提早查手冊提醒。
 - `v29.5.263`：`verify_route_testset_17_single.js` 通過 17/17；MODEL_SELECT/ASK_MODEL 回覆均不得帶提早查手冊提醒。
 - `v29.5.264`：本機 `node --check` 與 `git diff --check` 通過；正式線上驗證需待刪除舊 GAS 版本後更新既有 deployment。
-- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.264`、遠端 HEAD `v29.5.264`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `v29.5.265`：`verify_api_failure_source_guard.js` 通過；確認新 API 忙碌文案會被視為 API 失敗，不會被補 PDF 來源，且 `linebot.gs` 不含舊內部付費文案。
+- `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.265`、遠端 HEAD `v29.5.265`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
@@ -101,8 +103,8 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 完成 `v29.5.264` API 保護回覆文案修正、`deploy.bat` 版本上限防呆與 `tools/check_deploy_readiness.ps1` 部署檢查工具；`clasp push -f` 已成功。
-- **目前進度**: 正式 Webhook 目前仍為 `v29.5.263`；本機/Apps Script HEAD 已是 `v29.5.264`，但 Apps Script 200 版本上限阻止建立新版本與正式部署切換。
+- **最後動作**: 完成 `v29.5.265` API 失敗來源防呆與客服語氣補漏，新增 `verify_api_failure_source_guard.js`。
+- **目前進度**: 正式 Webhook 目前仍為 `v29.5.263`；本機與 Apps Script 遠端 HEAD 已是 `v29.5.265`，但 Apps Script 200 版本上限仍會阻止建立新版本與正式部署切換。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。
