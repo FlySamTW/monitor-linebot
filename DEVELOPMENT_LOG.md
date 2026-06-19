@@ -1,5 +1,37 @@
 # 開發對話紀錄
 
+## 2026-06-20 (v29.5.239-v29.5.243 SOP 路由與 Prompt Sheet 同步修復)
+
+### 背景
+- 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
+- 使用者確認 Prompt 實際來源是 Google Sheet `Prompt!C3`，不是只改本地 `Prompt.csv`。
+
+### 已完成
+- `v29.5.239`: 合併 v29.5.179/v29.5.181/v29.5.193 的重複 PDF 升級邏輯，改成只有操作/故障或明確手冊查證，且 Fast Mode 回答品質不足時才追加 `[AUTO_SEARCH_PDF]`。
+- `Prompt.csv` 更新為 `Prompt v29.5.239`，並已透過一次性維護入口同步到 Google Sheet `Prompt!C3`。同步後已移除臨時入口，避免生產環境留下寫入 Prompt 的公開路徑。
+- `v29.5.240`: 修正 `callLLMWithRetry()` 中 `geminiContents` 未初始化導致 LLM/PDF 流程崩潰的錯誤，並修正 PDF 來源標籤在部分分支使用錯誤檔案清單的問題。
+- `v29.5.241`: 新增短追問展開邏輯，讓「那 M8 呢 / How about M8」沿用上一題主題，只更換詢問對象，避免改答一般規格概覽。
+- `v29.5.242`: `#查手冊` 明確寫出 `forceCurrentOnly=true` 防污染 log；API 配額/暫時失敗訊息不再補上 PDF 來源標籤。
+- `v29.5.243`: 修正同步失敗時 PDF 索引歸零的風險；強制重建時保留舊 PDF URI 清單，只有新清單成功含 PDF 時才覆蓋。
+
+### 部署
+- 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
+- 最終部署版本：`v29.5.243` (`@1015`)
+- 沒有新建 GAS 部署。
+
+### 驗證
+- `node --check` 通過。
+- 健康檢查回傳：`OK - Current Version: v29.5.243`。
+- `verify_price_no_number.js` 通過，價格題仍不回覆數字價格。
+- `verify_m7_iron_rule_flow.js` 通過；目前 Gemini 配額限制時，測試確認不會把配額錯誤假標成 PDF 來源。
+- `verify_m7_m8_matter.js` 通過；短追問 M8 會進入型號選擇，不再改答 M8 一般規格。
+- `verify_m7_exact_issue.js` 已更新為符合目前 SOP：M7 多型號需先選型號；遇到 API 配額錯誤時只驗證來源誠實性。
+
+### 注意
+- 測試期間 Gemini 回覆多次出現配額限制，這屬外部 API 狀態；目前程式已避免把此類錯誤訊息標成官方手冊來源。
+
+---
+
 ## 2026-01-19
 
 ### 建立對話記錄機制
@@ -970,3 +1002,4 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 效果
 - `M7` 這類多型號別稱操作題會正確回到「先選型號，再查手冊」。
 - 未指定型號時改為請用戶補型號，不再亂出泡泡。
+

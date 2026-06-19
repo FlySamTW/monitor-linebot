@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.238"; // 2026-06-03 擴充圖片讀取與對話歷史整合功能
+const GAS_VERSION = "v29.5.243"; // 2026-06-20 修正同步失敗時 PDF 索引歸零保護
 const BUILD_TIMESTAMP = "2026-05-30 01:28";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2003,10 +2003,19 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
 /**
  * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
  */
+function isApiFailureReply(text) {
+  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
+    String(text || ""),
+  );
+}
+
 function appendPdfSourceTag(text, files, maxCount = 1) {
   let cleaned = String(text || "")
     .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
     .trim();
+  if (isApiFailureReply(cleaned)) {
+    return cleaned;
+  }
   const label = buildPdfSourceLabelFromFiles(files, maxCount);
   if (!label) return cleaned;
   return `${cleaned}\n\n[來源: ${label} (官方手冊PDF)]`;
@@ -2106,6 +2115,67 @@ function isOperationAnswerInsufficient(text) {
     return false;
   }
   return strongUncertainty || !hasSteps;
+}
+
+function shouldEscalateFastAnswerToPdf(intentInfo) {
+  const info = intentInfo || {};
+  if (info.hasAutoPdf || info.hasAutoWeb || info.hasNeedDoc || info.isInPdfMode) {
+    return false;
+  }
+  if (!info.hasPdfForModel) {
+    return false;
+  }
+
+  // v29.5.239: 規格/能力題不因 capabilityIntent 自動升 PDF。
+  // 只有操作/故障題或明確手冊查證題，且 Fast Mode 回答品質不足，才允許升級。
+  const isPdfEligibleIntent =
+    !!info.operationIntent || !!info.manualVerificationIntent;
+  if (!isPdfEligibleIntent) {
+    return false;
+  }
+
+  return isOperationAnswerInsufficient(info.normalizedFastAnswer);
+}
+
+function extractContinuationTargetModel(text) {
+  const q = String(text || "");
+  const match = q.match(
+    /\b(?:M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,3}\d{0,4}[A-Z0-9]*|[A-Z]{1,3}\d{2,3}[A-Z]{1,3}\d{3,4}[A-Z0-9]*)\b/i,
+  );
+  return match ? match[0].toUpperCase() : "";
+}
+
+function isShortModelContinuation(text) {
+  const q = String(text || "").trim();
+  if (!q || q.length > 40) {
+    return false;
+  }
+  if (!extractContinuationTargetModel(q)) {
+    return false;
+  }
+  return /^(?:那|換|改|同樣|一樣|how about|what about|and)\b|(?:呢|的話)[？?]?$/i.test(q);
+}
+
+function expandShortModelContinuation(text, previousTopic) {
+  const original = String(text || "").trim();
+  const topic = String(previousTopic || "").trim();
+  const targetModel = extractContinuationTargetModel(original);
+  if (!targetModel || !topic || !isShortModelContinuation(original)) {
+    return original;
+  }
+
+  const modelLikePattern =
+    /\b(?:M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,3}\d{0,4}[A-Z0-9]*|[A-Z]{1,3}\d{2,3}[A-Z]{1,3}\d{3,4}[A-Z0-9]*)\b/gi;
+  let replaced = false;
+  const rewrittenTopic = topic.replace(modelLikePattern, () => {
+    replaced = true;
+    return targetModel;
+  });
+  const expandedTopic = replaced
+    ? rewrittenTopic
+    : `${topic}（這次對象改為 ${targetModel}）`;
+
+  return `${expandedTopic}\n[System Hint: 使用者原文是「${original}」。這是延續上一題的短追問，請維持上一題主題，只把回答對象改成 ${targetModel}，不要改答一般規格概覽。]`;
 }
 
 function isCapabilityClaimQuery(text) {
@@ -3081,21 +3151,19 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     const oldJson = PropertiesService.getScriptProperties().getProperty(
       CACHE_KEYS.KB_URI_LIST,
     );
-
-    // 如果強制重建，先清理 Gemini 上的舊檔案再清除本地快取
-    if (forceRebuild) {
-      writeLog("[Sync] 強制重建模式，先清理 Gemini 舊檔案...");
-      cleanupOldGeminiFiles(apiKey);
-      PropertiesService.getScriptProperties().deleteProperty(
-        CACHE_KEYS.KB_URI_LIST,
-      );
-      oldKbList = [];
-    } else if (oldJson) {
+    if (oldJson) {
       try {
         oldKbList = JSON.parse(oldJson);
       } catch (e) {
         writeLog("[Sync] 舊快取解析失敗，將重建");
       }
+    }
+    const fallbackKbList = Array.isArray(oldKbList) ? oldKbList.slice() : [];
+
+    // 如果強制重建，不先清掉舊 PDF URI；新清單成功後再覆蓋，避免失敗時歸零
+    if (forceRebuild) {
+      writeLog("[Sync] 強制重建模式：保留舊 PDF 清單，待新清單成功後才覆蓋");
+      oldKbList = [];
     }
 
     // 建立比對 Map
@@ -3471,8 +3539,22 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     }
 
     // v29.5.53: PDF Model Index - 從 PDF 檔名提取型號建立索引
+    const hasPdfInNewKbList = newKbList.some(
+      (file) => file && file.mimeType === "application/pdf",
+    );
+    const hasPdfInFallback = fallbackKbList.some(
+      (file) => file && file.mimeType === "application/pdf",
+    );
+    const kbListToPersist =
+      !hasPdfInNewKbList && hasPdfInFallback ? fallbackKbList : newKbList;
+    if (!hasPdfInNewKbList && hasPdfInFallback) {
+      writeLog(
+        "[Sync Guard v29.5.243] 新 PDF 清單為 0，保留舊 KB_URI_LIST，避免 PDF 索引被覆蓋成 0",
+      );
+    }
+
     let pdfModels = [];
-    newKbList.forEach((file) => {
+    kbListToPersist.forEach((file) => {
       if (file.mimeType === "application/pdf") {
         const fileName = file.name.toUpperCase();
 
@@ -3501,7 +3583,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // 更新 Cache
     PropertiesService.getScriptProperties().setProperty(
       CACHE_KEYS.KB_URI_LIST,
-      JSON.stringify(newKbList),
+      JSON.stringify(kbListToPersist),
     );
 
     // Extract Prompt version and info
@@ -4670,6 +4752,7 @@ function callLLMWithRetry(
   );
 
   // 刪除舊的註解掉的 imageBlob 邏輯
+  const geminiContents = [];
   let first = true;
   effectiveMessages.forEach((msg) => {
     if (msg.role === "system") return;
@@ -5713,6 +5796,24 @@ function handleMessage(event) {
     const isCommand = msg.startsWith("/");
     const isQuickCommand = msg.startsWith("#");
 
+    if (!isCommand && !isQuickCommand && isShortModelContinuation(msg)) {
+      const pendingTopicForContinuation =
+        cache.get(`${userId}:pending_topic`) ||
+        cache.get(`${userId}:last_meaningful_query`) ||
+        "";
+      const expandedMsg = expandShortModelContinuation(
+        msg,
+        pendingTopicForContinuation,
+      );
+      if (expandedMsg && expandedMsg !== msg) {
+        writeLog(
+          `[Topic Continuation v29.5.241] 短追問展開: ${msg} -> ${expandedMsg.substring(0, 120)}...`,
+        );
+        msg = expandedMsg;
+        userMessage = expandedMsg;
+      }
+    }
+
     if (!isCommand) {
       // 2025-12-05: 改用 messageId 進行去重，避免誤判用戶的重複發言 (如 "好的", "謝謝")
       // 若沒有 messageId (舊版相容)，則退回使用內容雜湊
@@ -6337,6 +6438,9 @@ function handleMessage(event) {
       const searchMsg = { role: "user", content: lastQuestion };
       const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
       const hasModelInQuery = checkModelRegex.test(lastQuestion);
+      writeLog(
+        `[Quick Reply v29.5.242] #查手冊 forceCurrentOnly=${hasModelInQuery}（有型號時跳過歷史/Cache 型號注入）`,
+      );
       const kbResult = getRelevantKBFiles(
         [searchMsg],
         kbList,
@@ -6945,56 +7049,27 @@ function handleMessage(event) {
         const normalizedFastAnswer = stripAnySourceTags(
           formatForLineMobile(rawResponse),
         );
-        if (
-          !hasAutoPdf &&
-          !hasAutoWeb &&
-          !hasNeedDoc &&
-          !isInPdfMode &&
-          hasPdfForModel &&
-          operationIntent &&
-          isOperationAnswerInsufficient(normalizedFastAnswer)
-        ) {
-          writeLog(
-            `[Auto Search v29.5.179] 操作/故障題 Fast 回答不足，依通用SOP追加 [AUTO_SEARCH_PDF]`,
-          );
-          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
-        }
-
-        // v29.5.193: 鐵律SOP - 產品能力/規格/操作題，先 QA/規格，再官方手冊查證
-        // 以固定路由鐵律判定，不使用主觀分類。
-        if (
-          !hasAutoPdf &&
-          !hasAutoWeb &&
-          !hasNeedDoc &&
-          !isInPdfMode &&
-          hasPdfForModel &&
-          hasSopModelContext &&
-          (operationIntent || capabilityIntent || manualVerificationIntent)
-        ) {
-          writeLog(
-            `[Auto Search v29.5.193] 命中SOP鐵律(QA/規格→手冊)，追加 [AUTO_SEARCH_PDF]`,
-          );
-          finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
-          forcedSopPdfVerification = true;
-        }
-
         // v29.5.181: 若 QA/Rules 上下文降級（Cache Miss/Fallback）且屬 SOP 查證題型，
         // 為避免 Fast Mode 在資料不完整時直接定論，按 SOP 保守升級到 PDF 驗證。
         const contextHealth = readContextHealth(cache, userId);
-        if (
-          !hasAutoPdf &&
-          !hasAutoWeb &&
-          !hasNeedDoc &&
-          !isInPdfMode &&
-          hasPdfForModel &&
-          contextHealth &&
-          contextHealth.degraded &&
-          (operationIntent || capabilityIntent || manualVerificationIntent)
-        ) {
+        const shouldSopPdfEscalate = shouldEscalateFastAnswerToPdf({
+          hasAutoPdf: hasAutoPdf || /\[AUTO_SEARCH_PDF/i.test(finalText),
+          hasAutoWeb,
+          hasNeedDoc,
+          isInPdfMode,
+          hasPdfForModel,
+          operationIntent,
+          manualVerificationIntent,
+          normalizedFastAnswer,
+        });
+        if (shouldSopPdfEscalate) {
+          const degradedNote =
+            contextHealth && contextHealth.degraded ? "；上下文降級" : "";
           writeLog(
-            `[Auto Search v29.5.181] 上下文降級且命中SOP查證題型，依SOP追加 [AUTO_SEARCH_PDF]`,
+            `[Auto Search v29.5.239] Fast 回答不足${degradedNote}，依 SOP 追加 [AUTO_SEARCH_PDF]`,
           );
           finalText = `${finalText}\n[AUTO_SEARCH_PDF]`;
+          forcedSopPdfVerification = !!hasSopModelContext;
         }
 
         // === [AUTO_SEARCH_PDF] 或 [NEED_DOC] 攔截 ===
@@ -7698,11 +7773,13 @@ function handleMessage(event) {
                   finalText = sanitizeManualDeflection(finalText);
                   finalText = enforceManualUncertaintyGuard(finalText, msg);
                   finalText = enforceManualNumberedList(finalText);
-                  if (filesToAttach.length > 0) {
-                    finalText = appendPdfSourceTag(finalText, filesToAttach, 1);
+                  const deepSourceFiles =
+                    pdfToAttach.length > 0 ? pdfToAttach : filesToAttach;
+                  if (deepSourceFiles.length > 0) {
+                    finalText = appendPdfSourceTag(finalText, deepSourceFiles, 1);
                   }
-                  if (filesToAttach.length > 0) {
-                    finalText = ensurePdfSourceTag(finalText, filesToAttach, 1);
+                  if (deepSourceFiles.length > 0) {
+                    finalText = ensurePdfSourceTag(finalText, deepSourceFiles, 1);
                   }
 
                   // v29.4.33: 設置 PDF 已查詢標記
@@ -12274,6 +12351,30 @@ function getPromptsFromCacheOrSheet() {
   // 寫入 Cache (1小時)
   cache.put("KB_PROMPTS_JSON", JSON.stringify(prompts), 3600);
   return prompts;
+}
+
+function adminUpdatePromptC3(newPrompt) {
+  const promptText = String(newPrompt || "").trim();
+  if (!promptText) {
+    throw new Error("Prompt content is empty");
+  }
+  if (!ss) {
+    throw new Error("Spreadsheet is not available");
+  }
+
+  const sheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+  if (!sheet) {
+    throw new Error("Prompt sheet not found");
+  }
+
+  sheet.getRange("C3").setValue(promptText);
+  CacheService.getScriptCache().remove("KB_PROMPTS_JSON");
+  return {
+    ok: true,
+    cell: "Prompt!C3",
+    length: promptText.length,
+    version: (promptText.match(/Prompt v([\d.]+)/) || [])[1] || "unknown",
+  };
 }
 
 // ════════════════════════════════════════════════════════════════

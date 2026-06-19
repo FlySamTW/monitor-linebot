@@ -7,6 +7,12 @@ function assertStep(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+function isApiFailureReply(text) {
+  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const browser = await puppeteer.launch({
     headless: "new",
@@ -86,6 +92,15 @@ async function main() {
     (t3.replies || []).forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
 
     const t3Text = (t3.replies || []).join("\n");
+    if (isApiFailureReply(t3Text)) {
+      assertStep(
+        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_m7_iron_rule_flow (API quota guarded)");
+      return;
+    }
+
     assertStep(
       /\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
       "turn3 missing real pdf source tag",

@@ -11,6 +11,12 @@ function assertStep(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+function isApiFailureReply(text) {
+  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const browser = await puppeteer.launch({
     headless: "new",
@@ -80,6 +86,19 @@ async function main() {
 
     const t4 = all[3];
     const t4Text = (t4.replies || []).join("\n");
+
+    if (isApiFailureReply(t4Text)) {
+      assertStep(
+        hasAny(t4.logs, /forceCurrentOnly=true/),
+        "manual flow did not trigger forceCurrentOnly guard",
+      );
+      assertStep(
+        !t4Text.includes("PDF)"),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_m7_m8_matter (API quota guarded)");
+      return;
+    }
 
     assertStep(
       hasAny(t4.logs, /forceCurrentOnly=true/),

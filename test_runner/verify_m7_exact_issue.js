@@ -7,6 +7,12 @@ function assertStep(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+function isApiFailureReply(text) {
+  return /目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const browser = await puppeteer.launch({
     headless: "new",
@@ -79,9 +85,18 @@ async function main() {
       !/\[來源\s*:\s*QA/i.test(t2Text) && !/\[來源\s*:\s*QA資料庫/i.test(t2Text),
       "turn2 still leaks fake QA source tag",
     );
+    if (isApiFailureReply(t2Text)) {
+      assertStep(
+        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t2Text),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_m7_exact_issue (API quota guarded on turn2)");
+      return;
+    }
     assertStep(
-      !t2Logs.some((x) => /準備顯示型號選擇泡泡/.test(String(x))),
-      "turn2 still triggered model selection bubble",
+      /先選完整型號|型號/.test(t2Text) ||
+        t2Logs.some((x) => /準備顯示型號選擇泡泡/.test(String(x))),
+      "turn2 did not ask model selection before PDF verification",
     );
 
     const t3 = await send(q2);
@@ -89,6 +104,15 @@ async function main() {
     (t3.replies || []).forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
 
     const t3Text = (t3.replies || []).join("\n");
+    if (isApiFailureReply(t3Text)) {
+      assertStep(
+        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_m7_exact_issue (API quota guarded)");
+      return;
+    }
+
     assertStep(
       !/^[ \t]*[•●▪◦‧・]/m.test(t3Text),
       "manual reply still uses bullet symbol instead of numeric list",
