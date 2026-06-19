@@ -230,6 +230,61 @@ assertStep(
   "full-model request reply should carry a true project-flow source tag",
 );
 
+const priceGuardCode = [
+  `
+  const CACHE_KEYS = { KEYWORD_MAP: "keyword_map" };
+  const PropertiesService = {
+    getScriptProperties() {
+      return {
+        getProperty() {
+          return "";
+        }
+      };
+    }
+  };
+  const writeLog = () => {};
+  `,
+  extractFunction(linebot, "getProductUrl"),
+  extractFunction(linebot, "isPriceQueryIntent_"),
+  extractFunction(linebot, "extractPriceQueryTargets_"),
+  extractFunction(linebot, "buildNoPriceReply_"),
+  `
+  const priceReply = buildNoPriceReply_("請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。");
+  globalThis.__priceGuardResult = {
+    isPrice: isPriceQueryIntent_("G8現在價格多少？"),
+    targets: extractPriceQueryTargets_("請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。"),
+    reply: priceReply
+  };
+  `,
+].join("\n\n");
+const priceGuardContext = {};
+vm.createContext(priceGuardContext);
+vm.runInContext(priceGuardCode, priceGuardContext);
+
+assertStep(
+  priceGuardContext.__priceGuardResult.isPrice === true,
+  "price guard should detect price questions before LLM routing",
+);
+
+assertStep(
+  priceGuardContext.__priceGuardResult.targets.includes("S34BG850SC3"),
+  "price guard should preserve full model tokens like S34BG850SC3",
+);
+
+assertStep(
+  /samsung\.com\/tw\/search\/\?searchvalue=/i.test(
+    priceGuardContext.__priceGuardResult.reply,
+  ),
+  "price guard reply should route users to Samsung official search pages",
+);
+
+assertStep(
+  !/NT\$\s*\d+|\$\s*\d+|\d+\s*元|\d{1,3}(,\d{3}){1,2}/i.test(
+    priceGuardContext.__priceGuardResult.reply,
+  ),
+  "price guard reply must not include numeric money prices",
+);
+
 assertStep(
   /const alreadyConsultedPdf\s*=\s*[\s\S]*?cache\.get\(`\$\{userId\}:pdf_consulted`\)\s*===\s*"true"/.test(
     linebot,

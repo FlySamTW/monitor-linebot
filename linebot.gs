@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.269"; // 2026-06-20 Fast Mode 來源標籤改為精確白名單
-const BUILD_TIMESTAMP = "2026-06-20 05:19";
+const GAS_VERSION = "v29.5.270"; // 2026-06-20 價格防呆保留完整型號搜尋目標
+const BUILD_TIMESTAMP = "2026-06-20 05:23";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3185,7 +3185,7 @@ function extractPriceQueryTargets_(msg) {
   }
   const normalized = msg.toUpperCase().replace(/\s+/g, "");
   const modelRegex =
-    /\b(?:LS\d{2}[A-Z0-9]+CXZW|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,3}|G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|WA\d+[A-Z0-9]*|WD\d+[A-Z0-9]*|VR\d+[A-Z0-9]*)\b/g;
+    /\b(?:LS\d{2}[A-Z0-9]+CXZW|S\d{1,2}[A-Z]{0,3}\d{0,4}[A-Z0-9]*|G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|WA\d+[A-Z0-9]*|WD\d+[A-Z0-9]*|VR\d+[A-Z0-9]*)\b/g;
   const aliasRegex = /\b(?:G5|G6|G7|G8|G9|M5|M7|M8|M9|S8|S9)\b/g;
 
   const models = normalized.match(modelRegex) || [];
