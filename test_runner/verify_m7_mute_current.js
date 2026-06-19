@@ -58,7 +58,7 @@ async function main() {
     console.log("TURN 1 /重啟");
     resetReplies.forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
     assertStep(resetReplies.length === 1, "/重啟 should produce one TestUI reply");
-    assertStep(/系統版本：v29\.5\.253/.test(resetReplies[0]), "reset did not show v29.5.253");
+    assertStep(/系統版本：v29\.5\.259/.test(resetReplies[0]), "reset did not show v29.5.259");
 
     const noModel = await send("沒有遙控器怎麼關聲音");
     const noModelText = (noModel.replies || []).join("\n");
@@ -66,6 +66,10 @@ async function main() {
     console.log(noModelText);
     assertStep(/完整型號/.test(noModelText), "no-model operation question should ask for full model");
     assertStep(!/目前請求過於頻繁|已達配額限制/.test(noModelText), "no-model operation question leaked API quota reply");
+    assertStep(
+      !(noModel.logs || []).some((line) => /使用顯式 Quick Reply:\s*3 個選項/.test(String(line))),
+      "no-model operation question should not show manual quick reply before a PDF-backed model is known",
+    );
 
     const aliasModel = await send("M7沒有遙控器 把聲音關掉");
     const aliasText = (aliasModel.replies || []).join("\n");

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.258"; // 2026-06-20 TestUI截斷與完整版相同時去重
-const BUILD_TIMESTAMP = "2026-06-20 03:58";
+const GAS_VERSION = "v29.5.259"; // 2026-06-20 Quick Reply只在有手冊時顯示查手冊
+const BUILD_TIMESTAMP = "2026-06-20 04:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -8791,15 +8791,11 @@ function handleMessage(event) {
 
           const qrItems = [];
 
-          // v29.5.123: 只有當型號有 PDF 且尚未查過 PDF 時才顯示「查手冊」按鈕
-          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
-          // 無 PDF → 避免使用者點了卻查不到
-          // 已查過 PDF（shouldAttachPdfs/pdf_consulted）→ 不再重複顯示
-          // 無 PDF 時如果是一般閒聊則不顯示；若是明確的操作故障題則顯示，交給 Smart Router 後續查證
+          // v29.5.259: 只有已知此型號有 PDF 時才顯示「查手冊」。
+          // 不用操作題關鍵字硬開按鈕，避免使用者點了才被告知找不到手冊。
           const alreadyConsultedPdf =
             cache.get(`${userId}:pdf_consulted`) === "true";
-          const isOperationIntent = /設定|說明書|手冊|故障|error|安裝|reset|重置|亮燈|閃爍|無法|不能/i.test(msg);
-          if ((hasPdfForModel || isOperationIntent) && !alreadyConsultedPdf) {
+          if (hasPdfForModel && !alreadyConsultedPdf) {
             qrItems.push({
               type: "action",
               action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
