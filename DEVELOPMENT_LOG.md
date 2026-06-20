@@ -45,6 +45,31 @@
 - 本次未修改 Google Sheet `Prompt!C3`。
 - 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
 
+## 2026-06-20 (正式 TestUI 補充回歸與再詳細說明守門)
+
+### 目的
+- 補驗尚未在近期正式版本完整覆蓋的回答正確性流程：價格、長文、QA 編輯、服務時間、未知型號、再詳細說明、網路搜尋泡泡與 QA 草稿防污染。
+
+### 執行與結果
+- `verify_price_no_number.js` 通過：價格題不回覆數字，導向三星官方搜尋頁。
+- `verify_elaboration_limit.js` 通過：若上一則回答是 API 忙碌，`#再詳細說明` 會拒絕展開，避免補出不可靠資訊。
+- `verify_manual_continuity.js` 通過：手冊連續查詢遇 API 忙碌時維持誠實忙碌文案，不假標來源。
+- `verify_long_article_non_project.js` 通過：非本專案科技長文走去廣告摘要，不邀請進 QA 編輯模式。
+- `verify_long_article_qa_mode.js` 通過：本專案相關長文先去廣告摘要，再提示是否進入 QA 編輯模式，並列出操作方式。
+- `verify_web_qr_persistence.js` 通過：網路搜尋 quick reply 遇 API 忙碌時不假裝成功。
+- `verify_service_hours_guard.js` 通過：服務/營業時間題不直接用舊資料回答，導向官方服務頁與網路搜尋。
+- `verify_unknown_model_guard.js` 通過：未知完整型號規格題在 LLM 前攔截；未知型號價格題仍走價格防呆。
+- `verify_62_compact.js` 通過 9/9：範圍、價格、時效、家電允答與型號選擇流程均符合 SOP。
+- `verify_qa_draft_format_guard.js` 與 `verify_qa_flow.js` 通過：QA 草稿不被純數字或無關閒聊污染，可取消不寫入正式 QA。
+- `verify_odyssey_flow.js` 通過：Odyssey 3D 流程在 API 忙碌時維持誠實防呆，不假標來源、不亂展開。
+
+### 測試修正
+- `verify_elaboration_limit.js` 新增 API_GUARDED 分支：初始回答若為系統忙碌，測試改驗證「拒絕展開、不消耗再詳細說明次數、不補不可靠資訊」，而不是硬要求 1/2、2/2 計數。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-06-20 (v29.5.283 早期防呆優先序修正)
 
 ### 問題

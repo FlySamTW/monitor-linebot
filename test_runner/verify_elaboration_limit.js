@@ -10,6 +10,14 @@ function assertStep(ok, message) {
   }
 }
 
+function isApiGuardedReply(replies) {
+  return (replies || []).some((line) =>
+    /系統暫時忙碌|目前請求過於頻繁|已達配額限制|暫時無法處理|網路搜尋服務暫時無法連線/i.test(
+      String(line || ""),
+    ),
+  );
+}
+
 async function main() {
   const TEST_URL =
     "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
@@ -92,6 +100,28 @@ async function main() {
     const t3 = all[2];
     const t4 = all[3];
     const t5 = all[4];
+    const firstAnswer = all[1];
+
+    if (isApiGuardedReply(firstAnswer.replies)) {
+      assertStep(
+        [t3, t4, t5].every((turn) =>
+          hasPattern(turn.replies, /上一則回答是系統暫時忙碌|還沒有成功查到內容|避免補出不可靠資訊/),
+        ),
+        "API guarded branch failed: #再詳細說明 should refuse to expand unavailable content.",
+      );
+      assertStep(
+        [t3, t4, t5].every((turn) =>
+          hasPattern(turn.logs, /上一則為 API 失敗，停止再詳細說明/),
+        ),
+        "API guarded branch failed: logs should record that elaboration was stopped.",
+      );
+      assertStep(
+        ![t3, t4, t5].some((turn) => hasPattern(turn.logs, /再詳細說明計數:/)),
+        "API guarded branch failed: unavailable content must not consume elaboration quota.",
+      );
+      console.log("\nPASS: verify_elaboration_limit (API quota guarded)");
+      return;
+    }
 
     assertStep(
       hasPattern(t3.logs, /再詳細說明計數:\s*1\/2/) &&
@@ -115,4 +145,3 @@ main().catch((e) => {
   console.error(`FAIL: ${e.message}`);
   process.exit(1);
 });
-
