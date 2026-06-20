@@ -104,6 +104,8 @@
 - `tools/check_deploy_readiness.ps1` 部署前阻擋實測輸出：本機 `v29.5.276`、遠端 HEAD `v29.5.271`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`；部署工具會在 `clasp push -f` 前停止，避免半部署。
 - `v29.5.276`：正式部署後 `tools/check_deploy_readiness.ps1` 通過；本機 `v29.5.276`、遠端 HEAD `v29.5.276`、正式 health `v29.5.276`、版本數 `3`。
 - `v29.5.276`：正式 TestUI 回歸通過 `verify_m7_exact_issue.js`（配額防護路徑）、`verify_m7_mute_current.js`、`verify_s9_kvm_alias_guard.js`、`verify_price_no_number.js`。
+- `v29.5.276`：正式 TestUI 分批通過 17 題路由題庫（1、2-6、7-12、13-17）與 `verify_62_compact.js` 9/9；部分題目因外部 Gemini 配額走 `API_GUARDED`，但來源誠實與路由守門符合預期。
+- `verify_route_testset_17_single.js`：新增題號參數（例如 `node run_current_test.js verify_route_testset_17_single.js 13,14,15`）、TestUI 呼叫 timeout 與 iframe 輪詢等待，避免單題卡住時整組回歸沒有證據。
 - `tools/deploy_existing_webhook.ps1`：新增後已納入 `npm run test:static` 靜態守門；確認部署腳本使用既有 Deployment ID + `-V`、不碰 `Prompt!C3`、版本上限時會停止而不是新建部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。

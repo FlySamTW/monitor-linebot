@@ -9,6 +9,16 @@ const DATASET_PATH = path.join(
   "datasets",
   "route_testset_17_single_v1.json",
 );
+const CALL_TIMEOUT_MS = Number(process.env.TESTUI_CALL_TIMEOUT_MS || 90000);
+
+function parseSelectedIds(argv) {
+  const raw = argv
+    .flatMap((x) => String(x || "").split(/[,，]/))
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (raw.length === 0) return null;
+  return new Set(raw.map((x) => Number(String(x).replace(/^Q/i, ""))));
+}
 
 function inferRoute(logs, replies) {
   const rows = (logs || []).map((x) => String(x));
@@ -69,16 +79,26 @@ function hasInternalApiFailureText(replies) {
 }
 
 async function findUiFrame(page) {
-  await new Promise((r) => setTimeout(r, 4000));
-  for (const f of page.frames()) {
-    const input = await f.$("#msg-input").catch(() => null);
-    if (input) return f;
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    for (const f of page.frames()) {
+      const input = await f.$("#msg-input").catch(() => null);
+      if (input) return f;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
   }
   return null;
 }
 
 async function main() {
-  const dataset = JSON.parse(fs.readFileSync(DATASET_PATH, "utf8"));
+  const selectedIds = parseSelectedIds(process.argv.slice(2));
+  let dataset = JSON.parse(fs.readFileSync(DATASET_PATH, "utf8"));
+  if (selectedIds) {
+    dataset = dataset.filter((item) => selectedIds.has(Number(item.id)));
+    if (dataset.length === 0) {
+      throw new Error("No matching route-test cases for selected ids.");
+    }
+  }
   const browser = await puppeteer.launch({
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -90,8 +110,8 @@ async function main() {
     const frame = await findUiFrame(page);
     if (!frame) throw new Error("TestUI frame not found");
 
-    const call = (fn, ...args) =>
-      frame.evaluate(
+    const call = (fn, ...args) => {
+      const request = frame.evaluate(
         (name, argv) =>
           new Promise((resolve, reject) => {
             const runner = google.script.run
@@ -102,12 +122,22 @@ async function main() {
         fn,
         args,
       );
+      const timeout = new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`${fn} timed out after ${CALL_TIMEOUT_MS}ms`)),
+          CALL_TIMEOUT_MS,
+        );
+      });
+      return Promise.race([request, timeout]);
+    };
 
     const results = [];
     const runId = `TEST_ROUTE_17_${Date.now()}`;
 
     for (const item of dataset) {
       const userId = `${runId}_${String(item.id).padStart(2, "0")}`;
+      console.log(`\nQ${item.id} RUN | expected=${item.expected_route}`);
+      console.log(`Q${item.id} USER | ${item.user_question}`);
       await call("clearTestSession", userId);
       await call("testMessage", "/重啟", userId);
       const res = await call("testMessage", item.user_question, userId);
