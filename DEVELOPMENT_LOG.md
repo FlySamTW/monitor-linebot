@@ -1,5 +1,26 @@
 # 開發對話紀錄
 
+## 2026-06-20 (v29.5.282 不存在完整型號早期攔截)
+
+### 問題
+- 使用者輸入看似完整型號但不在目前 QA/CLASS_RULES/PDF 型號索引中時，原流程仍可能進入 Fast Mode LLM，造成一次 Gemini 呼叫費用，且有機會由模型猜出不存在規格。
+
+### 程式修正
+- 新增完整型號早期驗證：`Sxx/LSxx/WA/WD/VR/G90XF` 類型的完整型號若在專案索引找不到，會在 LLM 前直接回覆請確認型號。
+- 短別稱（例如 M7、G8、S9）不套用此攔截，維持既有型號選擇與 QA/規格庫 → PDF → WEB SOP。
+- 攔截回覆固定標註 `[來源:專案型號驗證規則]`，不假標 QA、規格庫、手冊或網路搜尋。
+
+### 測試與部署
+- `npm run test:static` 通過。
+- 已更新既有正式 Webhook Deployment ID 至 `v29.5.282 @1062`；沒有新建 deployment。
+- `tools/check_deploy_readiness.ps1` 通過：本機、Apps Script HEAD 與正式 Webhook health 均為 `v29.5.282 [2026-06-20 17:36]`。
+- `npm run check:webhook-version` 通過。
+- 正式 TestUI `verify_unknown_model_guard.js` 通過：`S32FD812 有耳機孔嗎？規格是什麼？` 回覆找不到該完整型號、標註 `[來源:專案型號驗證規則]`，且 log 出現 `[Unknown Model Guard v29.5.282]`、沒有 `[AI Stats]`/`[AI Raw Response]`。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-06-20 (正式 TestUI 17 題路由題庫回歸)
 
 ### 目的

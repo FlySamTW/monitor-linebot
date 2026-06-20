@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.281"; // 2026-06-20 服務時間不誤判現在時間
-const BUILD_TIMESTAMP = "2026-06-20 16:52";
+const GAS_VERSION = "v29.5.282"; // 2026-06-20 不存在完整型號早期攔截
+const BUILD_TIMESTAMP = "2026-06-20 17:36";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2364,6 +2364,101 @@ function dedupDisplayModels(models, limit = 10) {
     if (!isSubset) dedup.push(m);
   });
   return dedup.slice(0, Math.max(1, Number(limit) || 10));
+}
+
+function extractFullModelLikeTokens(text) {
+  const q = String(text || "").toUpperCase();
+  const tokens = [];
+  const patterns = [
+    /\b(?:LS)?S\d{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{4,16}\b/g,
+    /\b(?:WA|WD|VR)\d{2}[A-Z0-9]{5,}\b/g,
+    /\bG\d{2}[A-Z]{2,}[A-Z0-9]{0,8}\b/g,
+  ];
+
+  patterns.forEach((pattern) => {
+    let match;
+    while ((match = pattern.exec(q)) !== null) {
+      const token = String(match[0] || "").trim().toUpperCase();
+      if (token && !isShortAliasModelToken(token) && !tokens.includes(token)) {
+        tokens.push(token);
+      }
+    }
+  });
+
+  return tokens;
+}
+
+function getKnownModelSearchText() {
+  const props = PropertiesService.getScriptProperties();
+  const parts = [];
+  const appendJsonProperty = (key) => {
+    try {
+      const raw = props.getProperty(key);
+      if (raw) {
+        parts.push(String(raw));
+      }
+    } catch (e) {}
+  };
+
+  appendJsonProperty(CACHE_KEYS.KEYWORD_MAP);
+  appendJsonProperty("PDF_MODEL_INDEX");
+  appendJsonProperty(CACHE_KEYS.PDF_MODEL_INDEX_BACKUP);
+  appendJsonProperty(CACHE_KEYS.KB_URI_LIST);
+  appendJsonProperty(CACHE_KEYS.KB_URI_LIST_BACKUP);
+
+  return parts.join("\n").toUpperCase();
+}
+
+function buildModelLookupVariants(model) {
+  const raw = String(model || "").trim().toUpperCase();
+  const normalized = normalizeModelForDisplay(raw);
+  const variants = [raw, normalized];
+
+  if (/^S\d{2}/.test(normalized)) {
+    variants.push("L" + normalized);
+  }
+  if (/^LS\d{2}/.test(raw)) {
+    variants.push("S" + raw.slice(2));
+  }
+
+  return [...new Set(variants.filter(Boolean))];
+}
+
+function isKnownFullModelToken(model) {
+  const knownText = getKnownModelSearchText();
+  if (!knownText) {
+    // 若索引尚未建立，避免誤擋使用者，交回原本路由。
+    return true;
+  }
+
+  return buildModelLookupVariants(model).some((variant) => {
+    if (knownText.includes(variant)) {
+      return true;
+    }
+    // 使用者少打區域尾碼或尾端版本碼時，只要是既有完整型號前綴就放行。
+    if (variant.length >= 7) {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`${escaped}[A-Z0-9]{1,6}`).test(knownText);
+    }
+    return false;
+  });
+}
+
+function getUnknownFullModelTokens(text) {
+  return extractFullModelLikeTokens(text).filter(
+    (model) => !isKnownFullModelToken(model),
+  );
+}
+
+function buildUnknownFullModelReply(models) {
+  const list = [...new Set(models || [])].join("、");
+  return [
+    `我在目前的 QA、規格庫與手冊索引裡找不到這個完整型號：${list}。`,
+    "",
+    "請先確認型號是否有打錯，或補上產品背貼/外盒上的完整型號；確認後我再依 QA/規格庫先查，仍不足才接著查官方手冊或官方頁面。",
+    "",
+    "[來源:專案型號驗證規則]",
+  ].join("\n");
 }
 
 function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
@@ -6234,6 +6329,33 @@ function handleMessage(event) {
         { role: "assistant", content: serviceHoursReply },
       );
       return;
+    }
+
+    if (!msg.startsWith("#") && msg.length < 500) {
+      const unknownFullModels = getUnknownFullModelTokens(msg);
+      if (unknownFullModels.length > 0) {
+        const unknownModelReply = buildUnknownFullModelReply(unknownFullModels);
+        writeLog(
+          `[Unknown Model Guard v29.5.282] 攔截未登錄完整型號: ${unknownFullModels.join(", ")}`,
+        );
+        replyMessage(replyToken, unknownModelReply);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(
+          userId,
+          unknownModelReply,
+          contextId,
+          "assistant",
+          "",
+        );
+        const unknownModelHistory = getHistoryFromCacheOrSheet(contextId);
+        updateHistorySheetAndCache(
+          contextId,
+          unknownModelHistory,
+          { role: "user", content: msg },
+          { role: "assistant", content: unknownModelReply },
+        );
+        return;
+      }
     }
 
     // v24.3.0: 實時資訊快速回答（日期、時間）

@@ -7,7 +7,7 @@
     "test:current": "node run_current_test.js verify_route_testset_17_single.js",
     "test:m7": "node run_current_test.js verify_m7_exact_issue.js",
     "test:price": "node run_current_test.js verify_price_no_number.js",
-    "test:static": "node verify_api_failure_source_guard.js && node verify_sop_static_guards.js"
+    "test:static": "node verify_api_failure_source_guard.js && node verify_unknown_model_static.js && node verify_sop_static_guards.js"
   },
   "keywords": [],
   "author": "",
