@@ -297,6 +297,13 @@ assertStep(
   "full-model request reply should carry a true project-flow source tag",
 );
 
+assertStep(
+  /function buildNeedApplianceModelForOperationReply[\s\S]*\[來源:專案流程規則\]/.test(
+    linebot,
+  ),
+  "appliance full-model request reply should carry a true project-flow source tag",
+);
+
 const manualDeflectionCode = [
   extractFunction(linebot, "sanitizeManualDeflection"),
   `

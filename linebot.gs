@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.274"; // 2026-06-20 型號泡泡前導文字固定來源
-const BUILD_TIMESTAMP = "2026-06-20 07:15";
+const GAS_VERSION = "v29.5.275"; // 2026-06-20 家電補型號回覆補來源
+const BUILD_TIMESTAMP = "2026-06-20 07:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2154,6 +2154,8 @@ function buildNeedApplianceModelForOperationReply() {
     "這題是三星家電相關問題，不會套用螢幕型號來判斷。",
     "",
     "目前 AI 暫時無法穩定查證，請稍後再試；如果要我精準比對功能或操作方式，也可以補上家電完整型號（例如 WA、WD、VR 開頭的型號）。",
+    "",
+    "[來源:專案流程規則]",
   ].join("\n");
 }
 
