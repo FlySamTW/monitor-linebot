@@ -44,6 +44,17 @@ const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1]
 
 assertStep(localVersion, "linebot.gs must expose GAS_VERSION");
 
+for (const staleMainFile of [
+  "linebot.js",
+  "linebot.gs.bak",
+  "linebot.gs.pre_v295158.bak",
+]) {
+  assertStep(
+    !fs.existsSync(path.join(root, staleMainFile)),
+    `${staleMainFile} must not be kept in the repository; linebot.gs is the only authoritative main GAS source`,
+  );
+}
+
 assertStep(
   developerManual.includes(`完整流程解析 (${localVersion})`) &&
     developerManual.includes(`現行鐵律 SOP（${localVersion}）`),

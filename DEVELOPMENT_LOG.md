@@ -1,5 +1,20 @@
 # 開發對話紀錄
 
+## 2026-06-20 (文件/版本庫衛生：移除舊主程式副本)
+
+### 問題
+- 版本庫仍追蹤 `linebot.js`、`linebot.gs.bak`、`linebot.gs.pre_v295158.bak` 三個 2026/3 的舊主程式副本。
+- 這些檔案已被 `.gitignore` / `.claspignore` 排除，不會推上 GAS，但留在 Git 會讓維護者或其他 IDE/代理誤以為它們也是可修改的正式主程式。
+
+### 處理
+- 從版本庫移除上述三個舊副本；正式 GAS 主程式只保留 `linebot.gs`。
+- `verify_sop_static_guards.js` 新增檢查，若舊副本被重新加入，`npm run test:static` 會失敗。
+
+### 測試與部署
+- `npm run test:static` 通過。
+- 本次沒有修改 `linebot.gs`，因此不需要重新部署 GAS。
+- 本次沒有修改 `Prompt.csv`，也沒有同步或覆蓋 Google Sheet `Prompt!C3`。
+
 ## 2026-06-20 (v29.5.281 服務/營業時間誤判修正)
 
 ### 問題
