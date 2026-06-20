@@ -38,6 +38,7 @@ const syncPrompt = read("tools/sync_prompt_c3.ps1");
 const developmentLog = read("DEVELOPMENT_LOG.md");
 const developerManual = read("程式編寫開發及功能手冊.md");
 const aiContext = read("AI_CONTEXT.md");
+const copilotInstructions = read(".github/copilot-instructions.md");
 const toolsReadme = read("tools/README.md");
 const packageJson = JSON.parse(read("test_runner/package.json"));
 const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1];
@@ -86,6 +87,32 @@ assertStep(
     /Prompt 維護鐵律/.test(aiContext) &&
     /除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`/.test(aiContext),
   "AI_CONTEXT.md must document the current deployment and Prompt maintenance iron rules",
+);
+
+assertStep(
+  /正式 Prompt 位於 Google Sheet `Prompt!C3`/.test(copilotInstructions) &&
+    /`Prompt\.csv` 只是本地鏡像\/人工備份/.test(copilotInstructions) &&
+    /部署流程不得自動同步或覆蓋 `Prompt!C3`/.test(copilotInstructions),
+  ".github/copilot-instructions.md must not direct IDE agents to treat Prompt.csv as the runtime prompt",
+);
+
+assertStep(
+  /deploy_existing_webhook\.ps1/.test(copilotInstructions) &&
+    /clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V <新版本>/.test(
+      copilotInstructions,
+    ) &&
+    /不可只 `clasp push`/.test(copilotInstructions) &&
+    /不可新建正式 deployment/.test(copilotInstructions),
+  ".github/copilot-instructions.md must require updating the existing formal deployment, not creating a new one",
+);
+
+assertStep(
+  /QA Sheet[\s\S]*CLASS_RULES[\s\S]*官方 PDF 手冊[\s\S]*WEB \/ 官方頁[\s\S]*誠實告知無資料/.test(
+    copilotInstructions,
+  ) &&
+    !/LLM 通用知識\s*>\s*PDF/.test(copilotInstructions) &&
+    /不可用 LLM 通用知識編造產品規格/.test(copilotInstructions),
+  ".github/copilot-instructions.md must preserve the project routing SOP and forbid product hallucination",
 );
 
 assertStep(

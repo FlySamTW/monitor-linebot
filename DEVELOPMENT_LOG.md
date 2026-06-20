@@ -1,5 +1,24 @@
 # 開發對話紀錄
 
+## 2026-06-20 (IDE/Copilot 指引對齊現行 SOP)
+
+### 問題
+- `.github/copilot-instructions.md` 仍保留舊規則：把 `Prompt.csv` 寫成 Prompt 修改入口、部署流程未明確使用既有 deployment 的 `-V`、並保留過時的 LLM/手冊路由描述。
+- 這類檔案會被 IDE / Copilot 類工具讀取，若不修正，其他工具可能繼續依舊規則改錯 Prompt 或部署錯 Webhook。
+
+### 處理
+- 重寫 `.github/copilot-instructions.md`，對齊現行鐵律：
+  - 正式 Prompt 是 Google Sheet `Prompt!C3`。
+  - `Prompt.csv` 只是本地鏡像/人工備份。
+  - 程式部署必須更新既有正式 Deployment ID，且使用 `-V <新版本>`。
+  - 回答路由維持 QA / CLASS_RULES → 官方 PDF → WEB / 官方頁 → 誠實無資料。
+- `verify_sop_static_guards.js` 新增 Copilot 指引檢查，防止文件退回舊規則。
+
+### 測試與部署
+- `npm run test:static` 通過。
+- 本次沒有修改 `linebot.gs`，因此不需要重新部署 GAS。
+- 本次沒有修改 `Prompt.csv`，也沒有同步或覆蓋 Google Sheet `Prompt!C3`。
+
 ## 2026-06-20 (文件/版本庫衛生：移除舊主程式副本)
 
 ### 問題

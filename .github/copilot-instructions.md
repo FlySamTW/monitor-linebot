@@ -1,262 +1,96 @@
-# Copilot Instructions - LINE Bot 三星螢幕客服 (GAS)
+# Copilot Instructions - Samsung LINE Bot (GAS)
 
-## ⚠️ 開發鐵律 (Development Iron Rules)
+本檔是給 GitHub Copilot / IDE 代理讀取的專案規則。若與 `程式編寫開發及功能手冊.md` 衝突，以開發手冊與 `linebot.gs` 現況為準。
 
-1. **每次修改代碼後，必須更新 `linebot.gs` 頂部的版本號 (Version)。**
-2. **每次修改完成後，必須執行 `clasp push -f` 推送至 GAS。**
-3. **Prompt 修改必須在 `Prompt.csv` 進行，禁止硬編碼在 `linebot.gs`。**
-4. **競品相關問題、股價投資問題應在 Prompt.csv C3 中配置規則，不要硬編碼檢查。**
-5. **不要隨意新建立 Markdown 檔案，架構文檔已完整，只在必讀區段更新。**
-6. **性能、邏輯架構問題應在既有文檔中記述，不需特別撰寫額外說明。**
-7. **三層記憶架構（Cache/Sheet/API）の實現邏輯不應硬寫在 GAS，應由 Prompt 引導 AI。**
-8. **開發鐵律 - 儲存流程**：當用戶說「儲存」時，必須執行完整部署：① 更新版本號 (`linebot.gs` & `Prompt.csv`) ②`clasp push` ③`clasp version` ④`clasp deploy` ⑤`git commit & push`。這是唯一確保 Webhook 生效的途徑。
+## 開發鐵律
 
-## 🚨 部署鐵律 (DEPLOYMENT IRON RULE)
+1. 程式主檔只有 `linebot.gs`；不要新增或修改 `linebot.js`、`*.bak` 這類舊主程式副本。
+2. 修改 `linebot.gs` 後必須更新 `GAS_VERSION` 與 `BUILD_TIMESTAMP`。
+3. 修改 GAS 程式後必須更新既有正式 Deployment ID，不可只 `clasp push`，也不可新建正式 deployment。
+4. 正式 Prompt 位於 Google Sheet `Prompt!C3`；`Prompt.csv` 只是本地鏡像/人工備份。
+5. 部署流程不得自動同步或覆蓋 `Prompt!C3`。只有使用者明確要求改 Prompt 時，才可用受保護工具同步，且必須告知使用者。
+6. 不要把產品規格、價格、通路、活動、服務時間等具體答案硬寫在程式；程式只做通用路由、防呆、來源與格式守門。
+7. 回答邏輯與測試要以實際 TestUI / 正式 Webhook 行為為準，不要只看本機函式就宣稱完成。
 
-**⚠️ 只執行 `clasp push` 不會更新 LINE Webhook！必須完整執行以下流程：**
+## 正式部署流程
 
-```bash
-# 🔥 完整部署一行指令 (每次修改後必須執行)：
-clasp push -f; clasp version "v29.x.xxx 描述"; clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+使用既有部署腳本：
 
-# Deployment ID (固定值，勿修改)：
-# AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy_existing_webhook.ps1 -VersionLabel "v29.x.xxx 說明"
 ```
 
-**❌ 錯誤做法**：只執行 `clasp push` → LINE 完全無反應
-**✅ 正確做法**：push → version → deploy 三步驟缺一不可
+部署腳本必須做到：
 
-## 專案概述
+1. `clasp push -f`
+2. `clasp version`
+3. `clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA -V <新版本>`
+4. 驗證正式 `?health=1`
 
-Google Apps Script (GAS) 專案，整合 LINE Messaging API + Gemini 2.5 Flash，為台灣三星電腦螢幕提供 AI 客服。
+部署後至少執行：
 
-**核心架構**: Brain-First Architecture（Version 22.0.0）
-**自動召喚機制**: `[AUTO_SEARCH_PDF]` 暗號觸發自動深度搜尋
-
-## 關鍵角色
-
-- **Sam**：開發者，同時也是群組中的真人客服。當 AI 無法回答時，會引導使用者「找 Sam」
-
-## 程式架構（Brain-First）
-
-```
-linebot.gs 區塊順序（約 700 行）：
-├── 0. 全域設定 (CONFIG, SHEET_NAMES, CACHE_KEYS)
-├── 1. BRAIN LAYER - AI 大腦層 ⭐ 最重要
-│   ├── aiRouter() - 智慧路由決策
-│   ├── checkDirectDeepSearch() - 直通車檢查
-│   ├── buildSystemPrompt() - 動態 Prompt 注入
-│   ├── buildKeywordMap() - KEYWORD_MAP 建構
-│   ├── getRelevantKBFiles() - PDF 智慧選擇
-│   └── checkAutoSearchSignal() - [AUTO_SEARCH_PDF] 攔截
-├── 2. CORE LAYER - 核心業務層
-├── 3. COMMAND LAYER - 指令處理層
-├── 4. DATA LAYER - 資料存取層
-├── 5. SYNC LAYER - 知識庫同步層
-├── 6. UTILITY LAYER - 工具函數層
-├── 7. RECORD MODE LAYER - 建檔模式層
-└── 8. TRIGGERS - 觸發器設定
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\check_deploy_readiness.ps1
+cd test_runner
+npm run check:webhook-version
 ```
 
-## 知識庫分層架構
+## Prompt 與 Google Sheet
 
-| 資料源          | 用途                                  | 優先級    | 觸發時機          |
-| --------------- | ------------------------------------- | --------- | ----------------- |
-| **QA Sheet**    | 精選問答，高命中率的常見問題          | 🥇 最優先 | 永遠載入          |
-| **CLASS_RULES** | 型號規格 + 術語定義，建立 KEYWORD_MAP | 🥈 第二   | 永遠載入          |
-| **PDF 手冊**    | 詳細操作步驟、OSD 路徑、故障排除      | 🥉 第三   | 自動召喚/深度搜尋 |
+- 正式執行 Prompt：Google Sheet `Prompt` 工作表 `C3`。
+- 本地 `Prompt.csv`：只作鏡像、備份或人工貼回來源。
+- 一般程式部署不會、也不應該同步 Prompt。
+- 若明確要同步 Prompt，使用：
 
-### 資料用途說明
-
-- **QA**：已驗證的問答對，AI 可直接引用回答
-- **CLASS_RULES**：
-  - `LS` 開頭 → 機型硬體規格（耳機孔、解析度、Hz 等）
-  - 其他 → 術語定義（Odyssey、OLED、1000R 等）
-  - 自動生成 `KEYWORD_MAP` 供 RAG 擴充查詢
-- **PDF**：操作手冊，用於「怎麼設定 XXX」這類需要步驟的問題
-
-## 架構關鍵點
-
-### 單一入口檔案 `linebot.gs`
-
-- 所有邏輯集中於此，約 700 行
-- **版本規範**：強制 Block Style 展開，拒絕單行縮寫
-- 區塊以 `// ========` 註解分隔（共 8 個主要區塊）
-
-### 資料流
-
-```
-LINE Webhook → doPost() → handleMessage() → callChatGPTWithRetry()
-                                                    ↓
-                                           getRelevantKBFiles() ← KEYWORD_MAP
-                                                    ↓
-                                              Gemini API + PDF/Sheet
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -PromptPath .\Prompt.csv -ConfirmOverwrite
 ```
 
-### 知識庫同步 (`syncGeminiKnowledgeBase`)
+同步 Prompt 後必須讓使用者知道，並用 `/重啟` 或相關健康檢查確認指令版本。
 
-- **觸發**：`/重啟` 指令或 47 小時自動排程
-- **資料分流**：`LS` 開頭 → 機型規格 / 其他 → 通用定義
-- PDF 使用 Resumable Upload，上傳後等待 `ACTIVE` 狀態
+## 回答路由 SOP
 
-## 編碼規範
+核心順序：
 
-### GAS 特殊語法
+1. QA Sheet
+2. CLASS_RULES / 規格庫
+3. 官方 PDF 手冊
+4. WEB / 官方頁
+5. 誠實告知無資料
 
-```javascript
-// 正確：使用 PropertiesService 存取設定
-const apiKey =
-  PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+規則：
 
-// 正確：使用 LockService 防止並發
-const lock = LockService.getScriptLock();
-if (!lock.tryLock(120000)) return;
+1. Fast Mode 先用 QA + CLASS_RULES。
+2. 操作、故障、設定、明確查手冊題，若 Fast Mode 沒有可信 QA/規格答案，才升級 PDF。
+3. 規格/能力題不可只因為「有 PDF」就自動查 PDF；若 QA/規格庫可回答，應避免多餘二次 API 成本。
+4. 需要精準型號而使用者只問系列別稱時，先讓使用者選完整型號。
+5. PDF 模式已查手冊時，文末不可再問「要不要幫你查手冊」。
+6. 不可用 LLM 通用知識編造產品規格、操作步驟、價格、通路、服務時間或官方活動。
+7. 回覆必須標註真實來源，例如 `[來源:QA]`、`[來源:規格庫]`、`[來源:xxx.pdf (官方手冊PDF)]`、`[來源:網路搜尋]`、`[來源:專案流程規則]`。
 
-// 正確：使用 CacheService 短期快取 (最長 6 小時)
-CacheService.getScriptCache().put(key, value, 3600);
+## 測試守門
+
+修改後至少跑：
+
+```powershell
+cd test_runner
+npm run test:static
 ```
 
-### 常數命名
+若有部署正式 Webhook，線上測試必須透過版本守門：
 
-- Sheet 名稱：`SHEET_NAMES.QA`, `SHEET_NAMES.CLASS_RULES`
-- 快取鍵值：`CACHE_KEYS.KB_URI_LIST`, `CACHE_KEYS.KEYWORD_MAP`
-- 設定：`CONFIG.MODEL_NAME`, `CONFIG.MAX_OUTPUT_TOKENS`
-
-### 必要的 Script Properties
-
-| Key               | 必要 | 說明                      |
-| ----------------- | ---- | ------------------------- |
-| `GEMINI_API_KEY`  | ✅   | Gemini API 金鑰           |
-| `TOKEN`           | ✅   | LINE Channel Access Token |
-| `DRIVE_FOLDER_ID` | 選填 | PDF 手冊資料夾            |
-
-## 三階段 AI 策略 + 自動召喚機制
-
-### 流程圖
-
-```
-使用者訊息
-    ↓
-aiRouter() 判斷路由
-    ├── DIRECT (直通車關鍵字) → 強制附帶 PDF
-    ├── DEEP (使用者輸入 1/深度) → 附帶 PDF
-    └── FAST (預設) → 只用 Sheet
-           ↓
-    callGeminiWithRoute()
-           ↓
-    AI 回應包含 [AUTO_SEARCH_PDF]?
-        ├── 是 → 自動重試 (isRetry=true) → 附帶 PDF
-        └── 否 → 直接回覆使用者
+```powershell
+cd test_runner
+node run_current_test.js <verify_script.js>
 ```
 
-### 關鍵參數
+不要直接跑正式網址測試後就宣稱新版通過；必須先確認正式 health 版本等於本機 `linebot.gs`。
 
-- `isRetry`: 防止無限循環，重試模式下禁止再輸出 `[AUTO_SEARCH_PDF]`
-- 直通車關鍵字: `G90XF`, `G95SC`, `G80SD`, `G81SF`, `ViewFinity`, `Smart Monitor`, `OLED`, `Odyssey3D`
+## 資料檔角色
 
-### 直通車（強制深度）
+- `QA.csv`：本地鏡像；正式 QA 在 Google Sheet `QA`。
+- `CLASS_RULES.csv`：本地鏡像；正式規格/關鍵字在 Google Sheet `CLASS_RULES`。
+- `Prompt.csv`：本地鏡像；正式 Prompt 在 Google Sheet `Prompt!C3`。
+- `TestUI.html`：正式測試介面，部署到 GAS 後供 TestUI 回歸使用。
 
-```javascript
-// 在 checkDirectDeepSearch() 中的關鍵字
-const strongKeywords = [
-  "G90XF",
-  "G95SC",
-  "G80SD",
-  "G81SF",
-  "ViewFinity",
-  "Smart Monitor",
-  "OLED",
-  "Odyssey3D",
-];
-```
-
-## CLASS_RULES.csv 格式
-
-```csv
-"關鍵字,定義/類型,備註,完整說明"
-"Odyssey3D,型號辨識,裸視3D電競螢幕(G90XF),..."
-"LS32DG802SCXZW,型號：G80SD,32吋Odyssey OLED G8...,詳細規格..."
-```
-
-- **分流規則**：`LS` 開頭 → 機型規格區 / 其他 → 定義區
-- 關鍵字會自動建立 `KEYWORD_MAP` 供 RAG 擴充查詢
-
-## 指令系統
-
-| 指令           | 功能                  |
-| -------------- | --------------------- |
-| `/重啟`        | 清除對話 + 同步知識庫 |
-| `/紀錄 <內容>` | 進入建檔模式          |
-| `/紀錄`        | 存檔或自動整理 QA     |
-| `/取消`        | 退出建檔模式          |
-
-## 文字格式化規則
-
-- `formatForLineMobile()`：移除 Markdown、轉全形標點、`->` 改 `→`
-- `sanitizeForSheet()`：移除換行、逗號轉全形，供 Sheet 單欄儲存
-- 句尾強制換行（`。！？` 後加 `\n\n`）
-
-## 除錯與日誌
-
-- 所有日誌寫入 `LOG` Sheet：`writeLog("[Tag] message")`
-- 對話紀錄寫入 `所有紀錄` Sheet
-- 事件去重：`isDuplicateEvent()` 使用 60 秒快取
-
-## 常見修改情境
-
-### 新增產品型號
-
-1. 編輯 `CLASS_RULES.csv` 新增規格行
-2. 執行 `/重啟` 同步知識庫
-
-### 調整 AI 行為
-
-- 修改 `Prompt.csv` 的 C3 儲存格（System Prompt）
-- Temperature 在 B3 儲存格（建議 0.6）
-
-### 新增直通車關鍵字
-
-```javascript
-// 在 isDirectDeepSearch() 中新增
-const strongKeywords = ["G90XF", "G95SC", "G80SD", "G81SF", "新關鍵字"];
-```
-
-## LLM 回答邏輯 (Prompt.csv C3)
-
-### 核心原則
-
-1. **硬體規格**：必須從 CLASS_RULES 交叉驗證，規格清單沒寫 = 沒有此功能
-2. **操作步驟**：Sheet 沒有就加 `[NEED_DOC]`，觸發深度搜尋
-3. **查無資料**：直接引導找 Sam，禁止瞎掰
-
-### 回答策略
-
-| 情境                | 處理方式                       |
-| ------------------- | ------------------------------ |
-| 模糊型號 (如「G8」) | 列出所有 G8 型號，詢問是哪一款 |
-| 規格衝突            | 保守回答「不確定，問 Sam」     |
-| 商業機密            | 幽默拒絕                       |
-| 連續追問無解        | 第四輪後引導找 Sam             |
-
-### 禁止事項
-
-- 禁止使用「您」，只能用「你」
-- 禁止提供 PDF/QA 以外的建議
-- 禁止概括回答「G8 系列都有...」（不同型號規格可能不同）
-
-## 本地開發工具 (tools/)
-
-### PDF 關鍵字擷取
-
-```bash
-pip install pymupdf
-python tools/pdf_keyword_extractor.py "D:\Samsung_Manuals\" -o keywords.json
-```
-
-### Google Sheet 同步
-
-```bash
-pip install google-api-python-client google-auth
-python tools/sheet_sync.py -s SHEET_ID read CLASS_RULES
-python tools/sheet_sync.py -s SHEET_ID add-qa -q "問題" -a "答案"
-```
+若修改 CSV 鏡像，必須告知使用者需要貼回或同步到對應 Google Sheet，否則正式 LINE Bot 不一定會讀到。
