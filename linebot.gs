@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.277"; // 2026-06-20 長文 QA 草稿先正規化
-const BUILD_TIMESTAMP = "2026-06-20 15:22";
+const GAS_VERSION = "v29.5.279"; // 2026-06-20 QA 建檔無關內容防污染
+const BUILD_TIMESTAMP = "2026-06-20 16:11";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -10093,6 +10093,24 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     }
 
     // 正常修改模式
+    if (isStandaloneDraftChoiceNumber(feedback)) {
+      replyMessage(
+        replyToken,
+        "目前這份草稿沒有等待 1/2/3 選項喔。\n\n如果要修改 QA，請直接輸入要補充或改寫的內容；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
+      );
+      writeLog(`[DraftMod Reply] 忽略非選擇狀態的純數字: ${feedback}`);
+      return;
+    }
+
+    if (!isDraftFeedbackLikelyRelevant(feedback, currentDraft)) {
+      replyMessage(
+        replyToken,
+        "這句看起來不像是在修改目前這筆 QA，我先不寫進草稿，避免污染資料庫。\n\n如果你要修改，請直接說要新增、刪除或改成什麼；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
+      );
+      writeLog(`[DraftMod Reply] 忽略疑似無關草稿修改: ${feedback}`);
+      return;
+    }
+
     writeLog(
       `[DraftMod] 原始內容: ${(currentDraft.originalContent || "").substring(
         0,
@@ -10115,6 +10133,9 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     );
 
     writeLog(`[DraftMod] 新 QA: ${newQA.substring(0, 500)}`);
+    if (isOneLineQaText(newQA)) {
+      newQA = normalizeOneLineQaText(newQA);
+    }
 
     // 更新 draft
     var newDraft = {
@@ -10752,7 +10773,11 @@ function callGeminiToPolish(input, userId = null) {
     }
 
     // 清理多餘的換行和空白，並附加警告訊息 (如果有)
-    return warningMsg + rawText.trim().replace(/[\r\n]+/g, " ");
+    const cleaned = rawText.trim().replace(/[\r\n]+/g, " ");
+    const normalized = isOneLineQaText(cleaned)
+      ? normalizeOneLineQaText(cleaned)
+      : cleaned;
+    return warningMsg + normalized;
   } catch (e) {
     writeLog(`[Polish Error] ${e.message}`);
     // 任何例外都以降級格式化繼續流程
@@ -10789,7 +10814,8 @@ function callGeminiToModify(currentText, instruction) {
         const messages = [{ role: "user", parts: [{ text: prompt }] }];
         // 使用 callOpenRouter (不帶 System Prompt，因為這裡 prompt 包含了所有指示)
         const responseText = callOpenRouter(messages, 0.4);
-        return responseText.trim().replace(/[\r\n]+/g, " ");
+        const cleaned = responseText.trim().replace(/[\r\n]+/g, " ");
+        return isOneLineQaText(cleaned) ? normalizeOneLineQaText(cleaned) : cleaned;
       } catch (orErr) {
         writeLog(
           `[Modify OpenRouter Fail] ${orErr.message}, Fallback to Gemini`,
@@ -10876,7 +10902,8 @@ function callGeminiToModify(currentText, instruction) {
       return simpleModifyFallback(currentText, instruction);
     }
 
-    return rawText.trim().replace(/[\r\n]+/g, " ");
+    const cleaned = rawText.trim().replace(/[\r\n]+/g, " ");
+    return isOneLineQaText(cleaned) ? normalizeOneLineQaText(cleaned) : cleaned;
   } catch (e) {
     writeLog(`[Modify Error] ${e.message}`);
     return simpleModifyFallback(currentText, instruction);
@@ -10907,7 +10934,9 @@ function simplePolishFallback(input) {
 
 // 降級：智慧合併，嘗試理解用戶意圖
 function simpleModifyFallback(currentText, instruction) {
-  const base = (currentText || "").trim();
+  const base = isOneLineQaText(currentText)
+    ? normalizeOneLineQaText(currentText)
+    : (currentText || "").trim();
   const ins = (instruction || "").trim();
   if (!base) return simplePolishFallback(ins);
   if (!ins) return base;
@@ -12962,23 +12991,84 @@ function ensureQuestionMark(text) {
 }
 
 function isOneLineQaText(text) {
-  return /\s*\/\s*A[:：]/.test(String(text || ""));
+  return !!extractQaPartsFromText(text);
 }
 
 function normalizeOneLineQaText(text) {
   const raw = String(text || "").replace(/[\r\n]+/g, " ").trim();
-  const m = raw.match(/^(.*?)\s*\/\s*A[:：]\s*(.*)$/);
-  if (!m) return raw;
+  const parts = extractQaPartsFromText(raw);
+  if (!parts) return raw;
 
-  let q = m[1]
+  let q = parts.question
     .replace(/^【[^】]+】\s*/g, "")
     .replace(/^問題[:：]\s*/g, "")
+    .replace(/^這是測試問題[:：]\s*/g, "")
     .trim();
-  let a = m[2].replace(/^答案[:：]\s*/g, "").trim();
+  let a = parts.answer
+    .replace(/^(?:A|答案)[:：]\s*/gi, "")
+    .replace(/。{2,}/g, "。")
+    .trim();
 
   q = ensureQuestionMark(q);
   if (!a) a = "待補";
   return `${q} / A：${a}`;
+}
+
+function extractQaPartsFromText(text) {
+  const raw = String(text || "").replace(/[\r\n]+/g, " ").trim();
+  if (!raw) return null;
+
+  let m = raw.match(/^(.*?)\s*\/\s*A[:：]\s*(.*)$/i);
+  if (m && m[1] && m[2] !== undefined) {
+    return { question: m[1].trim(), answer: m[2].trim() };
+  }
+
+  m = raw.match(/^(.*?[?？])\s*(?:A|答案)[:：]\s*(.*)$/i);
+  if (m && m[1] && m[2] !== undefined) {
+    return { question: m[1].trim(), answer: m[2].trim() };
+  }
+
+  return null;
+}
+
+function isStandaloneDraftChoiceNumber(text) {
+  const cleaned = String(text || "").trim().replace(/[\s.、️⃣]/g, "");
+  return /^[123１２３一二三]$/.test(cleaned);
+}
+
+function isDraftFeedbackLikelyRelevant(feedback, currentDraft) {
+  const fb = String(feedback || "").trim();
+  if (!fb) return false;
+  if (fb.length > 40) return true;
+  if (/(補充|加上|加入|新增|改成|改為|修改|修正|刪除|移除|換成|應該|不對|錯了|答案|問題|型號|規格|步驟|說明|來源|保留)/i.test(fb)) {
+    return true;
+  }
+
+  const base = `${currentDraft && currentDraft.currentQA ? currentDraft.currentQA : ""}\n${
+    currentDraft && currentDraft.originalContent ? currentDraft.originalContent : ""
+  }`;
+  const fbTokens = extractDraftGuardTokens(fb);
+  const baseTokens = extractDraftGuardTokens(base);
+  for (let i = 0; i < fbTokens.length; i++) {
+    if (baseTokens.indexOf(fbTokens[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function extractDraftGuardTokens(text) {
+  const raw = String(text || "").toUpperCase();
+  const tokens = [];
+  const latin = raw.match(/[A-Z0-9]{2,}/g) || [];
+  for (let i = 0; i < latin.length; i++) tokens.push(latin[i]);
+
+  const cjk = raw.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  for (let j = 0; j < cjk.length; j++) {
+    const phrase = cjk[j];
+    for (let k = 0; k <= phrase.length - 2; k++) {
+      tokens.push(phrase.substring(k, k + 2));
+    }
+  }
+  return tokens;
 }
 
 function ensureArticleCleanOutputFormat(aiText, originalText) {
