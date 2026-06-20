@@ -1,5 +1,24 @@
 # 開發對話紀錄
 
+## 2026-06-20 (v29.5.283 早期防呆優先序修正)
+
+### 問題
+- v29.5.282 的不存在完整型號早期攔截放在價格/時效/範圍 guard 前面，可能讓「未知型號 + 價格」題先被型號驗證攔截，而不是照專案鐵律導三星官方搜尋且不回覆數字價格。
+
+### 程式修正
+- 將 Unknown Model Guard 移到範圍、時效資訊、價格防呆之後，仍保留在 LLM 與 PDF 路由之前。
+- 一般不存在完整型號規格題仍會被攔截；價格題則優先走價格防呆。
+
+### 測試與部署
+- `npm run test:static` 通過。
+- 已更新既有正式 Webhook Deployment ID 至 `v29.5.283 @1063`；沒有新建 deployment。
+- `tools/check_deploy_readiness.ps1` 通過：本機、Apps Script HEAD 與正式 Webhook health 均為 `v29.5.283 [2026-06-20 18:05]`。
+- `npm run check:webhook-version` 通過。
+- 正式 TestUI `verify_unknown_model_guard.js` 通過：`S32FD812 有耳機孔嗎？規格是什麼？` 走 `[來源:專案型號驗證規則]`；`S32FD812 現在價格多少？` 走 `[來源:三星官網]` 並導到三星官方搜尋頁，不報數字價格。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
 ## 2026-06-20 (v29.5.282 不存在完整型號早期攔截)
 
 ### 問題

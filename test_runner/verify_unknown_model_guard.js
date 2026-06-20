@@ -78,12 +78,43 @@ async function main() {
       "reply must not invent specs for an unknown model",
     );
     assertStep(
-      logs.some((line) => /\[Unknown Model Guard v29\.5\.282\]/.test(String(line))),
+      logs.some((line) => /\[Unknown Model Guard v29\.5\.283\]/.test(String(line))),
       "log should show the unknown model guard, proving no LLM answer path was used",
     );
     assertStep(
       !logs.some((line) => /\[AI Stats\]|\[AI Raw Response\]/.test(String(line))),
       "unknown model guard should return before any Gemini call",
+    );
+
+    const priceUserId = `TEST_UNKNOWN_MODEL_PRICE_PRIORITY_${Date.now()}`;
+    const priceQuestion = "S32FD812 現在價格多少？";
+    await call(frame, "clearTestSession", priceUserId);
+    const priceRes = await call(frame, "testMessage", priceQuestion, priceUserId);
+    const priceReplies = Array.isArray(priceRes && priceRes.replies)
+      ? priceRes.replies
+      : [];
+    const priceLogs = Array.isArray(priceRes && priceRes.logs) ? priceRes.logs : [];
+    const priceText = priceReplies.join("\n\n");
+
+    console.log(`Q: ${priceQuestion}`);
+    console.log(priceText);
+
+    assertStep(priceReplies.length > 0, "price-priority case returned no reply");
+    assertStep(
+      /samsung\.com\/tw\/search\/\?searchvalue=/i.test(priceText),
+      "unknown model price question should still route to Samsung official search",
+    );
+    assertStep(
+      !/\[來源:專案型號驗證規則\]/.test(priceText),
+      "price question should not be intercepted by unknown-model validation first",
+    );
+    assertStep(
+      priceLogs.some((line) => /\[Price Guard v29\.5\.157\]/.test(String(line))),
+      "price guard should run before unknown-model validation for price questions",
+    );
+    assertStep(
+      !priceLogs.some((line) => /\[Unknown Model Guard v29\.5\.283\]/.test(String(line))),
+      "unknown-model guard should not run after price guard returns",
     );
 
     console.log("PASS: verify_unknown_model_guard");

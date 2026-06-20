@@ -28,9 +28,21 @@ function extractFunction(source, functionName) {
   throw new Error(`${functionName} closing brace not found`);
 }
 
-const guardIndex = linebot.indexOf("[Unknown Model Guard v29.5.282]");
+const guardIndex = linebot.indexOf("[Unknown Model Guard v29.5.283]");
+const scopeGuardIndex = linebot.indexOf("[Scope Guard v29.5.156]");
+const timelyGuardIndex = linebot.indexOf("[Force Web Intent v29.5.156]");
+const priceGuardIndex = linebot.indexOf("[Price Guard v29.5.157]");
 const firstLlmIndex = linebot.indexOf("callLLMWithRetry", linebot.indexOf("function handleMessage"));
 assertStep(guardIndex > 0, "unknown model guard log marker must exist");
+assertStep(scopeGuardIndex > 0, "scope guard marker must exist");
+assertStep(timelyGuardIndex > 0, "timely web-info guard marker must exist");
+assertStep(priceGuardIndex > 0, "price guard marker must exist");
+assertStep(
+  scopeGuardIndex < guardIndex &&
+    timelyGuardIndex < guardIndex &&
+    priceGuardIndex < guardIndex,
+  "scope/timely/price guards must run before unknown full-model validation",
+);
 assertStep(
   firstLlmIndex > guardIndex,
   "unknown full model guard must run before the first LLM call in handleMessage",

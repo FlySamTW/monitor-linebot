@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.282"; // 2026-06-20 不存在完整型號早期攔截
-const BUILD_TIMESTAMP = "2026-06-20 17:36";
+const GAS_VERSION = "v29.5.283"; // 2026-06-20 早期防呆優先序修正
+const BUILD_TIMESTAMP = "2026-06-20 18:05";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6331,33 +6331,6 @@ function handleMessage(event) {
       return;
     }
 
-    if (!msg.startsWith("#") && msg.length < 500) {
-      const unknownFullModels = getUnknownFullModelTokens(msg);
-      if (unknownFullModels.length > 0) {
-        const unknownModelReply = buildUnknownFullModelReply(unknownFullModels);
-        writeLog(
-          `[Unknown Model Guard v29.5.282] 攔截未登錄完整型號: ${unknownFullModels.join(", ")}`,
-        );
-        replyMessage(replyToken, unknownModelReply);
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(
-          userId,
-          unknownModelReply,
-          contextId,
-          "assistant",
-          "",
-        );
-        const unknownModelHistory = getHistoryFromCacheOrSheet(contextId);
-        updateHistorySheetAndCache(
-          contextId,
-          unknownModelHistory,
-          { role: "user", content: msg },
-          { role: "assistant", content: unknownModelReply },
-        );
-        return;
-      }
-    }
-
     // v24.3.0: 實時資訊快速回答（日期、時間）
     // 不需要問 AI，直接回答準確資訊
     // v24.3.0: 實時資訊快速回答（日期、時間）
@@ -6763,6 +6736,34 @@ function handleMessage(event) {
       );
       return;
     }
+
+    if (!msg.startsWith("#") && msg.length < 500) {
+      const unknownFullModels = getUnknownFullModelTokens(msg);
+      if (unknownFullModels.length > 0) {
+        const unknownModelReply = buildUnknownFullModelReply(unknownFullModels);
+        writeLog(
+          `[Unknown Model Guard v29.5.283] 攔截未登錄完整型號: ${unknownFullModels.join(", ")}`,
+        );
+        replyMessage(replyToken, unknownModelReply);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(
+          userId,
+          unknownModelReply,
+          contextId,
+          "assistant",
+          "",
+        );
+        const unknownModelHistory = getHistoryFromCacheOrSheet(contextId);
+        updateHistorySheetAndCache(
+          contextId,
+          unknownModelHistory,
+          { role: "user", content: msg },
+          { role: "assistant", content: unknownModelReply },
+        );
+        return;
+      }
+    }
+
     let skipAliasFeatureGuard = false;
 
     // C. 深度搜尋確認 (已廢棄)
