@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.279"; // 2026-06-20 QA 建檔無關內容防污染
-const BUILD_TIMESTAMP = "2026-06-20 16:11";
+const GAS_VERSION = "v29.5.280"; // 2026-06-20 API失敗Quick Reply防呆
+const BUILD_TIMESTAMP = "2026-06-20 16:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -7032,6 +7032,21 @@ function handleMessage(event) {
         );
         return;
       }
+      if (isApiFailureReply(lastAssistantMsg.content)) {
+        const retryText =
+          "上一則回答是系統暫時忙碌，還沒有成功查到內容，所以我先不展開，避免補出不可靠資訊。\n\n請稍後再試一次，或直接補完整型號與問題，我會重新依 QA/規格庫 → 官方手冊 → 必要時網路搜尋的流程查。";
+        replyMessage(replyToken, retryText);
+        writeLog(`[Quick Reply v29.5.280] 上一則為 API 失敗，停止再詳細說明`);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, retryText, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          historyForContinue,
+          { role: "user", content: msg },
+          { role: "assistant", content: retryText },
+        );
+        return;
+      }
 
       const replyAnchor = getElaborationTopicAnchor_(
         cache,
@@ -9547,7 +9562,9 @@ function handleCommand(c, u, cid) {
       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
       if (!triggerPDF) {
         // 網路搜尋模式
-        if (lastSearchSources && lastSearchSources.length > 0) {
+        if (isApiFailureReply(result)) {
+          writeLog(`[Web Search v29.5.280] 搜尋失敗，不追加補充資料標記`);
+        } else if (lastSearchSources && lastSearchSources.length > 0) {
           result += `\n\n(📊 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
         } else {
           result += "\n\n(🌐 網路搜尋補充資料)";

@@ -10,6 +10,12 @@ function assertStep(ok, message) {
   }
 }
 
+function isApiFailureReply(text) {
+  return /系統暫時忙碌|暫時無法處理|網路搜尋服務暫時無法連線|已達配額限制/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const TEST_URL =
     "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
@@ -88,6 +94,14 @@ async function main() {
     }
 
     const t3 = all[2];
+    const t3Text = (t3.replies || []).join("\n");
+
+    if (isApiFailureReply(t3Text)) {
+      assertStep(
+        !/網路搜尋補充資料/.test(t3Text),
+        "API failure reply should not append fake web-search supplement marker.",
+      );
+    }
 
     assertStep(
       hasPattern(t3.logs, /Quick Reply v29\.5\.137.*這題再搜網路/),

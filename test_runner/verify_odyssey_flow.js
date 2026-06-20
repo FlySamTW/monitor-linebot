@@ -74,6 +74,7 @@ async function main() {
       "[Quick Reply",
     ];
 
+    const allTurns = [];
     for (let i = 0; i < turns.length; i++) {
       const q = turns[i];
       let res = null;
@@ -88,6 +89,7 @@ async function main() {
 
       const replies = Array.isArray(res && res.replies) ? res.replies : [];
       const logs = Array.isArray(res && res.logs) ? res.logs : [];
+      allTurns.push({ q, replies, logs });
 
       console.log("\n====================================");
       console.log(`TURN ${i + 1} USER: ${q}`);
@@ -104,6 +106,15 @@ async function main() {
         .filter((l) => keyPatterns.some((p) => String(l).includes(p)))
         .slice(-30)
         .forEach((l) => console.log(String(l)));
+    }
+
+    const firstAnswer = ((allTurns[1] && allTurns[1].replies) || []).join("\n");
+    const firstWasApiFailure = /系統暫時忙碌|暫時無法處理|已達配額限制/i.test(firstAnswer);
+    if (firstWasApiFailure) {
+      const detailAnswer = ((allTurns[3] && allTurns[3].replies) || []).join("\n");
+      if (!/上一則回答是系統暫時忙碌|還沒有成功查到內容|先不展開/.test(detailAnswer)) {
+        throw new Error("API failure elaboration should stop instead of generating a new generic answer.");
+      }
     }
   } finally {
     await browser.close();
