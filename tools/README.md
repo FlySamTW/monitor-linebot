@@ -102,6 +102,23 @@ npm run check:webhook-version
 - 若版本不同，拒絕繼續跑線上 TestUI 測試
 - 避免用舊部署結果誤判新版回答邏輯
 
+### 17 題正式路由回歸
+```
+cd test_runner
+node run_current_test.js verify_route_testset_17_single.js
+```
+效果：
+- 實際透過正式 TestUI 丟 17 題口語問句
+- 判斷是否符合 `MODEL_SELECT`、`ASK_MODEL`、`QA`、`PDF`、`WEB` 或可接受的 `API_GUARDED`
+- 預設單題等待 180 秒，避免 PDF/外部服務慢查被誤判
+
+若單次跑完整 17 題超過終端工具時間，可用題號拆批：
+```
+node run_current_test.js verify_route_testset_17_single.js 1,2,3,4,5
+node run_current_test.js verify_route_testset_17_single.js 6,7,8,9,10,11
+node run_current_test.js verify_route_testset_17_single.js 12,13,14,15,16,17
+```
+
 ### 本機 SOP 靜態守門
 ```
 cd test_runner

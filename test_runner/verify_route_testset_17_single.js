@@ -9,7 +9,7 @@ const DATASET_PATH = path.join(
   "datasets",
   "route_testset_17_single_v1.json",
 );
-const CALL_TIMEOUT_MS = Number(process.env.TESTUI_CALL_TIMEOUT_MS || 90000);
+const CALL_TIMEOUT_MS = Number(process.env.TESTUI_CALL_TIMEOUT_MS || 180000);
 
 function parseSelectedIds(argv) {
   const raw = argv

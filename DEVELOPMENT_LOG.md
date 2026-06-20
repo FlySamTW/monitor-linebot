@@ -25,6 +25,26 @@
 - 本次未修改 Google Sheet `Prompt!C3`。
 - 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
 
+## 2026-06-20 (正式 TestUI 高風險流程回歸)
+
+### 目的
+- 繼續針對使用者歷史指出的痛點，用正式 TestUI 實際驗證目前部署，而不是只看程式或文件。
+
+### 執行與結果
+- `verify_m7_exact_issue.js` 通過：M7 / Matter / SmartThings Hub 題先進型號選擇，不再直接肯定亂答；手冊查詢遇 API 忙碌時維持誠實忙碌文案，不假標 PDF 來源。
+- `verify_m7_mute_current.js` 通過：無型號操作題要求補完整型號；M7 短別稱操作題進型號選擇，不提前叫使用者查手冊。
+- `verify_s9_kvm_alias_guard.js` 通過：S9 / KVM 短別稱題要求選完整型號，不再宣稱 S9 內建 KVM。
+- `verify_route_testset_17_single.js` 拆批通過 17/17：
+  - Q1-Q5：5/5 通過。
+  - Q6-Q11：6/6 通過。
+  - Q12：拉長等待後 1/1 通過。
+  - Q13-Q17：5/5 通過。
+- Q12 正式環境可能超過 90 秒，因此將 `verify_route_testset_17_single.js` 預設 TestUI 呼叫 timeout 從 90 秒調整為 180 秒，避免把慢查誤判為流程失敗。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-06-20 (v29.5.283 早期防呆優先序修正)
 
 ### 問題
