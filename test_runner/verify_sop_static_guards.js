@@ -37,6 +37,7 @@ const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
 const syncPrompt = read("tools/sync_prompt_c3.ps1");
 const developmentLog = read("DEVELOPMENT_LOG.md");
 const developerManual = read("程式編寫開發及功能手冊.md");
+const aiContext = read("AI_CONTEXT.md");
 const toolsReadme = read("tools/README.md");
 const packageJson = JSON.parse(read("test_runner/package.json"));
 const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1];
@@ -52,6 +53,28 @@ assertStep(
 assertStep(
   developmentLog.includes(localVersion),
   "DEVELOPMENT_LOG.md must mention the current linebot.gs GAS_VERSION",
+);
+
+assertStep(
+  /CONF-001\s*\|\s*Prompt!C3\s*\|/.test(aiContext) &&
+    /Prompt\.csv[\s\S]*本地鏡像\/人工備份/.test(aiContext) &&
+    /部署流程不會自動把它上傳到 Google Sheet/.test(aiContext),
+  "AI_CONTEXT.md must document Google Sheet Prompt!C3 as the runtime prompt source and Prompt.csv as a local mirror only",
+);
+
+assertStep(
+  /QA 資料庫[\s\S]*CLASS_RULES[\s\S]*官方 PDF 手冊[\s\S]*網路搜尋\/官方頁[\s\S]*誠實告知無資料/.test(
+    aiContext,
+  ) && !/LLM 通用知識\s*>\s*PDF 手冊/.test(aiContext),
+  "AI_CONTEXT.md must preserve the current QA/RULES -> PDF -> WEB/no-data routing order and must not put LLM knowledge before PDF",
+);
+
+assertStep(
+  /禁止只 `clasp push` 後宣稱完成/.test(aiContext) &&
+    /禁止新建 deployment ID/.test(aiContext) &&
+    /Prompt 維護鐵律/.test(aiContext) &&
+    /除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`/.test(aiContext),
+  "AI_CONTEXT.md must document the current deployment and Prompt maintenance iron rules",
 );
 
 assertStep(
