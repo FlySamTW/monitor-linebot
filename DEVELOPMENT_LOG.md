@@ -1,5 +1,30 @@
 # 開發對話紀錄
 
+## 2026-06-20 (發布總控工具完善)
+
+### 目的
+- 使用者要求完善專案本身，不是修改單一指令文件；重點是未來修改程式後能自動上傳 GAS 並更新既有正式部署，而且不得把本地 `Prompt.csv` 誤當成正式 Prompt。
+
+### 工具修正
+- 新增 `tools/release_existing_webhook.ps1` 作為發布總控流程：
+  - 先執行 `npm run test:static`。
+  - 再呼叫 `tools\deploy_existing_webhook.ps1` 推送 GAS、建立版本、用既有 Deployment ID 加 `-V` 更新正式 Webhook。
+  - 接著執行 `tools\check_deploy_readiness.ps1`。
+  - 最後執行 `npm run check:webhook-version`，確認正式 TestUI/Webhook 版本與本機一致。
+  - 支援 `-DryRun`，可安全確認流程，不建立 GAS 版本、不更新部署、不碰 Prompt。
+- 更新 `tools/README.md` 與 `AI_CONTEXT.md`，明確標示正式 Prompt 在 Google Sheet `Prompt!C3`，發布總控不會同步或覆蓋 Prompt。
+
+### 驗證
+- 修改前已確認正式部署狀態：本機、Apps Script HEAD、正式 Webhook 均為 `v29.5.283 [2026-06-20 18:05]`，正式 Deployment ID 為既有 `AKfycbz7...MaYXQA @1063`。
+- `npm run test:static` 通過。
+- `tools/check_deploy_readiness.ps1` 通過。
+- `npm run check:webhook-version` 通過。
+- `tools\release_existing_webhook.ps1 -DryRun` 通過，確認總控流程不會在 dry run 模式建立版本或更新部署。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-06-20 (v29.5.283 早期防呆優先序修正)
 
 ### 問題

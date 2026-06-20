@@ -39,6 +39,7 @@
 | UI-001   | TestUI.html     | UI     | 網頁版模擬器 (Mock Mode & Cloud History)                        |
 | UI-002   | TestUI.html     | UI     | 手機版 RWD 支援 (Viewport settings)                             |
 | OPS-001  | deploy.bat      | Ops    | 自動化部署腳本                                                  |
+| OPS-003  | tools/release_existing_webhook.ps1 | Ops | 發布總控：守門測試、GAS 上傳、既有 Webhook 更新、正式版本驗證 |
 | OPS-002  | .clasp.json     | Ops    | Clasp 設定檔                                                    |
 
 ## 3. 重要變數與儲存格映射 (Spreadsheet Mapping)
@@ -74,6 +75,7 @@
 7.  **變數作用域注意 (TDZ)**: V8 引擎中 `const` 有暫時性死區 (TDZ)，在同一 block 中 `const` 宣告前賦值會拋出 `ReferenceError`。Quick Reply handler 如不 `return` 而是讓流程繼續，禁止提前設定後面用 `const` 宣告的變數。
 8.  **Prompt 維護鐵律**: 修改 Prompt 時必須明確告知使用者，並由維護者更新 Google Sheet `Prompt!C3`；除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`。
 9.  **正式部署鐵律**: 更新 GAS 時必須更新既有正式 Deployment ID，不得新建正式 deployment；部署後必須用 `check_deploy_readiness.ps1` 或 `check:webhook-version` 驗證正式版本。
+10. **發布總控鐵律**: 若要完成一輪正式發布，優先使用 `tools\release_existing_webhook.ps1`；它會先跑靜態守門，再呼叫既有部署更新流程，最後驗證正式 Webhook 版本。此流程不得同步或覆蓋 Google Sheet `Prompt!C3`。
 
 ## 6. 檔案整併說明 (File Consolidation)
 

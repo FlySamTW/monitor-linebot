@@ -6,6 +6,7 @@
 |------|------|
 | `setup_clasp.bat` | 一次性設定 CLASP 環境（首次使用） |
 | `deploy.bat` | 一鍵推送程式碼 + 建立新版本 + 更新既有 Webhook |
+| `release_existing_webhook.ps1` | 發布總控：先跑守門測試，再推送 GAS、更新既有 Webhook、驗證正式版本 |
 | `download_log.bat` | 下載 LOG + 對話紀錄 |
 | `pdf_keyword_extractor.py` | PDF 關鍵字擷取 |
 | `sheet_sync.py` | Sheet 讀寫工具 |
@@ -64,6 +65,23 @@ deploy.bat
 - 若 Apps Script 版本數已滿 200，部署工具會在推送 `HEAD` 前停止。
 - 這時要先到 Apps Script Project History 批次刪除未被 active deployment 使用的舊版本，再重新執行 `deploy.bat`。
 - 不可為了繞過版本上限新建正式 deployment ID。
+
+### 完整發布流程（建議給 AI/自動化使用）
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\release_existing_webhook.ps1
+```
+效果：
+- 先執行 `npm run test:static`，確認 SOP、Prompt 來源、部署防呆沒有退回舊規則
+- 推送 `linebot.gs` 到 GAS，建立 Apps Script 版本
+- 使用既有正式 Deployment ID 加 `-V <新版本>` 更新 Webhook
+- 執行 `tools\check_deploy_readiness.ps1`
+- 執行 `npm run check:webhook-version`
+- 不會同步或覆蓋 Google Sheet `Prompt!C3`
+
+注意：
+- 此流程只處理 GAS 程式發布；Prompt 正式來源仍是 Google Sheet `Prompt!C3`。
+- 如需修改 Prompt，必須另外、明確執行「手動同步 Prompt」流程。
+- 若只想確認會跑哪些步驟、不實際建立 GAS 版本，可加 `-DryRun`。
 
 ### 手動同步 Prompt（只在明確維護 Prompt 時使用）
 ```

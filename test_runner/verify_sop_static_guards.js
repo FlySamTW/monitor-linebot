@@ -34,6 +34,7 @@ function extractFunction(source, functionName) {
 const linebot = read("linebot.gs");
 const deployBat = read("deploy.bat");
 const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
+const releaseExistingWebhook = read("tools/release_existing_webhook.ps1");
 const syncPrompt = read("tools/sync_prompt_c3.ps1");
 const developmentLog = read("DEVELOPMENT_LOG.md");
 const developerManual = read("程式編寫開發及功能手冊.md");
@@ -154,6 +155,22 @@ assertStep(
   /Prompt source\s*:\s*Google Sheet Prompt!C3/.test(deployExistingWebhook) &&
     /Prompt was not modified/.test(deployExistingWebhook),
   "deploy_existing_webhook.ps1 must explicitly preserve Google Sheet Prompt!C3",
+);
+
+assertStep(
+  /deploy_existing_webhook\.ps1/.test(releaseExistingWebhook) &&
+    /check_deploy_readiness\.ps1/.test(releaseExistingWebhook) &&
+    /npm run test:static/.test(releaseExistingWebhook) &&
+    /npm run check:webhook-version/.test(releaseExistingWebhook) &&
+    /\[switch\]\$DryRun/.test(releaseExistingWebhook),
+  "release_existing_webhook.ps1 must orchestrate static guards, existing deployment update, readiness check, and formal version guard",
+);
+
+assertStep(
+  /Prompt source\s*:\s*Google Sheet Prompt!C3/.test(releaseExistingWebhook) &&
+    /Prompt sync\s*:\s*skipped by design/.test(releaseExistingWebhook) &&
+    !/sync_prompt_c3/.test(releaseExistingWebhook),
+  "release_existing_webhook.ps1 must not sync or overwrite Google Sheet Prompt!C3",
 );
 
 assertStep(
