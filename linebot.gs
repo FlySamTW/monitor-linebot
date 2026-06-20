@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.275"; // 2026-06-20 家電補型號回覆補來源
-const BUILD_TIMESTAMP = "2026-06-20 07:30";
+const GAS_VERSION = "v29.5.276"; // 2026-06-20 操作題 Fast 回答需可信來源
+const BUILD_TIMESTAMP = "2026-06-20 14:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2233,12 +2233,18 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
     return false;
   }
 
-  // v29.5.239: 規格/能力題不因 capabilityIntent 自動升 PDF。
-  // 只有操作/故障題或明確手冊查證題，且 Fast Mode 回答品質不足，才允許升級。
+  // v29.5.276: 規格/能力題不自動升 PDF。
+  // 操作/故障題或明確手冊查證題，必須同時有可信來源與足夠答案才算 Fast Mode 過關。
   const isPdfEligibleIntent =
     !!info.operationIntent || !!info.manualVerificationIntent;
   if (!isPdfEligibleIntent) {
     return false;
+  }
+
+  const trustedFastSource =
+    info.fastSourceTag === "[來源:QA]" || info.fastSourceTag === "[來源:規格庫]";
+  if (!trustedFastSource) {
+    return true;
   }
 
   return isOperationAnswerInsufficient(info.normalizedFastAnswer);
@@ -7504,9 +7510,6 @@ function handleMessage(event) {
         const operationIntent = isOperationOrTroubleshootQuery(
           `${msg || ""}\n${userMessage || ""}`,
         );
-        const capabilityIntent = isCapabilityClaimQuery(
-          `${msg || ""}\n${userMessage || ""}`,
-        );
         const manualVerificationIntent = isManualVerificationRequiredQuery(
           `${msg || ""}\n${userMessage || ""}`,
         );
@@ -7539,6 +7542,7 @@ function handleMessage(event) {
           hasPdfForModel,
           operationIntent,
           manualVerificationIntent,
+          fastSourceTag,
           normalizedFastAnswer,
         });
         if (shouldSopPdfEscalate) {

@@ -163,6 +163,69 @@ assertStep(
   "Fast Mode must reject manual/PDF source labels when no PDF is attached",
 );
 
+const fastEscalationCode = [
+  extractFunction(linebot, "isOperationAnswerInsufficient"),
+  extractFunction(linebot, "shouldEscalateFastAnswerToPdf"),
+  `
+  const genericStepAnswer = "1. 進入螢幕選單\\n2. 找到聲音或音量選項\\n3. 將音量調低或靜音";
+  globalThis.__fastEscalationResult = {
+    noTrustedSource: shouldEscalateFastAnswerToPdf({
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "",
+      normalizedFastAnswer: genericStepAnswer
+    }),
+    trustedQa: shouldEscalateFastAnswerToPdf({
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "[來源:QA]",
+      normalizedFastAnswer: genericStepAnswer
+    }),
+    trustedRules: shouldEscalateFastAnswerToPdf({
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "[來源:規格庫]",
+      normalizedFastAnswer: genericStepAnswer
+    }),
+    capabilityOnly: shouldEscalateFastAnswerToPdf({
+      hasPdfForModel: true,
+      operationIntent: false,
+      manualVerificationIntent: false,
+      fastSourceTag: "",
+      normalizedFastAnswer: genericStepAnswer
+    })
+  };
+  `,
+].join("\n\n");
+const fastEscalationContext = {};
+vm.createContext(fastEscalationContext);
+vm.runInContext(fastEscalationCode, fastEscalationContext);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.noTrustedSource === true,
+  "operation/manual questions with PDF available must not trust generic Fast Mode steps without a trusted source",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.trustedQa === false,
+  "operation/manual questions may stay in Fast Mode when a trusted QA answer is sufficient",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.trustedRules === false,
+  "operation/manual questions may stay in Fast Mode when a trusted rules answer is sufficient",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.capabilityOnly === false,
+  "capability/spec questions must not auto-escalate to PDF only because a PDF exists",
+);
+
+assertStep(
+  !/const capabilityIntent\s*=/.test(linebot),
+  "capability/spec intent must not remain as a PDF-escalation control variable",
+);
+
 const modelDisplayCode = [
   extractFunction(linebot, "isShortAliasModelToken"),
   extractFunction(linebot, "normalizeModelForDisplay"),

@@ -46,6 +46,7 @@
 - `v29.5.273`: 多型號比較/推薦題只有在不含操作、設定、故障、步驟或手冊查證意圖時才可跳過型號泡泡；若比較題同時需要精準操作路徑，會保留型號選擇。
 - `v29.5.274`: 型號選擇泡泡前導文字改為固定流程提示並標註 `[來源:專案流程規則]`，不再沿用 AI 未查證的 Fast Mode 中間稿當作使用者可見答案。
 - `v29.5.275`: 家電操作/維護題需要補完整型號時，也會標註 `[來源:專案流程規則]`，避免家電防呆回覆缺少來源。
+- `v29.5.276`: 操作/故障/明確手冊查證題若有對應 PDF，Fast Mode 必須有可信來源（`[來源:QA]` 或 `[來源:規格庫]`）且答案足夠才可直接回覆；若沒有可信來源，即使 AI 自行產出看似完整的步驟，也會依 SOP 升級官方手冊查證。規格/能力題仍不會只因有 PDF 而自動升級。
 - `deploy.bat`: 改為解析 `clasp version` 建立出的版本號並用 `-V` 更新既有 Deployment ID；若 Apps Script 已達 200 版本上限，會明確提示先到 Project History 刪除未使用的舊版本後重跑，不可新建部署 ID。
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
@@ -63,7 +64,7 @@
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
 - 最終正式部署版本：`v29.5.263` (`@1054`)。
 - `v29.5.266` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
-- `v29.5.271` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
+- `v29.5.276` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
 - 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
 - Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.271 [2026-06-20 05:27]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
 - 沒有新建 GAS 部署。
