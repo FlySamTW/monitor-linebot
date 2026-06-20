@@ -35,7 +35,30 @@ const linebot = read("linebot.gs");
 const deployBat = read("deploy.bat");
 const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
 const syncPrompt = read("tools/sync_prompt_c3.ps1");
+const developmentLog = read("DEVELOPMENT_LOG.md");
+const developerManual = read("程式編寫開發及功能手冊.md");
+const toolsReadme = read("tools/README.md");
 const packageJson = JSON.parse(read("test_runner/package.json"));
+const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1];
+
+assertStep(localVersion, "linebot.gs must expose GAS_VERSION");
+
+assertStep(
+  developerManual.includes(`完整流程解析 (${localVersion})`) &&
+    developerManual.includes(`現行鐵律 SOP（${localVersion}）`),
+  "developer manual headline and SOP version must match linebot.gs GAS_VERSION",
+);
+
+assertStep(
+  developmentLog.includes(localVersion),
+  "DEVELOPMENT_LOG.md must mention the current linebot.gs GAS_VERSION",
+);
+
+assertStep(
+  /版本數已滿\s*200[\s\S]*推送\s*`HEAD`\s*前停止/.test(toolsReadme) &&
+    /不可為了繞過版本上限新建正式 deployment ID/.test(toolsReadme),
+  "tools README must document the 200-version deployment blocker and forbid new deployment IDs",
+);
 
 const dynamicPromptStart = linebot.indexOf("function constructDynamicPrompt");
 const dynamicPromptEnd = linebot.indexOf("function callLLMWithRetry", dynamicPromptStart);
@@ -76,6 +99,12 @@ assertStep(
   /Cannot create more versions/.test(deployExistingWebhook) &&
     /Do not create a new deployment ID/.test(deployExistingWebhook),
   "deploy_existing_webhook.ps1 must block safely at the Apps Script version limit",
+);
+
+assertStep(
+  /Created version\\s\+\(\[\\d,\]\+\)/.test(deployExistingWebhook) &&
+    /-replace\s+",",\s*""/.test(deployExistingWebhook),
+  "deploy_existing_webhook.ps1 must parse clasp version numbers that include thousands separators",
 );
 
 assertStep(

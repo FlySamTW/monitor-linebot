@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-## 2026-06-20 (v29.5.239-v29.5.271 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
+## 2026-06-20 (v29.5.239-v29.5.276 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
 - 修正 v29.5.193 鐵律 SOP 區塊無條件把規格/能力題追加 `[AUTO_SEARCH_PDF]` 的問題，避免 Fast Mode 已可回答時仍二次調用 PDF，造成 Token 浪費與答案覆蓋。
@@ -51,6 +51,7 @@
 - `deploy.bat`: 部署流程只負責推送程式、建立版本、更新既有 Webhook；不再依 `GAS_ADMIN_SECRET` 自動把本地 `Prompt.csv` 同步到 Google Sheet `Prompt!C3`，避免誤覆蓋正式 Prompt。
 - `tools/deploy_existing_webhook.ps1`: 新增非互動式部署主流程，負責 `clasp push -f`、`clasp version`、`clasp deploy -i <既有DeploymentId> -V <新版本>` 與正式 `?health=1` 驗證；只更新既有部署，不建立新部署，不修改 `Prompt!C3`。
 - `tools/deploy_existing_webhook.ps1`: 版本數滿 200 時改為在 `clasp push -f` 之前先停止，避免留下「Apps Script HEAD 已更新、正式 LINE webhook 仍是舊版」的半部署狀態。
+- `tools/deploy_existing_webhook.ps1`: 修正 `clasp version` 回傳千分位版本號（例如 `1,055`）時只解析成 `1` 的問題；現在會移除逗號後再用 `-V` 更新既有 deployment。
 - `deploy.bat`: 改為 Windows 雙擊入口，轉呼叫 `tools/deploy_existing_webhook.ps1`，避免批次檔與自動化腳本維護兩套部署流程。
 - `tools/sync_prompt_c3.ps1`: 改為必須明確指定 `-PromptPath` 並加上 `-ConfirmOverwrite` 才會寫入 Google Sheet `Prompt!C3`，避免獨立工具被誤執行時覆蓋正式 Prompt。
 - `verify_m7_mute_current.js`: `/重啟` 版本檢查改為讀取 `linebot.gs` 目前 `GAS_VERSION`，避免正式部署更新後仍因測試寫死舊版本而假失敗。
@@ -62,9 +63,8 @@
 
 ### 部署
 - 已使用既有 Deployment ID 更新部署：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`
-- 最終正式部署版本：`v29.5.263` (`@1054`)。
-- `v29.5.266` 已 `clasp push -f` 到 Apps Script HEAD，但 `clasp version` 被 Apps Script 200 版本上限阻擋，正式 Deployment 尚未切換。
-- `v29.5.276` 已完成本機驗證；待刪除舊 Apps Script 版本後，需用 `deploy.bat` / `tools\deploy_existing_webhook.ps1` 推送 HEAD、建立新版本並更新既有 Deployment。
+- 目前正式部署版本：`v29.5.276` (`@1055`)。
+- `v29.5.276` 已推送 Apps Script HEAD、建立版本並更新既有正式 Webhook；`tools/check_deploy_readiness.ps1` 確認本機、遠端 HEAD 與正式 health 均一致。
 - 嘗試用 Apps Script API 將既有 deployment 改為 HEAD 時，API 回覆 `Read-only deployments may not be modified.`；官方 Apps Script API 目前也沒有版本刪除方法，只能由登入狀態的 Apps Script Project History 刪除舊版本。
 - Apps Script API `projects.getContent` 已確認遠端 HEAD 為 `v29.5.271 [2026-06-20 05:27]`，且不含「升級付費方案 / AI 暫時無法處理您的請求」舊文案。
 - 沒有新建 GAS 部署。
@@ -100,6 +100,10 @@
 - `v29.5.270`：`node --check` 與 `npm run test:static` 通過；確認價格防呆保留 `S34BG850SC3` 完整型號、不輸出數字金額並導三星官方搜尋頁。
 - `v29.5.271`：`node --check` 與 `npm run test:static` 通過；確認「你/您提供的 PDF/手冊/文件/檔案」會被改寫為官方手冊口吻。
 - `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.271`、遠端 HEAD `v29.5.271`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
+- `v29.5.276`：`npm run test:static` 通過；確認操作/故障/明確手冊查證題若沒有可信 Fast Mode 來源，不能因 AI 產出通用步驟就停在 Fast Mode，會升級官方手冊查證。
+- `tools/check_deploy_readiness.ps1` 部署前阻擋實測輸出：本機 `v29.5.276`、遠端 HEAD `v29.5.271`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`；部署工具會在 `clasp push -f` 前停止，避免半部署。
+- `v29.5.276`：正式部署後 `tools/check_deploy_readiness.ps1` 通過；本機 `v29.5.276`、遠端 HEAD `v29.5.276`、正式 health `v29.5.276`、版本數 `3`。
+- `v29.5.276`：正式 TestUI 回歸通過 `verify_m7_exact_issue.js`（配額防護路徑）、`verify_m7_mute_current.js`、`verify_s9_kvm_alias_guard.js`、`verify_price_no_number.js`。
 - `tools/deploy_existing_webhook.ps1`：新增後已納入 `npm run test:static` 靜態守門；確認部署腳本使用既有 Deployment ID + `-V`、不碰 `Prompt!C3`、版本上限時會停止而不是新建部署。
 - `node --check` 通過。
 - 健康檢查回傳：`OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
@@ -132,12 +136,12 @@
 
 ## 當前狀態 (Current Status)
 - **最後更新時間**: 2026-06-20
-- **最後動作**: 完成 `v29.5.266` Fast Mode 假手冊來源防呆，並讓 `npm run test:static` 納入 SOP 靜態守門。
-- **目前進度**: 正式 Webhook 目前仍為 `v29.5.263`；本機與 Apps Script 遠端 HEAD 已是 `v29.5.266`，但 Apps Script 200 版本上限仍會阻止建立新版本與正式部署切換。
+- **最後動作**: 完成 `v29.5.276` 操作/故障/明確手冊查證題的可信 Fast Mode 來源守門，修正部署腳本千分位版本號解析，並更新既有正式 Webhook 到 `@1055`。
+- **目前進度**: 正式 Webhook、本機 `linebot.gs` 與 Apps Script 遠端 HEAD 均為 `v29.5.276 [2026-06-20 14:35]`；`tools/check_deploy_readiness.ps1` 已通過。
 - **下一步 (Next Steps)**:
     - [x] 確認部署使用既有 Deployment ID，沒有新建部署。
     - [x] 確認 `Prompt.csv` 只是本機鏡像；正式 Prompt 需同步到 Google Sheet `Prompt!C3`。
-    - [ ] 到 Apps Script Project History 批次刪除未被 active deployment 使用的舊版本，然後重跑 `deploy.bat` 更新既有正式 deployment。
+    - [x] 到 Apps Script Project History 批次刪除未被 active deployment 使用的舊版本，然後重跑既有正式 deployment 更新流程。
     - [ ] 等 Gemini 配額/檔案 API 恢復後，進一步確認 PDF 深度回答能產出完整手冊答案。
 
 ---

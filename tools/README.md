@@ -60,6 +60,11 @@ deploy.bat
 - 更新既有正式 Webhook Deployment ID
 - 不會修改 Google Sheet `Prompt!C3`，避免本地 `Prompt.csv` 誤覆蓋正式 Prompt
 
+注意：
+- 若 Apps Script 版本數已滿 200，部署工具會在推送 `HEAD` 前停止。
+- 這時要先到 Apps Script Project History 批次刪除未被 active deployment 使用的舊版本，再重新執行 `deploy.bat`。
+- 不可為了繞過版本上限新建正式 deployment ID。
+
 ### 手動同步 Prompt（只在明確維護 Prompt 時使用）
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -PromptPath .\Prompt.csv -ConfirmOverwrite

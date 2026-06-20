@@ -107,12 +107,12 @@ function New-GasVersion {
     }
   }
 
-  $match = [regex]::Match($text, "Created version\s+(\d+)")
+  $match = [regex]::Match($text, "Created version\s+([\d,]+)")
   if (-not $match.Success) {
     throw "Could not parse created GAS version number from clasp output."
   }
 
-  return [int]$match.Groups[1].Value
+  return [int]($match.Groups[1].Value -replace ",", "")
 }
 
 function Get-FormalHealth {
