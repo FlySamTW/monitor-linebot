@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.276"; // 2026-06-20 操作題 Fast 回答需可信來源
-const BUILD_TIMESTAMP = "2026-06-20 14:35";
+const GAS_VERSION = "v29.5.277"; // 2026-06-20 長文 QA 草稿先正規化
+const BUILD_TIMESTAMP = "2026-06-20 15:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -6438,11 +6438,11 @@ function handleMessage(event) {
               "\n\n---\n這篇內容看起來和本專案相關，也具備 QA 題材。\n要不要進入 QA 編輯模式（加入 QA）？\n\n" +
               guide;
 
-            // 儲存可直接進建檔的草稿種子：只放整理後素材，不放邀請語、操作說明或費用來源尾註。
-            const seedText = `【長文整理候選QA素材】\n${articleBodyForQaSeed}`.substring(
-              0,
-              2500,
-            );
+            // 儲存可直接進建檔的草稿種子：必須先整理成單行 QA，避免把摘要/原文整包塞進 QA 編輯模式。
+            const seedText = buildArticleQaDraftSeed(
+              articleBodyForQaSeed,
+              msg,
+            ).substring(0, 2500);
             cache.put(
               `${userId}:qa_offer_payload`,
               JSON.stringify({
@@ -10605,6 +10605,10 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
  * v27.9.45: 新增 userId 參數，支援模型失效時的主動回報
  */
 function callGeminiToPolish(input, userId = null) {
+  if (isOneLineQaText(input)) {
+    return normalizeOneLineQaText(input);
+  }
+
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
@@ -10883,12 +10887,15 @@ function callGeminiToModify(currentText, instruction) {
 function simplePolishFallback(input) {
   var text = (input || "").trim();
   if (!text) return "問題 / A：請補充內容";
+  if (isOneLineQaText(text)) {
+    return normalizeOneLineQaText(text);
+  }
   // 嘗試以第一個問句切分
   var qMatch = text.match(/^[^?！？。]+[?？]/);
   if (qMatch) {
     var q = qMatch[0].replace(/[。]/g, "").trim();
     var a = text.substring(q.length).trim() || "待補";
-    return q.replace(/[?？]$/, "") + "嗎 / A：" + a;
+    return q.replace(/[?？]$/, "？") + " / A：" + a;
   }
   // 若輸入含「 / A：」，直接使用
   if (text.indexOf(" / A：") > -1) {
@@ -12875,6 +12882,103 @@ function buildQaEditInstructionText() {
     "4. 確認存檔：/記錄\n\n" +
     "5. 取消離開：/取消"
   );
+}
+
+function buildArticleQaDraftSeed(cleanedArticleText, originalText) {
+  const cleaned = String(cleanedArticleText || "");
+  const original = String(originalText || "");
+  const sourceText = extractCleanedOriginalSection(cleaned) || original;
+  const question = pickQuestionForQaDraft(`${sourceText}\n${original}`);
+  const answer = pickAnswerForQaDraft(sourceText, question);
+  return normalizeOneLineQaText(`${question} / A：${answer}`);
+}
+
+function extractCleanedOriginalSection(text) {
+  const raw = String(text || "");
+  const marker = "【去廣告原文】";
+  const idx = raw.indexOf(marker);
+  if (idx < 0) return "";
+  return raw.substring(idx + marker.length).trim();
+}
+
+function pickQuestionForQaDraft(text) {
+  const raw = String(text || "");
+  const sentences = raw.match(/[^。！？?\n]+[。！？?]?/g) || [raw];
+  const questionSignals =
+    /(客戶|使用者|是否|是不是|有沒有|要不要|需要|如何|怎麼|為什麼|可以|支援|設定|開啟|關閉|故障|\?|？)/i;
+
+  for (let i = 0; i < sentences.length; i++) {
+    let candidate = cleanupQaDraftSentence(sentences[i]);
+    if (!candidate || candidate.length < 8) continue;
+    if (!questionSignals.test(candidate)) continue;
+    candidate = candidate.replace(/^.*?[：:]\s*(?=客戶|使用者|是否|是不是|如何|怎麼|為什麼|可以|支援|需要)/, "");
+    return ensureQuestionMark(candidate);
+  }
+
+  return "這篇長文的客服重點是什麼？";
+}
+
+function pickAnswerForQaDraft(text, question) {
+  const raw = String(text || "");
+  const questionCore = String(question || "")
+    .replace(/[?？。！!]/g, "")
+    .trim();
+  const sentences = raw.match(/[^。！？?\n]+[。！？?]?/g) || [];
+  const picked = [];
+  const questionSignals =
+    /(是否|是不是|有沒有|要不要|如何|怎麼|為什麼|哪裡|哪個|什麼|\?|？)/i;
+  const answerSignals =
+    /(答案|結論|需要|不需要|必須|不用|可以|不可以|支援|不支援|內建|沒有|建議|請|先|步驟|設定|確認|額外|接收器|中樞|Hub)/i;
+
+  for (let i = 0; i < sentences.length && picked.length < 3; i++) {
+    const candidate = cleanupQaDraftSentence(sentences[i]);
+    if (!candidate || candidate.length < 10) continue;
+    if (questionCore && candidate.indexOf(questionCore) >= 0) continue;
+    if (questionSignals.test(candidate)) continue;
+    if (!answerSignals.test(candidate)) continue;
+    picked.push(candidate.replace(/[。！？?]+$/, ""));
+  }
+
+  if (picked.length === 0) {
+    return "待補：這篇長文提出此客服問題，請補上可驗證答案後再存入 QA。";
+  }
+
+  return `${picked.join("；")}。`.substring(0, 700);
+}
+
+function cleanupQaDraftSentence(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/^(來源|更新時間|廣告|延伸閱讀)[：:].*$/i, "")
+    .replace(/^[-•\d.\s]+/, "")
+    .trim();
+}
+
+function ensureQuestionMark(text) {
+  const q = String(text || "").trim().replace(/[。！!]+$/, "");
+  if (!q) return "這篇長文的客服重點是什麼？";
+  if (/[?？]$/.test(q)) return q.replace(/[?]$/, "？");
+  return `${q}？`;
+}
+
+function isOneLineQaText(text) {
+  return /\s*\/\s*A[:：]/.test(String(text || ""));
+}
+
+function normalizeOneLineQaText(text) {
+  const raw = String(text || "").replace(/[\r\n]+/g, " ").trim();
+  const m = raw.match(/^(.*?)\s*\/\s*A[:：]\s*(.*)$/);
+  if (!m) return raw;
+
+  let q = m[1]
+    .replace(/^【[^】]+】\s*/g, "")
+    .replace(/^問題[:：]\s*/g, "")
+    .trim();
+  let a = m[2].replace(/^答案[:：]\s*/g, "").trim();
+
+  q = ensureQuestionMark(q);
+  if (!a) a = "待補";
+  return `${q} / A：${a}`;
 }
 
 function ensureArticleCleanOutputFormat(aiText, originalText) {

@@ -102,6 +102,24 @@ async function main() {
       /已進入建檔模式|找到相似的現有 QA/.test(t3Text),
       "turn3 did not enter QA draft mode",
     );
+    assertStep(
+      !/【長文整理候選QA素材】|【重點摘要】|【去廣告原文】/.test(t3Text),
+      "turn3 draft leaked article-cleaning sections into QA mode",
+    );
+    assertStep(
+      !/SmartThings Hub嗎\s*\/\s*A/.test(t3Text),
+      "turn3 draft appended an extra 嗎 before / A",
+    );
+    assertStep(
+      /客戶如果想用 M7 串聯 Matter 協議裝置.*SmartThings Hub[？?]\s*\/\s*A：/.test(
+        t3Text,
+      ),
+      "turn3 draft did not produce a clean one-line QA seed",
+    );
+    assertStep(
+      /\/\s*A：待補：這篇長文提出此客服問題/.test(t3Text),
+      "turn3 draft should mark answer as 待補 when article has no verified answer",
+    );
 
     const t4 = await send(
       "這是一段很長很長的草稿修正內容，包含 SmartThings、Matter、M7、設定步驟、接收器與支援條件，請把語句改得更好讀，並保留可驗證的重點。",
