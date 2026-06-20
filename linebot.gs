@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.280"; // 2026-06-20 API失敗Quick Reply防呆
-const BUILD_TIMESTAMP = "2026-06-20 16:35";
+const GAS_VERSION = "v29.5.281"; // 2026-06-20 服務時間不誤判現在時間
+const BUILD_TIMESTAMP = "2026-06-20 16:52";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2201,6 +2201,27 @@ function isTimelyWebInfoQuery(text) {
   return /(最新上市|最新型號|新機型|新品|近期|最近|CES|雙11|雙12|黑五|BLACK\s*FRIDAY|12月份|促銷|活動|抽獎|登錄|延長保固|保固活動)/i.test(
     q,
   );
+}
+
+function isServiceHoursQuery(text) {
+  const q = String(text || "");
+  return /(服務時間|客服時間|營業時間|維修中心.*時間|服務中心.*時間|今天.*營業|今天.*有開|今天.*有營業|現在.*營業|幾點.*營業|營業到幾點|幾點.*關門|幾點.*開門)/i.test(
+    q,
+  );
+}
+
+function buildServiceHoursReply() {
+  return [
+    "這題是服務/營業時間資訊，會依客服類型、維修中心與日期變動，我不能直接用舊資料回答幾點營業或今天有沒有開。",
+    "",
+    "你可以先看三星官方頁面確認：",
+    "1. 三星台灣聯絡我們：https://www.samsung.com/tw/support/contact/",
+    "2. 三星台灣服務中心查詢：https://www.samsung.com/tw/support/service-center/",
+    "",
+    "如果你要我幫你查最新資訊，請按「🌐 這題再搜網路」。",
+    "",
+    "[來源:三星官方服務頁]",
+  ].join("\n");
 }
 
 function buildTimelyWebInfoReply(text) {
@@ -6184,6 +6205,35 @@ function handleMessage(event) {
     if (msg === "測試二次搜尋") {
       msg += " [AUTO_SEARCH_WEB]";
       writeLog("[Diagnostic] 手動注入 [AUTO_SEARCH_WEB] 標籤進行測試");
+    }
+
+    if (!msg.startsWith("#") && isServiceHoursQuery(msg)) {
+      const serviceHoursReply = buildServiceHoursReply();
+      writeLog(`[Service Hours Guard v29.5.281] 攔截服務/營業時間問題`);
+      replyMessage(replyToken, serviceHoursReply, {
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: {
+                type: "message",
+                label: "🌐 這題再搜網路",
+                text: "#這題再搜網路",
+              },
+            },
+          ],
+        },
+      });
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, serviceHoursReply, contextId, "assistant", "");
+      const serviceHoursHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        serviceHoursHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: serviceHoursReply },
+      );
+      return;
     }
 
     // v24.3.0: 實時資訊快速回答（日期、時間）

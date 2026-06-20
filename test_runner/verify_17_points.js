@@ -14,6 +14,18 @@ function assertStep(ok, message) {
   }
 }
 
+function isApiFailureReply(text) {
+  return /系統暫時忙碌|暫時無法處理|已達配額限制|網路搜尋服務暫時無法連線/i.test(
+    String(text || ""),
+  );
+}
+
+function hasFakeSuccessMarker(text) {
+  return /網路搜尋補充資料|已搜尋\s*\d+\s*個來源|\[來源:\s*.*(?:官方手冊PDF|QA|規格庫|網路搜尋)/i.test(
+    String(text || ""),
+  );
+}
+
 async function main() {
   const TEST_URL =
     "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
@@ -109,6 +121,27 @@ async function main() {
     const t10 = all[9];
 
     const missingPdfRegex = /找不到相關.*PDF.*手冊|看起來像需要查手冊/;
+    const t2Text = (t2.replies || []).join("\n");
+    const t3Text = (t3.replies || []).join("\n");
+    const t4Text = (t4.replies || []).join("\n");
+    const allReplyText = all.map((x) => (x.replies || []).join("\n")).join("\n\n");
+
+    if (isApiFailureReply(t2Text)) {
+      assertStep(
+        /上一則回答是系統暫時忙碌|還沒有成功查到內容|先不展開/.test(t3Text),
+        "API_GUARDED failed: #再詳細說明 should stop after API failure.",
+      );
+      assertStep(
+        isApiFailureReply(t4Text) && !hasFakeSuccessMarker(t4Text),
+        "API_GUARDED failed: web retry failure should not look like successful supplemental data.",
+      );
+      assertStep(
+        !hasFakeSuccessMarker(allReplyText),
+        "API_GUARDED failed: failure replies must not carry fake QA/PDF/Web source markers.",
+      );
+      console.log("\nPASS: verify_17_points (API_GUARDED)");
+      return;
+    }
 
     // 1~3: QA-first 行為
     assertStep(

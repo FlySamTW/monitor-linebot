@@ -1,5 +1,32 @@
 # 開發對話紀錄
 
+## 2026-06-20 (v29.5.281 服務/營業時間誤判修正)
+
+### 問題
+- `請問服務時間是幾點` 這類服務/營業時間問題含有「幾點」，被 RealTime 捷徑誤判成「現在幾點」，直接回目前時間。
+- 服務中心、客服或營業時間屬於會依日期、地點與服務類型變動的資訊，不能用 RealTime 現在時間或舊資料直接回答。
+
+### 程式修正
+- 新增服務/營業時間守門：
+  - 服務時間、客服時間、營業時間、今天是否營業等問題，不進「現在幾點」捷徑。
+  - 回覆導向三星官方聯絡我們與服務中心查詢頁。
+  - 提供「這題再搜網路」Quick Reply，讓使用者可選擇查最新資訊。
+- 本次未修改 Google Sheet `Prompt!C3`，也未修改本地 `Prompt.csv`；Prompt 正式來源仍是 Google Sheet。
+
+### 測試
+- 新增 `verify_service_hours_guard.js`：
+  - 驗證 `請問服務時間是幾點` 不會回「現在是...」。
+  - 驗證 `請問今天有營業嗎？` 會導向三星官方服務頁並標註 `[來源:三星官方服務頁]`。
+
+### 部署
+- 已只更新既有正式 Deployment ID：`AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`。
+- 正式部署版本：`v29.5.281 [2026-06-20 16:52] @1061`。
+- 禁止新建部署；部署工具必須使用 `clasp deploy -i <既有DeploymentId> -V <新版本>`。
+- 部署後 `tools/check_deploy_readiness.ps1` 通過：本機、Apps Script HEAD 與正式 Webhook health 均為 `v29.5.281`。
+- 正式 TestUI 回歸通過：
+  - `verify_service_hours_guard.js`
+  - `verify_linebot.js` Scenario 6
+
 ## 2026-06-20 (v29.5.239-v29.5.276 SOP 路由、Prompt Sheet 同步與 PDF 索引防護)
 
 ### 背景
