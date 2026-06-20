@@ -1036,6 +1036,13 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
   - QA 草稿不得含 `【長文整理候選QA素材】`、`【重點摘要】`、`【去廣告原文】`。
   - QA 草稿不得出現 `SmartThings Hub嗎 / A`。
   - QA 草稿必須是乾淨的一行 `問題 / A：答案`。
+- 正式 Webhook 回歸驗證（`v29.5.277 [2026-06-20 15:22] @1057`）：
+  - `verify_price_no_number.js`：價格題不回覆數字金額，導向三星官方頁。
+  - `verify_s9_kvm_alias_guard.js`：S9/KVM 短別稱先進型號選擇，不直接幻覺回答。
+  - `verify_62_compact.js`：9/9 PASS。
+  - `verify_route_testset_17_single.js`：17/17 PASS；遇 API 暫時保護時維持 `API_GUARDED`，未假標 QA/PDF 來源。
+  - `verify_long_article_non_project.js`：非本專案科技長文只做去廣告摘要，不邀請進 QA。
+  - `verify_m7_exact_issue.js`、`verify_m7_mute_current.js`：M7 Matter 與無遙控器音量題維持先選/補型號流程。
 
 ## 2026-03-20 (v29.5.198 TestUI 泡泡回合判讀修正)
 
