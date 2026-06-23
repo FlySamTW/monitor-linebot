@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.002"; // 2026-06-23 緊急回滾: gemini-2.5-flash-lite 在 API Key 下無權限，改回 gemini-2.0-flash (你 v24.5.4 驗證版)
-const BUILD_TIMESTAMP = "2026-06-23 15:30";
+const GAS_VERSION = "v29.6.012"; // 2026-06-23 Smart Retrieval Top 20 -> 50, 確保 144 列後的規格進入 Prompt
+const BUILD_TIMESTAMP = "2026-06-23 20:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -32,9 +32,9 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.0-flash";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.0-flash, 你 v24.5.4 驗證)
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.0-flash, 你 v24.5.4 驗證)
+const GEMINI_MODEL_FAST = "models/gemini-flash-lite-latest";
+const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (gemini-flash-lite-latest alias 指向當前最新 lite)
+const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-flash-lite-latest alias)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -45,15 +45,15 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
-const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.0-flash, 你 v24.5.4 驗證)
-const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.0-flash, 你 v24.5.4 驗證)
+const GEMINI_MODEL_THINK = "models/gemini-flash-lite-latest";
+const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (gemini-flash-lite-latest alias)
+const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-flash-lite-latest alias)
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：/記錄 功能使用 gemini-2.0-flash (你 v24.5.4 驗證版) 兼顧成本與穩定
-const GEMINI_MODEL_POLISH = "models/gemini-2.0-flash";
+// ⚠️ 注意：/記錄 功能使用 gemini-flash-lite-latest alias (永遠指向最新 lite 模型, 不會被棄用)
+const GEMINI_MODEL_POLISH = "models/gemini-flash-lite-latest";
 const PRICE_POLISH_INPUT = 0.1;
 const PRICE_POLISH_OUTPUT = 0.4; // $0.40 per 1M Output
 // ════════════════════════════════════════════════════════════════
@@ -3088,12 +3088,12 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
           return { line, score };
         });
 
-        // 3. Injector: 擇優錄取 Top 20
-        // 過濾掉 0 分的，並按分數排序，取前 20 筆
+        // 3. Injector: 擇優錄取 Top 50 (v29.6.012: 從 20 提升到 50, 確保 CLASS_RULES 144 列後的規格也能進入 Prompt)
+        // 過濾掉 0 分的，並按分數排序，取前 50 筆
         const topLines = scoredLines
           .filter((item) => item.score > 0)
           .sort((a, b) => b.score - a.score)
-          .slice(0, 20)
+          .slice(0, 50)
           .map((item) => item.line);
 
         if (topLines.length > 0) {
@@ -9287,9 +9287,19 @@ function handleMessage(event) {
         // try { ... } catch (e) { ... }
       }
     } catch (apiErr) {
-      // v29.5.83: User-Friendly Error Message (Hide technical details)
-      const userFriendlyError =
-        "⚠️ 抱歉，系統暫時忙碌，這次查詢暫時無法處理。\n\n請稍後再試一次，或換個更具體的問法。";
+      // v29.6.003: 根據錯誤類型給用戶不同提示
+      const errMsg = String(apiErr.message || "");
+      let userFriendlyError;
+      if (errMsg.includes("429") || errMsg.includes("spending cap") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+        userFriendlyError =
+          "⚠️ 本月 API 配額已達上限，請通知管理員到 Google AI Studio 調整 (https://ai.studio/spend)。\n\n本服務將在配額重置後自動恢復。";
+      } else if (errMsg.includes("API Key") || errMsg.includes("400") || errMsg.includes("API_KEY_INVALID")) {
+        userFriendlyError =
+          "⚠️ API 金鑰設定異常，請通知管理員檢查。";
+      } else {
+        userFriendlyError =
+          "⚠️ 抱歉，系統暫時忙碌，這次查詢暫時無法處理。\n\n請稍後再試一次，或換個更具體的問法。";
+      }
       replyMessage(replyToken, userFriendlyError);
       writeLog(
         `[Handle API Error] ${apiErr.message} (Sent friendly error to user)`,
@@ -12584,6 +12594,179 @@ function doGet(e) {
     return ContentService.createTextOutput(
       JSON.stringify(getKbHealthSummary()),
     ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.008: 測試多個 Gemini 模型的可用性
+  if (e && e.parameter && e.parameter.testModels === "1") {
+    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const candidates = [
+      "models/gemini-2.0-flash",
+      "models/gemini-2.0-flash-lite",
+      "models/gemini-2.5-flash",
+      "models/gemini-2.5-flash-lite",
+      "models/gemini-3.5-flash",
+      "models/gemini-flash-latest",
+      "models/gemini-flash-lite-latest",
+    ];
+    const results = [];
+    for (const modelName of candidates) {
+      const url = "https://generativelanguage.googleapis.com/v1beta/" + modelName + ":generateContent?key=" + apiKey;
+      try {
+        const response = UrlFetchApp.fetch(url, {
+          method: "post",
+          contentType: "application/json",
+          payload: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "ok" }] }],
+            generationConfig: { maxOutputTokens: 5, temperature: 0 },
+          }),
+          muteHttpExceptions: true,
+        });
+        const code = response.getResponseCode();
+        const body = response.getContentText().substring(0, 200);
+        results.push({ model: modelName, httpCode: code, body: body });
+      } catch (err) {
+        results.push({ model: modelName, error: err.message });
+      }
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.010: 讀取 CLASS_RULES sheet, 用於驗證規格完整性
+  if (e && e.parameter && e.parameter.readRules === "1") {
+    const startRow = Math.max(1, parseInt(e.parameter.from || "1"));
+    const limit = Math.min(parseInt(e.parameter.limit || "200"), 500);
+    const result = {
+      sheetName: SHEET_NAMES.CLASS_RULES,
+      totalRows: 0,
+      from: startRow,
+      rules: [],
+    };
+    try {
+      const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+      if (sheet) {
+        result.totalRows = sheet.getLastRow();
+        const endRow = Math.min(sheet.getLastRow(), startRow + limit - 1);
+        if (endRow >= startRow) {
+          const values = sheet.getRange(startRow, 1, endRow - startRow + 1, 1).getValues();
+          result.rules = values.map((row, idx) => ({
+            row: startRow + idx,
+            content: String(row[0] || "").substring(0, 1500),
+          }));
+        }
+      }
+    } catch (err) {
+      result.error = err.message;
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.004: 回傳 Spreadsheet ID 供 opencode 讀取
+  if (e && e.parameter && e.parameter.meta === "1") {
+    let ssId = "";
+    try {
+      ssId = ss.getId();
+    } catch (e) {
+      ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID") || "";
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        gasVersion: GAS_VERSION,
+        buildTimestamp: BUILD_TIMESTAMP,
+        spreadsheetId: ssId,
+        driveFolderId: CONFIG.DRIVE_FOLDER_ID || "",
+      }),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.005: 從「所有紀錄」Sheet 讀取最近 N 筆對話紀錄 (opencode 專用)
+  if (e && e.parameter && e.parameter.readlog === "1") {
+    const limit = Math.min(parseInt(e.parameter.limit || "30"), 200);
+    let result = {
+      gasVersion: GAS_VERSION,
+      buildTimestamp: BUILD_TIMESTAMP,
+      readAt: new Date().toISOString(),
+      records: [],
+    };
+    try {
+      const recordsSheet = ss.getSheetByName(SHEET_NAMES.RECORDS);
+      if (recordsSheet && recordsSheet.getLastRow() > 1) {
+        const startRow = Math.max(2, recordsSheet.getLastRow() - limit + 1);
+        const numRows = recordsSheet.getLastRow() - startRow + 1;
+        const values = recordsSheet.getRange(startRow, 1, numRows, 6).getValues();
+        result.records = values.map((row) => ({
+          timestamp: row[0],
+          contextId: row[1],
+          userId: row[2],
+          text: String(row[3]).substring(0, 500),
+          role: row[4],
+          flag: row[5],
+        }));
+      }
+    } catch (err) {
+      result.error = err.message;
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.007: 讀取 LOG sheet 最近 N 筆 (用於診斷 API 錯誤)
+  if (e && e.parameter && e.parameter.readlogSheet) {
+    const sheetName = String(e.parameter.readlogSheet || "LOG");
+    const limit = Math.min(parseInt(e.parameter.limit || "30"), 200);
+    let result = {
+      sheetName: sheetName,
+      readAt: new Date().toISOString(),
+      records: [],
+    };
+    try {
+      const sheet = ss.getSheetByName(sheetName);
+      if (sheet && sheet.getLastRow() > 0) {
+        const startRow = Math.max(1, sheet.getLastRow() - limit + 1);
+        const numRows = sheet.getLastRow() - startRow + 1;
+        const values = sheet.getRange(startRow, 1, numRows, sheet.getLastColumn()).getValues();
+        result.records = values.map((row) => ({
+          timestamp: row[0],
+          message: String(row[1] || "").substring(0, 800),
+        }));
+      }
+    } catch (err) {
+      result.error = err.message;
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.006: 直接呼叫 Gemini /v1beta/files 列出雲端實際檔案
+  if (e && e.parameter && e.parameter.geminiFiles === "1") {
+    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const url = "https://generativelanguage.googleapis.com/v1beta/files?key=" + apiKey + "&pageSize=100";
+    try {
+      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      const code = response.getResponseCode();
+      const body = JSON.parse(response.getContentText());
+      const files = (body.files || []).map((f) => ({
+        name: f.name,
+        displayName: f.displayName,
+        sizeBytes: f.sizeBytes,
+        createTime: f.createTime,
+        expireTime: f.expireTime,
+        state: f.state,
+        mimeType: f.mimeType,
+      }));
+      return ContentService.createTextOutput(
+        JSON.stringify({ httpCode: code, count: files.length, files: files }, null, 2),
+      ).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ error: err.message }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   // 預設：返回健康檢查（給 LINE Verify 用）
