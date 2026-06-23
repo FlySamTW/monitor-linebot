@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.001"; // 2026-06-23 步驟1: 模型改 gemini-2.5-flash-lite + 修正 writeRecordDirectly 參數錯位
-const BUILD_TIMESTAMP = "2026-06-23 15:00";
+const GAS_VERSION = "v29.6.002"; // 2026-06-23 緊急回滾: gemini-2.5-flash-lite 在 API Key 下無權限，改回 gemini-2.0-flash (你 v24.5.4 驗證版)
+const BUILD_TIMESTAMP = "2026-06-23 15:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -32,9 +32,9 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.5-flash-lite)
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.5-flash-lite)
+const GEMINI_MODEL_FAST = "models/gemini-2.0-flash";
+const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.0-flash, 你 v24.5.4 驗證)
+const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.0-flash, 你 v24.5.4 驗證)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -45,15 +45,15 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
-const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.5-flash-lite)
-const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.5-flash-lite)
+const GEMINI_MODEL_THINK = "models/gemini-2.0-flash";
+const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (gemini-2.0-flash, 你 v24.5.4 驗證)
+const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-2.0-flash, 你 v24.5.4 驗證)
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：/記錄 功能目前使用 gemini-2.5-flash-lite 以節省成本 (gemini-3-flash-preview 已面臨棄用)
-const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
+// ⚠️ 注意：/記錄 功能使用 gemini-2.0-flash (你 v24.5.4 驗證版) 兼顧成本與穩定
+const GEMINI_MODEL_POLISH = "models/gemini-2.0-flash";
 const PRICE_POLISH_INPUT = 0.1;
 const PRICE_POLISH_OUTPUT = 0.4; // $0.40 per 1M Output
 // ════════════════════════════════════════════════════════════════
