@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.012"; // 2026-06-23 Smart Retrieval Top 20 -> 50, 確保 144 列後的規格進入 Prompt
-const BUILD_TIMESTAMP = "2026-06-23 20:20";
+const GAS_VERSION = "v29.6.013"; // 2026-06-23 新增 ?driveFiles=1 列出 Drive 資料夾 PDF
+const BUILD_TIMESTAMP = "2026-06-23 20:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -12592,7 +12592,34 @@ function doGet(e) {
 
   if (e && e.parameter && e.parameter.kb === "1") {
     return ContentService.createTextOutput(
-      JSON.stringify(getKbHealthSummary()),
+      JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.013: 列出 Drive 資料夾內所有 PDF 檔名
+  if (e && e.parameter && e.parameter.driveFiles === "1") {
+    const result = { folderId: CONFIG.DRIVE_FOLDER_ID, pdfs: [], error: "" };
+    try {
+      if (!CONFIG.DRIVE_FOLDER_ID) {
+        result.error = "DRIVE_FOLDER_ID not configured";
+      } else {
+        const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+        const files = folder.getFilesByType(MimeType.PDF);
+        while (files.hasNext()) {
+          const file = files.next();
+          result.pdfs.push({
+            name: file.getName(),
+            size: file.getSize(),
+            id: file.getId(),
+            url: file.getUrl(),
+          });
+        }
+      }
+    } catch (err) {
+      result.error = err.message;
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify(result),
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
