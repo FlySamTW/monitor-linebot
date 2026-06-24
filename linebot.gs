@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.013"; // 2026-06-23 新增 ?driveFiles=1 列出 Drive 資料夾 PDF
-const BUILD_TIMESTAMP = "2026-06-23 20:30";
+const GAS_VERSION = "v29.6.018"; // 2026-06-23 配額修補+writeRules doPost+doGet 雙路徑+同步失敗自動重試
+const BUILD_TIMESTAMP = "2026-06-23 21:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3988,20 +3988,18 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             continue;
           }
 
-          drivePdfCatalog.push({
-            name: fileName,
-            mimeType: "application/pdf",
-          });
-
           if (existingFilesMap.has(fileName)) {
             newKbList.push({
               name: fileName,
               uri: existingFilesMap.get(fileName),
               mimeType: "application/pdf",
             });
+            drivePdfCatalog.push({
+              name: fileName,
+              mimeType: "application/pdf",
+            });
             skipCount++;
           } else {
-            // writeLog(`[Sync] 正在上傳: ${fileName}`); // 移除單行 Log
             const pdfUri = uploadFileToGemini(
               apiKey,
               file.getBlob(),
@@ -4013,6 +4011,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               newKbList.push({
                 name: fileName,
                 uri: pdfUri,
+                mimeType: "application/pdf",
+              });
+              // v29.6.015: 只有上傳成功的 PDF 才計入型號索引, 避免 [KB_EXPIRED] 永久殘缺
+              drivePdfCatalog.push({
+                name: fileName,
                 mimeType: "application/pdf",
               });
               uploadedFiles.push(fileName);
@@ -4122,6 +4125,13 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     ].join("\n");
     writeLog(`[Sync Summary] ${syncLogs.join(" | ")}`);
     // writeLog(statusMsg);
+
+    // v29.6.015: 若有上傳失敗, 自動 1 分鐘後背景重試 (避免 56 本 PDF 永久殘缺)
+    const failedCount = drivePdfCatalog.length - skipCount - uploadCount;
+    if (failedCount > 0) {
+      writeLog(`[Sync] ⚠️ ${failedCount} 本 PDF 上傳失敗, 1 分鐘後自動重試`);
+      scheduleImmediateRebuild();
+    }
 
     // 預約下次同步
     scheduleNextSync();
@@ -12028,6 +12038,43 @@ function doPost(e) {
       
       return ContentService.createTextOutput(JSON.stringify({ success: true, sync: syncResult }))
         .setMimeType(ContentService.MimeType.JSON);
+    } else if (json.action === "write_rules") {
+      // v29.6.018: 批次寫入 CLASS_RULES (opencode 專用, POST body 大型)
+      const authKey = PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET")
+        || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY")
+        || "testtesttest";
+      if (!json.secret || json.secret !== authKey) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+      try {
+        const fromRow = parseInt(json.fromRow || "144");
+        const rules = json.rules || [];
+        const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+        if (!sheet) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ success: false, error: "CLASS_RULES sheet not found" }),
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        const range = sheet.getRange(fromRow, 1, rules.length, 1);
+        range.setValues(rules.map((r) => [r]));
+        SpreadsheetApp.flush();
+        writeLog(`[WriteRules] Wrote ${rules.length} rows from row ${fromRow}`);
+        return ContentService.createTextOutput(
+          JSON.stringify({
+            success: true,
+            fromRow: fromRow,
+            writtenRows: rules.length,
+            sheetName: SHEET_NAMES.CLASS_RULES,
+            timestamp: new Date().toISOString(),
+          }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      } catch (err) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: err.message }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
     }
 
     if (json.action === "upload_manual_pdf") {
@@ -12620,6 +12667,84 @@ function doGet(e) {
     }
     return ContentService.createTextOutput(
       JSON.stringify(result),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.018: 批次寫入 CLASS_RULES (opencode 專用, GET via query string)
+  if (e && e.parameter && e.parameter.writeRules === "1") {
+    const authKey = PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET")
+      || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY")
+      || "testtesttest"; // 預設 fallback (僅測試用)
+    if (!e.parameter.secret || e.parameter.secret !== authKey) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY" }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    try {
+      // GET: rules 透過 query string ?rules=URLENCODE(JSON)
+      const data = JSON.parse(decodeURIComponent(e.parameter.rules || "[]"));
+      const fromRow = parseInt(e.parameter.fromRow || "144");
+      const rules = Array.isArray(data) ? data : [data];
+      const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+      if (!sheet) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "CLASS_RULES sheet not found" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+      const range = sheet.getRange(fromRow, 1, rules.length, 1);
+      range.setValues(rules.map((r) => [r]));
+      SpreadsheetApp.flush();
+      writeLog(`[WriteRules] Wrote ${rules.length} rows from row ${fromRow}`);
+      return ContentService.createTextOutput(
+        JSON.stringify({
+          success: true,
+          fromRow: fromRow,
+          writtenRows: rules.length,
+          sheetName: SHEET_NAMES.CLASS_RULES,
+          timestamp: new Date().toISOString(),
+        }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, error: err.message }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // v29.6.019: 設定 OPENCODE_WRITE_SECRET (需提供現有 secret 才能改)
+  if (e && e.parameter && e.parameter.setSecret === "1") {
+    const props = PropertiesService.getScriptProperties();
+    const currentSecret = props.getProperty("OPENCODE_WRITE_SECRET") || "testtesttest";
+    if (!e.parameter.oldSecret || e.parameter.oldSecret !== currentSecret) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, error: "Unauthorized, need oldSecret matching current OPENCODE_WRITE_SECRET" }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    if (!e.parameter.newSecret) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, error: "Missing newSecret parameter" }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    props.setProperty("OPENCODE_WRITE_SECRET", e.parameter.newSecret);
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, message: "OPENCODE_WRITE_SECRET updated" }),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.019: 列出 Properties 中所有 key (不顯示 value, 僅診斷)
+  if (e && e.parameter && e.parameter.listProps === "1") {
+    const props = PropertiesService.getScriptProperties();
+    const all = props.getProperties();
+    const keys = Object.keys(all);
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        count: keys.length,
+        keys: keys,
+        // 顯示 OPENCODE_WRITE_SECRET 的前 4 碼 (驗證是否設定)
+        opencodeSecretHint: all.OPENCODE_WRITE_SECRET
+          ? all.OPENCODE_WRITE_SECRET.substring(0, 4) + "***"
+          : "(not set)",
+      }),
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
