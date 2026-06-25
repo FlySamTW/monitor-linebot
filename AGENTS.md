@@ -354,6 +354,29 @@ writeLog(`[Fatal] ${error.message}`);
 * **現象**：`CLASS_RULES` 在 Google Sheet 上的既有設計是「整行逗號分隔的 CSV 字串通通塞在 A 欄，並不展開」。若自作聰明展開寫入，會導致 GAS 在處理時因欄位錯位拋出 Runtime Exception 崩潰。
 * **鐵律**：追加新機型時必須保持 A 欄單欄位大字串寫入。防重複比對必須使用 `existing.some(line => line.startsWith(model))`，確保架構 100% 完美相容。
 
+### 4. 永遠禁止因 PowerShell 終端機編碼誤判檔案內容
+* **現象**：Windows PowerShell 預設 codepage 是 Big5 (CP950)，當檔案內容是 UTF-8 中文時，終端機會把 byte 序列 decode 成「??」或亂碼。**這純粹是顯示問題，檔案內容 100% 正確**。
+* **曾犯的錯**：過去曾因終端機亂碼花時間「驗證檔案是否壞掉」、誤以為 edit 工具沒寫入、用 `[Math]::Min(...)` 截斷驗證等。**這些都浪費時間且無意義**。
+* **鐵律**：
+  1. 看到終端機顯示 `??` 亂碼時，**不要懷疑檔案**，檔案絕對是正確的繁體中文 UTF-8
+  2. **正確驗證方式**：用 `[System.IO.File]::WriteAllText($tmp, $utf8, [System.Text.Encoding]::UTF8)` 寫入暫存檔，再用 `Get-Content -Encoding UTF8` 讀取
+  3. 或**直接用 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8** 設終端機 UTF-8
+  4. 或**用 [System.Text.Encoding]::UTF8.GetString($bytes)** 強制解碼
+  5. **永遠不要**反覆重新部署同一個已知正確的改動，純粹是浪費時間
+  6. 如果檔案用 `read` 工具讀到正確中文、edit 工具寫入成功、clasp push 成功、health check 回 200，**這 4 個證據鏈完整就夠了，不要再因終端機亂碼而重複驗證**
+
+### 5. PDF 檔名規則（依第一頁型號 OCR + 逗號分隔，無國家碼）
+* **現象**：Drive 既有 PDF 命名規則是**型號本體**（如 `S24A600` `C24F390` `C27G55,C32G55`），**不含國家碼**（不是 `S24A600NAC` `S24A600NWC`）。若自作聰明加國家碼或依 Samsung 原始檔名（如 `BN81-XXX_240226.1.pdf`）會造成 KB_PDF INDEX 錯位，AI 找不到對應型號。
+* **鐵律**：
+  1. **必須用 PyMuPDF 讀第一頁文字**，regex 抓 `\b(?:LS|S|LC|C)(?:\d{1,3}[A-Z]*\d*[A-Z]*|M\d+[A-Z]*)\b` 提取所有型號
+  2. **去掉尾端國家碼**（`NC/UC/NAC/NWC/GAC/UBC/UXC/UIC/SC/EC/EF/WC/XC/ES`）用 `re.sub(r"[A-Z]{1,3}$", "", m)`
+  3. **逗號分隔 + 排序去重**：`",".join(sorted(set(stripped))) + ".pdf"`
+  4. **特殊情況**：M 系列通用手冊（第一頁無具體型號）→ 採子代理慣例簡稱如 `S32CM703.pdf`
+  5. **範例對照**：
+     * 錯：`S24A600NAC.pdf` / `BN81-24425G-02_WEB_M50C_240226.1.pdf`
+     * 對：`S24A600.pdf` / `S24A600,S27A600.pdf` / `C27G55,C32G55.pdf`
+  6. **上船前比對**：用 sha256 比對 Drive 是否已有同名檔，刪除重複；用 set 比對型號是否被 Drive 既有檔案覆蓋
+
 ---
 
 _This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability._
