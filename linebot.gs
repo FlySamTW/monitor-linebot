@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.018"; // 2026-06-23 配額修補+writeRules doPost+doGet 雙路徑+同步失敗自動重試
-const BUILD_TIMESTAMP = "2026-06-23 21:30";
+const GAS_VERSION = "v29.6.020"; // 2026-06-23 清理測試端點 (移除 setSecret, listProps) + 13 個 PDF 重命名
+const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -12711,42 +12711,9 @@ function doGet(e) {
     }
   }
 
-  // v29.6.019: 設定 OPENCODE_WRITE_SECRET (需提供現有 secret 才能改)
-  if (e && e.parameter && e.parameter.setSecret === "1") {
-    const props = PropertiesService.getScriptProperties();
-    const currentSecret = props.getProperty("OPENCODE_WRITE_SECRET") || "testtesttest";
-    if (!e.parameter.oldSecret || e.parameter.oldSecret !== currentSecret) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: false, error: "Unauthorized, need oldSecret matching current OPENCODE_WRITE_SECRET" }),
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-    if (!e.parameter.newSecret) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: false, error: "Missing newSecret parameter" }),
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-    props.setProperty("OPENCODE_WRITE_SECRET", e.parameter.newSecret);
-    return ContentService.createTextOutput(
-      JSON.stringify({ success: true, message: "OPENCODE_WRITE_SECRET updated" }),
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // v29.6.019: 列出 Properties 中所有 key (不顯示 value, 僅診斷)
-  if (e && e.parameter && e.parameter.listProps === "1") {
-    const props = PropertiesService.getScriptProperties();
-    const all = props.getProperties();
-    const keys = Object.keys(all);
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        count: keys.length,
-        keys: keys,
-        // 顯示 OPENCODE_WRITE_SECRET 的前 4 碼 (驗證是否設定)
-        opencodeSecretHint: all.OPENCODE_WRITE_SECRET
-          ? all.OPENCODE_WRITE_SECRET.substring(0, 4) + "***"
-          : "(not set)",
-      }),
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
+  // v29.6.020: 移除測試端點 (setSecret, listProps) - 改用 GAS Properties UI 管理
+  // ?writeRules (doGet 端) 仍保留 (若需要快速寫入可使用)
+  // ?testModels 保留 (故障排除用)
 
   // v29.6.008: 測試多個 Gemini 模型的可用性
   if (e && e.parameter && e.parameter.testModels === "1") {
