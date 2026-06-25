@@ -403,7 +403,7 @@ writeLog(`[Fatal] ${error.message}`);
 
 | 技術 | 用途 | 預期效益 |
 |---|---|---|
-| **File Search API** (Gemini 2025 新) | 取代自建 SmartRetrieval | 效能 +50%, 自動 vector store |
+| **File Search API** (Gemini 2025 新) | 取代自建 SmartRetrieval | ⚠️ **不建議升級** (見下方) |
 | **Google Search Grounding** | 即時網路搜尋 | 不需手寫爬蟲 |
 | **Function Calling** | AI 主動呼叫函數 | 自動化操作 |
 | **Structured Output** | JSON Schema 強制格式 | 結構化回應 |
@@ -415,9 +415,18 @@ writeLog(`[Fatal] ${error.message}`);
 
 #### 🚀 下代升級優先級
 
-1. **File Search API** - 用 `mediaResolutionHigh` + `fileSearch` 取代 RAG 自己拼裝
-2. **Cached Content** - 把 12K 規格庫快取到 Gemini, 每次 call 省成本
-3. **Google Search Grounding** - 取代 #搜尋網路 的自建流程
+1. **Cached Content** - 把 12K 規格庫快取到 Gemini, 每次 call 省 token 80% ⭐ (低風險高效益)
+2. **Google Search Grounding** - 取代 #搜尋網路 的自建流程
+3. **File Search API** - ⚠️ **不建議**: 用 `interactions.create` 需改 API, 純 GAS 無 SDK, 有 storage/query 費用, 對精確型號匹配沒效益
+
+#### ⚠️ File Search 升級風險分析 (2026-06-25 查證)
+
+- 必須從 `:generateContent` 改 `interactions.create` (整個 linebot.gs 改寫)
+- 純 GAS 無法用 `google-genai` SDK, 必須手刻 REST
+- 6 分鐘 GAS 上限可能撞到 File Search ingestion 等待
+- 計費: 存儲 + embedding + 查詢
+- grounding metadata 暫不支援 Interactions API
+- 我們現有 Files API + 關鍵字比對已穩定運作 (100 PDF), 改 File Search 效益有限
 
 ---
 
