@@ -377,6 +377,48 @@ writeLog(`[Fatal] ${error.message}`);
      * 對：`S24A600.pdf` / `S24A600,S27A600.pdf` / `C27G55,C32G55.pdf`
   6. **上船前比對**：用 sha256 比對 Drive 是否已有同名檔，刪除重複；用 set 比對型號是否被 Drive 既有檔案覆蓋
 
+### 6. Google 技術盤點 (已用 vs 未用) - v29.6.028 統計
+
+#### ✅ 已使用 (11 種 Google 服務 + Gemini Files API)
+
+| 技術 | 次數 | 用途 |
+|---|---|---|
+| PropertiesService | 72 | API Key/Secret 配置 |
+| ContentService | 65 | HTTP 回應 (doGet/doPost) |
+| Trigger | 51 | 每日 04:00 排程 sync |
+| CacheService | 46 | 短期快取 (QA Cache) |
+| UrlFetchApp | 27 | 外部 API 呼叫 (Gemini/LINE) |
+| SpreadsheetApp | 17 | Google Sheet 讀寫 (CLASS_RULES/QA/PROMPT) |
+| DriveApp | 6 | Drive 掃描 PDF |
+| LockService | 6 | 並行鎖 |
+| ScriptApp | 8 | 部署資訊 |
+| HtmlService | 1 | TestUI 介面 |
+| **Gemini Files API** | 6 函數 | uploadFileToGemini, getRelevantKBFiles, ... (100 個 PDF 已上傳) |
+| **Gemini :generateContent** | 6 endpoint | LLM 對話 |
+| **Thinking Mode** | 15 次 | AI 思考預算 |
+| **groundingMetadata** | 3 次 | 引用來源 |
+| **RAG 架構** | 1 處 | 規格庫+QA+PDF 知識庫檢索 |
+
+#### ❌ 尚未使用 (Google 最新技術, 升級空間大)
+
+| 技術 | 用途 | 預期效益 |
+|---|---|---|
+| **File Search API** (Gemini 2025 新) | 取代自建 SmartRetrieval | 效能 +50%, 自動 vector store |
+| **Google Search Grounding** | 即時網路搜尋 | 不需手寫爬蟲 |
+| **Function Calling** | AI 主動呼叫函數 | 自動化操作 |
+| **Structured Output** | JSON Schema 強制格式 | 結構化回應 |
+| **Cached Content** | 長 context 快取 | 成本 -80% |
+| **Embeddings** | 語意搜尋 | 取代關鍵字 |
+| **Code Execution** | AI 跑 Python | 進階分析 |
+| **Live API (Realtime)** | 語音對話 | 多模態 |
+| **Image Gen (Imagen 3)** | 文字生圖 | 產品圖 |
+
+#### 🚀 下代升級優先級
+
+1. **File Search API** - 用 `mediaResolutionHigh` + `fileSearch` 取代 RAG 自己拼裝
+2. **Cached Content** - 把 12K 規格庫快取到 Gemini, 每次 call 省成本
+3. **Google Search Grounding** - 取代 #搜尋網路 的自建流程
+
 ---
 
 _This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability._
