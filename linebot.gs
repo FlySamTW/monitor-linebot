@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.027"; // 2026-06-25 規格回應給完整範本 + 朋友口吻
+const GAS_VERSION = "v29.6.028"; // 2026-06-25 修 extractModelNumbers regex 允許數字結尾 (S22D400, S24A600)
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -1871,8 +1871,9 @@ function extractModelNumbers(text) {
     // 注意：短型號在 v27.3.0 會進行二次驗證
     const modelPatterns = [
       {
+        // v29.6.028: 修 regex 允許數字結尾 (S22D400, S24A600, S27D400GAC)
         pattern:
-          /(?:^|[^A-Z0-9])([SG]\d{2}[A-Z]+[CDEFGHKLMNPSTX]{0,3})(?:$|[^A-Z0-9])/g,
+          /(?:^|[^A-Z0-9])([SG]\d{2}[A-Z]+\d{0,4}[A-Z]{0,3})(?:$|[^A-Z0-9])/g,
         needValidate: false,
       }, // 長型號直接放行
       {
