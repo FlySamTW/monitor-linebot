@@ -415,9 +415,9 @@ writeLog(`[Fatal] ${error.message}`);
 
 #### 🚀 下代升級優先級
 
-1. **Cached Content** - 把 12K 規格庫快取到 Gemini, 每次 call 省 token 80% ⭐ (低風險高效益)
-2. **Google Search Grounding** - 取代 #搜尋網路 的自建流程
-3. **File Search API** - ⚠️ **不建議**: 用 `interactions.create` 需改 API, 純 GAS 無 SDK, 有 storage/query 費用, 對精確型號匹配沒效益
+1. **Cached Content** - ⚠️ **暫時禁用**: API 限制 400 (見下方) (已記錄)
+2. **Google Search Grounding** - ❌ **不適用**: 我們邏輯是「找不到才搜, 自動搜會破壞封閉式」 (已記錄)
+3. **File Search API** - ❌ **不建議**: 需改 `interactions.create` API, 純 GAS 無 SDK, 有 storage/query 費用, 對精確型號匹配沒效益
 
 #### ⚠️ File Search 升級風險分析 (2026-06-25 查證)
 
@@ -427,6 +427,23 @@ writeLog(`[Fatal] ${error.message}`);
 - 計費: 存儲 + embedding + 查詢
 - grounding metadata 暫不支援 Interactions API
 - 我們現有 Files API + 關鍵字比對已穩定運作 (100 PDF), 改 File Search 效益有限
+
+#### ⚠️ Cached Content 升級風險 (2026-06-25 實測失敗 v29.6.029-031)
+
+- **API 限制**: `cached_content` 不能與 `system_instruction` + `tools` 同時使用
+- **錯誤訊息**: `CachedContent can not be used with GenerateContent request setting system_instruction, tools or tool_config. Proposed fix: move those values to Cache`
+- **現有架構**: linebot.gs 5600 行附近用 `systemInstruction: { parts: [{ text: dynamicPrompt }] }` + `tools: tools` (google_search 等)
+- **重構成本**: 必須把 12K 規格庫 + systemInstruction + tools **全部移到 cache 內**, 改變整個 prompt 結構
+- **風險**: 重構失敗會造成整個 AI 問答崩潰
+- **結論**: 暫時禁用, 寫好 TODO 等未來重構
+
+#### ⚠️ Google Search Grounding 不適用原因 (2026-06-25)
+
+- **專案邏輯** (用戶原話): 「一律先自建 QA/RULE/官方 PDF, 若都沒有才搜尋網路, 否則是封閉的, 連動用自己知識庫都不準」
+- **現有邏輯**: `#搜尋網路` 觸發才搜, 找不到來源就拒答或標記 `[來源:規格庫缺失]`
+- **Search Grounding 預設**: **每次**問答都自動搜尋網路
+- **衝突**: 會破壞封閉式知識庫鐵律, 讓 AI 用網路資訊污染回答
+- **結論**: 不啟用 Search Grounding, 維持現有 `#搜尋網路` 按需觸發
 
 ---
 

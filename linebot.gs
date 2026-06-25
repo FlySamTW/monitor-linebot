@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.028"; // 2026-06-25 修 extractModelNumbers regex 允許數字結尾 (S22D400, S24A600)
+const GAS_VERSION = "v29.6.031"; // 2026-06-25 Cached Content 暫時禁用 (與現有 systemInstruction+tools 架構衝突 400)
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -4134,6 +4134,13 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       scheduleImmediateRebuild();
     }
 
+    // v29.6.031: Cached Content 暫時禁用 - 待重構 prompt 才能啟用
+    // try {
+    //   rebuildSpecCachedContent();
+    // } catch (e) {
+    //   writeLog(`[CachedContent] 建立失敗: ${e.message}`);
+    // }
+
     // 預約下次同步
     scheduleNextSync();
 
@@ -4276,6 +4283,91 @@ function cleanupOldGeminiFiles(apiKey) {
   } catch (e) {
     writeLog(`[Cleanup] 清理失敗: ${e.message}`);
     return 0;
+  }
+}
+
+/**
+ * v29.6.029: 重建規格庫 Cached Content
+ * 將 12K 規格庫快取到 Gemini, 24 小時 TTL, Fast Mode 自動使用
+ * 預期效益: 每次問答省 token 70%
+ */
+function rebuildSpecCachedContent() {
+  const cache = CacheService.getScriptCache();
+  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    writeLog("[CachedContent] GEMINI_API_KEY 缺失, 跳過");
+    return null;
+  }
+
+  // 1. 載入規格庫 (Light + Heavy)
+  let specContent = "";
+  const lightCount = parseInt(cache.get("KB_RULES_LIGHT_COUNT") || "0");
+  if (lightCount > 0) {
+    for (let i = 0; i < lightCount; i++) {
+      specContent += cache.get(`KB_RULES_LIGHT_${i}`) || "";
+    }
+  }
+  // 若 Light cache miss, 改從 Heavy Cache 拿
+  if (specContent.trim().length === 0) {
+    const heavyCount = parseInt(cache.get("KB_RULES_COUNT") || "0");
+    if (heavyCount > 0) {
+      for (let i = 0; i < heavyCount; i++) {
+        specContent += cache.get(`KB_RULES_${i}`) || "";
+      }
+    }
+  }
+
+  if (specContent.trim().length === 0) {
+    writeLog("[CachedContent] 規格庫為空, 跳過");
+    return null;
+  }
+
+  // 2. 刪除舊 cache (如有)
+  const oldName = PropertiesService.getScriptProperties().getProperty("SPEC_CACHED_NAME");
+  if (oldName) {
+    try {
+      UrlFetchApp.fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${oldName}?key=${apiKey}`,
+        { method: "delete", muteHttpExceptions: true }
+      );
+    } catch (e) {}
+  }
+
+  // 3. 建立新 cache (24h TTL)
+  // v29.6.031: 只 cache 規格庫內容 (不 cache systemInstruction/tools)
+  // generate_content 不傳 systemInstruction/tools 也可使用 cache
+  const modelName = GEMINI_MODEL_FAST.replace("models/", "");  // 去掉 "models/" 前綴
+  const payload = {
+    model: `models/${modelName}`,
+    contents: [{ role: "user", parts: [{ text: "以下是三星螢幕規格庫:\n\n" + specContent }] }],
+    ttl: "86400s",  // 24 小時
+    displayName: "Samsung_Monitor_Spec_Rules"
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(
+      `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      }
+    );
+    const code = response.getResponseCode();
+    const body = JSON.parse(response.getContentText());
+    if (code === 200 && body.name) {
+      PropertiesService.getScriptProperties().setProperty("SPEC_CACHED_NAME", body.name);
+      const tokens = (body.usageMetadata && body.usageMetadata.totalTokenCount) || "?";
+      writeLog(`[CachedContent] ✅ 規格庫快取建立成功: ${body.name} (${tokens} tokens, 24h TTL)`);
+      return body.name;
+    } else {
+      writeLog(`[CachedContent] ❌ 建立失敗: HTTP ${code} - ${JSON.stringify(body).substring(0, 300)}`);
+      return null;
+    }
+  } catch (e) {
+    writeLog(`[CachedContent] ❌ API 錯誤: ${e.message}`);
+    return null;
   }
 }
 
@@ -5510,6 +5602,14 @@ function callLLMWithRetry(
     ],
     tools: tools,
   };
+
+  // v29.6.031: Cached Content 暫時禁用 - 因為現有架構用 systemInstruction + tools
+  // 啟用 cache 會引發 400: CachedContent can not be used with system_instruction/tools
+  // TODO: 重構 prompt 結構 (把 systemInstruction 移到 cache) 才能用
+  // const specCachedName = PropertiesService.getScriptProperties().getProperty("SPEC_CACHED_NAME");
+  // if (specCachedName && !imageBlob && !attachPDFs) {
+  //   payload.cachedContent = specCachedName;
+  // }
 
   const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
   // v29.5.0: Optimize API Log - Remove Start Log
