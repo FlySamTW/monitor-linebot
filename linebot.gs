@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.031"; // 2026-06-25 Cached Content 暫時禁用 (與現有 systemInstruction+tools 架構衝突 400)
+const GAS_VERSION = "v29.6.037"; // 2026-06-25 修 testRun 抓 reply regex ([來源:規格庫] 內 [ 字符誤切)
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2077,7 +2077,12 @@ function normalizeSourceTagFromRaw(rawText) {
 function appendSourceTagIfMissing(text, sourceTag) {
   const body = String(text || "").trim();
   const tag = String(sourceTag || "").trim();
-  if (!tag) return body;
+  if (!tag) {
+    // v29.6.034: 若無 source tag 但 body 不為空, 預設標 [來源:規格庫] (封閉式鐵律)
+    // 除非 body 太短 (< 30 字) 像是招呼語, 就不標
+    if (body.length < 30) return body;
+    return `${body}\n\n[來源:規格庫]`;
+  }
   if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) return body;
   return `${body}\n\n${tag}`;
 }
@@ -5300,6 +5305,29 @@ function constructDynamicPrompt(
     // v29.6.025: 強制完整規格回應 + 朋友口吻
     dynamicPrompt += `\n【規格回應強化】當用戶詢問任何型號的「規格」時，你必須從參考資料中**完整提取所有可用的規格欄位**（解析度、更新頻率、反應時間、亮度、對比、HDR、可視角度、介面、重量、尺寸），**不能只給一句籠統回答**。完整範本：「這台是 27 吋 VA 面板，解析度 Full HD 1920x1080，60Hz 更新頻率，4ms 反應時間，亮度 250 cd/㎡，原生對比 3000:1，支援 HDR10，178° 寬視角，介面 HDMI 2 個 + USB 2 個 + WiFi，重量 4.8 kg。」。請嚴格按此豐富度回答。\n`;
     dynamicPrompt += `\n【口吻鐵律】你的口吻必須像「熟朋友」而非「客服專員」！嚴禁使用「您好」「我是三星螢幕客服專員」這類官式開頭。直接切入問題，朋友式口吻，例如「這台是...」「它的...」即可。\n`;
+
+    // v29.6.032: 中性立場鐵律 (不攻擊它牌、不過度自誇三星)
+    dynamicPrompt += `\n【⚖️ 中性立場鐵律 (v29.6.032 強制)】
+你是「台灣三星官方客服」, 但**不代表可以攻擊它牌或過度自誇**。
+1. **絕對禁止攻擊它牌** — 不能說「它牌比較差」「它牌沒這個功能」「它牌面板扭曲」這類比較性貶抑。
+2. **絕對禁止過度自誇** — 不能說「三星是業界最好」「三星獨家領先」「最佳選擇」這類行銷話術。
+3. **客觀描述事實** — 只能根據規格庫/QA/PDF 內的具體數據陳述, 不能用形容詞包裝 (例: 「它的曲面設計更舒服」→ 改為「它的曲率是 1000R」)。
+4. **比較題預設中立** — 若用戶問「Odyssey 跟它牌曲面差在哪」, 你只能列出三星規格庫內有的資訊, 它牌的特性**一律不評論**。
+5. **避免主觀判斷** — 「不扭曲」「比較舒服」「比較好」「比較強」這類主觀詞禁用, 改用具體數字 (例: 「曲率 1000R」「對比 2500:1」)。
+\n`;
+
+    // v29.6.032: 封閉式鐵律強化 - 任何回答都必須有來源
+    dynamicPrompt += "\n【🔒 封閉式知識庫鐵律 (v29.6.032 強制)】\n";
+    dynamicPrompt += "你的回答**必須**100% 來自以下來源, **嚴禁**使用 LLM 內建知識:\n";
+    dynamicPrompt += "1. 精選 QA & 規格庫 (CLASS_RULES)\n";
+    dynamicPrompt += "2. 官方產品手冊 (PDF, 透過 Files API)\n";
+    dynamicPrompt += "3. 網路搜尋結果 (用戶明確要求井號搜尋網路 才用)\n\n";
+    dynamicPrompt += "若上述三個來源都**沒有答案**:\n";
+    dynamicPrompt += "- 必須老實回答「資料庫沒有, 找不到」+ 標記 `[來源:缺失]`\n";
+    dynamicPrompt += "- 必須輸出 `[AUTO_SEARCH_PDF]` 或 `[AUTO_SEARCH_WEB]` 暗號\n";
+    dynamicPrompt += "- **嚴禁**用「一般常見」「通常來說」「一般而言」這類暗示 LLM 知識的措辭\n";
+    dynamicPrompt += "- **嚴禁**用「我想」「我覺得」「通常」這類主觀判斷\n\n";
+    dynamicPrompt += "若你**主動**從規格庫整理了事實 (例如把「1000R」「Fast IPS」拼湊成回答), 必須在最後明確標記 `[來源:規格庫]`。\n";
 
     // 🆕 v29.5.227: 極速模式防幻覺與誠實來源鐵律 (徹底封鎖一般知識漏洞，不准瞎編展示據點與營業資訊)
     dynamicPrompt += `\n⚠️【極速模式防幻覺與誠實來源鐵律 (嚴格執行)】
@@ -9357,22 +9385,24 @@ function handleMessage(event) {
 
         // Fast Mode 來源保留：若原始回覆有可信來源標籤，清理後補回標準標籤。
         if (!Array.isArray(replyText)) {
+          // v29.6.035: 不管 stayedInFastMode 與否, 都要補 [來源:規格庫] 標籤
+          // 因為非 Fast 路徑 (Auto Search) 也有可能漏標
+          writeLog(`[SourceTag Debug] before: 長度=${String(replyText).length}, fastSourceTag="${fastSourceTag}"`);
+          replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
+          writeLog(`[SourceTag Debug] after: 結尾="${String(replyText).substring(String(replyText).length-50)}"`);
           const stayedInFastMode =
             !aiRequestedPdfSearch && !shouldAttachPdfs && !hasExplicitTrigger;
-          if (stayedInFastMode) {
-            replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
-            if (!skipAliasFeatureGuard) {
-              const aliasGuardModels =
-                suggestedModels.length > 0
-                  ? suggestedModels
-                  : cachedDirectModels;
-              replyText = applyAliasFeatureAmbiguityGuard(
-                msg,
-                replyText,
-                fastSourceTag,
-                aliasGuardModels,
-              );
-            }
+          if (stayedInFastMode && !skipAliasFeatureGuard) {
+            const aliasGuardModels =
+              suggestedModels.length > 0
+                ? suggestedModels
+                : cachedDirectModels;
+            replyText = applyAliasFeatureAmbiguityGuard(
+              msg,
+              replyText,
+              fastSourceTag,
+              aliasGuardModels,
+            );
           }
         }
 
@@ -12980,14 +13010,21 @@ function doGet(e) {
     // 抓 AI Reply
     let reply = "";
     for (const log of TEST_LOGS) {
-      // 抓 [AI Raw Response] 或 [AI Reply] 或 [Reply]
-      let m = log.match(/\[AI Raw Response\]\s*([\s\S]+?)(?=\[|$)/);
-      if (m) { reply = m[1].trim().substring(0, 1500); break; }
-      m = log.match(/\[AI Reply\]\s*([\s\S]+?)(?=\[|$)/);
-      if (m) { reply = m[1].trim().substring(0, 1500); break; }
-      m = log.match(/\[Reply\]\s*([\s\S]+?)(?=\[|$)/);
-      if (m) { reply = m[1].trim().substring(0, 1500); break; }
+      // v29.6.037: 改用 parseLogContent 避免 [來源:規格庫] 內 [ 字符誤切
+      if (log.indexOf("[Reply]") > -1) {
+        reply = parseLogContent(log, "[Reply]");
+        break;
+      }
+      if (log.indexOf("[AI Reply]") > -1) {
+        reply = parseLogContent(log, "[AI Reply]");
+        break;
+      }
+      if (log.indexOf("[AI Raw Response]") > -1) {
+        reply = parseLogContent(log, "[AI Raw Response]");
+        break;
+      }
     }
+    reply = reply.substring(0, 1500);
     return ContentService.createTextOutput(
       JSON.stringify({
         q: q,
