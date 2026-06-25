@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.020"; // 2026-06-23 清理測試端點 (移除 setSecret, listProps) + 13 個 PDF 重命名
+const GAS_VERSION = "v29.6.027"; // 2026-06-25 規格回應給完整範本 + 朋友口吻
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -5203,6 +5203,10 @@ function constructDynamicPrompt(
     if (targetModelName) {
       dynamicPrompt += `\n【已確認對象型號】系統已在背景確認用戶正在詢問的型號為「${targetModelName}」。你必須直接針對此型號回答，絕對禁止再反問用戶「請告訴我你的螢幕型號」。\n`;
     }
+
+    // v29.6.025: 強制完整規格回應 + 朋友口吻
+    dynamicPrompt += `\n【規格回應強化】當用戶詢問任何型號的「規格」時，你必須從參考資料中**完整提取所有可用的規格欄位**（解析度、更新頻率、反應時間、亮度、對比、HDR、可視角度、介面、重量、尺寸），**不能只給一句籠統回答**。完整範本：「這台是 27 吋 VA 面板，解析度 Full HD 1920x1080，60Hz 更新頻率，4ms 反應時間，亮度 250 cd/㎡，原生對比 3000:1，支援 HDR10，178° 寬視角，介面 HDMI 2 個 + USB 2 個 + WiFi，重量 4.8 kg。」。請嚴格按此豐富度回答。\n`;
+    dynamicPrompt += `\n【口吻鐵律】你的口吻必須像「熟朋友」而非「客服專員」！嚴禁使用「您好」「我是三星螢幕客服專員」這類官式開頭。直接切入問題，朋友式口吻，例如「這台是...」「它的...」即可。\n`;
 
     // 🆕 v29.5.227: 極速模式防幻覺與誠實來源鐵律 (徹底封鎖一般知識漏洞，不准瞎編展示據點與營業資訊)
     dynamicPrompt += `\n⚠️【極速模式防幻覺與誠實來源鐵律 (嚴格執行)】
@@ -12044,10 +12048,10 @@ function doPost(e) {
         || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY")
         || "testtesttest";
       if (!json.secret || json.secret !== authKey) {
-        return ContentService.createTextOutput(
-          JSON.stringify({ success: false, error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY" }),
-        ).setMimeType(ContentService.MimeType.JSON);
-      }
+    return ContentService.createTextOutput(
+      JSON.stringify(results),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
       try {
         const fromRow = parseInt(json.fromRow || "144");
         const rules = json.rules || [];
@@ -12752,6 +12756,59 @@ function doGet(e) {
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // v29.6.021: 批次自動化測試, 一次跑多題 + 回傳 AI 答案
+  if (e && e.parameter && e.parameter.batchTest === "1") {
+    const questions = [
+      "G80HF 5K 180Hz 規格",
+      "Odyssey3D G90XF 裸視3D電競螢幕 規格",
+      "S27BM500 智慧聯網螢幕 多少吋?",
+      "S49A950 是曲面嗎?",
+      "S24A600 反應時間?",
+      "S27FG502 更新頻率?",
+      "S32CM703 是 M 系列嗎?",
+      "S34A650 解析度?",
+      "S27HG806 有 HDR 嗎?",
+      "M8 M80F 跟 M7 M70F 差別?"
+    ];
+    const debug = e.parameter.debug === "1";
+    const testUser = "U_BATCH_TEST_" + Date.now();
+    const results = [];
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const start = Date.now();
+      try {
+        const reply = callLLMWithRetry(
+          q,
+          [],
+          [],
+          false,
+          null,
+          false,
+          testUser,
+          false,
+          null,
+        );
+        const ms = Date.now() - start;
+        const r = {
+          q: q,
+          ok: true,
+          ms: ms,
+          reply: String(reply).substring(0, 600)
+        };
+        if (debug && i === 0) {
+          // 印第一題的最終 prompt (從 LOG 抓)
+          r.note = "看 LOG 找 prompt 灌入內容";
+        }
+        results.push(r);
+      } catch (err) {
+        results.push({ q: q, ok: false, err: String(err.message || err) });
+      }
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({ totalMs: results.reduce((s, r) => s + (r.ms || 0), 0), count: results.length, results: results })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // v29.6.010: 讀取 CLASS_RULES sheet, 用於驗證規格完整性
   if (e && e.parameter && e.parameter.readRules === "1") {
     const startRow = Math.max(1, parseInt(e.parameter.from || "1"));
@@ -12798,6 +12855,44 @@ function doGet(e) {
         spreadsheetId: ssId,
         driveFolderId: CONFIG.DRIVE_FOLDER_ID || "",
       }),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.024: 真實 webhook 測試, 走 handleMessage 完整流程
+  if (e && e.parameter && e.parameter.testRun === "1") {
+    const q = String(e.parameter.q || "S27BM500 多少吋?");
+    const uid = String(e.parameter.uid || "TEST_OPENCODE_001");
+    IS_TEST_MODE = true;
+    TEST_LOGS = [];
+    const fakeEvent = {
+      replyToken: "TEST_REPLY_TOKEN",
+      source: { type: "user", userId: uid },
+      message: { type: "text", text: q, id: "TEST_" + Date.now() },
+      type: "message",
+      timestamp: Date.now(),
+    };
+    try {
+      handleMessage(fakeEvent);
+    } catch (err) {
+      TEST_LOGS.push(`[Fatal] ${err.message}`);
+    }
+    // 抓 AI Reply
+    let reply = "";
+    for (const log of TEST_LOGS) {
+      // 抓 [AI Raw Response] 或 [AI Reply] 或 [Reply]
+      let m = log.match(/\[AI Raw Response\]\s*([\s\S]+?)(?=\[|$)/);
+      if (m) { reply = m[1].trim().substring(0, 1500); break; }
+      m = log.match(/\[AI Reply\]\s*([\s\S]+?)(?=\[|$)/);
+      if (m) { reply = m[1].trim().substring(0, 1500); break; }
+      m = log.match(/\[Reply\]\s*([\s\S]+?)(?=\[|$)/);
+      if (m) { reply = m[1].trim().substring(0, 1500); break; }
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        q: q,
+        reply: reply.substring(0, 1500),
+        logs: TEST_LOGS.slice(-20).map(l => l.substring(0, 300))
+      })
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
