@@ -445,6 +445,25 @@ writeLog(`[Fatal] ${error.message}`);
 - **衝突**: 會破壞封閉式知識庫鐵律, 讓 AI 用網路資訊污染回答
 - **結論**: 不啟用 Search Grounding, 維持現有 `#搜尋網路` 按需觸發
 
+### 7. 升級標準 (永久記憶 — 2026-06-25 教訓)
+
+**任何升級、新功能、技術變更前, 必須 100% 通過這 5 項檢查。任一不通過 → 不動**:
+
+1. ✅ **先查官方文檔** — 不是憑印象, 必須看官方 Quickstart / API Reference
+2. ✅ **確認跟現有架構相容 (不衝突)** — 例如 Cached Content 跟 systemInstruction+tools 衝突 400
+3. ✅ **確認成本不會增加** — 包括 token 配額、storage、API 計費、GAS 6 分鐘上限
+4. ✅ **確認邏輯跟專案 DNA 一致** — 例如 Search Grounding 違反「封閉式知識庫」鐵律
+5. ✅ **跟用戶確認後再動** — 不是用戶問能不能升才升, 是主動列選項給用戶選
+
+**違反這 5 條會發生的事**:
+- 白做一輪 (v29.6.029-031 實測, 3 次部署 + 2 次失敗 API 測試)
+- 浪費部署配額 + API 配額
+- 浪費用戶時間查證修正
+- 違反專案 DNA (用戶已警告多次)
+- 失去用戶信任
+
+**原則: 不動 = 不錯。動 = 必須完美正當。**
+
 ---
 
 _This file guides agentic coding agents working on the Samsung LINE Bot codebase. Follow these conventions to maintain code quality and system stability._
