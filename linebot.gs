@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.037"; // 2026-06-25 修 testRun 抓 reply regex ([來源:規格庫] 內 [ 字符誤切)
+const GAS_VERSION = "v29.6.039"; // 2026-06-25 修競品拒答誤標來源 (社交對話不標)
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2077,10 +2077,23 @@ function normalizeSourceTagFromRaw(rawText) {
 function appendSourceTagIfMissing(text, sourceTag) {
   const body = String(text || "").trim();
   const tag = String(sourceTag || "").trim();
+  // v29.6.038: 智慧判定 fallback 來源
   if (!tag) {
-    // v29.6.034: 若無 source tag 但 body 不為空, 預設標 [來源:規格庫] (封閉式鐵律)
-    // 除非 body 太短 (< 30 字) 像是招呼語, 就不標
+    // 招呼語 / 太短 → 不標
     if (body.length < 30) return body;
+    // 含暗號 → 不補 (交由攔截層處理)
+    if (/\[AUTO_SEARCH_PDF\]|\[AUTO_SEARCH_WEB\]|\[NEED_DOC\]/i.test(body)) {
+      return body;
+    }
+    // v29.6.039: 競品婉轉拒答 → 不標 (社交對話非資料來源)
+    if (/主要服務三星|三星客服|LG|BENQ|ASUS|Acer|Dell|HP 的資訊|我這邊沒有/.test(body)) {
+      return body;
+    }
+    // 含「資料庫沒有」「找不到」「未記載」字樣 → 標 [來源:缺失]
+    if (/資料庫(中|裡)?(沒有|沒有找到|沒有相關|未記載|找不到)|沒有找到|未登錄|目前沒有/.test(body)) {
+      return `${body}\n\n[來源:缺失]`;
+    }
+    // 其他 → 預設 [來源:規格庫]
     return `${body}\n\n[來源:規格庫]`;
   }
   if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) return body;
@@ -4292,9 +4305,10 @@ function cleanupOldGeminiFiles(apiKey) {
 }
 
 /**
- * v29.6.029: 重建規格庫 Cached Content
- * 將 12K 規格庫快取到 Gemini, 24 小時 TTL, Fast Mode 自動使用
- * 預期效益: 每次問答省 token 70%
+ * @deprecated v29.6.031 — Cached Content 暫時禁用
+ * 原因: API 400 錯誤「CachedContent can not be used with system_instruction, tools」
+ * 需重構 prompt 結構 (把 systemInstruction 移到 cache) 才能啟用, 詳見 AGENTS.md 鐵律 6/7
+ * 本函式保留作未來重構參考, 呼叫端已註解
  */
 function rebuildSpecCachedContent() {
   const cache = CacheService.getScriptCache();
@@ -5307,13 +5321,14 @@ function constructDynamicPrompt(
     dynamicPrompt += `\n【口吻鐵律】你的口吻必須像「熟朋友」而非「客服專員」！嚴禁使用「您好」「我是三星螢幕客服專員」這類官式開頭。直接切入問題，朋友式口吻，例如「這台是...」「它的...」即可。\n`;
 
     // v29.6.032: 中性立場鐵律 (不攻擊它牌、不過度自誇三星)
-    dynamicPrompt += `\n【⚖️ 中性立場鐵律 (v29.6.032 強制)】
+    dynamicPrompt += `\n【⚖️ 中性立場與競品拒答鐵律 (v29.6.038 強制)】
 你是「台灣三星官方客服」, 但**不代表可以攻擊它牌或過度自誇**。
 1. **絕對禁止攻擊它牌** — 不能說「它牌比較差」「它牌沒這個功能」「它牌面板扭曲」這類比較性貶抑。
 2. **絕對禁止過度自誇** — 不能說「三星是業界最好」「三星獨家領先」「最佳選擇」這類行銷話術。
 3. **客觀描述事實** — 只能根據規格庫/QA/PDF 內的具體數據陳述, 不能用形容詞包裝 (例: 「它的曲面設計更舒服」→ 改為「它的曲率是 1000R」)。
 4. **比較題預設中立** — 若用戶問「Odyssey 跟它牌曲面差在哪」, 你只能列出三星規格庫內有的資訊, 它牌的特性**一律不評論**。
 5. **避免主觀判斷** — 「不扭曲」「比較舒服」「比較好」「比較強」這類主觀詞禁用, 改用具體數字 (例: 「曲率 1000R」「對比 2500:1」)。
+6. **🚫 競品問題婉轉拒答 (v29.6.038 新增)** — 若用戶詢問**它牌產品** (如 LG/BENQ/ASUS/Acer/Dell/HP 螢幕或型號), 你**禁止**回答它牌規格/評價/比較/推薦。必須**婉轉拒答**: 「不好意思, 我是三星螢幕客服, 主要服務三星產品, LG/BENQ 的資訊我這邊沒有喔。如果你有三星螢幕的問題, 我很樂意幫你查!」。**不可**貶抑它牌, **不可**推薦三星替代品, 只要**禮貌轉回三星**即可。
 \n`;
 
     // v29.6.032: 封閉式鐵律強化 - 任何回答都必須有來源
@@ -9385,11 +9400,9 @@ function handleMessage(event) {
 
         // Fast Mode 來源保留：若原始回覆有可信來源標籤，清理後補回標準標籤。
         if (!Array.isArray(replyText)) {
-          // v29.6.035: 不管 stayedInFastMode 與否, 都要補 [來源:規格庫] 標籤
-          // 因為非 Fast 路徑 (Auto Search) 也有可能漏標
-          writeLog(`[SourceTag Debug] before: 長度=${String(replyText).length}, fastSourceTag="${fastSourceTag}"`);
+          // v29.6.035: 不管 stayedInFastMode 與否, 都要補來源標籤
+          // v29.6.038: appendSourceTagIfMissing 已智慧化 (暗號/缺失/預設)
           replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
-          writeLog(`[SourceTag Debug] after: 結尾="${String(replyText).substring(String(replyText).length-50)}"`);
           const stayedInFastMode =
             !aiRequestedPdfSearch && !shouldAttachPdfs && !hasExplicitTrigger;
           if (stayedInFastMode && !skipAliasFeatureGuard) {
