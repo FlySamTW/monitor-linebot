@@ -1,4 +1,4 @@
-// ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
+﻿// ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
 // ⛔️ IRON RULE: DEPLOYMENT PROTOCOL (GOOGLE OFFICIAL STANDARD)
 // 1. PUSH CODE: `clasp push`
 // 2. VERSION: `clasp version "vxx.x.xx desc"` (Create immutable snapshot)
@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.039"; // 2026-06-25 修競品拒答誤標來源 (社交對話不標)
+const GAS_VERSION = "v29.5.239"; // 2026-06-30 修復併發競爭與網路搜尋幻覺問題
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -6446,6 +6446,17 @@ function handleMessage(event) {
     if (userMessage.length === 0) return;
 
     const contextId = userId; // 對話 ID 就是 userId
+    const cache = CacheService.getScriptCache();
+    let waitLoops = 0;
+    while (cache.get(contextId + ':image_processing') === 'true' && waitLoops < 6) {
+      Utilities.sleep(500);
+      waitLoops++;
+    }
+    if (cache.get(contextId + ':image_processing') === 'true') {
+      writeLog('[Race Condition] 攔截！圖片處理尚未結束，暫停文字處理');
+      replyMessage(replyToken, '⏳ 我還在很努力看您上一張圖片喔！為了給您最準確的答案，請稍等圖片分析完成後，再把問題發送一次！');
+      return;
+    }
     const messageId = event.message.id || null;
     let msg = userMessage;
     let isDualBubbleComplete = false; // v29.3.29: 修正旗標未定義問題
@@ -9488,6 +9499,8 @@ function generateFollowUpPrompt() {
 function handleImageMessage(msgId, userId, replyToken, contextId) {
   try {
     writeLog(`[Image] 收到圖片 MsgId: ${msgId}`);
+    const cache = CacheService.getScriptCache();
+    cache.put(contextId + ':image_processing', 'true', 15);
     // writeRecordDirectly(userId, "[傳圖]", contextId, 'user', '');
 
     if (!hasRecentAnimation(userId)) {
@@ -9528,8 +9541,10 @@ function handleImageMessage(msgId, userId, replyToken, contextId) {
       { role: "user", content: "[使用者傳送了一張圖片]" },
       { role: "assistant", content: `(針對圖片的分析結果) ${final}` },
     );
+    cache.remove(contextId + ':image_processing');
   } catch (e) {
     writeLog(`[Image Error] ${e.message}`);
+    CacheService.getScriptCache().remove(contextId + ':image_processing');
     replyMessage(replyToken, "抱歉，我看圖片出了點問題，請稍後再試 🔧");
   }
 }
@@ -9884,7 +9899,7 @@ function handleCommand(c, u, cid) {
       true, // isRetry
       u, // userId
       !triggerPDF, // forceWebSearch (PDF 優先於 Web)
-      "", // targetModelName
+      selectedModel || "", // targetModelName
     );
 
     if (triggerPDF) {
