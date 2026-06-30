@@ -6546,7 +6546,7 @@ function handleMessage(event) {
 
     // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
     // 但指令類別不做去重，因為用戶可能需要重試
-    const cache = CacheService.getScriptCache();
+    cache = CacheService.getScriptCache();
     const isCommand = msg.startsWith("/");
     const isQuickCommand = msg.startsWith("#");
 
