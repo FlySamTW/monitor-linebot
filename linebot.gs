@@ -2876,6 +2876,11 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
             .filter((line) => line !== "")
             .join("\n\n");
           qaLoaded = fullQA.trim().length > 0;
+          if (qaLoaded) {
+            const qaChunks = chunkString(fullQA, 25000);
+            cache.put('KB_QA_COUNT', qaChunks.length.toString(), 21600);
+            qaChunks.forEach((c, idx) => cache.put('KB_QA_' + idx, c, 21600)); // v29.6 BUG 2 修復
+          }
         }
       } catch (e) {
         writeLog(`[Fallback Error] QA Read Failed: ${e.message}`);
@@ -3669,7 +3674,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // 如果強制重建，不先清掉舊 PDF URI；新清單成功後再覆蓋，避免失敗時歸零
     if (forceRebuild) {
       writeLog("[Sync] 強制重建模式：保留舊 PDF 清單，待新清單成功後才覆蓋");
-      oldKbList = [];
+      // oldKbList = []; // v29.6 BUG 1 修復: 即使強迫重建，也不清空舊清單，避免浪費
     }
 
     // 建立比對 Map
@@ -7560,6 +7565,7 @@ function handleMessage(event) {
 
         // 強制組合查詢：用戶輸入 + 原始問題
         const combinedQuery = `${pending.originalQuery}\n\n(用戶選擇型號: ${pending.model})`;
+        msg = combinedQuery; userMessage = combinedQuery; // v29.6 BUG 6 修復
 
         // 正常進入對話流程，但已設置 PDF Mode，會自動載入 PDF
         // 不 return，讓下面的 D. 一般對話 邏輯接手
@@ -9478,6 +9484,7 @@ function handleMessage(event) {
       // 但 doPost 已有 finally flush，這裡可不寫，或為了保險寫一次
     }
   } catch (error) {
+    try { replyMessage(replyToken, '⚠️ 系統發生預期外的錯誤，請稍後再試。'); } catch(e){} // v29.6 BUG 7 修復
     writeLog("[Fatal] " + error);
   }
 }
@@ -9580,13 +9587,13 @@ function handleCommand(c, u, cid) {
     // 完璧歸趙！同步最新規格庫，並上傳 PDF 與同步知識庫 (使用者原本的重啟)
     const ruleLen = restoreClassRulesToSheet();
     scheduleImmediateRebuild();
-    const resultMsg = syncGeminiKnowledgeBase(false);
+    // const resultMsg = syncGeminiKnowledgeBase(false); // v29.6 BUG 3 修復: 拔除同步等待
     
     const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
     const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
     const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
     const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
-    const syncNote =
+    const syncNote = 'PDF與QA將於1分鐘後於背景同步';
       uriCount > 0
         ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
         : driveCount > 0
@@ -9620,12 +9627,12 @@ function handleCommand(c, u, cid) {
     // 🆕 v29.5.234: 呼叫重構後的統一自癒還原函數
     const ruleLen = restoreClassRulesToSheet();
     scheduleImmediateRebuild();
-    const resultMsg = syncGeminiKnowledgeBase(false);
+    // const resultMsg = syncGeminiKnowledgeBase(false); // v29.6 BUG 3 修復: 拔除同步等待
     const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
     const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
     const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
     const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
-    const syncNote =
+    const syncNote = 'PDF與QA將於1分鐘後於背景同步';
       uriCount > 0
         ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
         : driveCount > 0
@@ -11953,9 +11960,12 @@ function getHistoryFromCacheOrSheet(cid) {
       .findNext();
     if (f) {
       // v29.4.32: Sanitize history on read
-      return sanitizeHistoryArray(
-        JSON.parse(s.getRange(f.getRow(), 2).getValue()),
-      );
+      const parsed = JSON.parse(s.getRange(f.getRow(), 2).getValue());
+      const sanitized = sanitizeHistoryArray(parsed);
+      c.put(k, JSON.stringify(sanitized), 3600); // v29.6 BUG 2 修復: 回寫快取
+      return sanitized;
+
+
     }
   } catch (e) {}
   return [];
@@ -11991,7 +12001,7 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
       const oldMsgs = newHist.slice(0, safeSplitIndex);
       const recentMsgs = newHist.slice(safeSplitIndex);
 
-      const summary = callGeminiToSummarize(oldMsgs);
+      const summary = null; // v29.6 BUG 8 修復: 取消同步摘要，直接觸發 Hard Cut 確保 5 秒回應
 
       if (summary) {
         const summaryMsg = {
