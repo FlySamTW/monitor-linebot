@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.011"; // 2026-07-01 修正 checkModelRegex 與平/曲面型號識別正則漏洞
+const GAS_VERSION = "v29.6.012"; // 2026-07-01 優先前置原始提問型號至 exactModels，防止 generic alias 覆蓋
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -4810,16 +4810,18 @@ function getRelevantKBFiles(
     // 也從原始查詢提取型號
     directModelMatch = combinedQuery.match(MODEL_REGEX);
     if (directModelMatch) {
-      exactModels = exactModels.concat(directModelMatch);
+      exactModels = directModelMatch.concat(exactModels);
     }
 
     // 從原始查詢提取 LS 系列
     directLsMatch = combinedQuery.match(/LS(\d{2}[A-Z]{2}\d{3}[A-Z]{2})/g);
     if (directLsMatch) {
+      const cleanLs = [];
       directLsMatch.forEach((ls) => {
         const cleanModel = ls.replace(/^LS/, "S").replace(/XZW$/, "");
-        exactModels.push(cleanModel);
+        cleanLs.push(cleanModel);
       });
+      exactModels = cleanLs.concat(exactModels);
     }
   }
 
