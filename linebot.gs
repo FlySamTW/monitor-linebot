@@ -6592,7 +6592,7 @@ function handleMessage(event) {
 
     // 短時間內同內容去重 (60 秒內同用戶同訊息只處理一次)
     // 但指令類別不做去重，因為用戶可能需要重試
-    cache = CacheService.getScriptCache();
+    // cache = CacheService.getScriptCache(); // v29.6: 已在上方宣告 const cache，免重複宣告
     const isCommand = msg.startsWith("/");
     const isQuickCommand = msg.startsWith("#");
 
@@ -9630,19 +9630,19 @@ function handleCommand(c, u, cid) {
     scheduleImmediateRebuild();
     // const resultMsg = syncGeminiKnowledgeBase(false); // v29.6 BUG 3 修復: 拔除同步等待
     
-    const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
-    const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
-    const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
-    const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
     const syncNote = 'PDF與QA將於1分鐘後於背景同步';
-      uriCount > 0
-        ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
-        : driveCount > 0
-          ? "已建立 Drive 手冊型號索引；Gemini URI 會在查手冊時單本補回"
-          : "目前未偵測到可用 Drive 手冊，請檢查 PDF 資料夾設定";
+    writeLog('[Command] 重啟自癒同步已排程 by ' + u);
+    return '✓ 重啟與自癒同步已排程！(對話歷史已重置，規格庫已補齊至 ' + ruleLen + ' 列。' + syncNote + ')';
 
-    writeLog(`[Command] 重啟自癒同步完成 by ${u}`);
-    return `✓ 重啟與自癒同步完成！(對話歷史已重置，規格庫已補齊至 ${ruleLen} 列。${syncNote})\n\n${resultMsg}`;
+
+
+
+
+
+
+
+
+
   }
 
   if (cmd === "/重設規格庫" || cmd === "/rebuild_rules") {
@@ -9669,19 +9669,19 @@ function handleCommand(c, u, cid) {
     const ruleLen = restoreClassRulesToSheet();
     scheduleImmediateRebuild();
     // const resultMsg = syncGeminiKnowledgeBase(false); // v29.6 BUG 3 修復: 拔除同步等待
-    const uriMatch = resultMsg.match(/Gemini URI 快取：(\d+)/);
-    const driveMatch = resultMsg.match(/Drive 手冊：(\d+)/);
-    const uriCount = uriMatch ? Number(uriMatch[1]) : 0;
-    const driveCount = driveMatch ? Number(driveMatch[1]) : 0;
     const syncNote = 'PDF與QA將於1分鐘後於背景同步';
-      uriCount > 0
-        ? "PDF 手冊 URI 與 QA 已同步至 Gemini 知識庫"
-        : driveCount > 0
-          ? "已建立 Drive 手冊型號索引；Gemini URI 會在查手冊時單本補回"
-          : "目前未偵測到可用 Drive 手冊，請檢查 PDF 資料夾設定";
+    writeLog('[Command] 重設規格庫已排程 by ' + u);
+    return '✓ 規格庫還原與同步已排程！(對話歷史已重置，規格庫已補齊至 ' + ruleLen + ' 列。' + syncNote + ')';
 
-    writeLog(`[Command] 重設規格庫完成: ${resultMsg.split("\n")[0]}`);
-    return `✓ 規格庫還原與同步完成！(對話歷史已重置，規格庫已補齊至 ${ruleLen} 列。${syncNote})\n${resultMsg}`;
+
+
+
+
+
+
+
+
+
   }
 
   if (cmd === "/取消") {
