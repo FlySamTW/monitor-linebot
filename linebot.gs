@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.006"; // 2026-07-01 修正#查手冊的KB_EXPIRED回傳
+const GAS_VERSION = "v29.6.007"; // 2026-07-01 修正 BUG 1 導致的過期快取死循環
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -3687,8 +3687,8 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     // 如果強制重建，不先清掉舊 PDF URI；新清單成功後再覆蓋，避免失敗時歸零
     if (forceRebuild) {
-      writeLog("[Sync] 強制重建模式：保留舊 PDF 清單，待新清單成功後才覆蓋");
-      // oldKbList = []; // v29.6 BUG 1 修復: 即使強迫重建，也不清空舊清單，避免浪費
+      writeLog('[Sync] 強制重建模式：清除舊 PDF 清單，強迫重新上傳，解決過期循環問題');
+      oldKbList = [];
     }
 
     // 建立比對 Map
