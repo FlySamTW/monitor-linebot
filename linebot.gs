@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.016"; // 2026-07-01 優化 driveFiles 查詢效率防止 timeout
+const GAS_VERSION = "v29.6.017"; // 2026-07-01 新增 sync=1 快速同步端點
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -12868,6 +12868,12 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.pdfIndex === "1") {
     const val = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX") || "[]";
     return ContentService.createTextOutput(val).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.017: 快速同步端點 (forceRebuild = false) 防止超時
+  if (e && e.parameter && e.parameter.sync === "1") {
+    const result = syncGeminiKnowledgeBase(false);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, result: result })).setMimeType(ContentService.MimeType.JSON);
   }
 
   // v29.6.013: 列出 Drive 資料夾內所有 PDF 檔名
