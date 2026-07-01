@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.014"; // 2026-07-01 新增 pdfIndex=1 查詢端點
+const GAS_VERSION = "v29.6.015"; // 2026-07-01 修正 extractPdfModelIndexFromKbList 提取平/曲面等多系型號至快取索引
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -3405,7 +3405,8 @@ function extractPdfModelIndexFromKbList(kbList) {
     const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
     const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
     const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
-    pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels);
+    const cfModels = fileName.match(/(?:LC|LF|C|F)\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*/g) || [];
+    pdfModels = pdfModels.concat(sModels, gModels, mModels, wModels, cfModels);
   });
   return [...new Set(pdfModels)];
 }
