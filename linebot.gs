@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.015"; // 2026-07-01 修正 extractPdfModelIndexFromKbList 提取平/曲面等多系型號至快取索引
+const GAS_VERSION = "v29.6.016"; // 2026-07-01 優化 driveFiles 查詢效率防止 timeout
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -12881,12 +12881,7 @@ function doGet(e) {
         const files = folder.getFilesByType(MimeType.PDF);
         while (files.hasNext()) {
           const file = files.next();
-          result.pdfs.push({
-            name: file.getName(),
-            size: file.getSize(),
-            id: file.getId(),
-            url: file.getUrl(),
-          });
+          result.pdfs.push(file.getName());
         }
       }
     } catch (err) {
