@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.013"; // 2026-07-01 修正 checkModelInPdfIndex 使其支援平/曲面等全系機型
+const GAS_VERSION = "v29.6.014"; // 2026-07-01 新增 pdfIndex=1 查詢端點
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -12859,8 +12859,14 @@ function doGet(e) {
 
   if (e && e.parameter && e.parameter.kb === "1") {
     return ContentService.createTextOutput(
-      JSON.stringify(result),
+      JSON.stringify({ error: "kb parameter is deprecated" }),
     ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // v29.6.013: 查詢 PDF_MODEL_INDEX 快取內容
+  if (e && e.parameter && e.parameter.pdfIndex === "1") {
+    const val = PropertiesService.getScriptProperties().getProperty("PDF_MODEL_INDEX") || "[]";
+    return ContentService.createTextOutput(val).setMimeType(ContentService.MimeType.JSON);
   }
 
   // v29.6.013: 列出 Drive 資料夾內所有 PDF 檔名
