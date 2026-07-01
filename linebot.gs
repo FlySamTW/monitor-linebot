@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.012"; // 2026-07-01 優先前置原始提問型號至 exactModels，防止 generic alias 覆蓋
+const GAS_VERSION = "v29.6.013"; // 2026-07-01 修正 checkModelInPdfIndex 使其支援平/曲面等全系機型
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -4999,10 +4999,11 @@ function getRelevantKBFiles(
     // 輔助函式：檢查某個型號是否在 PDF Index 中有對應
     function checkModelInPdfIndex(modelToCheck) {
       return pdfModelIndex.some((m) => {
-        if (m.startsWith("S") && m.length >= 7) {
-          const coreCheck = modelToCheck.replace(/^S\d{2}/, "");
-          const coreIndex = m.replace(/^S\d{2}/, "");
-          if (coreIndex.includes(coreCheck) || coreCheck.includes(coreIndex)) {
+        const isMonitor = (m.startsWith("S") || m.startsWith("C") || m.startsWith("F") || m.startsWith("L")) && m.length >= 5;
+        if (isMonitor) {
+          const coreCheck = modelToCheck.replace(/^(?:L?[SCFG])\d{2}/i, "");
+          const coreIndex = m.replace(/^(?:L?[SCFG])\d{2}/i, "");
+          if (coreIndex && coreCheck && (coreIndex.includes(coreCheck) || coreCheck.includes(coreIndex))) {
             return true;
           }
           return m.includes(modelToCheck) || modelToCheck.includes(m);
