@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.003"; // 2026-07-01 Loop Engineering優化
+const GAS_VERSION = "v29.6.006"; // 2026-07-01 修正#查手冊的KB_EXPIRED回傳
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -7343,7 +7343,7 @@ function handleMessage(event) {
         primaryModel,
       );
 
-      if (response) {
+      if (response && response !== '[KB_EXPIRED]') {
         let finalText = stripAnySourceTags(formatForLineMobile(response));
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
@@ -7400,7 +7400,8 @@ function handleMessage(event) {
         writeRecordDirectly(userId, msg, contextId, "user", "");
         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
       } else {
-        replyMessage(replyToken, "⚠️ 查詢手冊時發生錯誤，請稍後再試");
+        const expiredText = (response === '[KB_EXPIRED]') ? '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！' : '⚠️ 查詢手冊時發生錯誤，請稍後再試';
+        replyMessage(replyToken, expiredText);
       }
       return;
     }
