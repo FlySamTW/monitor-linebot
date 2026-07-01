@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.018"; // 2026-07-01 修正 C/F 系列短型號生成與精準權重排序規則
+const GAS_VERSION = "v29.6.019"; // 2026-07-01 修正 sModels 提取正則以相容單英文字母系列
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -3401,7 +3401,7 @@ function extractPdfModelIndexFromKbList(kbList) {
     }
 
     const fileName = String(file.name || "").toUpperCase();
-    const sModels = fileName.match(/S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g) || [];
+    const sModels = fileName.match(/S\d{2}[A-Z]{1,2}\d{3}[A-Z0-9]*/g) || [];
     const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
     const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
     const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
