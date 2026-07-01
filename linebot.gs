@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.010"; // 2026-07-01 修正 hasExplicitModelPattern 與平/曲面型號識別正則漏洞
+const GAS_VERSION = "v29.6.011"; // 2026-07-01 修正 checkModelRegex 與平/曲面型號識別正則漏洞
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -7126,7 +7126,7 @@ function handleMessage(event) {
           ) || "[]",
         );
         const searchMsg = { role: "user", content: queryText };
-        const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+        const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|(?:L?S)\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z0-9]{0,5}|(L?[CF])\d{2}[A-Z]+\d{2,4}[A-Z0-9]*|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
         const hasModelInQuery = checkModelRegex.test(queryText);
         const kbResult = getRelevantKBFiles(
           [searchMsg],
@@ -7303,7 +7303,7 @@ function handleMessage(event) {
         ) || "[]",
       );
       const searchMsg = { role: "user", content: lastQuestion };
-      const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+      const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|(?:L?S)\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z0-9]{0,5}|(L?[CF])\d{2}[A-Z]+\d{2,4}[A-Z0-9]*|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
       const hasModelInQuery = checkModelRegex.test(lastQuestion);
       writeLog(
         `[Quick Reply v29.5.242] #查手冊 forceCurrentOnly=${hasModelInQuery}（有型號時跳過歷史/Cache 型號注入）`,
@@ -9020,7 +9020,7 @@ function handleMessage(event) {
                 // 💡 智慧安全閥 v29.5.206
                 // 如果當前訊息完全沒有提及型號代碼，我們就認定這必然是話題延續，強制開啟使用歷史！
                 if (!useHistory) {
-                  const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z]{0,2}|[CF]\d{2}[A-Z]\d{3}|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
+                  const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|(?:L?S)\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z0-9]{0,5}|(L?[CF])\d{2}[A-Z]+\d{2,4}[A-Z0-9]*|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
                   const hasModelInMsg = checkModelRegex.test(msg);
                   if (!hasModelInMsg) {
                     useHistory = true;
