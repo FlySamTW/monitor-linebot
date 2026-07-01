@@ -6500,7 +6500,7 @@ function handleMessage(event) {
     if (cache.get(contextId + ':image_processing') === 'true') {
       writeLog('[Race Condition] 攔截！圖片處理尚未結束，暫停文字處理');
       cache.put(userId + ':interrupted_query', processedMessage, 300); // 暫存當前問題，有效期 5 分鐘
-      replyMessage(replyToken, '⏳ 我正在很努力看您剛傳的圖片喔！看懂後，請隨意發送一個「.」或打個字，我會立刻接著回答您的問題：「' + processedMessage + '」！');
+      replyMessage(replyToken, '⏳ AI 正在分析您剛傳的圖片。由於系統限制，分析完成時我無法主動通知您。\\n\\n請您大約等待 3-5 秒後，對我發送一個點「.」或任意字元。\\n\\n如果我已經看完了，就會立刻回答您的問題：「' + processedMessage + '」；如果我還在分析，也會提示您再稍等一下喔！');
       return;
     }
     const messageId = event.message.id || null;
