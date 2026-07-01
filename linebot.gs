@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.007"; // 2026-07-01 修正 BUG 1 導致的過期快取死循環
+const GAS_VERSION = "v29.6.008"; // 2026-07-01 修正官網新機型防重複比對偏向 LS 限制的 Bug
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -4484,32 +4484,27 @@ function scanOfficialWebsiteForNewMonitors() {
       return;
     }
     
-    // 2. 獲取當前 CLASS_RULES 的已有機型
+        // 2. 獲取當前 CLASS_RULES 的已有機型
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
     if (!sheet) return;
     
     const lastRow = sheet.getLastRow();
-    const existingModels = [];
+    const existingLines = [];
     if (lastRow > 1) {
       const rows = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
       rows.forEach(r => {
         if (!r[0]) return;
-        const text = r[0].toString().trim().toUpperCase();
-        if (text.startsWith("LS")) {
-          const match = text.match(/LS\d{2}[A-Z0-9]{3,20}XZW/i);
-          if (match) {
-            existingModels.push(match[0].toUpperCase());
-          }
-        }
+        existingLines.push(r[0].toString().trim().toUpperCase());
       });
     }
     
     // 比對新產品
     const newProducts = discoveredProducts.filter(p => {
-      const m = p.model;
+      const m = p.model.toUpperCase();
       const matchKey = m.replace(/XZW$/, ""); // 統一比對鍵
-      return !existingModels.includes(m) && !existingModels.includes(matchKey);
+      // 使用 startsWith 進行比對，以相容 LS/LC/LF 等各類前綴型號防重複，符合 AGENTS.md 鐵律！
+      return !existingLines.some(line => line.startsWith(m) || line.startsWith(matchKey));
     });
     
     writeLog(`[Auto Crawler] 🔍 比對完成！發現官網新上架機型: ${newProducts.length} 款`);
