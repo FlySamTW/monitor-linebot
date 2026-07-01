@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.019"; // 2026-07-01 修正 sModels 提取正則以相容單英文字母系列
+const GAS_VERSION = "v29.6.024"; // 2026-07-01 關閉暫時性上傳繞過端點，恢復安全運營狀態
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -12321,12 +12321,24 @@ function doPost(e) {
       }
       
       try {
-        const folder = DriveApp.getFolderById(folderId);
         const pdfBytes = Utilities.base64Decode(json.pdfBase64);
         const blob = Utilities.newBlob(pdfBytes, "application/pdf", json.fileName);
-        const file = folder.createFile(blob);
-        writeLog(`[Webhook PDF] 成功上傳手冊 PDF: ${json.fileName} (ID: ${file.getId()})`);
-        return ContentService.createTextOutput(JSON.stringify({ success: true, fileId: file.getId() }))
+        let fileId;
+        try {
+          const file = Drive.Files.insert({
+            title: json.fileName,
+            mimeType: "application/pdf",
+            parents: [{ id: folderId }]
+          }, blob);
+          fileId = file.id;
+        } catch (driveErr) {
+          writeLog(`[Webhook PDF] Advanced Drive API 失敗，嘗試使用 DriveApp: ${driveErr.message}`);
+          const folder = DriveApp.getFolderById(folderId);
+          const file = folder.createFile(blob);
+          fileId = file.getId();
+        }
+        writeLog(`[Webhook PDF] 成功上傳手冊 PDF: ${json.fileName} (ID: ${fileId})`);
+        return ContentService.createTextOutput(JSON.stringify({ success: true, fileId: fileId }))
           .setMimeType(ContentService.MimeType.JSON);
       } catch (err) {
         writeLog(`[Webhook PDF Error] 上傳失敗: ${err.message}`);
@@ -12884,6 +12896,8 @@ function doGet(e) {
     const result = syncGeminiKnowledgeBase(false);
     return ContentService.createTextOutput(JSON.stringify({ success: true, result: result })).setMimeType(ContentService.MimeType.JSON);
   }
+
+
 
   // v29.6.013: 列出 Drive 資料夾內所有 PDF 檔名
   if (e && e.parameter && e.parameter.driveFiles === "1") {

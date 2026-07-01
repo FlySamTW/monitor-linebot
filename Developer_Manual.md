@@ -986,4 +986,15 @@ Google Drive ──────► Gemini File API
      * 排序權重 `getScore` 的 Priority 2 改為**陣列索引遞減計分 (80 - i)**，確保使用者親自提及的機型具有最高優先度。
   4. **調測端點優化**：新增 `?sync=1` 快取快速重構端點（避免 6 分鐘 GAS 超時），優化 `?driveFiles=1` 反應速度防止 timeout。
 
+### v29.6.019 (2026-07-01)
+- 修正 PDF 檔名型號提取正則：
+  - 將 `extractPdfModelIndexFromKbList` 中針對 `S` 系列的 regex 由 `/S\d{2}[A-Z]{2}\d{3}[A-Z0-9]*/g` 修正為 `/S\d{2}[A-Z]{1,2}\d{3}[A-Z0-9]*/g`。
+  - 這能成功抓取 `S32D806` 等單英文字母系列型號，避免其被當作無手冊型號而無法加載。
+
+### v29.6.024 (2026-07-01)
+- 三星官網手冊自動化抓取：
+  - 新增本地 Python 爬蟲腳本 `download_manuals_locally.py`，全自動掃描缺失手冊的型號，下載其官方說明書並依專案規格命名（如 `S27AG500,S28AG700,S32AG500PC,S49AG950.pdf`）存入 `三星螢幕使用手冊`。
+  - 將曾用於繞過 API 權限測試的 `TEMP_BYPASS` 密鑰及 `?downloadManual=1` GET 端點完全刪除，恢復生產環境的 100% 封閉與安全防護。
+
+
 
