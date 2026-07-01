@@ -6165,7 +6165,8 @@ function callLLMWithRetry(
         writeLog(`[API ${code}] Google 伺服器錯誤，重試中...`);
         lastError = `Google 伺服器暫時故障`;
         retryCount++;
-        Utilities.sleep(2000 * retryCount);
+        if (retryCount >= 2) { writeLog('[API Fail] 伺服器連續 500，提早退出避免 Webhook 逾時'); break; }
+        Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
         continue;
       }
 
@@ -6173,14 +6174,16 @@ function callLLMWithRetry(
       lastError = `API 錯誤 ${code}`;
       writeLog(`[API Error] Code: ${code}, Body: ${text.substring(0, 300)}`);
       retryCount++;
-      Utilities.sleep(1000 * Math.pow(2, retryCount));
+      if (retryCount >= 2) { writeLog('[API Fail] 提早退出避免 Webhook 逾時'); break; }
+      Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
     } catch (e) {
       lastError = e.message || "未知錯誤";
 
       writeLog(`[API Exception] ${e.message}`);
       if (e.message.includes("token")) return e.message;
       retryCount++;
-      Utilities.sleep(1000 * Math.pow(2, retryCount));
+      if (retryCount >= 2) { writeLog('[API Fail] 提早退出避免 Webhook 逾時'); break; }
+      Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
     }
   }
 
@@ -9813,9 +9816,13 @@ function handleCommand(c, u, cid) {
     let count = parseInt(cache.get(countKey) || "0") + 1;
     cache.put(countKey, count.toString(), 600); // 10 分鐘內有效
 
+    if (count > 1 && count <= 3) {
+      userMsg += '\n\n(系統指示：使用者對先前的回答不滿意，這是第 ' + count + ' 次重新搜尋。請務必更換不同搜尋策略、角度或提供更深入的細節)';
+      writeLog('[Loop Engineering] 已注入更換策略提示 (count=' + count + ')');
+    }
     if (count > 3) {
       writeLog(`[Command] 三振出局: ${u} 已重試 ${count} 次`);
-      return "抱歉，我已經嘗試多種角度搜尋但似乎仍未找到完美答案。😅 建議你可以將問題描述得更具體，或直接聯繫 Sam 協助喔！";
+      return '抱歉，我已經嘗試多種角度搜尋但似乎仍未找到完美答案。😅 建議你可以將問題描述得更具體，或直接聯繫 Sam 協助喔！\n\n💡 經驗回饋：如果您後來順利排除了問題，隨時可以輸入「/紀錄 你的解法」，讓我把您的寶貴經驗學起來喔！';
     }
 
     // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
@@ -9966,7 +9973,10 @@ function handleCommand(c, u, cid) {
       );
       return result;
     } else {
-      return "抱歉，網路搜尋連線逾時，請稍後再試。";
+      if (searchResponse === '[KB_EXPIRED]') {
+        return '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！';
+      }
+      return '抱歉，網路搜尋連線逾時，請稍後再試。';
     }
   }
 
