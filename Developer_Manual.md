@@ -1,0 +1,989 @@
+# Samsung LINE Bot 完整流程解析 (v29.5.283)
+
+## 📋 核心哲學
+
+知識庫優先 (QA/RULE First) + 漸進式查證 (Progressive Verification) + 程式防呆 (Code Guardrails)
+
+- Fast Mode 只能使用 QA 與 CLASS_RULES，不可用 LLM 自身知識補規格、步驟、價格、據點或官方資訊。
+- QA/規格庫能明確回答的一般規格/能力題，應直接回答並標註真實來源，不可只因題目出現「是否/支援/內建/規格」就無條件查 PDF。
+- 操作/故障/明確手冊查證題若 Fast Mode 答案不足，才升級 `[AUTO_SEARCH_PDF]`。
+- 操作/故障題若沒有任何型號訊號，且 Fast Mode 未命中可信 QA，不可用 LLM 泛用常識回答步驟；必須先請使用者補完整型號。
+- 操作/故障/明確手冊查證題若有對應 PDF，Fast Mode 必須命中可信來源（QA 或規格庫）且答案足夠，才可停在 Fast Mode；沒有可信來源時不可把 AI 自行編出的步驟當作已解答。
+- PDF 手冊仍未明載時，回答「手冊未記載」並輸出 `[AUTO_SEARCH_WEB]`，不得猜測或叫使用者自行查官網/手冊。
+- 已進入手冊/PDF 查證時，回覆不得說「根據你提供的 PDF/手冊/文件」；客服視角一律改成「根據官方手冊」。
+- 多型號/短別稱且需要精準規格或手冊查證時，先顯示型號選擇泡泡，再依所選型號查證。
+- 比較/推薦題可以直接多型號回答；但若同時涉及操作、設定、故障或手冊查證，不可因「比較」二字跳過型號選擇。
+- 型號選擇泡泡顯示前必須做顯示層正規化：`LS...XZW` 等區域完整料號要收斂為使用者熟悉的 `S...` 型號，且不得同時顯示互為同款的 `S...` 與 `LS...`。
+- 型號選擇泡泡的前導文字必須是固定流程提示，並標註 `[來源:專案流程規則]`；不可沿用 AI 尚未查證的回答當前導文字。
+- 任何最終回答的來源標註必須與實際路由一致；API 配額/暫時失敗訊息不可標成 PDF 或 QA 來源。
+- Fast Mode 只接受精確來源標籤 `[來源:QA]`、`[來源:規格庫]`、`[來源:網路搜尋]`；`[來源:QA資料庫]`、`[來源:產品規格表]`、`[來源:我的資料庫]` 這類模糊標籤不得洗白為可信來源。
+- API 配額/暫時失敗訊息必須是客服友善語氣，不可出現「升級付費方案」、供應商錯誤細節或「您的請求」這類不符合朋友式口吻的文字。
+- 「查手冊」按鈕只在系統已確認目前型號有官方 PDF 手冊時顯示；未知型號或未確認有手冊時，應先請使用者補完整型號，不可先給可能落空的手冊按鈕。
+- 家電題可回答；家電操作/維護題若遇 API 暫時失敗，不可套用螢幕型號補問模板，應要求補家電完整型號或稍後再試。
+- 範圍外題（競品品牌清單、三洋、非三星市場報價/Excel 表格）要在價格防呆與 LLM 之前先攔截，避免誤導到三星官網或浪費 API。
+- 價格題一律不得回覆數字金額；導向三星官方搜尋頁時必須保留使用者輸入的完整型號 token，不可把 `S34BG850SC3` 截短成 `S34BG850SC`。
+- 近期活動、上市資訊、CES、抽獎、延長保固等時效題，應在 LLM/型號泡泡前先導官方頁或網路搜尋，不可用舊規格庫硬答。
+- 當回覆正在要求使用者「選完整型號 / 補完整型號」時，不可同時追加「如果資訊不夠我可以查手冊」尾巴或查手冊按鈕，避免流程自相矛盾。
+
+## ✅ 現行鐵律 SOP（v29.5.283）
+
+1. **先 QA/規格庫**：讀取 Google Sheet 的 QA、CLASS_RULES 與 `Prompt!C3` 指令。
+2. **再 PDF 手冊**：只有 Fast Mode 不足、使用者明確 `#查手冊`、或型號泡泡選擇後進入手冊模式，才掛載 PDF。
+3. **最後 WEB**：價格/通路/活動/據點/最新資訊，或 PDF 明確無記載時，才引導網路搜尋。
+4. **Prompt 真實來源**：正式 Prompt 在 Google Sheet `Prompt!C3`；本地 `Prompt.csv` 只是鏡像與貼回來源。修改 Prompt 後必須同步 `Prompt!C3`，否則 LINE Bot 不會讀到。
+5. **部署真實入口**：每次程式修改後必須用既有 Deployment ID 更新部署，不可只 `clasp push`，也不可新建部署取代正式 Webhook。
+6. **手冊按鈕防呆**：Quick Reply 的「📖 查手冊」只可在 `hasPdfForModel=true` 且本回合尚未查過 PDF 時顯示；操作題本身不能當成顯示手冊按鈕的理由。
+7. **家電題防呆**：洗衣機、乾衣機、冰箱、吸塵器等三星家電題不得被誤導成螢幕型號補問；WA/WD/VR 等家電型號要可被辨識為型號訊號。
+8. **範圍防呆優先**：若問題明顯是非三星/競品-only/三洋/競品即時報價表格，先回覆專案範圍，不進價格防呆、PDF 或 LLM。
+9. **時效資訊優先**：近期促銷、活動、抽獎、最新上市、CES、延長保固等問題，先走官方頁/網路搜尋引導，不進 Fast Mode 型號泡泡。
+10. **價格防呆優先**：價格、最低價、建議售價、通路價等問題在 LLM 前先攔截，不回覆數字金額，只導三星官方頁；型號搜尋目標必須保留完整尾碼。
+11. **型號選擇回覆要乾淨**：任何要求使用者先選型號或補型號的回覆，不得追加查手冊提醒；等使用者選定型號後，再依 QA/規格 → PDF → WEB 流程處理。
+12. **型號泡泡前導不可用 AI 中間稿**：顯示型號選擇時，前導文字必須是固定流程提示並帶 `[來源:專案流程規則]`；不可把 Fast Mode 的未驗證回答一起送給使用者。
+13. **型號顯示不可重複**：型號泡泡與文字候選一律使用 `normalizeModelForDisplay()` / `dedupDisplayModels()` 的顯示結果；`S49...` 與 `LS49...XZW` 這類同款料號不得同時列為兩個選項。
+14. **比較題不得越過操作型號選擇**：比較/推薦/差異題若同時含操作、設定、故障、步驟或手冊查證意圖，仍必須保留型號選擇，不可直接清空候選型號。
+15. **無型號操作題不可泛猜**：操作/故障題沒有型號時，只有可信 QA 來源可直接回答；否則要回覆「請提供完整型號」，並標註 `[來源:專案流程規則]`。即使 AI 自行輸出 `[AUTO_SEARCH_PDF]`、`[AUTO_SEARCH_WEB]` 或 `[NEED_DOC]`，也不可越過補型號流程。
+16. **有型號操作題仍需可信來源**：操作/故障/明確手冊查證題若有對應官方 PDF，Fast Mode 只有在命中 `[來源:QA]` 或 `[來源:規格庫]` 且答案品質足夠時才算完成；若沒有可信來源，即使 AI 產出看似完整的步驟，也必須升級官方手冊查證。
+17. **家電補型號也要標來源**：家電操作/維護題若需補完整型號，回覆同樣必須標註 `[來源:專案流程規則]`，不可變成無來源客服建議。
+18. **Fast Mode 來源精確白名單**：只有 LLM 明確輸出 `[來源:QA]` 或 `[來源:規格庫]` 才能補回來源；模糊來源如 `[來源:QA資料庫]`、`[來源:產品規格表]` 一律丟棄，避免把未命中的內容洗成可信來源。
+19. **手冊查證口吻**：手冊模式輸出一律以「官方手冊」稱呼來源，不得說「你提供的 PDF/手冊/文件」，避免客服身分錯位。
+20. **API 失敗不外洩內部語句**：配額、逾時或供應商暫時失敗時，只能用「系統暫時忙碌，請稍後再試」這類客服語氣；不得叫一般 LINE 使用者升級付費方案，也不得假標來源。這類 API 失敗文案不得再被 `appendPdfSourceTag()` 補成官方手冊來源。
+21. **版本上限處理**：若 Apps Script 達 200 版本上限，先到 Project History 批次刪除未被 active deployment 使用的舊版本，再重跑 `deploy.bat`；不可因此新建正式 deployment ID。可先執行 `tools/check_deploy_readiness.ps1` 確認正式 Webhook 版本、版本數與阻塞原因。
+22. **長文轉 QA 草稿要先正規化**：長文去廣告摘要若判定可加入 QA，進入 QA 編輯模式前必須先整理成單行 `問題 / A：答案`；不得把「重點摘要／去廣告原文／操作說明」整包塞入草稿，也不得為已是問句的內容再硬補「嗎」。
+23. **QA 建檔草稿不得被選項數字污染**：建檔模式只有在明確等待合併選擇時，`1/2/3` 才代表選項；一般草稿模式下單獨輸入 `1/2/3` 應提示目前沒有選項，不得寫入 QA 內容。使用者輸入 `問題？ A：答案` 也必須正規化成 `問題？ / A：答案`，不得出現 `A：A:`。
+24. **QA 建檔草稿不得被無關閒聊污染**：一般草稿修改模式下，短句若沒有修改意圖且與目前 QA 草稿沒有關鍵詞重疊，應提示不寫入草稿；避免把「我想吃蘋果」這類閒聊寫進 QA。
+25. **不存在完整型號早期攔截**：若使用者輸入看似完整型號（如 Sxx/LSxx/WA/WD/VR/G90XF 類型），但 QA/CLASS_RULES/PDF 型號索引都找不到，必須在 LLM 前先回覆請確認型號並標註 `[來源:專案型號驗證規則]`；不得進 LLM 猜規格，也不得假標 QA、規格庫或手冊來源。
+26. **API 暫時失敗不可被包裝成有效補充**：上一則回答若是系統忙碌/API 失敗，`#再詳細說明` 應停止並提示稍後重試，不得重新生成泛用答案；`#這題再搜網路` 若搜尋失敗，也不得追加「網路搜尋補充資料」這類看似已有資料的標記。
+27. **服務/營業時間不可誤判為現在時間**：使用者問「服務時間、客服時間、營業時間、今天有沒有營業」時，不得觸發 RealTime「現在幾點」捷徑；應導向三星官方服務頁或網路搜尋，並標註來源。
+
+---
+
+## 🔄 完整流程圖
+
+```mermaid
+graph TD
+    User[用戶發送訊息] --> API[1. 訊息入口 (doPost)]
+    API --> Handle[2. 訊息分流 (handleMessage)]
+
+    Handle -- 指令/建檔 --> Cmd[指令/建檔模式]
+    Handle -- 一般對話 --> DirectCheck[3. 直通車偵測]
+
+    DirectCheck -- 命中 CLASS_RULES --> CacheKey[注入型號至 Cache]
+    DirectCheck --> FastMode[4. 極速模式]
+    CacheKey --> FastMode
+
+    subgraph Core[核心回答邏輯]
+        FastMode -- 載入 QA + RULES --> LLM1[呼叫 LLM (無 PDF)]
+        LLM1 --> Decision{AI 能回答?}
+
+        Decision -- YES --> Reply[直接回覆]
+        Decision -- NO --> SignalCheck{輸出暗號?}
+
+        SignalCheck -- AUTO_SEARCH_PDF --> PDFMode[5. PDF 模式]
+        SignalCheck -- AUTO_SEARCH_WEB --> WebMode[6. 網路搜尋]
+
+        subgraph PDFFlow[PDF 智慧流程]
+            PDFMode --> PDFLoad[載入 PDF (Max 1-2本)]
+            PDFLoad --> LLM2[LLM 重試]
+            LLM2 --> Reply
+        end
+
+        subgraph WebFlow[Web 搜尋流程]
+            WebMode --> GoogleSearch[啟用 Google Search]
+            GoogleSearch --> LLM3[LLM 重試]
+            LLM3 --> Reply
+        end
+    end
+```
+
+---
+
+## 📚 知識來源優先級 (鐵律)
+
+1. 🥇 **最高優先: QA 資料庫 (QA.csv)**
+   - 精選問答，高命中率常見問題
+2. 🥈 **第二優先: CLASS_RULES (規格庫)**
+   - 型號規格 + 術語定義
+   - 自動生成 KEYWORD_MAP 供擴充
+3. 🥉 **第三優先: PDF 手冊 (三星螢幕使用手冊/)**
+   - 詳細操作步驟、OSD 路徑、故障排除
+   - 觸發條件: Fast Mode 回答不足且輸出 `[AUTO_SEARCH_PDF]`、使用者明確 `#查手冊`、或型號泡泡選擇後進入 `pdf` 模式
+   - **智慧過濾**: 若型號不在 `PDF_MODEL_INDEX` 中，會自動跳過此階以節省 Token。
+4. 🏆 **最後手段: 網路搜尋 (Google Search)**
+   - 完全無解時的備援
+   - 觸發條件: `[AUTO_SEARCH_WEB]` 或用戶強制 /擴大搜尋
+
+---
+
+## 📖 實戰流程範例：以 "G5 怎麼設定" 為例
+
+當用戶輸入關鍵字後，系統會自動評估路徑：
+
+### 情境 A：型號無專屬手冊 (例：S27AG500NC)
+
+1. **Pass 1 (規格)**：命中別稱 G5，AI 輸出 `[AUTO_SEARCH_PDF: G5]`。
+2. **型號精確化**：系統彈出泡泡，用戶選擇 `S27AG500NC`。
+3. **智慧分流 (SOP)**：系統檢查 `PDF_MODEL_INDEX` 發現無專屬手冊。
+4. **自動降級**：直接使用 **規格庫** 內容回答基礎資訊，標註 `[來源: 規格庫]`。
+5. **備援路徑**：若用戶點擊「不滿意」，則進入 **Pass 2 (Web Search)**。
+
+### 情境 B：型號有專屬手冊 (例：S32DG502)
+
+1. **Pass 1 (規格)**：同上，AI 輸出暗號。
+2. **型號精確化**：用戶選擇 `S32DG502`。
+3. **PDF 鎖定**：系統發現有專屬手冊，啟動 **Pass 1.5 (PDF Search)**。
+4. **精準回答**：載入 PDF 並由 AI 產出詳細設定步驟，標註 `[來源: 產品手冊]`。
+
+---
+
+## 🔑 關鍵暗號系統
+
+| 暗號                | 觸發時機              | 系統行為                          |
+| ------------------- | --------------------- | --------------------------------- |
+| `[AUTO_SEARCH_PDF]` | 操作/故障/明確查證題在 QA/規格不足時需查手冊 | 載入對應 PDF，重新呼叫 LLM        |
+| `[AUTO_SEARCH_WEB]` | PDF 也沒答案，需聯網  | 啟用 Google Search 工具，呼叫 LLM |
+| `[NEW_TOPIC]`       | AI 判斷換題           | 清除 PDF Mode，重置上下文         |
+| `[型號:xxx,yyy]`    | AI 建議多型號         | 自動生成 Quick Reply 選單         |
+
+---
+
+## 🎛️ Quick Reply 按鈕系統 (v29.5.140)
+
+每次 AI 回覆後，LINE 訊息底部附帶 Quick Reply 按鈕。按鈕 text 以 `#` 開頭，由 handleMessage 中的 handler 攔截。
+
+### 按鈕配置（動態，不是固定三顆）
+
+| 按鈕 | text | 顯示條件 | 處理方式 |
+|------|------|----------|----------|
+| 💬 再詳細說明 | `#再詳細說明` | 該題展開次數 `< 2` | 改寫 msg 後**不 return**，走正常對話流程 |
+| 📖 查手冊 | `#查手冊` | 一般回覆：`hasPdfForModel && !alreadyConsultedPdf`；Web 回合：有型號記憶 (`direct_search_models`) | 獨立 handler，從歷史找問題 → PDF → LLM |
+| 🌐 這題再搜網路 | `#這題再搜網路` | 一般回覆永遠顯示；Web 回合也保留 | 呼叫 handleCommand 觸發同題 Web Search |
+
+### 指令相容性（避免舊按鈕失效）
+
+- 新指令：`#這題再搜網路`
+- 相容舊指令：`#搜尋網路`、`#搜網上其他解答`、`#搜往上其他解答`
+
+### 動態決策矩陣（實際行為）
+
+- QA/規格回覆，且可查手冊：通常 3 顆（再詳細 / 查手冊 / 這題再搜網路）
+- 已達「再詳細說明」上限：隱藏「再詳細說明」
+- 無可用型號或無手冊：隱藏「查手冊」，並在**對話內容**提示「請提供完整型號」
+- Web 回合：不再硬編碼只留 1 顆，會依上述條件動態保留 2~3 顆
+
+### `#再詳細說明` 流程詳解
+
+```
+用戶按按鈕 → LINE 發送 "#再詳細說明"
+  ↓
+handler 改寫 msg = "請針對你剛才的回答再詳細說明..."
+handler 改寫 userMessage = 同上
+(⚠️ 禁止設 userMsgObj — TDZ 會報錯)
+handler 不 return
+  ↓
+D. 一般對話:
+  history = getHistoryFromCacheOrSheet(contextId) ← 5 輪歷史
+  const userMsgObj = { role: "user", content: msg } ← 基於改寫後的 msg
+  ↓
+callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
+  AI 看到完整歷史 + 「請再詳細說明」指令 → 自然展開回答
+```
+
+**設計原則**: 系統已保留 5 輪對話歷史，AI 本來就看得到上次完整回答，不需要手動從歷史提取截斷。
+
+### `hasPdfForModel` 與手冊按鈕控制邏輯
+
+```
+DirectDeep 命中關鍵字
+  ↓
+從 directSearchResult.models 取得型號列表
+  ↓
+對照 PDF_MODEL_INDEX (ScriptProperties)
+  ↓
+有 PDF → hasPdfForModel = true → 顯示「📖 查手冊」按鈕
+無 PDF → hasPdfForModel = false → 隱藏按鈕
+```
+
+補充（v29.5.139）：
+
+- 在「#這題再搜網路」回合，若同題已保留型號記憶 (`direct_search_models`)，仍保留「📖 查手冊」入口，避免泡泡縮到只剩 1 顆。
+
+---
+
+## 🎯 型號匹配邏輯 (Smart Router v29.5.48)
+
+用戶輸入: "S27AG500NC 怎麼設定"
+
+1. **直通車偵測**: 命中 "G5" (別稱)
+   - 系統注入: G5, S27FG532EC, S27DG502EC...
+
+2. **Smart Router 判斷 (v29.5.48 New)**:
+   - **單一型號**: 自動鎖定，載入 1 本 PDF。
+   - **多型號 (比較/列表題)**:
+     - 若用戶問「哪一台...」、「推薦...」 (List Intent) → **跳過泡泡**，讓 AI 直接列出。
+     - 若僅是模糊查詢 → 顯示 **型號選擇泡泡**。
+   - **數量過多**: 若候選 > 10 個 → 跳過泡泡，避免洗版。
+
+3. **精準匹配**:
+   - 找到 `S27AG500NC.pdf`
+   - 載入 PDF → LLM 回答設定步驟
+
+---
+
+## 🛡️ 安全防護機制
+
+1. **源頭減量**
+   - 非比較題: 強制 1 本 PDF
+   - 比較題: 最多 2 本 PDF
+2. **重試策略 (callLLMWithRetry)**
+   - Retry 1: 移除第 2 本 PDF
+   - Retry 2: 移除所有 PDF (終極降級)
+   - Retry 3: 放棄，回傳錯誤訊息
+3. **Token 熔斷**
+   - 預估 > 40K tokens
+   - 裁切歷史，保留最新 2 對對話
+4. **事件去重**
+   - 相同 eventId 60 秒內不重複處理
+5. **來源誠實防呆**
+   - `appendPdfSourceTag()` 只在有效 PDF 回答後補真實檔名來源。
+   - 若 LLM/API 回傳配額限制、暫時失敗、API 錯誤，不得補 `[來源: xxx.pdf]`。
+   - Fast Mode 不得臆測來源；未實際引用 QA，不得標 `[來源:QA]`。
+6. **操作題型號防呆**
+   - 操作/故障題若沒有型號且 Fast Mode 遇到 API/配額暫時失敗，不直接把 API 錯誤丟給使用者。
+   - 此時改請使用者補完整型號，並說明後續仍會依 `QA/規格庫 → 官方手冊` 的順序查證。
+
+---
+
+## 🚀 部署與 Prompt 同步鐵律
+
+### 程式部署
+
+每次修改 `linebot.gs` 後，正式入口是：
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy_existing_webhook.ps1
+```
+
+注意：
+
+- `clasp push` 只會推 HEAD，不會更新正式 LINE Webhook。
+- `tools\deploy_existing_webhook.ps1` 會依序推送程式、建立 Apps Script 版本、用 `clasp deploy -i <既有DeploymentId> -V <新版本號>` 更新既有正式 Webhook，最後以 `?health=1` 驗證正式版本。
+- 必須使用既有 Deployment ID 更新部署，除非使用者明確要求新建部署；不得為了繞過問題自行建立新部署。
+- 健康檢查應回傳最新 `GAS_VERSION` 才算正式 Webhook 生效。
+- `deploy.bat` 只是 Windows 雙擊入口，實際呼叫同一支 `tools\deploy_existing_webhook.ps1`，避免部署流程分裂。
+- 部署流程**不會**修改 Google Sheet `Prompt!C3`，避免本地鏡像誤覆蓋正式 Prompt。
+- 若 Apps Script 版本數已滿 200，部署腳本會在推送 HEAD 前停止並提醒先刪除未使用舊版本；此時不可改用新 deployment ID 逃避，也不可把 HEAD 已更新但正式 webhook 未更新視為完成。
+
+### Prompt 同步
+
+- 正式 Prompt 位於 Google Sheet `Prompt` 工作表的 `C3`。
+- `Prompt.csv` 只能視為本地鏡像或人工備份，不是正式執行來源，也不會在部署時自動上傳。
+- 修改 Prompt 後，必須由維護者明確更新 Google Sheet `Prompt!C3`，再 `/重啟` 或重建快取確認重啟訊息中的「指令版本」。
+- Prompt 同步入口屬於維護工具，不屬於一般部署流程；除非明確要改 Prompt，否則不得用本地 `Prompt.csv` 覆蓋 `Prompt!C3`。
+- 若必須用本機工具同步 Prompt，必須明確指定來源檔並加上確認旗標，例如：`powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -PromptPath .\Prompt.csv -ConfirmOverwrite`。
+
+### 測試原則
+
+- TestUI 測試應以實際使用者問題單輪/多輪驗證，而不是只看函式是否通過。
+- 修改程式或部署工具後，至少先跑 `cd test_runner && npm run test:static`，確認 API 失敗來源、防 Prompt 覆蓋、TestUI 版本守門與查手冊提醒條件沒有退回舊錯誤。
+- 執行線上 TestUI 回歸前，必須先跑 `cd test_runner && npm run check:webhook-version`，確認正式 Webhook `?health=1` 版本與本機 `linebot.gs` 相同。
+- 線上 TestUI 回歸應透過 `cd test_runner && npm run test:current`，或用 `node run_current_test.js <verify_script.js>` 執行單支測試；不可直接執行打正式網址的 `verify_*.js` 後就宣稱新版通過。
+- 17 題路由題庫可分批定位，例如 `node run_current_test.js verify_route_testset_17_single.js 1,2,3`；分批仍使用原題，不可為了通過測試改使用者問法。
+- 若版本不同，不得用 TestUI 結果判定新版邏輯好壞，應先更新既有部署或標記為「正式部署尚未切換」。
+- 若外部 Gemini 配額限制，測試應確認錯誤訊息不假標來源；不要把 API 配額當作產品路由失敗。
+- 多型號題應驗證型號泡泡或明確選型提示，而不是為了測試方便改使用者問句。
+
+---
+
+## 📊 資料流動示意
+
+```
+Google Sheet ──────► Cache ──────► GAS
+   │                   │            │
+   ├─ QA              │            ├─ buildDynamicContext()
+   ├─ CLASS_RULES     │            ├─ getRelevantKBFiles()
+   └─ Prompt!C3       │            ├─ callLLMWithRetry()
+                       │            └─ replyMessage()
+                       │
+Google Drive ──────► Gemini File API
+   │                               │
+   └─ PDF 手冊 ───────────────────┘
+```
+
+---
+
+## 🗂️ 型號索引系統 (v29.5.53 新增)
+
+`/重啟` 後，系統會建立兩個重要索引，供後續邏輯判斷使用：
+
+| 索引名稱            | 來源               | 儲存位置         | 用途                          |
+| ------------------- | ------------------ | ---------------- | ----------------------------- |
+| `TOTAL_MODEL_COUNT` | CLASS_RULES 規格庫 | ScriptProperties | 統計有規格資料的型號總數      |
+| `PDF_MODEL_INDEX`   | Drive PDF 手冊檔名 | ScriptProperties | 記錄 Drive 中有專屬 PDF 手冊的型號清單 |
+| `KB_URI_LIST`       | Gemini File API URI | ScriptProperties | 記錄可直接掛載到 LLM 的 PDF URI |
+
+### 應用場景
+
+1. **避免載入錯誤 PDF**：
+   - 若用戶查詢 `S27AG500NC`，但 `PDF_MODEL_INDEX` 中不存在該型號
+   - 系統會 Log 警告：`⚠️ 型號 S27AG500NC 無專屬 PDF，將使用 Alias 匹配`
+   - 程式可據此決定是否跳過 PDF 載入，或改用其他策略
+
+2. **Smart Router 選項過濾**：
+   - 在顯示型號選擇泡泡時，可剔除「無規格」或「無 PDF」的選項
+   - 提升用戶體驗，避免選到無法回答的型號
+
+3. **預先規劃搜尋路徑**：
+   - 若型號同時存在於規格庫與 PDF 索引 → 優先用規格庫 (省 Token)
+   - 若僅存在規格庫 → 跳過 PDF 載入步驟
+   - 若僅存在 PDF 索引 → 直接進入 PDF 模式
+
+### 同步防呆（v29.5.245）
+
+- `/重啟` 或同步流程若因 Drive/Gemini/API 狀態導致新 PDF 清單為 0，不得覆蓋既有 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`。
+- 強制重建時不先刪除舊 Gemini URI；必須等新清單成功產生後才覆蓋。
+- 每次成功取得 PDF 清單時，會同步寫入 `KB_URI_LIST_BACKUP` 與 `PDF_MODEL_INDEX_BACKUP`。
+- 若新清單與既有清單都為 0，但備份仍有 PDF，會用備份回復正式索引。
+- 若新清單、既有清單與備份都為 0，且專案有設定 Drive PDF 資料夾，程式不會把空索引寫回 ScriptProperties。
+- 若正式 PDF URI 清單已經空掉，使用者查特定型號手冊時，系統會先從 Drive 針對該型號找 PDF，單本即時上傳至 Gemini File API 並回填 `KB_URI_LIST` / `PDF_MODEL_INDEX`，不等待整批 75 本手冊重建。
+- `PDF_MODEL_INDEX` 的真實語義是「Drive 裡有沒有這個型號的官方手冊」，不得只依賴 Gemini File URI 是否已成功上傳；否則 File API 暫時失敗會誤判成「沒有手冊」。
+- 若 Gemini File API 無法產生 URI，且單本 PDF 小於 `INLINE_PDF_FALLBACK_MAX_BYTES`，本回合可改用 Gemini 官方支援的 `inline_data` 掛載；inline PDF 不寫入 ScriptProperties，避免把大型 base64 塞進屬性儲存。
+
+---
+
+## 📜 版本更新紀錄
+
+### v29.5.283 (2026-06-20)
+
+- **Fix (Early Guard Priority)**: 調整早期防呆順序，範圍/時效/價格 guard 優先於不存在完整型號驗證；避免「未知型號價格題」被型號驗證搶先攔截，仍依價格鐵律導向三星官方搜尋且不報數字價格。
+- **Test (Guard Priority)**: `verify_unknown_model_static.js` 新增順序檢查，確保 Scope/Timely/Price guard 都在 Unknown Model Guard 之前；`verify_unknown_model_guard.js` 新增正式 TestUI 價格優先案例。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.283 @1063`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`，也未同步或覆蓋本地 `Prompt.csv`；本次屬路由優先序與測試修正。
+
+### v29.5.282 (2026-06-20)
+
+- **Fix (Unknown Full Model Guard)**: 使用者輸入看似完整型號但專案 QA/規格庫/手冊索引找不到時，於 LLM 前先攔截，請使用者確認型號；避免不存在型號浪費 Gemini 呼叫或被模型猜規格。
+- **Source (Model Validation)**: 攔截回覆固定標註 `[來源:專案型號驗證規則]`，不假標 QA、規格庫、PDF 或網路搜尋。
+- **Test (Unknown Model Guard)**: 新增 `verify_unknown_model_static.js` 與 `verify_unknown_model_guard.js`，同時驗證本機 helper 與正式 TestUI 入口。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.282 @1062`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`，也未同步或覆蓋本地 `Prompt.csv`；本次屬流程防呆與測試修正。
+
+### v29.5.281 (2026-06-20)
+
+- **Fix (Service Hours Guard)**: 服務時間/營業時間/今天有沒有營業等問題先走官方服務資訊引導，不再被 RealTime「幾點」判定誤回目前時間。
+- **Test (Service Hours Guard)**: 新增 `verify_service_hours_guard.js`，驗證服務時間問題不會回「現在是...」，且會標註 `[來源:三星官方服務頁]`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`；本次是 RealTime 誤判防呆。
+
+### v29.5.280 (2026-06-20)
+
+- **Fix (API Failure Quick Reply Guard)**: 上一則回覆若是 API/配額/系統忙碌失敗，`#再詳細說明` 不再進 LLM 產生泛用補充，改提示尚未成功查到內容。
+- **Fix (Web Search Failure Label)**: `#這題再搜網路` 若搜尋本身失敗，不再追加 `(🌐 網路搜尋補充資料)`，避免讓使用者誤以為有成功補資料。
+- **Test (Failure Guard)**: `verify_web_qr_persistence.js` 與 `verify_odyssey_flow.js` 增加失敗狀態斷言。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.280 @1060`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`；本次是 API 失敗狀態回覆防呆。
+
+### v29.5.279 (2026-06-20)
+
+- **Fix (QA Draft Relevance Guard)**: QA 草稿修改模式新增通用相關性守門；短句若沒有修改意圖且與草稿無關，不會寫入 QA。
+- **Test (QA Draft Guard)**: `verify_qa_draft_format_guard.js` 增加無關句測試，確認「我想吃蘋果」不會變成 `（用戶補充：...）`。
+- **Test Hygiene**: `verify_qa_flow.js` 改為只驗證草稿與取消流程，不再把測試 QA 寫入正式 QA 工作表。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.279 @1059`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`；本次是 QA 建檔資料衛生防呆。
+
+### v29.5.278 (2026-06-20)
+
+- **Fix (QA Draft Format Guard)**: QA 建檔支援使用者常見的 `問題？ A：答案` 格式，會正規化為 `問題？ / A：答案`，避免預覽與存檔出現 `A：A:`。
+- **Fix (Draft Choice Guard)**: 一般 QA 草稿模式下，單獨輸入 `1/2/3` 不再被當成補充內容；只有等待合併選擇時才視為選項。
+- **Test (QA Draft Guard)**: 新增 `verify_qa_draft_format_guard.js`，驗證 QA 草稿格式與純數字防污染。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`；本次是 QA 建檔流程防呆。
+
+### v29.5.277 (2026-06-20)
+
+- **Fix (Article QA Draft Seed)**: 長文去廣告摘要進入 QA 編輯模式前，先萃取成單行 `問題 / A：答案` 草稿，避免把 `【重點摘要】`、`【去廣告原文】` 或操作說明整包帶入 QA；若長文只有提問沒有可驗證答案，答案欄標成「待補」。
+- **Fix (QA Polish Guard)**: 已經是單行 QA 格式的草稿會直接正規化，不再額外呼叫潤飾模型；降級格式化也不會把既有問句改成「SmartThings Hub嗎 / A：」這類怪格式。
+- **Test (Long Article QA Quality)**: `verify_long_article_qa_mode.js` 新增 QA 草稿品質檢查，確認長文轉 QA 後不外洩摘要區塊，且問句/答案分隔格式正確。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.277 @1057`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+- **Prompt**: 未修改 Google Sheet `Prompt!C3`；本次是程式流程與測試修正。
+
+### v29.5.276 (2026-06-20)
+
+- **Fix (Trusted Fast Source For Operations)**: 操作/故障/明確手冊查證題若有對應 PDF，Fast Mode 必須有可信來源（`[來源:QA]` 或 `[來源:規格庫]`）且答案足夠才可直接回覆；無可信來源的通用步驟會升級官方手冊查證。
+- **Test (Operation Escalation Guard)**: `verify_sop_static_guards.js` 新增執行測試，確認無可信來源的操作步驟會升 PDF、可信 QA/規格庫答案可停 Fast Mode、規格/能力題不因有 PDF 自動升級。
+- **Ops (Deploy Version Parser)**: `tools/deploy_existing_webhook.ps1` 可正確解析 `clasp version` 的千分位版本號（例如 `1,055`），避免把版本誤判成 `1` 導致既有 deployment 更新失敗。
+- **Deploy**: 已更新既有正式 Webhook Deployment ID 至 `v29.5.276 @1055`；沒有新建 deployment，也沒有同步或覆蓋 `Prompt!C3`。
+
+### v29.5.275 (2026-06-20)
+
+- **Fix (Appliance Source Tag)**: 家電操作/維護題需要補完整型號時，也會標註 `[來源:專案流程規則]`，避免家電防呆回覆缺少來源。
+
+### v29.5.274 (2026-06-20)
+
+- **Fix (Model Selection Lead)**: 型號選擇泡泡前導文字改為固定流程提示並標註 `[來源:專案流程規則]`，不再沿用 AI 未查證的 Fast Mode 中間稿。
+
+### v29.5.273 (2026-06-20)
+
+- **Fix (Operation Comparison Routing)**: 比較/推薦題若同時含操作、設定、故障、步驟或手冊查證意圖，仍保留型號選擇，不因比較意圖跳過泡泡。
+
+### v29.5.272 (2026-06-20)
+
+- **Fix (No-Model Operation Signals)**: 無型號操作/故障題若未命中可信 QA，會先要求補完整型號；AI 自行輸出的 `[AUTO_SEARCH_PDF]`、`[AUTO_SEARCH_WEB]` 或 `[NEED_DOC]` 不可越過補型號守門。
+
+### v29.5.271 (2026-06-20)
+
+- **Fix (Manual Reply Tone)**: `sanitizeManualDeflection()` 擴充清理「根據你/您提供的 PDF/手冊/文件/檔案」等變體，統一改成「根據官方手冊」。
+- **Test (Manual Tone Guard)**: `verify_sop_static_guards.js` 新增手冊措辭清理函式測試，避免深度模式回覆再次出現使用者提供 PDF 的錯位語氣。
+
+### v29.5.270 (2026-06-20)
+
+- **Fix (Price Target Extraction)**: 價格防呆的型號解析保留完整尾碼，例如 `S34BG850SC3` 不再被截短為 `S34BG850SC`。
+- **Test (Price Guard)**: `verify_sop_static_guards.js` 新增本機價格防呆測試，確認價格題會導三星官方搜尋頁、不含數字金額，且保留完整型號 token。
+
+### v29.5.269 (2026-06-20)
+
+- **Fix (Fast Source Whitelist)**: `normalizeSourceTagFromRaw()` 改為精確白名單，只接受 `[來源:QA]`、`[來源:規格庫]`、`[來源:網路搜尋]`；`[來源:QA資料庫]`、`[來源:產品規格表]` 等模糊標籤不再被正規化為可信來源。
+- **Test (Source Whitelist Guard)**: `verify_sop_static_guards.js` 新增來源標籤函式執行測試，確認精確來源仍可用、模糊 QA/規格來源與 Fast Mode 手冊來源會被拒絕。
+
+### v29.5.268 (2026-06-20)
+
+- **Fix (No-Model Operation Guard)**: 操作/故障題若沒有任何型號訊號，且 Fast Mode 沒有可信 QA 來源，系統會先請使用者補完整型號，不再讓 LLM 用泛用常識直接回答步驟。
+- **Fix (Source Traceability)**: `buildNeedModelForOperationReply()` 補上 `[來源:專案流程規則]`，讓補型號回覆也有真實來源。
+- **Test (Operation Guard)**: `verify_sop_static_guards.js` 新增無型號操作題防呆位置檢查，確認攔截發生在 AI 文字 fallback 型號提取之前。
+
+### v29.5.267 (2026-06-20)
+
+- **Fix (Model Display Dedup)**: `createModelSelectionFlexV3()` 在產生按鈕前也會呼叫 `dedupDisplayModels()`，即使上游傳入 `S49...` 與 `LS49...XZW`，最終型號選擇泡泡仍只顯示使用者熟悉的 `S49...`。
+- **Test (Model Display Guard)**: `verify_sop_static_guards.js` 直接執行 `normalizeModelForDisplay()` / `dedupDisplayModels()`，確認 `LS49C950UACXZW` 會收斂為 `S49C950UAC`，且不會與 `S49C950UAC` 重複出現在候選清單。
+
+### v29.5.266 (2026-06-20)
+
+- **Fix (Fast Source Guard)**: Fast Mode 未掛載 PDF 時，若 LLM 自行輸出「[來源:PDF] / [來源:手冊]」類標籤，系統不再正規化成 `[來源:產品手冊]`，避免假手冊來源被洗白。
+- **Test (SOP Guard)**: `verify_sop_static_guards.js` 新增 Fast Mode 不可接受 AI 自帶 PDF/手冊來源的檢查。
+
+### v29.5.265 (2026-06-20)
+
+- **Fix (Source Guard)**: `isApiFailureReply()` 納入新的「系統暫時忙碌／這次查詢暫時無法處理」客服友善 API 失敗文案，避免 PDF 模式補上假的官方手冊來源。
+- **Fix (Tone Cleanup)**: 型號選擇泡泡、網路搜尋提示與錯誤文案中殘留的「您／為您／幫您」改為「你」語氣。
+- **Test (API Source Guard)**: 新增 `verify_api_failure_source_guard.js`，防止 API 失敗文案再次被補成 PDF 來源或回退成內部付費語句。
+
+### v29.5.264 (2026-06-20)
+
+- **Fix (API Fallback UX)**: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
+- **Test (API Fallback Guard)**: 17 題路由測試新增內部 API 文案防回退檢查，避免配額保護訊息暴露內部付費/供應商語句。
+- **Ops (Deploy Guard)**: `deploy.bat` 改為解析 `clasp version` 產生的新版本號並用 `-V` 更新既有 deployment；若遇 200 版本上限，明確提示刪舊版本後重跑，避免誤新建部署。
+- **Ops (Deploy Readiness)**: 新增 `tools/check_deploy_readiness.ps1`，可快速比對本機版本、Apps Script 遠端 HEAD、正式 Webhook 健康檢查、GAS 版本數與 active deployments，並檢查 HEAD 是否仍含舊 API 失敗文案。
+
+### v29.5.263 (2026-06-20)
+- **Fix (Reply Consistency)**: 型號選擇/補型號階段不再追加「再幫你查查官方產品手冊」尾巴，也不顯示查手冊按鈕，避免使用者還沒選型號時流程自相矛盾。
+
+### v29.5.262 (2026-06-20)
+- **Fix (Timely Web Route)**: 近期活動、最新上市、CES、抽獎、延長保固等時效題改為早期路由至官方頁/網路搜尋引導，不再被型號直通車或 Gemini 配額錯誤覆蓋。
+- **Test (Route Baseline)**: 17 題單輪路由測試改為支援 `MODEL_SELECT`、`ASK_MODEL`、`API_GUARDED`，讓測試符合現行 SOP：多型號先選型號、無型號操作題先補型號、配額失敗時只驗證來源誠實性。
+
+### v29.5.261 (2026-06-20)
+- **Fix (Scope Guard)**: 新增早期範圍防呆，競品-only、三洋、競品 Excel/價格表等問題會先回覆專案回答範圍，不再被價格防呆誤導到三星官網，也不浪費 LLM 調用。
+
+### v29.5.260 (2026-06-20)
+- **Fix (Appliance Guard)**: 新增家電型號辨識與家電題 API 暫失敗防呆；洗衣機等家電問題不再被回覆「請提供 S32/S27 螢幕型號」，避免違反「家電可回答」範圍。
+
+### v29.5.259 (2026-06-20)
+- **Fix (Quick Reply SOP)**: 「📖 查手冊」Quick Reply 改回只有已知型號有官方 PDF 手冊時才顯示；操作/故障題若尚未確認 PDF，先要求完整型號，避免使用者點擊後才發現無手冊。
+
+### v29.5.258 (2026-06-20)
+- **Fix (TestUI Dedupe)**: TestUI 截斷預覽與完整版在尾端標點正規化後完全相同時，優先保留完整版，移除截斷預覽。
+
+### v29.5.257 (2026-06-20)
+- **Fix (TestUI Dedupe)**: TestUI 截斷預覽去重改為正規化尾端標點後比對前綴，修正「。...」與「。」未被視為同一回覆的問題。
+
+### v29.5.256 (2026-06-20)
+- **Fix (TestUI Dedupe)**: TestUI 回覆收集在最終回傳前再次去除截斷預覽，避免 `/取消` 等指令被誤顯示成兩次回覆。
+
+### v29.5.255 (2026-06-20)
+- **Fix (TestUI Cleanup)**: `clearTestSession()` 補清 QA 建檔草稿、pending query、PDF selection、history cache 與 hit alias keys，避免測試回合被前一次草稿狀態污染。
+
+### v29.5.254 (2026-06-20)
+- **Fix (QA Edit)**: 長文去廣告摘要進入 QA 編輯模式時，草稿只使用整理後素材，不再把「要不要進入 QA 編輯模式」與操作說明一起寫入草稿。
+
+### v29.5.253 (2026-06-20)
+- **Fix (Operation Guard)**: 操作/故障題在沒有型號且 Fast Mode 遇到 API/配額暫時失敗時，改請使用者提供完整型號，不再直接回配額錯誤。
+- **Fix (TestUI)**: TestUI 收集回覆時移除同一正式回覆的截斷預覽，避免 `/重啟` 這類長回覆被誤看成回了兩次。
+
+### v29.5.252 (2026-06-20)
+- **Fix (Cache Safety)**: inline PDF fallback 的 base64 只存在本回合記憶體，不寫入 Cache/ScriptProperties，避免 Apps Script 因快取值過大而中斷。
+
+### v29.5.251 (2026-06-20)
+- **Fix (PDF Fallback)**: Gemini File API 上傳失敗時記錄 HTTP 狀態碼與錯誤摘要。
+- **Feat (PDF Inline)**: 單本 PDF 補回若 File API 無 URI 且檔案小於保守上限，當回合改用 `inline_data` 掛載 PDF，降低 File API URI 快取為 0 時的手冊查詢死路。
+
+### v29.5.250 (2026-06-20)
+- **UX (Truthful Status)**: `/重啟` 與 `/重設規格庫` 的前導文字依同步結果產生：只有 Gemini URI 快取大於 0 時才說已同步至 Gemini；若只有 Drive 手冊索引，改說 URI 會在查手冊時單本補回。
+
+### v29.5.249 (2026-06-20)
+- **Fix (PDF Index Semantics)**: `PDF_MODEL_INDEX` 改由 Drive PDF 手冊檔名建立，即使 Gemini File URI 快取為 0，也能知道哪些型號有官方手冊。
+- **Fix (PDF Recovery)**: 若索引顯示有手冊但 `KB_URI_LIST` 沒有可掛載 URI，查手冊時會先從 Drive 單本補回 URI。
+- **UX (Restart Status)**: `/重啟` 顯示分拆為 Drive 手冊數與 Gemini URI 快取數，避免把「Drive 有手冊但 URI 快取為 0」誤讀成沒有手冊。
+
+### v29.5.248 (2026-06-20)
+- **Fix (Fallback Flow)**: API 暫時失敗後顯示的型號選擇泡泡，選型後改走 PDF 查證模式，不再回到 Fast Mode 重複碰配額錯誤。
+
+### v29.5.247 (2026-06-20)
+- **Fix (Fallback UX)**: Fast Mode 因 API 配額/暫時錯誤失敗時，若 Smart Router 已有多個候選型號，不直接把使用者帶到死路錯誤訊息，而是保留型號選擇泡泡，讓使用者能繼續依型號查證。
+
+### v29.5.246 (2026-06-20)
+- **Ops (Diagnostics)**: 新增 `?kb=1` 知識庫健康檢查，只回傳 PDF 資料夾是否設定、Drive PDF 數量、`KB_URI_LIST` / 備份 / `PDF_MODEL_INDEX` 數量，不暴露密鑰或資料夾 ID。
+
+### v29.5.245 (2026-06-20)
+- **Fix (PDF Recovery)**: 當 `KB_URI_LIST` / `PDF_MODEL_INDEX` 已經是空狀態時，`getRelevantKBFiles()` 會依目前題目的型號從 Drive 找對應 PDF，單本即時上傳 Gemini File API 並回填索引。
+- **Fix (Health)**: 更新 `BUILD_TIMESTAMP`，健康檢查可直接辨識本次部署。
+
+### v29.5.244 (2026-06-20)
+- **Fix (Token)**: 移除同步時 QA 內容重複注入，降低 Fast Mode token 浪費。
+- **Fix (PDF Index)**: 新增 `KB_URI_LIST_BACKUP` / `PDF_MODEL_INDEX_BACKUP`，避免 PDF 同步異常時索引歸零後無法自救。
+- **Ops**: 新增受保護的 `update_prompt_c3` 維護入口與 `tools/sync_prompt_c3.ps1`，供明確維護 Prompt 時使用；日常部署不得自動覆蓋 Google Sheet `Prompt!C3`，工具也必須指定來源檔並加上 `-ConfirmOverwrite` 才會執行。
+- **Ops**: `deploy.bat` 改為四步驟：推送程式、建立版本、更新既有 Webhook、提示 Prompt 正式來源；不再同步或覆蓋 Prompt!C3。
+
+### v29.5.243 (2026-06-20)
+- **Fix (Critical)**: 同步失敗時 PDF 索引歸零保護。
+  - 強制重建不再先刪除舊 `KB_URI_LIST`。
+  - 新 PDF 清單為 0 且舊清單仍有 PDF 時，保留舊清單與 `PDF_MODEL_INDEX`。
+  - 避免 `/重啟` 或 Gemini/Drive 暫時失敗把可用手冊索引覆蓋成 0。
+
+### v29.5.242 (2026-06-20)
+- **Fix (Source)**: API 配額/暫時失敗訊息不再補 PDF 來源標籤。
+- **Fix (Traceability)**: `#查手冊` 有明確型號時，新增 `forceCurrentOnly=true` 防污染 log。
+
+### v29.5.241 (2026-06-20)
+- **Fix (Conversation)**: 短追問（如「那 M8 呢」「How about M8?」）會沿用上一題主題，只更換詢問對象。
+- **目的**: 避免追問變成新型號的一般規格介紹。
+
+### v29.5.240 (2026-06-20)
+- **Fix (Critical)**: 修正 `callLLMWithRetry()` 中 `geminiContents` 未初始化導致 LLM/PDF 流程崩潰。
+- **Fix (Source)**: 部分 PDF 分支改用實際掛載的 PDF 清單補來源，避免來源檔名缺失。
+
+### v29.5.239 (2026-06-20)
+- **Fix (Routing)**: 合併 v29.5.179/v29.5.181/v29.5.193 的 PDF 升級守門。
+  - 規格/能力題不再因 `capabilityIntent` 無條件升級 PDF。
+  - 只有操作/故障或明確手冊查證題，且 Fast Mode 回答不足時，才追加 `[AUTO_SEARCH_PDF]`。
+- **Prompt**: `Prompt.csv` 更新為 `Prompt v29.5.239`，並同步至 Google Sheet `Prompt!C3`。
+
+### v29.5.146 (2026-03-06)
+- **Fix (Critical)**: 修復 `google_search` 外掛在 Web Search 回合時只輸出引言而無實質內容的問題，已加強 Prompt 強制模型回覆完整步驟。
+- **Fix (UI)**: 放寬 `#查手冊` 氣泡的出現條件，當判定用戶意圖為「設定/故障/操作」時，即使初期型號識別為無 PDF，也強制出現手冊選項交由後續程序模糊搜尋。
+- **Optimize (Log)**: 大幅移除了 `[Grounding] 來源數量` 及 `[Ctx Info]` 等重複且佔畫面的除錯資訊，保持 Log 清爽，同時保留計價與對話核心資訊。
+
+### v29.5.145 (2026-03-03)
+- **Fix (Critical)**: 修復 `PDF_MODEL_INDEX` 未提取 WA/WD/VR 型號的 Bug；修正 DirectDeep 的 `direct_search_models` Cache 清除邏輯以解決 3D 查詢 Cache 污染；放寬型號選單泡泡觸發條件，支援多型號家電查詢；擴充 `MODEL_REGEX` 以支援 4 碼數字 (如 S27FG900)。
+
+### v29.5.141 (2026-03-02)
+
+- **Fix (Critical)**: 同步全域 `MODEL_REGEX`，確保 `DirectDeep` 與相關邏輯能正確提取 `WA/WD/VR` 等家電型號，解決洗衣機提問無法觸發型號選擇泡泡的問題。
+### v29.5.140 (2026-03-02)
+
+- **Fix (Logic)**: 修復 `[型號:xxx]` 標籤在非暗號對話中外洩的問題（清理邏輯移出 Trigger 判斷）。
+- **Feat (Prompt)**: 強制所有長度回答皆須標註來源。
+- **Feat (Prompt)**: 系列導航增加明確反問引導語。
+- **Feat (Prompt)**: 當 PDF 查無精確規格（如耗電量）時，強制轉入 `[AUTO_SEARCH_WEB]`。
+
+
+### v29.5.139 (2026-02-12)
+
+- **Fix (UX)**: Web 回合不再硬編碼只剩 1 顆泡泡，改為依條件動態顯示 2~3 顆。
+- **Feat (UX)**: 「🌐 搜尋這題的網路解答」文案調整為「🌐 這題再搜網路」。
+- **Compat**: 新增 `#這題再搜網路`，並保留舊指令 `#搜尋網路` / `#搜網上其他解答` / `#搜往上其他解答`。
+- **Obs**: 新增 Web 回合泡泡數日誌：`[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: N`。
+
+### v29.5.129 (2026-02-09)
+
+- **Fix (Critical)**: 修復 `#再詳細說明` handler 中 `userMsgObj = {...}` 在 `const userMsgObj` 宣告前賦值，V8 TDZ 導致 `ReferenceError`。移除多餘賦值行，只改寫 `msg` 和 `userMessage`。
+
+### v29.5.127 (2026-02-09)
+
+- **Feat (UX)**: `#繼續問` 更名為 `#再詳細說明`，語意更精確。
+- **Feat (UX)**: `#查手冊` 按鈕加入 30 秒等待提示。
+- **Fix (Logic)**: 修復 Web 搜尋回應中 `[來源: 網路搜尋]` 重複出現（LLM 加一次 + 程式加一次）。
+
+### v29.5.126 (2026-02-09)
+
+- **Fix (Critical)**: 修復不存在型號（如 S32FD812）被 AI 幻覺回答。在 Prompt.csv 新增【型號驗證】規則。
+
+### v29.5.123 (2026-02-07)
+
+- **Feat (UX)**: 「📖 查PDF手冊」按鈕改為條件顯示，只在 `hasPdfForModel = true` 時出現。DirectDeep 階段預載 PDF_MODEL_INDEX。
+
+### v29.5.53 (2026-01-19 13:25)
+
+- **Feat (Index)**: 新增「PDF 型號索引 (`PDF_MODEL_INDEX`)」機制。
+  - 在 `/重啟` 時從所有 PDF 檔名中提取型號，建立索引。
+  - 在 `getRelevantKBFiles` 中查詢索引，若型號無專屬 PDF 則 Log 警告。
+  - 重啟訊息新增 `PDF索引: N` 顯示提取到的型號數量。
+
+### v29.5.52 (2026-01-19 13:15)
+
+- **Feat (UX)**: 優化 Quick Reply (擴大搜尋) 引導按鈕。
+  - **情境感知**:
+    - **Fast Mode (規格)**: 按鈕文字「不滿意 (查手冊)」，預告需虛耗 30 秒。
+    - **PDF Mode**: 按鈕文字「不滿意 (搜網路)」，引導至外部搜尋。
+    - **Web Mode**: 按鈕文字「不滿意 (繼續搜)」，嘗試更多網路來源。
+
+### v29.5.51 (2026-01-19 13:10)
+
+- **Fix (Logic)**: PDF 載入邏輯重大修正。
+  - **Revert**: 撤銷 v29.5.49 的別名阻擋邏輯，確保 `G5` 別名能被擴展，避免因 PDF 檔名僅含別名而找不到檔案。
+  - **New**: 新增「智慧權重排序 (Smart Prioritization)」，在 Tier 1 內若同時找到多個 PDF，優先選用包含「完整型號 (S27AG500NC)」的檔案，其次為「S開頭型號」，最後才選「別名 (G5)」。
+- **Fix (UX)**: 修正 Web 搜尋失敗導致的回應空白問題（透過確保 PDF 載入成功來根治）。
+
+### v29.5.50 (2026-01-19 13:05)
+
+- **Feat (UX)**: 新增「動態泡泡 (Dynamic Bubble)」功能。
+  - 根據用戶問句意圖（規格/手冊/價格），自動調整 Smart Router 泡泡的標題與說明文字。
+  - 例如問「價格」，泡泡會顯示「查詢價格/通路」；問「設定」，顯示「查閱產品手冊」。
+
+### v29.5.49 (2026-01-19 12:55)
+
+- **Fix (Critical)**: 修復 `getRelevantKBFiles` 中 `primaryModel` 變數在初始化前被呼叫導致的 `ReferenceError` 崩潰問題。
+- **Fix (UX)**: 修正型號選擇泡泡按鈕回傳值。由原本的「[型號] 怎麼設定」改為僅回傳「[型號]」，讓 AI 能正確銜接上下文回答用戶的原問題（如「寬度」），而非強制回答設定步驟。
+- **Fix (Logic)**: 優化別名擴展邏輯。當用戶已指定明確型號（如 S27AG500NC）時，不再擴展寬泛別名（如 G5），避免載入錯誤的 PDF。
+
+### v29.5.48 (2026-01-19 11:45)
+
+- **Fix (UX)**: 針對通用問題（如「哪一台...」、「推薦...」或候選數 > 10），跳過 Smart Router 泡泡，讓 AI 直接列出清單。
+
+### v29.5.160 (2026-03-17)
+- 手冊模式修復：`#查手冊` 改為僅用當前問題 (`forceCurrentOnly=true` + `[userMsgObj]`) 避免型號污染。
+- 來源標註修復：改為標示「實際掛載 PDF 檔名」，避免出現不存在的手冊名稱。
+- SmartThings/Matter 題新增手冊查證防呆；手冊模式移除「自行查手冊/官網」甩鍋語句。
+- Prompt 規則同步升級至 `Prompt v29.5.160`。
+
+### v29.5.161 (2026-03-17)
+- 修復追問型號記憶條件：isModelMismatch 只在命中別稱(hitAliasKeys.length > 0)時才保留既有型號，避免非別稱追問誤沿用舊型號。
+
+### v29.5.162 (2026-03-17)
+- 修復 SmartThings/Matter 題路由：觸發手冊查證時不再先回答 Fast Mode 再跳型號泡泡，改為先鎖定單一型號直送手冊流程。
+- 新增來源防呆：移除 AI 自帶來源標籤，避免誤標 [來源:QA資料庫]。
+- 新增手冊格式防呆：手冊回覆將條列符號統一轉為數字項次並保留空行。
+
+### v29.5.163 (2026-03-17)
+- 清理手冊路徑的 [型號:...] 內部標籤外洩。
+- Prompt 升級為 v29.5.163，新增「來源與路由防呆」規則。
+
+### v29.5.164 (2026-03-17)
+- 手冊模式防呆擴充：過濾「建議聯絡客服/客服專線」等甩鍋語句。
+
+### v29.5.165 (2026-03-17)
+- 手冊模式防呆擴充：補強「詢問/聯絡/聯繫/直接詢問」等客服導流語句過濾。
+
+### v29.5.166 (2026-03-17)
+- 手冊模式防呆擴充：補強「官方網站/支援頁面」導流語句過濾，降低「請上官網查」回覆機率。
+
+### v29.5.171 (2026-03-18)
+- SmartThings/Matter/Hub 題型在手冊路徑新增統一收斂：
+  - 強制朋友語氣（「你」）
+  - 列表格式統一為 `1. 2. 3.` 並保留空行
+  - 過長/破碎回覆改為三點結論
+- 新增手冊來源保底 `ensurePdfSourceTag()`：
+  - 即使中途被清理或重寫，最終仍會補上真實 PDF 檔名來源標籤
+- Auto Deep / `#查手冊` 路徑補上 `pdf_consulted` 旗標：
+  - 避免已經查完手冊還追加「再幫你查手冊」提示
+- 新增雲端查證函式 `verifySmartThingsClaimFromCloudPdf()`：
+  - 直接讀取 Drive 雲端 PDF 並回傳查證結果（頁碼、摘錄、檔案 ID）
+  - 用於驗證「頁面 91-93 SmartThings 敘述」是否屬實
+
+### v29.5.173 (2026-03-18)
+- 修復短別稱功能題誤答（例如 `S9有內建KVM嗎`）：
+  - 若為 `S9/G8/M7` 這類短別稱且屬功能二元題，系統不再直接下肯定規格結論。
+  - 改為要求使用者提供完整型號後再精準回答。
+- 修復 Fast Mode 來源遺失：
+  - 保留並正規化 LLM 原始來源標籤，清理後補回（例如 `[來源:規格庫]`）。
+- 目的：避免「別稱跨型號污染」與「最終回覆無來源」兩個同時發生的問題。
+
+### v29.5.174 (2026-03-18)
+- SOP 強化：短別稱歧義題（如 `S9/G8/M7 + 功能問題`）不只要求補型號，會直接列出候選完整型號供選擇。
+- 新增 `getAliasCandidatesFromClassRules()`：
+  - 從 `CLASS_RULES` 解析該別稱可能對應的完整型號，回覆使用數字條列。
+- 實際效果：
+  - `s9有內建kvm嗎` 會回「系列別稱」提示 + 候選型號清單，不再直接回「有」。
+  - 回覆仍保留來源標籤 `[來源:規格庫]`。
+
+### v29.5.175 (2026-03-18)
+- SOP 修正：短別稱功能題改為「型號泡泡優先」而非純文字條列。
+  - 例如 `s9有內建kvm嗎` 會進入型號選擇泡泡流程。
+- 型號顯示正規化：
+  - 新增 `normalizeModelForDisplay()`、`dedupDisplayModels()`，優先顯示 `S...` 完整型號，避免 `S49...`/`LS49...` 重複露出。
+- `#型號:` 流程新增模式分流（`model_select_mode`）：
+  - `fast`：選型後回一般 SOP（QA/RULE -> PDF -> WEB），不強制進 PDF。
+  - `pdf`：維持既有 Pass 1.5 手冊流程。
+- Smart Router 新增短別稱功能題強制選型：
+  - 若命中短別稱且為功能二元題，強制觸發泡泡，不再直接輸出肯定規格結論。
+- 防呆調整：
+  - `applyAliasFeatureAmbiguityGuard()` 改為簡短提醒，避免回覆內容長得像「請輸入數字選項」造成誤操作。
+
+#### 部署注意（2026-03-18）
+- `clasp push -f` 可成功上傳到 HEAD。
+- 但專案 GAS 版本數已達上限 200，`clasp version` 無法再建立新版本。
+- 既有正式 deployment 目前為唯讀（`Read-only deployments may not be modified.`），因此無法直接把 `v29.5.175` 指到正式 Webhook。
+
+### v29.5.176 (2026-03-18)
+- 修復 `#型號:` 後的短別稱回圈問題：
+  - 在 `fast` 分流下，會先移除原始問題中的短別稱（如 `S9`）再回一般流程，避免再次觸發別稱防呆。
+  - 新增一次性旗標 `skipAliasFeatureGuard`，選型後當輪跳過短別稱防呆二次攔截。
+- 實際效果：
+  - `s9有內建kvm嗎` 先進型號泡泡（候選型號以 `S...` 顯示）。
+  - `#型號:S27C900PAC` 後直接回覆該型號結論，不再回「請先選擇完整型號」。
+- 部署：
+  - Version `883`
+  - 正式 Webhook Deployment 更新至 `@884`
+
+### v29.5.177 (2026-03-18)
+- 修復 SmartThings/Matter 題型「同回合二次呼叫覆蓋首答」：
+  - 移除舊版 `v29.5.158` 的同回合強制 `[AUTO_SEARCH_PDF]` 行為。
+  - 改為保留 Fast Mode 首答；需要手冊時由 `#查手冊` 顯式觸發。
+- 成本與一致性改善：
+  - 單題由「可能 2 次 LLM 呼叫」改為「1 次」。
+  - 避免首輪答案被第二輪覆蓋，LINE 顯示內容與當輪回覆一致。
+- 主流程 Log 去重：
+  - `[Final Reply]` 改為摘要模式（字數/泡泡數），降低列數與重複內容。
+  - 移除主流程重複 `[AI Reply]` 全文寫入，完整回覆由 `[Reply]` 保留。
+- 部署：
+  - Version `885`
+  - 正式 Webhook Deployment 更新至 `@886`
+
+### v29.5.178 (2026-03-18)
+- 架構回歸：移除 SmartThings/Matter 個案硬編碼，改由 Prompt 控制路由與判定。
+- 程式側只保留通用流程：
+  - 不在同回合程式層強制二次查詢
+  - 型號選擇/來源標註/QA→PDF→WEB 維持通用 SOP
+- Prompt（`Prompt.csv`）更新：
+  - `Prompt v29.5.178`
+  - 將 SmartThings 專屬條款改為通用「聯網中樞/協議相容性」規則
+- 部署：
+  - Version `887`
+  - 正式 Webhook Deployment 更新至 `@888`
+
+### v29.5.179 / v29.5.179b (2026-03-18)
+- 通用路由落地（無個案硬編碼）：
+  - 先跑 QA/RULE
+  - 只有在「操作/故障題且 Fast 回答不足」時才自動觸發 PDF
+  - PDF 仍不足再交由 WEB
+- 新增通用函式：
+  - `isOperationOrTroubleshootQuery(text)`
+  - `isOperationAnswerInsufficient(text)`
+- 修正誤觸發：
+  - `v29.5.179b` 移除過寬不確定詞判定（避免有完整步驟時仍錯誤升級 PDF）。
+- 部署：
+  - Version `889`, `891`
+  - 正式 Webhook Deployment 更新至 `@892`
+
+### v29.5.180 (2026-03-18)
+- Log 精簡（不改主流程 SOP）：
+  - 新增路由噪音壓縮器：`refreshLogFilterConfig_()`、`shouldSkipNoisyRoutingLog_()`
+  - 針對 `DirectDeep/KB Select` 中間重複資訊進行減列
+  - 保留關鍵可追溯 Log：`[HandleMsg]`、`[AI Stats]`、`[AI Raw Response]`、`[Flow Decision]`、`[Final Reply]`、`[Reply]`、`[DirectDeep 命中]`、`[KB Select 最終命中]`
+- 可配置開關：
+  - Script Property `LOG_COMPACT_ROUTING`（預設 `true`）
+  - 若要恢復完整細節，設為 `false`
+
+### v29.5.181 (2026-03-19)
+- SOP 回歸修正（非個案）：
+  - 修復 `buildDynamicContext` 的 Spec fallback 斷鏈：SmartRetrieval 改為優先使用 `specRules`（含 Sheet fallback），不再只依賴 Spec Cache chunk。
+  - 新增 `CONTEXT_HEALTH_PREFIX`，記錄 `qa/light/spec` 載入健康度。
+  - 主流程新增保守升級（歷史行為）：若上下文降級 (`degraded=true`) 且題型是操作/故障或規格能力判定，且有 PDF 可查，則自動追加 `[AUTO_SEARCH_PDF]`。此行為已於 v29.5.239 收斂為「操作/故障或明確手冊查證，且 Fast Mode 回答不足」才升級。
+- 文案一致性：
+  - 新增 `sanitizeLeadDatabasePhrase()`，避免回覆開頭出現「根據我的資料庫」。
+- Prompt 同步：
+  - `Prompt v29.5.181`
+  - 統一來源標籤格式，移除互相矛盾的來源寫法與「資料庫起手式」要求。
+
+### v29.5.182 (2026-03-19)
+- SOP查證題守門（通用，不綁個案）：
+  - 新增 `isManualVerificationRequiredQuery()`。
+  - 當題目屬聯網協議/中樞能力判定，且 Fast 回答來源僅 QA、且型號有可查 PDF，主流程自動追加 `[AUTO_SEARCH_PDF]` 進手冊查證。
+- 目標：
+  - 避免 Fast 單點定論，強制回到可驗證的 SOP（QA/RULE → PDF → WEB）。
+
+### v29.5.184 (2026-03-20)
+- 長文機制調整為 `ArticleClean`（取代僅「總編模式」語義）：
+  - 科技長文貼文會優先執行「去網頁廣告 + 重點摘要 + 去廣告原文」。
+  - 不再直接走一般客服 QA 回答。
+- 觸發條件：
+  - `isLongArticle`（字數或貼文樣態命中）
+  - 非 `/`、`#` 指令
+  - `isValidTechContent(msg) || hasTechSignals(msg)` 命中科技訊號
+- 回覆格式：
+  - `【重點摘要】`
+  - `【去廣告原文】`
+  - 文末標示 `[來源: 使用者提供長文] [模式: 去廣告摘要]`
+
+### v29.5.185 (2026-03-20)
+- 長文後 QA 題材判定與引導：
+  - 系統在 `ArticleClean` 完成後判斷「是否本專案相關」與「是否可作 QA」。
+  - 若是，會主動詢問是否進入 QA 編輯模式（加入 QA）。
+- 指令與操作提示（會直接顯示給使用者）：
+  - 回覆「要」：直接進入 QA 編輯模式
+  - `/記錄 <內容>` 或 `/紀錄 <內容>`：手動開啟建檔
+  - 建檔中可直接回覆文字修稿
+  - `/記錄`：確認存檔
+  - `/取消`：離開建檔
+- 流程快取：
+  - 使用 `qa_offer_payload` 暫存草稿種子（18 分鐘）
+  - 用戶回「要」時自動銜接 `startNewEntryDraft()`。
+
+### v29.5.186 (2026-03-20)
+- QA 草稿模式優先於長文模式：
+  - 若使用者已在 QA 建檔草稿中，且輸入非 `/` 指令，系統會優先走 `handleDraftModification()`。
+  - 不再讓 `ArticleClean` 長文機制攔截草稿修稿內容。
+- QA 引導快取防重入：
+  - `qa_offer_payload` 啟動「回覆要進 QA 編輯」前，先檢查 `draftCache`。
+  - 已在草稿模式時不再重複觸發 QA 進入流程，避免重複建檔或流程打架。
+- Prompt 檔清理：
+  - `Prompt.csv` 標頭更新為 `Prompt v29.5.186`。
+  - 移除長文規則前方誤植的 `\n` 字元，確保貼回 Google Sheet 時內容正常。
+
+### v29.5.187 (2026-03-20)
+- 長文流程移除舊總編回退：
+  - `ArticleClean` 只使用 `長文去廣告摘要` Prompt。
+  - 若該 Prompt 未設定，改用程式內建的去廣告摘要 fallback。
+  - 不再回退到 `總編模式`，避免輸出偏離「摘要 + 去廣告原文」。
+- 影響：
+  - 非本專案科技長文仍維持長文整理輸出。
+  - 是否進入 QA 編輯模式改由「本專案相關 + QA 題材」判定控制，不受舊 Prompt 影響。
+
+### v29.5.188 (2026-03-20)
+- 長文輸出硬規則補強：
+  - 在 `ArticleClean` 發送給模型的 prompt 中，明確加入「即使非三星內容也要輸出摘要+原文」。
+  - 禁止只回覆「內容無關」單句。
+- 目的：
+  - 提升長文清理模式一致性，避免被舊 Prompt 語句覆蓋掉固定輸出格式。
+
+### v29.5.189 (2026-03-20)
+- 新增長文格式保底器：
+  - `ensureArticleCleanOutputFormat()` 會檢查 AI 回覆是否包含 `【重點摘要】` + `【去廣告原文】`。
+  - 若格式缺失，系統改用本地保底流程生成固定結構。
+- 新增本地整理輔助：
+  - `buildHeuristicCleanArticleText()`：過濾常見廣告/導購行並重組原文。
+  - `buildHeuristicSummaryPoints()`：抽取重點句並轉為數字列表。
+- 效果：
+  - 長文模式輸出格式穩定，不會再退化成單句「內容無關」。
+
+### v29.5.190 (2026-03-20)
+- 專案相關判定修正：
+  - `isProjectRelevantLongContent()` 改為以三星品牌/系列/型號碼/SmartThings 脈絡判定。
+  - 移除「僅靠通用品類詞（如螢幕）」就判定相關的舊規則。
+- 影響：
+  - 非三星科技長文仍可走長文清理模式，但不會誤觸「進入 QA 編輯模式」邀請。
+
+### v29.5.191 (2026-03-20)
+- SOP聯網能力查證題流程修正：
+  - 命中 `isManualVerificationRequiredQuery()`（Matter/Thread/Zigbee/Hub/中樞/協議）時，
+    不論 Fast 來源是 QA 或規格庫，皆強制升級至 PDF 查證。
+- 防止流程被多型號泡泡打斷：
+  - 強制升級時鎖定 `primaryModel`，Smart Router 直接沿用該型號進 Pass 1.5。
+- 效果：
+  - 避免 Fast Mode 直接輸出「不用買 Hub」等未經手冊查證的強結論。
+
+### v29.5.192 (2026-03-20)
+- 鐵律回歸：多型號先選型號
+  - SOP查證題（Matter/Hub/中樞/協議）若命中多個型號，必須先顯示型號泡泡讓使用者選擇。
+  - 不再自動鎖定 `primaryModel` 直接查證。
+- 例外覆蓋：
+  - 即便同時有列表意圖或數量偏多，此場景仍不得跳過型號泡泡。
+- 目的：
+  - 嚴格遵守「先確定型號，再做手冊查證」的既有 SOP。
+
+### v29.5.193 (2026-03-20)
+- Prompt 與流程鐵律對齊：
+  - `Prompt.csv` 更新為 `Prompt v29.5.193`。
+  - 將「QA命中禁止 [AUTO_SEARCH_PDF]」改為：
+    - 規格/能力/操作題：QA 先答後仍須進手冊查證。
+  - 新增鐵律條款：
+    - 產品題固定 `QA/規格 → PDF → (不足才)外部資料`
+    - 多型號先選型號。
+- 程式路由語義調整：
+  - 內部 Log/註解以「SOP鐵律查證」描述，避免主觀風險詞誤解。
+
+### v29.5.194 (2026-03-20)
+- 新增手冊不確定結論防呆：
+  - `enforceManualUncertaintyGuard()` 會攔截「手冊未明確 + 直接定論」的矛盾回覆。
+  - 題目命中協議/中樞能力判定時，改為保守敘述並提示可再搜網路補證據。
+- 套用路徑：
+  - `#型號:` PDF 查證
+  - `#查手冊` 查證
+  - AutoDeep/Pass 1.5 PDF 回覆
+
+### v29.5.195 (2026-03-20)
+- 鐵律語義定稿（移除主觀風險判定用語）：
+  - 對外與 Log 文案統一使用「SOP查證題型／鐵律SOP」。
+  - 不再以主觀風險詞描述路由判定，避免誤解為系統自行裁量題目重要性。
+- 路由鐵律再次明文化：
+  - 三星產品題固定 `QA/規格庫 → 官方手冊(PDF) → 仍不足才 WEB/其他資料`。
+  - 多型號情境維持先選型號，再進 PDF 查證。
+- Prompt 同步：
+  - `Prompt.csv` 升級為 `Prompt v29.5.195`。
+  - 將聯網中樞/協議題描述改為「SOP查證題」，維持來源與路由一致。
+
+### v29.5.196 (2026-03-20)
+- 手冊甩鍋句型防呆補強：
+  - `sanitizeManualDeflection()` 新增變形句型過濾（如「建議你：」「如果你想確認」「最直接且準確」）。
+  - 避免手冊模式仍把問題丟回使用者自行查官網/規格頁。
+- 手冊未明確結論收斂：
+  - `enforceManualUncertaintyGuard()` 新增「未明確 + 導向查官網/手冊」改寫分支。
+  - 統一改為可執行下一步：引導 `🌐 這題再搜網路`。
+
+### v29.5.197 (2026-03-20)
+- 型號泡泡前導文字固定化：
+  - 在「SOP手冊查證 + 多型號」場景，型號泡泡前導文字不再沿用 Fast 回答。
+  - 固定顯示「這題需要先確認完整型號，我再依官方手冊查證給你。」。
+- 目的：
+  - 避免使用者先看到未查證結論，再看到型號泡泡造成矛盾感。
+
+### v29.5.198 (2026-03-20)
+- TestUI 泡泡回合判讀修正：
+  - 命中 Flex 型號泡泡時，`testMessage()` 不再採用 `[AI Reply]` 中間稿作為最終回覆。
+  - 改回傳「已送出型號選擇泡泡」提示，並盡可能顯示候選型號預覽。
+- 目的：
+  - 測試畫面與實際路由一致，避免誤判為「先亂答再追問型號」。
+
+### v29.5.199 (2026-03-20)
+- 手冊甩鍋同義句收斂：
+  - `sanitizeManualDeflection()` 新增過濾「三星官方 / Samsung 官方」目標詞與「確認 / 求證」動詞。
+  - `enforceManualUncertaintyGuard()` 新增「向三星官方確認 / 官方確認」判定，改寫為可執行下一步。
+- 目的：
+  - 避免手冊模式用同義句把查證責任交回使用者。
+
+### v29.5.200 (2026-03-20)
+- 手冊未明確回覆再收斂：
+  - `enforceManualUncertaintyGuard()` 新增客服導流語句判定（`客服`、`客服人員`、`諮詢`）。
+- 目的：
+  - 在手冊未明確時，避免回覆導流到客服，統一改為可執行的「再搜網路」下一步。
+
+### v29.5.201 (2026-03-20)
+- 手冊口吻修正：
+  - 新增口吻正規化，將「根據你提供的 PDF 文件」統一改為「根據官方手冊」。
+  - Deep Mode 指令與 `Prompt.csv` 同步禁止該句型。
+- 目的：
+  - 維持三星客服語境一致，避免讓使用者誤以為 PDF 是由他提供。
+
+### v29.5.202 (2026-03-24)
+- 遙控器/音量操作題路由修正：
+  - `isOperationOrTroubleshootQuery()` 改為使用更通用的操作動詞/句型判定。
+  - 避免把單一題面的名詞直接硬編碼在程式中。
+- AI 範例型號防誤導：
+  - 只有在用戶原訊息本來就有型號/別稱訊號時，才允許從 AI 回答內文補抓型號。
+  - 避免未指定型號時，因 AI 自舉範例而錯誤產生型號泡泡。
+
+### v29.6.007 (2026-07-01)
+- 還原重建清除快取舊清單機制：
+  - 還原 `oldKbList = []`。確保 `forceRebuild` 自癒重建時確實清理快取舊 URI，打破 PDF 手冊 URI 過期導致「手冊需要更新，請等一分鐘」的永久死循環。
+
+### v29.6.008 (2026-07-01)
+- 修復官網 crawler 新機型比對 LS 前綴限制：
+  - 修改 `scanOfficialWebsiteForNewMonitors` 中的防重複比對，移除過硬的 `startsWith("LS")` 限定，改為對齊 `AGENTS.md` 鐵律之 `existingLines.some(line => line.startsWith(model))` 比對，防止 `LC` 和 `LF` 系列機型每日重複寫入髒數據。
+
+### v29.6.018 (2026-07-01)
+- 解決平/曲面型號（如 C34G55T）識別正則與手冊加載錯誤系列優化：
+  1. **型號識別正則拓寬**：將 `extractModelNumbers` (Pattern 1)、`MODEL_REGEX`、`checkModelRegex` 與 `hasExplicitModelPattern` 正則全系升級為支援 `L?` 前綴及 `C` / `F` 曲面基本系列的 `(?:L?[SCFG])` 等規則，並支援 2-4 位數字的非固定長度匹配（如 C34G55T 匹配 `C34G` + `55` 兩位數字）。
+  2. **PDF 型號索引支援**：將 `extractPdfModelIndexFromKbList` 的 PDF 檔名型號提取正則與 `checkModelInPdfIndex` 模糊匹配規則全數拓寬為相容 `LC`/`LF`/`C`/`F` 全系型號。
+  3. **提問型號前置與權重排序**：
+     * 將原始提問中以正則直接匹配到的精準型號「前置（Prepend）」至 `exactModels` 陣列首位，確保其必為 `primaryModel`。
+     * 將 `shortModels` 曲面縮寫支援（如 `C34G55T` 縮寫為 `C34G55`）納入，使 `isTier1` 與 `name.includes` 能匹配到如 `C27G55,C32G55,C34G55.pdf` 逗號分隔的說明書。
+     * 排序權重 `getScore` 的 Priority 2 改為**陣列索引遞減計分 (80 - i)**，確保使用者親自提及的機型具有最高優先度。
+  4. **調測端點優化**：新增 `?sync=1` 快取快速重構端點（避免 6 分鐘 GAS 超時），優化 `?driveFiles=1` 反應速度防止 timeout。
+
+
