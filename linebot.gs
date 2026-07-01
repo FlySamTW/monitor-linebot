@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.5.239"; // 2026-06-30 修復併發競爭與網路搜尋幻覺問題
+const GAS_VERSION = "v29.6.003"; // 2026-07-01 Loop Engineering優化
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2924,6 +2924,13 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
               .getValues();
             lightRules = data.map((r) => r[0]).join("\n");
             lightRulesLoaded = lightRules.trim().length > 0;
+            if (lightRulesLoaded) {
+              const chunks = chunkString(lightRules, 25000);
+              cache.put('KB_RULES_LIGHT_COUNT', chunks.length.toString(), 21600);
+              chunks.forEach((chunk, index) => {
+                cache.put('KB_RULES_LIGHT_' + index, chunk, 21600);
+              });
+            }
           }
         } catch (e) {
           writeLog(`[Fallback Error] Light Rules Read Failed: ${e.message}`);
@@ -2957,6 +2964,13 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
             specRules = data.map((r) => r[0]).join("\n");
           }
           specRulesLoaded = specRules.trim().length > 0;
+          if (specRulesLoaded) {
+            const chunks = chunkString(specRules, 25000);
+            cache.put('KB_RULES_SPEC_COUNT', chunks.length.toString(), 21600);
+            chunks.forEach((chunk, index) => {
+              cache.put('KB_RULES_SPEC_' + index, chunk, 21600);
+            });
+          }
         }
       } catch (e) {}
     }
@@ -4579,6 +4593,16 @@ function scheduleImmediateRebuild() {
  */
 function immediateKnowledgeRebuild() {
   writeLog("[Rebuild] 開始背景重建知識庫...");
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    triggers.forEach((t) => {
+      if (t.getHandlerFunction() === 'immediateKnowledgeRebuild') {
+        ScriptApp.deleteTrigger(t);
+      }
+    });
+  } catch (err) {
+    writeLog('[Rebuild] 清理自身觸發器失敗: ' + err.message);
+  }
   try {
     const result = syncGeminiKnowledgeBase(true); // forceRebuild = true
     writeLog(`[Rebuild] 背景重建完成: ${result.substring(0, 100)}`);
@@ -6455,14 +6479,28 @@ function handleMessage(event) {
 
     const contextId = userId; // 對話 ID 就是 userId
     const cache = CacheService.getScriptCache();
+    // v29.6.003: 智慧型圖片-文字併發衝突恢復機制 (Concurrently Pending Query Recovery)
+    let processedMessage = userMessage;
+    const cleanRaw = processedMessage.trim();
+    if (cleanRaw === '.' || cleanRaw === '。' || cleanRaw === '繼續' || cleanRaw === '點' || cleanRaw.length === 1) {
+      const interrupted = cache.get(userId + ':interrupted_query');
+      if (interrupted) {
+        writeLog('[Recovery] 偵測到中斷恢復！將當前「' + processedMessage + '」替換為真實問題：「' + interrupted + '」');
+        processedMessage = interrupted;
+        userMessage = interrupted;
+        cache.remove(userId + ':interrupted_query');
+      }
+    }
+
     let waitLoops = 0;
-    while (cache.get(contextId + ':image_processing') === 'true' && waitLoops < 6) {
+    while (cache.get(contextId + ':image_processing') === 'true' && waitLoops < 7) {
       Utilities.sleep(500);
       waitLoops++;
     }
     if (cache.get(contextId + ':image_processing') === 'true') {
       writeLog('[Race Condition] 攔截！圖片處理尚未結束，暫停文字處理');
-      replyMessage(replyToken, '⏳ 我還在很努力看您上一張圖片喔！為了給您最準確的答案，請稍等圖片分析完成後，再把問題發送一次！');
+      cache.put(userId + ':interrupted_query', processedMessage, 300); // 暫存當前問題，有效期 5 分鐘
+      replyMessage(replyToken, '⏳ 我正在很努力看您剛傳的圖片喔！看懂後，請隨意發送一個「.」或打個字，我會立刻接著回答您的問題：「' + processedMessage + '」！');
       return;
     }
     const messageId = event.message.id || null;
