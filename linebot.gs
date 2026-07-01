@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.009"; // 2026-07-01 修正 C34G55T 等平/曲面型號識別正則漏洞
+const GAS_VERSION = "v29.6.010"; // 2026-07-01 修正 hasExplicitModelPattern 與平/曲面型號識別正則漏洞
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -8514,7 +8514,7 @@ function handleMessage(event) {
             // v27.2.9 修復：檢查型號是否衝突，避免 M8 記憶誤用到 M9 查詢
             const currentMsgModels = extractModelNumbers(msg);
             const hasExplicitModelPattern =
-              /\b[A-Z]\d{2}[A-Z]{1,3}\d{3,4}[A-Z0-9]*\b/i.test(msg);
+              /\b(?:L?[A-Z])\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*\b/i.test(msg);
 
             // v29.3.20: 強化型號衝突判定，支援別稱 (Alias) 解析
             // 避免 G6 比對 S27FG6... 時誤判為衝突
