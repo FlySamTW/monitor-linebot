@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.017"; // 2026-07-01 新增 sync=1 快速同步端點
+const GAS_VERSION = "v29.6.018"; // 2026-07-01 修正 C/F 系列短型號生成與精準權重排序規則
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -4961,6 +4961,11 @@ function getRelevantKBFiles(
     if (m.match(/^S\d{2}[A-Z]{2}\d{3}[A-Z]{2}$/)) {
       shortModels.push(m.substring(0, 8));
     }
+    // v29.6.018: 針對 C/F 曲面與基本型號，去除尾部字母後綴 (如 C34G55T -> C34G55, LC34G55TWWC -> LC34G55)
+    const cfMatch = m.match(/^(L?[CF]\d{2}[A-Z]+\d{2})[A-Z0-9]*$/i);
+    if (cfMatch) {
+      shortModels.push(cfMatch[1]);
+    }
   });
   // v29.5.37: Reverse Alias Lookup (Model -> Alias)
   // 若我們有完整型號 (S27AG500NC)，但在 PDF 中找不到，可能是因為 PDF 檔名只寫了 "G5"
@@ -5103,9 +5108,13 @@ function getRelevantKBFiles(
         const name = f.name.toUpperCase();
         // Priority 1: Primary Model (Detailed)
         if (primaryModel && name.includes(primaryModel)) return 100;
-        // Priority 2: Any "S-Model" in exactModels
-        if (exactModels.some((m) => m.match(/^S\d{2}/) && name.includes(m)))
-          return 50;
+        // Priority 2: Any monitor model in exactModels (weighted by its index in array to prioritize user's explicit query)
+        for (let i = 0; i < exactModels.length; i++) {
+          const m = exactModels[i];
+          if (m.match(/^(?:L?[SCFG])\d{2}/i) && name.includes(m)) {
+            return 80 - i;
+          }
+        }
         // Priority 3: Alias (G5, M7)
         return 10;
       };
