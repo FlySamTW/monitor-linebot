@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.024"; // 2026-07-01 關閉暫時性上傳繞過端點，恢復安全運營狀態
+const GAS_VERSION = "v29.6.025"; // 2026-07-02 修正型號尾碼比對防重複泡泡與 appendSourceTag 雙重來源標籤 Bug
 const BUILD_TIMESTAMP = "2026-06-24 08:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -2077,6 +2077,12 @@ function normalizeSourceTagFromRaw(rawText) {
 function appendSourceTagIfMissing(text, sourceTag) {
   const body = String(text || "").trim();
   const tag = String(sourceTag || "").trim();
+  
+  // v29.6.040: 如果 body 內部已經有任何來源標籤了，直接返回 body，避免雙重標註
+  if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) {
+    return body;
+  }
+  
   // v29.6.038: 智慧判定 fallback 來源
   if (!tag) {
     // 招呼語 / 太短 → 不標
@@ -8179,9 +8185,11 @@ function handleMessage(event) {
 
         // Step 2: Auto-Lock if user message contains the model
         const normalizedMsg = userMessage.toUpperCase().replace(/\s+/g, "");
-        const matchedInMsg = suggestedModels.filter((m) =>
-          normalizedMsg.includes(m.toUpperCase().replace(/\s+/g, "")),
-        );
+        const matchedInMsg = suggestedModels.filter((m) => {
+          // v29.6.040: 去除尾部英文字母後綴以支援無後綴輸入比對 (如 S49DG932SC -> S49DG932)
+          const cleanM = m.toUpperCase().replace(/\s+/g, "").replace(/(?<=\d)[A-Z]+$/i, "");
+          return normalizedMsg.includes(cleanM);
+        });
 
         if (matchedInMsg.length > 0) {
           writeLog(
