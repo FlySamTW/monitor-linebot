@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.025"; // 2026-07-02 修正型號尾碼比對防重複泡泡與 appendSourceTag 雙重來源標籤 Bug
-const BUILD_TIMESTAMP = "2026-06-24 08:00";
+const GAS_VERSION = "v29.6.026"; // 2026-07-06 修復 write_rules 維護入口授權失敗與參數防呆
+const BUILD_TIMESTAMP = "2026-07-06 19:18";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -12282,28 +12282,51 @@ function doPost(e) {
         || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY")
         || "testtesttest";
       if (!json.secret || json.secret !== authKey) {
-    return ContentService.createTextOutput(
-      JSON.stringify(results),
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
       try {
-        const fromRow = parseInt(json.fromRow || "144");
-        const rules = json.rules || [];
+        const fromRow = parseInt(json.fromRow || "144", 10);
+        const rules = Array.isArray(json.rules)
+          ? json.rules
+          : (json.rules ? [json.rules] : []);
+        if (!Number.isFinite(fromRow) || fromRow < 1) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ success: false, error: "Invalid fromRow" }),
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        if (rules.length === 0) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ success: false, error: "No rules provided" }),
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        const sanitizedRules = rules.map((rule) => rule === null || rule === undefined ? "" : String(rule));
+        if (sanitizedRules.some((rule) => rule.trim().length === 0)) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ success: false, error: "Rules must not be blank" }),
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
+        if (!ss) {
+          return ContentService.createTextOutput(
+            JSON.stringify({ success: false, error: "Spreadsheet is not available" }),
+          ).setMimeType(ContentService.MimeType.JSON);
+        }
         const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
         if (!sheet) {
           return ContentService.createTextOutput(
             JSON.stringify({ success: false, error: "CLASS_RULES sheet not found" }),
           ).setMimeType(ContentService.MimeType.JSON);
         }
-        const range = sheet.getRange(fromRow, 1, rules.length, 1);
-        range.setValues(rules.map((r) => [r]));
+        const range = sheet.getRange(fromRow, 1, sanitizedRules.length, 1);
+        range.setValues(sanitizedRules.map((rule) => [rule]));
         SpreadsheetApp.flush();
-        writeLog(`[WriteRules] Wrote ${rules.length} rows from row ${fromRow}`);
+        writeLog(`[WriteRules] Wrote ${sanitizedRules.length} rows from row ${fromRow}`);
         return ContentService.createTextOutput(
           JSON.stringify({
             success: true,
             fromRow: fromRow,
-            writtenRows: rules.length,
+            writtenRows: sanitizedRules.length,
             sheetName: SHEET_NAMES.CLASS_RULES,
             timestamp: new Date().toISOString(),
           }),
@@ -12942,23 +12965,44 @@ function doGet(e) {
     try {
       // GET: rules 透過 query string ?rules=URLENCODE(JSON)
       const data = JSON.parse(decodeURIComponent(e.parameter.rules || "[]"));
-      const fromRow = parseInt(e.parameter.fromRow || "144");
+      const fromRow = parseInt(e.parameter.fromRow || "144", 10);
       const rules = Array.isArray(data) ? data : [data];
+      if (!Number.isFinite(fromRow) || fromRow < 1) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "Invalid fromRow" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (rules.length === 0) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "No rules provided" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+      const sanitizedRules = rules.map((rule) => rule === null || rule === undefined ? "" : String(rule));
+      if (sanitizedRules.some((rule) => rule.trim().length === 0)) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "Rules must not be blank" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+      if (!ss) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ success: false, error: "Spreadsheet is not available" }),
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
       const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
       if (!sheet) {
         return ContentService.createTextOutput(
           JSON.stringify({ success: false, error: "CLASS_RULES sheet not found" }),
         ).setMimeType(ContentService.MimeType.JSON);
       }
-      const range = sheet.getRange(fromRow, 1, rules.length, 1);
-      range.setValues(rules.map((r) => [r]));
+      const range = sheet.getRange(fromRow, 1, sanitizedRules.length, 1);
+      range.setValues(sanitizedRules.map((rule) => [rule]));
       SpreadsheetApp.flush();
-      writeLog(`[WriteRules] Wrote ${rules.length} rows from row ${fromRow}`);
+      writeLog(`[WriteRules] Wrote ${sanitizedRules.length} rows from row ${fromRow}`);
       return ContentService.createTextOutput(
         JSON.stringify({
           success: true,
           fromRow: fromRow,
-          writtenRows: rules.length,
+          writtenRows: sanitizedRules.length,
           sheetName: SHEET_NAMES.CLASS_RULES,
           timestamp: new Date().toISOString(),
         }),

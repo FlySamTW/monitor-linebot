@@ -1,5 +1,24 @@
 # 開發對話紀錄
 
+## 2026-07-06 (v29.6.026 維護 Webhook hardening)
+
+### 目的
+- 使用者要求先 PULL Git、理解本專案並修掉可驗證 BUG；本輪先處理本專案內實際存在的 Webhook 維護入口錯誤。
+- 經 repo 搜尋確認，本工作區是 GAS LINE Bot / TestUI 專案，沒有桌面 LINE 視窗 OCR 或焦點駐點控制模組；該類能力屬另一個桌面 LINE 自動回覆專案邊界。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.026`。
+- 修復 `doPost` 的 `write_rules` 授權失敗分支引用未定義 `results` 的 BUG；現在會回傳明確 Unauthorized JSON。
+- POST / GET 兩個 `write_rules` 維護入口補上 `fromRow`、空規則、空白規則與試算表不可用的明確 JSON 防呆，避免維護工具只拿到總例外。
+
+### 測試與文件
+- `test_runner/verify_sop_static_guards.js` 新增維護端點靜態守門，避免未定義回傳物件與缺少基本參數防呆回歸。
+- 同步 `Developer_Manual.md` 與 `程式編寫開發及功能手冊.md` 版本標題與本次變更紀錄。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-06-20 (發布總控工具完善)
 
 ### 目的

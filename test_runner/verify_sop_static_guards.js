@@ -46,6 +46,42 @@ const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1]
 
 assertStep(localVersion, "linebot.gs must expose GAS_VERSION");
 
+const doPostSection = extractFunction(linebot, "doPost");
+const doGetSection = extractFunction(linebot, "doGet");
+
+assertStep(
+  !/JSON\.stringify\(results\)/.test(doPostSection + doGetSection),
+  "maintenance webhook endpoints must not stringify undefined results objects",
+);
+
+const postWriteRulesStart = doPostSection.indexOf('json.action === "write_rules"');
+const postWriteRulesEnd = doPostSection.indexOf('json.action === "upload_manual_pdf"', postWriteRulesStart);
+assertStep(postWriteRulesStart >= 0, "doPost write_rules branch not found");
+assertStep(postWriteRulesEnd > postWriteRulesStart, "doPost write_rules branch end not found");
+const postWriteRulesSection = doPostSection.slice(postWriteRulesStart, postWriteRulesEnd);
+
+assertStep(
+  /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(postWriteRulesSection) &&
+    /Array\.isArray\(json\.rules\)/.test(postWriteRulesSection) &&
+    /No rules provided/.test(postWriteRulesSection) &&
+    /Rules must not be blank/.test(postWriteRulesSection) &&
+    /Spreadsheet is not available/.test(postWriteRulesSection),
+  "doPost write_rules must return clean JSON for auth, empty payload, blank rules, and missing spreadsheet errors",
+);
+
+const getWriteRulesStart = doGetSection.indexOf('e.parameter.writeRules === "1"');
+const getWriteRulesEnd = doGetSection.indexOf("v29.6.020: 移除測試端點", getWriteRulesStart);
+assertStep(getWriteRulesStart >= 0, "doGet writeRules branch not found");
+assertStep(getWriteRulesEnd > getWriteRulesStart, "doGet writeRules branch end not found");
+const getWriteRulesSection = doGetSection.slice(getWriteRulesStart, getWriteRulesEnd);
+
+assertStep(
+  /No rules provided/.test(getWriteRulesSection) &&
+    /Rules must not be blank/.test(getWriteRulesSection) &&
+    /Spreadsheet is not available/.test(getWriteRulesSection),
+  "doGet writeRules must return clean JSON for empty payload, blank rules, and missing spreadsheet errors",
+);
+
 for (const staleMainFile of [
   "linebot.js",
   "linebot.gs.bak",
