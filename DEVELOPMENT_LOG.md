@@ -1,5 +1,33 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.029 /紀錄活動網址 fallback 邊界修正)
+
+### 目的
+- 修正 `v29.6.028` fallback 對非正式活動頁或測試網址過度套用官方頁解析，導致使用者原文中的型號與促銷資訊被丟失。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.029`。
+- Samsung 活動頁 fallback 只有在頁面文字明確含活動期間、登錄期間、Steam、延長保固或 Galaxy S26 活動資訊時才啟用。
+- 若網址無法提供有效官方活動內容，改回保留使用者原文整理，不再產生空泛的活動 RULE。
+
+### 測試
+- 修正 `verify_rule_draft_and_alias.js` 的 TestUI iframe 輪詢，避免正式頁面載入較慢時誤判失敗。
+
+## 2026-07-07 (v29.6.028 /紀錄活動網址官方頁 fallback)
+
+### 目的
+- 修正 `/紀錄 https://promotion.twsamsungcampaign.com/.../rule.aspx` 在 Gemini 回 429 時退回「只把網址包成 RULE」的缺口。
+- 確保活動網址會先抓官方頁內容，產生可供 Fast Mode 使用的 `CLASS_RULES` 草稿，並且仍需使用者送 `/紀錄` 確認後才寫入 Sheet。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.028`。
+- 新增 Samsung 活動頁確定性解析 fallback：活動名稱、活動期間、登錄期間、Steam 點卡、延長保固、月月抽 Galaxy S26 系列各組螢幕型號會整理成 A 欄單列 RULE。
+- `callGeminiToPolishRule()` 在 API 429、空回覆或只回網址時，改用官方頁文字 fallback，不再存成 `活動_手動建檔,電腦螢幕活動RULE,<網址>`。
+
+### 測試與文件
+- `verify_rule_draft_and_alias.js` 新增真實 Samsung 活動網址回歸，確認預覽內容包含官方頁活動內容且不是只存網址。
+- 同步 `Developer_Manual.md`、`程式編寫開發及功能手冊.md` 與 `User_Manual.md`。
+
 ## 2026-07-07 (v29.6.027 /紀錄 RULE 與短別稱手冊防呆)
 
 ### 目的

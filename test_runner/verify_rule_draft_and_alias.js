@@ -8,10 +8,13 @@ function sleep(ms) {
 }
 
 async function findFrame(page) {
-  await sleep(5000);
-  for (const f of page.frames()) {
-    const el = await f.$("#msg-input").catch(() => null);
-    if (el) return f;
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    for (const f of page.frames()) {
+      const el = await f.$("#msg-input").catch(() => null);
+      if (el) return f;
+    }
+    await sleep(1000);
   }
   return null;
 }
@@ -86,6 +89,30 @@ async function run() {
     irrelevantReplies,
   );
   await call(frame, "testMessage", "/取消", ruleUser);
+
+  const campaignUser = `TEST_CAMPAIGN_URL_${Date.now()}`;
+  await call(frame, "clearTestSession", campaignUser);
+  const campaignRes = await call(
+    frame,
+    "testMessage",
+    "/紀錄 https://promotion.twsamsungcampaign.com/2026-mnt-q2-sp/rule.aspx",
+    campaignUser,
+  );
+  const campaignReplies = joined(campaignRes, "replies");
+  assertStep(/CLASS_RULES/.test(campaignReplies), "Campaign URL should preview CLASS_RULES", campaignReplies);
+  assertStep(
+    /ViewFinity|Odyssey|Steam|延長保固|Galaxy S26/.test(campaignReplies),
+    "Campaign URL should be expanded into official page content, not only stored as a URL",
+    campaignReplies,
+  );
+  assertStep(
+    !/活動_手動建檔,電腦螢幕活動RULE,https:\/\/promotion\.twsamsungcampaign\.com/i.test(
+      campaignReplies,
+    ),
+    "Campaign URL fallback must not save only the URL",
+    campaignReplies,
+  );
+  await call(frame, "testMessage", "/取消", campaignUser);
 
   const aliasUser = `TEST_ALIAS_G5_${Date.now()}`;
   await call(frame, "clearTestSession", aliasUser);

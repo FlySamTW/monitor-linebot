@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.027"; // 2026-07-07 /紀錄支援 QA/RULE 建檔並強化短別稱手冊選型
-const BUILD_TIMESTAMP = "2026-07-07 11:23";
+const GAS_VERSION = "v29.6.029"; // 2026-07-07 /紀錄活動網址官方頁 fallback 防只存網址
+const BUILD_TIMESTAMP = "2026-07-07 12:08";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -10509,6 +10509,145 @@ function simpleRuleModifyFallback(currentText, instruction) {
   return normalizeRuleLine(base + "；" + ins);
 }
 
+function firstRegexGroup(text, regex, fallback) {
+  const match = String(text || "").match(regex);
+  return match && match[1] ? normalizeRuleLine(match[1]) : fallback || "";
+}
+
+function getCampaignDateKey(activityPeriod, registrationPeriod) {
+  const allDates = String((registrationPeriod || "") + " " + (activityPeriod || "")).match(
+    /20\d{2}\/\d{1,2}\/\d{1,2}/g,
+  );
+  const activityDates = String(activityPeriod || "").match(/20\d{2}\/\d{1,2}\/\d{1,2}/g);
+  if (!allDates || allDates.length === 0) return "手動建檔";
+
+  const startDate = allDates[0];
+  const endDate =
+    activityDates && activityDates.length > 0
+      ? activityDates[activityDates.length - 1]
+      : allDates[allDates.length - 1];
+
+  function ym(dateText) {
+    const parts = String(dateText || "").split("/");
+    if (parts.length < 2) return "";
+    return parts[0] + String(parts[1]).padStart(2, "0");
+  }
+
+  const startYm = ym(startDate);
+  const endYm = ym(endDate);
+  return startYm && endYm ? startYm + "_" + endYm : "手動建檔";
+}
+
+function findCampaignSegmentBefore(text, endNeedle, afterNeedle, fallbackWindow) {
+  const source = String(text || "");
+  const endIdx = source.indexOf(endNeedle);
+  if (endIdx < 0) return "";
+
+  let fromIdx = -1;
+  if (afterNeedle) {
+    const markerIdx = source.lastIndexOf(afterNeedle, endIdx);
+    if (markerIdx >= 0) {
+      fromIdx = markerIdx + afterNeedle.length;
+    }
+  }
+  if (fromIdx < 0) {
+    fromIdx = Math.max(0, endIdx - (fallbackWindow || 1600));
+  }
+  return source.substring(fromIdx, endIdx);
+}
+
+function cleanCampaignModelSegment(segment) {
+  let text = normalizeRuleLine(segment)
+    .replace(/&ndash;/gi, "-")
+    .replace(/^[(（][^)）]+[)）]\s*/, "")
+    .replace(/\s*、\s*/g, "、")
+    .replace(/\s*，\s*/g, "，")
+    .replace(/\s*-\s*/g, "-");
+
+  const firstModelIdx = text.search(/\b(?:LS|LC|S|C|U)\d{2}/i);
+  if (firstModelIdx > 0) {
+    text = text.substring(firstModelIdx);
+  }
+  return normalizeRuleLine(text);
+}
+
+function pushRuleField(fields, label, value) {
+  const cleanValue = normalizeRuleLine(value);
+  if (cleanValue) fields.push(label + "：" + cleanValue);
+}
+
+function buildSamsungCampaignRuleFallback(input, campaignContext) {
+  const sourceUrl =
+    (campaignContext && campaignContext.url) || extractSamsungCampaignUrl(input);
+  const pageText = campaignContext && campaignContext.text ? campaignContext.text : "";
+  if (!pageText) return simpleRuleFallback(input);
+  const hasOfficialCampaignDetails =
+    /(活動期間|登錄期間).*(20\d{2}|即日起)|登錄送\s*Steam|延長保固|Galaxy\s*S26/i.test(
+      pageText,
+    );
+  if (!hasOfficialCampaignDetails) return simpleRuleFallback(input);
+
+  const title =
+    firstRegexGroup(
+      pageText,
+      /(ViewFinity\s*\|\s*Odyssey[^。]*?三星螢幕登錄送)/,
+      "",
+    ) ||
+    firstRegexGroup(pageText, /([^。]{0,80}三星螢幕登錄送)/, "三星螢幕登錄送");
+
+  const activityPeriod =
+    firstRegexGroup(
+      pageText,
+      /活動期間\s*(即日起至20\d{2}\/\d{1,2}\/\d{1,2}\s*\d{1,2}:\d{2})/,
+      "",
+    ) || firstRegexGroup(pageText, /於活動期間[〈<]([^〉>]+)[〉>]/, "");
+  const registrationPeriod = firstRegexGroup(
+    pageText,
+    /登錄期間\s*(20\d{2}\/\d{1,2}\/\d{1,2}\s*\d{1,2}:\d{2}\s*至\s*20\d{2}\/\d{1,2}\/\d{1,2}\s*\d{1,2}:\d{2})/,
+    "",
+  );
+
+  const steamModels = cleanCampaignModelSegment(
+    findCampaignSegmentBefore(pageText, "登錄送 Steam", "購買機型 活動內容", 800),
+  );
+  const warrantyModels = cleanCampaignModelSegment(
+    findCampaignSegmentBefore(pageText, "登錄送 全機延長保固兩年", "Steam 1,000 元點卡", 2800),
+  );
+  const s26UltraModels = cleanCampaignModelSegment(
+    findCampaignSegmentBefore(pageText, "Galaxy S26 Ultra", "保固期起算日認定", 3200),
+  );
+  const s26PlusModels = cleanCampaignModelSegment(
+    findCampaignSegmentBefore(pageText, "Galaxy S26+ (256GB)", "市價 NT$44,900", 7000),
+  );
+  const s26Models = cleanCampaignModelSegment(
+    findCampaignSegmentBefore(pageText, "Galaxy S26 (256GB)", "市價$37,900", 7000),
+  );
+
+  const key = "活動_" + getCampaignDateKey(activityPeriod, registrationPeriod) + "螢幕登錄送";
+  const fields = [key, "電腦螢幕活動RULE"];
+  pushRuleField(fields, "活動名稱", title);
+  pushRuleField(fields, "活動期間", activityPeriod);
+  pushRuleField(fields, "登錄期間", registrationPeriod);
+  fields.push("活動資格：購買指定三星螢幕機種並於登錄網站完成登錄且審核通過後取得活動資格");
+  pushRuleField(fields, "Steam 1000元點卡型號", steamModels);
+  pushRuleField(fields, "全機延長保固兩年型號", warrantyModels);
+  pushRuleField(fields, "月月抽 Galaxy S26 Ultra 型號", s26UltraModels);
+  pushRuleField(fields, "月月抽 Galaxy S26+ 型號", s26PlusModels);
+  pushRuleField(fields, "月月抽 Galaxy S26 型號", s26Models);
+  pushRuleField(fields, "來源網址", sourceUrl);
+  return normalizeRuleLine(fields.join(","));
+}
+
+function isWeakCampaignRule(ruleText, sourceUrl) {
+  const text = normalizeRuleLine(ruleText);
+  if (!sourceUrl || text.indexOf(sourceUrl) < 0) return false;
+  const withoutUrl = normalizeRuleLine(text.replace(sourceUrl, ""));
+  return (
+    withoutUrl.length < 40 ||
+    !/(活動期間|登錄期間|Steam|延長保固|Galaxy S26|ViewFinity|Odyssey)/i.test(text)
+  );
+}
+
 function extractSamsungCampaignUrl(text) {
   const raw = String(text || "");
   const match = raw.match(/https?:\/\/promotion\.twsamsungcampaign\.com\/[^\s，,。)）]+/i);
@@ -10637,7 +10776,7 @@ RULE_主題,規則類型,完整規則說明...
     writeLog(`[PolishRule API] Code: ${code}, Body: ${body.substring(0, 500)}`);
     if (code !== 200) {
       writeLog(`[PolishRule API Error] Code: ${code}`);
-      return simpleRuleFallback(input);
+      return buildSamsungCampaignRuleFallback(input, campaignContext);
     }
 
     const json = JSON.parse(body);
@@ -10669,10 +10808,14 @@ RULE_主題,規則類型,完整規則說明...
     ) {
       rawText = firstCandidate.content.parts[0].text;
     }
-    return rawText ? normalizeRuleLine(rawText) : simpleRuleFallback(input);
+    const normalizedRule = rawText ? normalizeRuleLine(rawText) : "";
+    if (!normalizedRule || isWeakCampaignRule(normalizedRule, campaignContext.url)) {
+      return buildSamsungCampaignRuleFallback(input, campaignContext);
+    }
+    return normalizedRule;
   } catch (e) {
     writeLog(`[PolishRule Error] ${e.message}`);
-    return simpleRuleFallback(input);
+    return buildSamsungCampaignRuleFallback(input, campaignContext);
   }
 }
 
