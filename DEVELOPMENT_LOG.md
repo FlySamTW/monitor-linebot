@@ -1,5 +1,19 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.030 / 固定 Gemini 2.5 Flash-Lite)
+
+### 目的
+- 將正式客服對話、PDF/Think Mode 與 `/紀錄` polish 模型固定為 `models/gemini-2.5-flash-lite`，避免 `gemini-flash-lite-latest` alias 漂移到更高成本模型。
+- 讓程式成本估算常數 `0.10 / 0.40` 與實際使用模型一致。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.030`。
+- `GEMINI_MODEL_FAST`、`GEMINI_MODEL_THINK`、`GEMINI_MODEL_POLISH` 全部固定為 `models/gemini-2.5-flash-lite`。
+- 修正模型區塊註解與 polish 成本日誌文字，不再標示 Gemini 3 Flash 或 latest alias。
+
+### 測試
+- `verify_sop_static_guards.js` 新增 production Gemini model 守門，禁止三個生產模型常數使用 `latest` alias。
+
 ## 2026-07-07 (v29.6.029 /紀錄活動網址 fallback 邊界修正)
 
 ### 目的

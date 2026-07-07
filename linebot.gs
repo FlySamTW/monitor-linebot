@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.029"; // 2026-07-07 /紀錄活動網址官方頁 fallback 防只存網址
-const BUILD_TIMESTAMP = "2026-07-07 12:08";
+const GAS_VERSION = "v29.6.030"; // 2026-07-07 固定 Gemini 2.5 Flash-Lite 控制成本
+const BUILD_TIMESTAMP = "2026-07-07 15:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -32,9 +32,9 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-flash-lite-latest";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (gemini-flash-lite-latest alias 指向當前最新 lite)
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-flash-lite-latest alias)
+const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
+const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite)
+const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -45,15 +45,15 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-flash-lite-latest";
-const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (gemini-flash-lite-latest alias)
-const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (gemini-flash-lite-latest alias)
+const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
+const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite)
+const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite)
 
 // ════════════════════════════════════════════════════════════════
-// 4. QA 生成 (Polish Mode) (強制 Gemini 3 Flash)
+// 4. QA/RULE 生成 (Polish Mode) (固定 Gemini 2.5 Flash-Lite)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：/記錄 功能使用 gemini-flash-lite-latest alias (永遠指向最新 lite 模型, 不會被棄用)
-const GEMINI_MODEL_POLISH = "models/gemini-flash-lite-latest";
+// ⚠️ 注意：/記錄 功能固定使用 Gemini 2.5 Flash-Lite，避免 latest alias 漂移造成成本上升。
+const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
 const PRICE_POLISH_INPUT = 0.1;
 const PRICE_POLISH_OUTPUT = 0.4; // $0.40 per 1M Output
 // ════════════════════════════════════════════════════════════════
@@ -196,7 +196,7 @@ function getElaborationTopicAnchor_(cache, userId, fallbackText) {
  *   - 1. 主要服務 (Gemini/OpenRouter) - 可改
  *   - 2. 一般對話 (Fast Mode) - 可改 (含 OpenRouter 費率)
  *   - 3. PDF 對話 (Think Mode) - 強制 Gemini
- *   - 4. QA 生成 (Polish Mode) - 強制 Gemini 3 Flash
+ *   - 4. QA/RULE 生成 (Polish Mode) - 固定 Gemini 2.5 Flash-Lite
  *
  * 🔥 v27.9.38 更新 (Fixes):
  *   - 修正：修復 LLM_PROVIDER 未定義導致的系統錯誤
@@ -11885,7 +11885,7 @@ function callGeminiToPolish(input, userId = null) {
           usage.candidatesTokenCount
         }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(
           4,
-        )} | Gemini 3 Flash)`,
+        )} | Gemini 2.5 Flash-Lite)`,
       );
     } else {
       // 清除舊的 lastTokenUsage

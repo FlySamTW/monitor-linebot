@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.029)
+# Samsung LINE Bot 完整流程解析 (v29.6.030)
 
 ## 📋 核心哲學
 
@@ -27,8 +27,9 @@
 - `G5`、`M8`、`S9` 等短別稱不可直接拿來查 PDF；若題目需要手冊或精準型號，必須先從現有 PDF 覆蓋範圍列出完整型號讓使用者選。
 - `/紀錄 <內容>` 必須支援 QA 與 RULE 自動分流；RULE 要寫入 `CLASS_RULES` A 欄單列字串，不可展開多欄。
 - `/紀錄` 內容是 Samsung 活動網址時，必須先抓官方頁內容產生 RULE 草稿；即使 Gemini 429，也不可退化成只把網址存進 `CLASS_RULES`。
+- 正式 Gemini 模型必須固定為 `models/gemini-2.5-flash-lite`；不可用 `gemini-flash-lite-latest` 這類會漂移的 alias，以免成本估算失真。
 
-## ✅ 現行鐵律 SOP（v29.6.029）
+## ✅ 現行鐵律 SOP（v29.6.030）
 
 1. **先 QA/規格庫**：讀取 Google Sheet 的 QA、CLASS_RULES 與 `Prompt!C3` 指令。
 2. **再 PDF 手冊**：只有 Fast Mode 不足、使用者明確 `#查手冊`、或型號泡泡選擇後進入手冊模式，才掛載 PDF。
@@ -38,6 +39,7 @@
 6. **手冊按鈕防呆**：Quick Reply 的「📖 查手冊」只可在 `hasPdfForModel=true` 且本回合尚未查過 PDF 時顯示；操作題本身不能當成顯示手冊按鈕的理由。
 7. **家電題防呆**：洗衣機、乾衣機、冰箱、吸塵器等三星家電題不得被誤導成螢幕型號補問；WA/WD/VR 等家電型號要可被辨識為型號訊號。
 8. **範圍防呆優先**：若問題明顯是非三星/競品-only/競品即時報價表格，先回覆專案範圍，不進價格防呆、PDF 或 LLM。
+9. **模型成本防呆**：Fast / Think / Polish 三個生產模型常數固定使用 `models/gemini-2.5-flash-lite`，不得使用 `latest` alias。
 9. **時效資訊優先**：近期促銷、活動、抽獎、最新上市、CES、延長保固等問題，先走官方頁/網路搜尋引導，不進 Fast Mode 型號泡泡。
 10. **價格防呆優先**：價格、最低價、建議售價、通路價等問題在 LLM 前先攔截，不回覆數字金額，只導三星官方頁；型號搜尋目標必須保留完整尾碼。
 11. **型號選擇回覆要乾淨**：任何要求使用者先選型號或補型號的回覆，不得追加查手冊提醒；等使用者選定型號後，再依 QA/規格 → PDF → WEB 流程處理。
@@ -1012,6 +1014,12 @@ Google Drive ──────► Gemini File API
   1. 修復 `doPost` 的 `write_rules` 授權失敗分支引用未定義 `results`，導致本應回傳 Unauthorized JSON 時反而進入總例外的 BUG。
   2. `write_rules` 的 POST / GET 維護入口新增 `fromRow`、空規則、空白規則與試算表不可用的明確 JSON 錯誤回應。
   3. 靜態守門新增檢查，避免維護端點再次出現未定義回傳物件或缺少參數防呆。
+
+### v29.6.030 (2026-07-07)
+- 模型成本控制：
+  1. `GEMINI_MODEL_FAST`、`GEMINI_MODEL_THINK`、`GEMINI_MODEL_POLISH` 固定為 `models/gemini-2.5-flash-lite`。
+  2. 移除生產對話對 `gemini-flash-lite-latest` alias 的依賴，避免 Google alias 漂移造成實際成本高於估算。
+  3. 靜態守門新增 production Gemini model 檢查，禁止三個生產模型常數使用 `latest` alias。
 
 ### v29.6.029 (2026-07-07)
 - `/紀錄` 活動網址 fallback 邊界：

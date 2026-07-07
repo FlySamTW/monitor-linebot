@@ -49,6 +49,27 @@ assertStep(localVersion, "linebot.gs must expose GAS_VERSION");
 const doPostSection = extractFunction(linebot, "doPost");
 const doGetSection = extractFunction(linebot, "doGet");
 
+const productionGeminiModels = [
+  "GEMINI_MODEL_FAST",
+  "GEMINI_MODEL_THINK",
+  "GEMINI_MODEL_POLISH",
+];
+for (const constantName of productionGeminiModels) {
+  const match = linebot.match(
+    new RegExp(`const\\s+${constantName}\\s*=\\s*"([^"]+)"`),
+  );
+  assertStep(match, `${constantName} must be defined`);
+  assertStep(
+    match[1] === "models/gemini-2.5-flash-lite",
+    `${constantName} must be pinned to models/gemini-2.5-flash-lite, not a drifting latest alias`,
+  );
+}
+
+assertStep(
+  !/const\s+GEMINI_MODEL_(FAST|THINK|POLISH)\s*=\s*"[^"]*latest"/.test(linebot),
+  "production Gemini model constants must not use latest aliases",
+);
+
 assertStep(
   !/JSON\.stringify\(results\)/.test(doPostSection + doGetSection),
   "maintenance webhook endpoints must not stringify undefined results objects",
