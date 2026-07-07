@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.047"; // 2026-07-07 PDF 選檔 token 比對
-const BUILD_TIMESTAMP = "2026-07-07 18:22";
+const GAS_VERSION = "v29.6.048"; // 2026-07-07 Smart Monitor HEVC 手冊守門
+const BUILD_TIMESTAMP = "2026-07-07 19:08";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2533,9 +2533,56 @@ function isCapabilityClaimQuery(text) {
 
 function isManualVerificationRequiredQuery(text) {
   const q = String(text || "");
-  return /(MATTER|THREAD|SMARTTHINGS|HUB|BORDER\s*ROUTER|CONTROLLER|ZIGBEE|中樞|集線器|協議|協定|橋接|網關|GATEWAY)/i.test(
+  return /(MATTER|THREAD|SMARTTHINGS|HUB|BORDER\s*ROUTER|CONTROLLER|ZIGBEE|中樞|集線器|協議|協定|橋接|網關|GATEWAY|HEVC|H\.?\s*265|H265|編解碼|CODEC|視訊格式|影片格式|影片檔|播放檔案|檔案格式|USB\s*播放)/i.test(
     q,
   );
+}
+
+function isMediaCodecSupportQuery(text) {
+  const q = String(text || "");
+  return /(HEVC|H\.?\s*265|H265|H\.?\s*264|H264|VP9|AV1|編解碼|CODEC|視訊格式|影片格式|影片檔|播放檔案|影音格式|檔案格式|USB\s*播放)/i.test(q);
+}
+
+function isSmartMonitorCodecQuestion(text) {
+  const q = String(text || "");
+  if (!isMediaCodecSupportQuery(q)) {
+    return false;
+  }
+  return /(SMART\s*MONITOR|SMART系列|SMART\s*系列|智慧螢幕|智慧顯示器|SMART\s*螢幕|M5|M7|M8|M9|M50|M70|M80|M90|S27AM|S32AM|S27BM|S32BM|S43BM|S32CM|S32DM|S32FM|S43DM|S43FM)/i.test(q);
+}
+
+function buildSmartMonitorCodecManualReply(text) {
+  if (!isSmartMonitorCodecQuestion(text)) {
+    return "";
+  }
+  return [
+    "如果你指的是 Smart Monitor／M 系列，官方手冊的「支援的視訊編解碼器」有列 HEVC（H.265 - Main、Main10），所以可支援 HEVC 影片播放。",
+    "",
+    "但「Smart 系列」不能直接概括到所有內建 Smart 功能的電競螢幕；不同型號、不同世代的解析度、影格率、位元率與 Level 上限會不同。",
+    "",
+    "共通限制是：HEVC 編解碼器僅適用於 MKV／MP4／TS 檔案類型。檔案若超過手冊列的相容規格，或使用不支援的編解碼器，可能無法播放或播放不順。",
+    "",
+    "若要確認某一台的精確上限，請提供完整型號，例如 S32FM703、S32BM80、S32AM700。",
+    "",
+    "[來源: S27AM500,S32AM500,S32AM700,S32AM703.pdf／S32BM80.pdf／S32FM702,S32FM703,S32FM803.pdf 官方手冊]",
+  ].join("\n");
+}
+
+function buildSmartMonitorCodecQuickReplyOptions() {
+  return {
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "message",
+            label: "🌐 這題再搜網路",
+            text: "#這題再搜網路",
+          },
+        },
+      ],
+    },
+  };
 }
 
 function readContextHealth(cache, userId) {
@@ -6996,6 +7043,22 @@ function handleMessage(event) {
       return;
     }
 
+    const smartCodecReply = buildSmartMonitorCodecManualReply(msg);
+    if (!msg.startsWith("#") && smartCodecReply) {
+      writeLog(`[Smart Codec Guard v29.6.048] 以 Smart Monitor 官方手冊固定回覆，避免 Fast Mode 泛答: ${msg.substring(0, 80)}`);
+      replyMessage(replyToken, smartCodecReply, buildSmartMonitorCodecQuickReplyOptions());
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, smartCodecReply, contextId, "assistant", "");
+      const smartCodecHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        smartCodecHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: smartCodecReply },
+      );
+      return;
+    }
+
     // v24.3.0: 實時資訊快速回答（日期、時間）
     // 不需要問 AI，直接回答準確資訊
     // v24.3.0: 實時資訊快速回答（日期、時間）
@@ -7753,6 +7816,21 @@ function handleMessage(event) {
           replyToken,
           "請先告訴我型號或問題，我再幫你查手冊。\n你可以這樣輸入：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub\n或：查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
         );
+        return;
+      }
+
+      const smartCodecManualReply = buildSmartMonitorCodecManualReply(lastQuestion);
+      if (smartCodecManualReply) {
+        writeLog(`[Smart Codec Guard v29.6.048] #查手冊 改用 Smart Monitor 官方手冊固定回覆，避免歷史型號污染: ${lastQuestion.substring(0, 80)}`);
+        replyMessage(replyToken, smartCodecManualReply, buildSmartMonitorCodecQuickReplyOptions());
+        updateHistorySheetAndCache(
+          contextId,
+          history,
+          { role: "user", content: lastQuestion },
+          { role: "assistant", content: smartCodecManualReply },
+        );
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, smartCodecManualReply, contextId, "assistant", "");
         return;
       }
 

@@ -1016,6 +1016,43 @@ assertStep(
   "alias candidate matching must avoid substring/generic-term pollution while supporting product aliases",
 );
 
+const smartCodecGuardCode = [
+  extractFunction(linebot, "isMediaCodecSupportQuery"),
+  extractFunction(linebot, "isSmartMonitorCodecQuestion"),
+  extractFunction(linebot, "buildSmartMonitorCodecManualReply"),
+  `
+  globalThis.__smartCodecGuardResult = {
+    smartSeriesHevc: isSmartMonitorCodecQuestion("Smart系列播放檔案有沒有支援hevc格式"),
+    m7Hevc: isSmartMonitorCodecQuestion("M7 支援 H.265 影片檔嗎"),
+    odysseyOnly: isSmartMonitorCodecQuestion("Odyssey 3D 支援 HEVC 嗎"),
+    reply: buildSmartMonitorCodecManualReply("Smart系列播放檔案有沒有支援hevc格式")
+  };
+  `,
+].join("\n\n");
+const smartCodecGuardContext = {};
+vm.createContext(smartCodecGuardContext);
+vm.runInContext(smartCodecGuardCode, smartCodecGuardContext);
+
+assertStep(
+  smartCodecGuardContext.__smartCodecGuardResult.smartSeriesHevc === true &&
+    smartCodecGuardContext.__smartCodecGuardResult.m7Hevc === true &&
+    smartCodecGuardContext.__smartCodecGuardResult.odysseyOnly === false,
+  "Smart Monitor codec guard must catch Smart/M-series HEVC questions without overreaching to Odyssey-only questions",
+);
+
+assertStep(
+  /HEVC/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
+    /MKV/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
+    /S32FM702,S32FM703,S32FM803\.pdf/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
+    !/通常/.test(smartCodecGuardContext.__smartCodecGuardResult.reply),
+  "Smart Monitor codec reply must cite official manuals and avoid vague LLM-style claims",
+);
+
+assertStep(
+  /\[Smart Codec Guard v29\.6\.048\].*#查手冊/.test(linebot),
+  "#查手冊 must route Smart Monitor codec questions to the fixed manual-backed answer before PDF selection",
+);
+
 const pdfModelIndexCode = [
   extractFunction(linebot, "isPdfKbFile"),
   extractFunction(linebot, "extractPdfModelIndexFromKbList"),

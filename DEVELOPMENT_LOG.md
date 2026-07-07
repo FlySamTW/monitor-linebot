@@ -1,5 +1,19 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.048 / Smart Monitor HEVC 手冊守門)
+
+### 目的
+- 修正實際 LINE 對話中「Smart系列播放檔案有沒有支援hevc格式」被 Fast Mode 以規格庫泛答，且使用者按 `#查手冊` 後又被歷史 S27FG900XC／Odyssey 型號污染而查錯 PDF 的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.048`。
+- 新增 Smart Monitor／M 系列影音格式守門：HEVC、H.265、影片格式、播放檔案支援題直接引用 Smart Monitor 官方手冊「支援的視訊編解碼器」章節。
+- `#查手冊` 對同類問題改走固定手冊依據，不再進入一般 PDF 選檔器，避免廣義 `術語_Smart系列` 與歷史型號污染。
+
+### 驗證
+- 靜態守門新增 Smart Monitor codec 測試，要求回覆包含 HEVC、MKV 與實際官方手冊檔名，且不得使用「通常」式模糊描述。
+- 正式 TestUI 新增 `verify_smart_codec_guard.js`，重跑原始問題與 `#查手冊`，確認兩回合都由 Smart codec 守門接手且未進錯 PDF 選檔。
+
 ## 2026-07-07 (v29.6.047 / PDF 選檔 token 比對)
 
 ### 目的
