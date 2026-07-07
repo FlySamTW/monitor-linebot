@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.036"; // 2026-07-07 LLM測試入口授權補強
-const BUILD_TIMESTAMP = "2026-07-07 16:45";
+const GAS_VERSION = "v29.6.039"; // 2026-07-07 選型後手冊答案保留型號
+const BUILD_TIMESTAMP = "2026-07-07 17:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2271,6 +2271,34 @@ function isOperationAnswerInsufficient(text) {
   return strongUncertainty || !hasSteps;
 }
 
+function isFactoryResetQueryWithoutPinIssue(text) {
+  const q = String(text || "");
+  const asksFactoryReset = /(恢復出廠|回復出廠|還原出廠|出廠設定|出廠資料重設|恢復原廠|還原原廠|重置為出廠|重設為出廠|重置|重設)/i.test(
+    q,
+  );
+  const asksPinRecovery = isPinRecoveryQuery(q);
+  return asksFactoryReset && !asksPinRecovery;
+}
+
+function isPinRecoveryQuery(text) {
+  const q = String(text || "");
+  return /(忘記|遺失|不記得|找不到).{0,12}(PIN|密碼|碼)|(?:PIN|密碼|碼).{0,12}(忘記|遺失|不記得|找不到)/i.test(
+    q,
+  );
+}
+
+function isPinRecoveryOnlyAnswer(text) {
+  const t = String(text || "");
+  const hasPinRecovery =
+    /(忘記|遺失|不記得|找不到).{0,16}(PIN|密碼|碼)|(?:PIN|密碼|碼).{0,16}(忘記|遺失|不記得|找不到)|0800|客服人員|遠端連線/i.test(
+      t,
+    );
+  const hasFactoryResetPath = /(設定|所有設定|一般與隱私權|出廠資料重設|重設\s*Smart\s*Hub|自我診斷)/i.test(
+    t,
+  );
+  return hasPinRecovery && !hasFactoryResetPath;
+}
+
 function buildNeedModelForOperationReply() {
   return [
     "這題會跟不同型號的按鍵配置、選單路徑或遙控器設計有關，我需要先確認完整型號，才不會給你錯的操作步驟。",
@@ -2439,6 +2467,17 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
     info.fastSourceTag === "[來源:QA]" || info.fastSourceTag === "[來源:規格庫]";
   if (!trustedFastSource) {
     return true;
+  }
+
+  if (isFactoryResetQueryWithoutPinIssue(info.userQuestion)) {
+    return true;
+  }
+
+  if (
+    isPinRecoveryQuery(info.userQuestion) &&
+    isPinRecoveryOnlyAnswer(info.normalizedFastAnswer)
+  ) {
+    return false;
   }
 
   return isOperationAnswerInsufficient(info.normalizedFastAnswer);
@@ -7472,6 +7511,12 @@ function handleMessage(event) {
           finalText = sanitizeManualDeflection(finalText);
           finalText = enforceManualUncertaintyGuard(finalText, queryText);
           finalText = enforceManualNumberedList(finalText);
+          if (
+            selectedModel &&
+            finalText.toUpperCase().indexOf(selectedModel.toUpperCase()) < 0
+          ) {
+            finalText = `針對 ${selectedModel}：\n${finalText}`;
+          }
 
           // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
           if (relevantFiles.length > 0) {
@@ -8266,6 +8311,7 @@ function handleMessage(event) {
           manualVerificationIntent,
           fastSourceTag,
           normalizedFastAnswer,
+          userQuestion: `${msg || ""}\n${userMessage || ""}`,
         });
         if (shouldSopPdfEscalate) {
           const degradedNote =

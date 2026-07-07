@@ -181,7 +181,7 @@ const cases = [
   },
   {
     id: "alias-manual-selection",
-    title: "短別稱手冊防呆",
+    title: "短別稱手冊防呆與選型後查PDF",
     question: "#查手冊 G5 怎麼重置？",
     requireLlm: false,
     check(reply, logs) {
@@ -191,23 +191,36 @@ const cases = [
           /請選擇 G5 完整型號|請先選完整型號|型號選擇泡泡/.test(combined) &&
           !/已鎖定直通車型號: G5|載入 PDF: G5/i.test(logs) &&
           hasNoHardFailure(logs, reply),
-        reason: "G5 只有別稱時必須列完整型號讓使用者選，不可直接查 PDF",
+        reason: "G5 只有別稱時必須先列完整型號讓使用者選，不可直接查 PDF",
       };
+    },
+    followUp: {
+      question: "#型號:S27DG502EC",
+      check(reply, logs) {
+        return {
+          pass:
+            hasAll(reply, [/S27DG502EC/i, /出廠資料重設|出廠預設值|安全\s*PIN/i, /\[來源:.*官方手冊PDF.*\]/]) &&
+            /AttachPDFs:\s*true|PDF 匹配|官方手冊PDF|Files API/i.test(logs) &&
+            hasRealLlmLog(logs) &&
+            hasNoHardFailure(logs, reply),
+          reason: "選定 S27DG502EC 後必須繼續掛載 PDF，回答出廠資料重設步驟並標註官方手冊PDF",
+        };
+      },
     },
   },
   {
-    id: "pdf-manual",
-    title: "需要翻閱PDF",
-    question: "#查手冊 S32CM703UC 怎麼恢復出廠設定？",
+    id: "factory-reset-auto-pdf",
+    title: "恢復出廠自動查PDF",
+    question: "S32FM703如何恢復出廠",
     requireLlm: true,
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/S32CM703|Smart\s*Hub|重設|PIN|0000/i, /\[來源:.*官方手冊PDF.*\]/]) &&
-          /Attached PDFs|載入 PDF|官方手冊PDF|Files API/i.test(logs) &&
+          hasAll(reply, [/S32FM703/i, /設定|所有設定/i, /一般與隱私權/i, /出廠資料重設|出廠預設值/i, /安全\s*PIN|PIN/i, /\[來源:.*S32FM702,S32FM703,S32FM803\.pdf.*官方手冊PDF.*\]/]) &&
+          /Fast 回答不足|AUTO_SEARCH_PDF|AttachPDFs:\s*true|載入 PDF|官方手冊PDF|Files API/i.test(logs) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
-        reason: "需掛載 PDF 並回答官方手冊中的重設/Smart Hub/PIN 內容",
+        reason: "一般恢復出廠題不可停在 PIN 忘記 QA，需自動掛載 S32FM703 官方手冊PDF回答一般出廠資料重設路徑",
       };
     },
   },
@@ -253,7 +266,23 @@ async function run() {
     const reply = textOf(res, "replies");
     const logs = textOf(res, "logs");
     const check = testCase.check(reply, logs);
-    const pass = !!check.pass;
+    let pass = !!check.pass;
+    const followUps = [];
+    if (pass && testCase.followUp) {
+      const followRes = await call(frame, "testMessage", testCase.followUp.question, userId);
+      const followReply = textOf(followRes, "replies");
+      const followLogs = textOf(followRes, "logs");
+      const followCheck = testCase.followUp.check(followReply, followLogs);
+      const followPass = !!followCheck.pass;
+      pass = pass && followPass;
+      followUps.push({
+        question: testCase.followUp.question,
+        pass: followPass,
+        reason: followCheck.reason,
+        reply: followReply,
+        logs: followLogs.split("\n").filter(Boolean),
+      });
+    }
     if (!pass) allPass = false;
 
     const record = {
@@ -266,6 +295,7 @@ async function run() {
       reason: check.reason,
       reply,
       logs: logs.split("\n").filter(Boolean),
+      followUps,
     };
     records.push(record);
 
@@ -277,11 +307,23 @@ async function run() {
     console.log("A:");
     console.log(reply);
 
+    for (let j = 0; j < followUps.length; j++) {
+      console.log(`\nFOLLOW-UP ${j + 1} | ${followUps[j].pass ? "PASS" : "FAIL"}`);
+      console.log(`Q: ${followUps[j].question}`);
+      console.log(`check: ${followUps[j].reason}`);
+      console.log("A:");
+      console.log(followUps[j].reply);
+    }
+
     if (!pass) {
       console.log("---- Last logs ----");
       logs
         .split("\n")
         .filter(Boolean)
+        .slice(-40)
+        .forEach((line) => console.log(line));
+      followUps
+        .flatMap((item) => item.logs || [])
         .slice(-40)
         .forEach((line) => console.log(line));
     }

@@ -552,34 +552,63 @@ assertStep(
 
 const fastEscalationCode = [
   extractFunction(linebot, "isOperationAnswerInsufficient"),
+  extractFunction(linebot, "isPinRecoveryQuery"),
+  extractFunction(linebot, "isFactoryResetQueryWithoutPinIssue"),
+  extractFunction(linebot, "isPinRecoveryOnlyAnswer"),
   extractFunction(linebot, "shouldEscalateFastAnswerToPdf"),
   `
   const genericStepAnswer = "1. 進入螢幕選單\\n2. 找到聲音或音量選項\\n3. 將音量調低或靜音";
+  const pinRecoveryOnlyAnswer = "S32FM703 智慧聯網螢幕如果忘記 PIN 碼，可以撥打三星客服專線 0800-329-999，請客服人員協助遠端連線重設。";
   globalThis.__fastEscalationResult = {
     noTrustedSource: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S32FM703 如何調整音量？",
       hasPdfForModel: true,
       operationIntent: true,
       fastSourceTag: "",
       normalizedFastAnswer: genericStepAnswer
     }),
     trustedQa: shouldEscalateFastAnswerToPdf({
+      userQuestion: "M8 和 M9 有陀螺儀嗎？",
       hasPdfForModel: true,
       operationIntent: true,
       fastSourceTag: "[來源:QA]",
       normalizedFastAnswer: genericStepAnswer
     }),
     trustedRules: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S27FG532EC 如何調整刷新率？",
       hasPdfForModel: true,
       operationIntent: true,
       fastSourceTag: "[來源:規格庫]",
       normalizedFastAnswer: genericStepAnswer
     }),
     capabilityOnly: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S27FG532EC 有 HDR 嗎？",
       hasPdfForModel: true,
       operationIntent: false,
       manualVerificationIntent: false,
       fastSourceTag: "",
       normalizedFastAnswer: genericStepAnswer
+    }),
+    factoryResetPinOnlyQa: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S32FM703如何恢復出廠",
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "[來源:QA]",
+      normalizedFastAnswer: pinRecoveryOnlyAnswer
+    }),
+    factoryResetGenericQaSteps: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S32FM703如何恢復出廠",
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "[來源:QA]",
+      normalizedFastAnswer: "1. 開啟螢幕選單。\\n2. 進入支援。\\n3. 選擇自我診斷。\\n4. 選擇重設。"
+    }),
+    pinForgotQa: shouldEscalateFastAnswerToPdf({
+      userQuestion: "S32FM703 PIN碼忘記如何恢復出廠",
+      hasPdfForModel: true,
+      operationIntent: true,
+      fastSourceTag: "[來源:QA]",
+      normalizedFastAnswer: pinRecoveryOnlyAnswer
     })
   };
   `,
@@ -606,6 +635,21 @@ assertStep(
 assertStep(
   fastEscalationContext.__fastEscalationResult.capabilityOnly === false,
   "capability/spec questions must not auto-escalate to PDF only because a PDF exists",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.factoryResetPinOnlyQa === true,
+  "factory-reset operation questions must escalate to PDF when Fast Mode only returns PIN-forgotten recovery guidance",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.factoryResetGenericQaSteps === true,
+  "factory-reset operation questions must escalate to PDF even when Fast Mode returns generic QA/RULE reset steps",
+);
+
+assertStep(
+  fastEscalationContext.__fastEscalationResult.pinForgotQa === false,
+  "PIN-forgotten questions may stay in QA when the QA answer specifically addresses forgotten PIN recovery",
 );
 
 assertStep(
@@ -697,6 +741,19 @@ assertStep(
     linebot,
   ),
   "model-selection lead text must be deterministic and carry a project-flow source tag",
+);
+
+const modelChosenPdfStart = linebot.indexOf('if (msg.startsWith("#型號:"))');
+const modelChosenPdfEnd = linebot.indexOf("// ══════════════════════════════════════════════════════════", modelChosenPdfStart + 1);
+assertStep(modelChosenPdfStart >= 0, "#型號 model-selection branch not found");
+assertStep(modelChosenPdfEnd > modelChosenPdfStart, "#型號 model-selection branch end not found");
+const modelChosenPdfSection = linebot.slice(modelChosenPdfStart, modelChosenPdfEnd);
+
+assertStep(
+  /finalText\.toUpperCase\(\)\.indexOf\(selectedModel\.toUpperCase\(\)\)\s*<\s*0/.test(
+    modelChosenPdfSection,
+  ) && /針對 \$\{selectedModel\}/.test(modelChosenPdfSection),
+  "selected-model PDF answers must preserve the selected full model in the visible reply",
 );
 
 assertStep(
