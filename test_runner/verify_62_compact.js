@@ -70,7 +70,7 @@ async function run() {
     },
     {
       id: "Q6_PRICE",
-      msg: "請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。",
+      msg: "請協助尋找M9、G8、M8、S34BG850SC的市場最低價與建議售價。",
       expectScope: false,
       expectForceWeb: true,
     },
@@ -93,8 +93,8 @@ async function run() {
       expectForceWeb: false,
     },
     {
-      id: "Q4_SCOPE_SANYO",
-      msg: "三洋有哪些螢幕支援G-Sync?哪一台有300Hz且0.03毫秒?",
+      id: "Q4_SCOPE_COMPETITOR",
+      msg: "AOC有哪些螢幕支援G-Sync?哪一台有300Hz且0.03毫秒?",
       expectScope: true,
       expectForceWeb: false,
     },

@@ -47,7 +47,7 @@ function hasMoneyNumber(text) {
 
 async function run() {
   const cases = [
-    "請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。",
+    "請協助尋找M9、G8、M8、S34BG850SC的市場最低價與建議售價。",
     "G8現在價格多少？",
     "M7 43吋目前售價是多少？",
   ];

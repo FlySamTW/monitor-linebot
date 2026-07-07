@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.026"; // 2026-07-06 修復 write_rules 維護入口授權失敗與參數防呆
-const BUILD_TIMESTAMP = "2026-07-06 19:18";
+const GAS_VERSION = "v29.6.027"; // 2026-07-07 /紀錄支援 QA/RULE 建檔並強化短別稱手冊選型
+const BUILD_TIMESTAMP = "2026-07-07 11:23";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2117,7 +2117,20 @@ function isShortAliasModelToken(model) {
   const m = String(model || "").trim().toUpperCase();
   if (!m) return false;
   // 例如 S9 / G8 / M7 這類系列別稱
-  return /^[SGM]\d{1,2}[A-Z]?$/.test(m);
+  return /^[SGM]\d{1,2}[A-Z]{0,3}$/.test(m);
+}
+
+function extractShortAliasModelTokens(text) {
+  const q = toHalfWidth(String(text || "")).toUpperCase();
+  const matches = q.match(/\b[SGM]\d{1,2}[A-Z]{0,3}\b/g) || [];
+  return [...new Set(matches.filter((m) => isShortAliasModelToken(m)))];
+}
+
+function isAliasOnlyQuery(text) {
+  return (
+    extractShortAliasModelTokens(text).length > 0 &&
+    extractFullModelLikeTokens(text).length === 0
+  );
 }
 
 function isFeatureBinaryQuestion(text) {
@@ -2194,7 +2207,6 @@ function isOutOfProjectScopeQuery(text) {
     return false;
   }
 
-  const mentionsSanyo = /三洋|SANYO/i.test(q);
   const mentionsCompetitor =
     /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC)/i.test(
       q,
@@ -2204,16 +2216,12 @@ function isOutOfProjectScopeQuery(text) {
       q,
     );
 
-  return (mentionsSanyo || mentionsCompetitor) && asksMonitorOrPriceOrTable;
+  return mentionsCompetitor && asksMonitorOrPriceOrTable;
 }
 
 function buildOutOfProjectScopeReply(text) {
-  const q = String(text || "");
-  const maybeSanyo = /三洋|SANYO/i.test(q);
   return [
-    maybeSanyo
-      ? "我這邊主要回答三星產品；如果你說的「三洋」其實是指「三星」，請再用三星或完整型號問我一次。"
-      : "我這邊主要回答三星產品與本專案已整理的三星相關資料，不能代替你整理競品品牌清單或即時市場報價。",
+    "我這邊主要回答三星產品與本專案已整理的三星相關資料，不能代替你整理競品品牌清單或即時市場報價。",
     "",
     "你可以改問三星螢幕、Smart Monitor、Odyssey、ViewFinity、Galaxy Watch 與三星家電相關問題；若需要價格，我會引導到三星官方頁面，不會直接回覆市場數字價格。",
     "",
@@ -2501,15 +2509,15 @@ function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
         .join(" ")
         .toUpperCase();
       if (!line) continue;
-      if (
-        !line.includes(alias) &&
-        !line.includes(`別稱_${alias}`) &&
-        !line.includes(`系列_${alias}`)
-      ) {
+      if (line.indexOf("術語_") === 0) continue;
+      if (!isClassRuleLineMatchedAlias(line, alias)) {
         continue;
       }
-      const sModels = line.match(/\bS\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*\b/g) || [];
-      bucket.push(...sModels);
+      const models =
+        line.match(
+          /\b(?:L?S\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*|L?[CF]\d{2}[A-Z]+\d{2,4}[A-Z0-9]*)\b/g,
+        ) || [];
+      bucket.push(...models);
     }
     // 若規則內只有 LS 型號，做一次退位補抓並轉成 S 顯示型號
     if (bucket.length === 0) {
@@ -2520,11 +2528,8 @@ function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
           .join(" ")
           .toUpperCase();
         if (!line) continue;
-        if (
-          !line.includes(alias) &&
-          !line.includes(`別稱_${alias}`) &&
-          !line.includes(`系列_${alias}`)
-        ) {
+        if (line.indexOf("術語_") === 0) continue;
+        if (!isClassRuleLineMatchedAlias(line, alias)) {
           continue;
         }
         const lsModels = line.match(/\bLS\d{2}[A-Z0-9]{6,}\b/g) || [];
@@ -2536,6 +2541,140 @@ function getAliasCandidatesFromClassRules(aliasToken, limit = 5) {
     writeLog(`[Alias Candidates] 讀取候選型號失敗: ${e.message}`);
     return [];
   }
+}
+
+function isClassRuleLineMatchedAlias(line, alias) {
+  const hay = String(line || "").toUpperCase();
+  const key = String(alias || "").toUpperCase();
+  if (!hay || !key) return false;
+  if (hay.includes(`別稱_${key}`) || hay.includes(`系列_${key}`)) return true;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const standalone = new RegExp(`(^|[^A-Z0-9])${escaped}([^A-Z0-9]|$)`);
+  if (key.length > 2 && standalone.test(hay)) return true;
+  if (/^G\d{1,2}/.test(key)) {
+    return new RegExp(`ODYSSEY\\s*${escaped}([^A-Z0-9]|$)`).test(hay);
+  }
+  if (/^M\d{1,2}/.test(key)) {
+    return (
+      new RegExp(`SMART\\s*MONITOR\\s*${escaped}([^A-Z0-9]|$)`).test(hay) ||
+      new RegExp(`智慧聯網螢幕\\s*${escaped}([^A-Z0-9]|$)`).test(hay)
+    );
+  }
+  if (/^S\d{1,2}/.test(key)) {
+    return new RegExp(`VIEWFINITY\\s*${escaped}([^A-Z0-9]|$)`).test(hay);
+  }
+  return false;
+}
+
+function getExistingPdfSearchText() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const parts = [];
+    [
+      CACHE_KEYS.KB_URI_LIST,
+      CACHE_KEYS.KB_URI_LIST_BACKUP,
+      "PDF_MODEL_INDEX",
+      CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
+    ].forEach((key) => {
+      try {
+        const raw = props.getProperty(key);
+        if (raw) parts.push(String(raw));
+      } catch (e) {}
+    });
+    return parts.join("\n").toUpperCase();
+  } catch (e) {
+    return "";
+  }
+}
+
+function buildPdfLookupVariants(model) {
+  const raw = String(model || "").trim().toUpperCase();
+  const normalized = normalizeModelForDisplay(raw);
+  const variants = buildModelLookupVariants(normalized);
+  if (/^S\d{2}[A-Z]{2}\d{3}[A-Z]{2}$/.test(normalized)) {
+    variants.push(normalized.substring(0, 8));
+  }
+  const cf = normalized.match(/^(L?[CF]\d{2}[A-Z]+\d{2})[A-Z0-9]*$/);
+  if (cf) variants.push(cf[1]);
+  return [...new Set(variants.filter(Boolean))];
+}
+
+function isModelCoveredByExistingPdf(model) {
+  const hay = getExistingPdfSearchText();
+  if (!hay) return true;
+  return buildPdfLookupVariants(model).some((variant) => hay.includes(variant));
+}
+
+function getAliasCandidatesFromExistingPdfs(aliasToken, limit = 10) {
+  const classRuleCandidates = getAliasCandidatesFromClassRules(aliasToken, limit * 3);
+  const pdfCovered = classRuleCandidates.filter((m) =>
+    isModelCoveredByExistingPdf(m),
+  );
+  return dedupDisplayModels(
+    pdfCovered.length > 0 ? pdfCovered : classRuleCandidates,
+    limit,
+  ).filter((m) => !isShortAliasModelToken(m));
+}
+
+function getAliasOnlySelectionModelsFromQuery(text, limit = 10) {
+  const aliases = extractShortAliasModelTokens(text);
+  if (aliases.length === 0 || extractFullModelLikeTokens(text).length > 0) {
+    return [];
+  }
+  const bucket = [];
+  aliases.forEach((alias) => {
+    bucket.push(...getAliasCandidatesFromExistingPdfs(alias, limit));
+  });
+  return dedupDisplayModels(bucket, limit).filter((m) => !isShortAliasModelToken(m));
+}
+
+function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mode) {
+  const aliases = extractShortAliasModelTokens(query);
+  if (aliases.length === 0 || extractFullModelLikeTokens(query).length > 0) {
+    return false;
+  }
+  const aliasToken = aliases.join("/");
+  const models = getAliasOnlySelectionModelsFromQuery(query, 10);
+  if (models.length <= 1) {
+    return false;
+  }
+
+  const cache = CacheService.getScriptCache();
+  cache.put(`${userId}:suggested_models`, JSON.stringify(models), 300);
+  cache.put(`${userId}:pending_topic`, String(query || ""), 600);
+  cache.put(`${userId}:model_select_mode`, mode || "pdf", 600);
+
+  const leadText = [
+    `你只提供「${aliasToken}」這個系列別稱，這會對應多個完整型號。`,
+    "",
+    mode === "pdf"
+      ? "請先選完整型號，我再依現有官方手冊查證。"
+      : "請先選完整型號，我再依該型號回答。",
+    "",
+    "[來源:專案流程規則]",
+  ].join("\n");
+  const flexMsg = createModelSelectionFlexV3(models, {
+    headerText: `🔍 ${aliasToken} 型號確認`,
+    altText: `請選擇 ${aliasToken} 完整型號`,
+  });
+  replyMessage(replyToken, [{ type: "text", text: leadText }, flexMsg]);
+
+  try {
+    writeRecordDirectly(userId, query, contextId, "user", "");
+    writeRecordDirectly(userId, leadText, contextId, "assistant", "");
+    updateHistorySheetAndCache(
+      contextId,
+      getHistoryFromCacheOrSheet(contextId),
+      { role: "user", content: query },
+      { role: "assistant", content: leadText },
+    );
+  } catch (e) {
+    writeLog(`[Alias Select] 歷史寫入略過: ${e.message}`);
+  }
+  writeLog(
+    `[Alias Select] ${aliasToken} 僅別稱查詢，要求選完整型號: ${models.join(", ")}`,
+  );
+  return true;
 }
 
 /**
@@ -7063,7 +7202,7 @@ function handleMessage(event) {
 
         let normalizedTopic = String(savedTopic || "");
         const shortAliasesInTopic = (
-          normalizedTopic.match(/\b[SGM]\d{1,2}[A-Z]?\b/gi) || []
+          normalizedTopic.match(/\b[SGM]\d{1,2}[A-Z]{0,3}\b/gi) || []
         ).filter((t) => isShortAliasModelToken(t));
         shortAliasesInTopic.forEach((tok) => {
           const re = new RegExp(`\\b${tok}\\b`, "gi");
@@ -7307,6 +7446,10 @@ function handleMessage(event) {
           replyToken,
           "請先告訴我型號或問題，我再幫你查手冊。\n你可以這樣輸入：\n#查手冊 S27FG900XC 怎麼開啟 Odyssey Hub\n或：查手冊 S27FG900XC 怎麼開啟 Odyssey Hub",
         );
+        return;
+      }
+
+      if (promptAliasOnlyModelSelection(lastQuestion, userId, replyToken, contextId, "pdf")) {
         return;
       }
 
@@ -8161,6 +8304,29 @@ function handleMessage(event) {
               `[Smart Router v29.5.175] 短別稱功能題觸發型號泡泡: ${aliasToken} -> ${aliasCandidates.join(", ")}`,
             );
           }
+        }
+
+        const aliasOnlySelectionModels = getAliasOnlySelectionModelsFromQuery(
+          `${msg || ""}\n${userMessage || ""}`,
+          10,
+        );
+        const aliasOnlyNeedsSelection =
+          aliasOnlySelectionModels.length > 1 &&
+          (hasExplicitTrigger ||
+            operationIntent ||
+            manualVerificationIntent ||
+            isFeatureBinaryQuestion(msg));
+        if (aliasOnlyNeedsSelection) {
+          const aliasToken = extractShortAliasModelTokens(`${msg || ""}\n${userMessage || ""}`)[0];
+          forcedModelSelectionTrigger = true;
+          forcedSopNeedsModelSelection = hasExplicitTrigger || manualVerificationIntent;
+          suggestedModels = aliasOnlySelectionModels;
+          finalText = `你只提供「${aliasToken}」這個系列別稱，這會對應多個完整型號。請先選完整型號，我再精準回答。`;
+          replyText = finalText;
+          cache.remove(`${userId}:direct_search_models`);
+          writeLog(
+            `[Smart Router v29.6.027] 短別稱不可直接查 PDF，改顯示完整型號候選: ${aliasOnlySelectionModels.join(", ")}`,
+          );
         }
 
         // v29.5.13: Smart Filtering - 打破無限迴圈 & 移除多餘短別稱
@@ -9711,7 +9877,7 @@ function handleCommand(c, u, cid) {
   if (cmd === "/紀錄" || cmd === "/記錄") {
     const draftCache = CacheService.getScriptCache().get(draftKey);
     if (!draftCache) {
-      return "⚠️ 目前沒有正在進行的建檔草稿喔！請先輸入「/紀錄 <內容>」開始建檔。";
+      return "⚠️ 目前沒有正在進行的建檔草稿喔！請先輸入「/紀錄 <內容>」開始建檔。\n\nQA 範例：/紀錄 S27FG532EC 怎麼調整更新率？A：到遊戲選單調整更新頻率。\nRULE 範例：/紀錄 本期三星螢幕活動：S27FG532EC 促銷價 4990，活動期間 2026/07/01-2026/07/31，來源：https://promotion.twsamsungcampaign.com/...";
     }
     const draftObj = JSON.parse(draftCache);
     if (draftObj.pendingMergeChoice === true) {
@@ -10048,6 +10214,7 @@ function restoreClassRulesToSheet() {
   const fullRules = [
     "關鍵字,說明",
     "活動_202601限時特價,有效期間2026/01/05-2026/02/01,以下型號享限時特價(建議售價→促銷價)：S27D300GAC($3,490→$3,290)、S27F612EAC($5,190→$4,990)、S27CG552EC($5,490→$4,990)、S32CG552EC($7,490→$6,990)、C34G55TWWC($10,490→$9,900)、S57CG952NC($79,900→$69,900)、S27FG900XC($59,900→$49,900)、S49FG916EC($24,900→$22,900)、S49DG952SC($42,900→$39,900)、S27FG812SC($32,900→$28,900)、S27DG602SC($26,900→$24,900)、S32DG802SC($36,900→$29,900)、S32FG812SC($34,900→$26,900)、S32FM702UC($10,990→$9,990)、S32FM702UC Followme($13,990→$12,990)、S32FM703UC($10,990→$9,990)、S32FM703UC Followme($13,990→$12,990)、S32FM703UC Followme Pro($15,990→$14,990)、S27C900PAC($45,900→$24,900)、S32DG502EC($8,990→$7,490)、S32DG702EC($19,900→$14,900)、S27FG532EC($5,490→$4,990)",
+    "活動_202605_202609螢幕登錄送,電腦螢幕活動RULE,活動名稱：ViewFinity | Odyssey 高解析度6K螢幕強勢登場 三星螢幕登錄送,活動期間：即日起至2026/9/30 23:59,登錄期間：2026/5/1 00:00至2026/10/2 23:59,活動內容：購買指定三星螢幕機種並於登錄網站完成登錄且審核通過後取得活動資格；S27HG806EF、S32HG806ES 登錄送 Steam 1,000元點卡；指定高階螢幕如 S57CG952NC、S49DG952SC、S34BG850SC、S32DG802SC、S27DG602SC、S27FG900XC、S32FG812SC、S27FG812SC、S27FG602SC、S27FG502SC 等登錄送全機延長保固兩年；指定螢幕機種可參加月月抽 Galaxy S26 系列手機,來源網址：https://promotion.twsamsungcampaign.com/2026-mnt-q2-sp/rule.aspx",
     "系列_洗衣機,洗衣機系列,WA,WD,VR,滾筒,直立,WA21A8377GV,WA20A8377GW,型號模式為：WA*,WD*",
     "系列_Odyssey,電競系列，三星專為玩家打造的電競螢幕系列，特色是高刷新率、快速反應時間與沉浸式曲面。",
     "系列_ViewFinity,高解析度/創作者系列，針對設計師、創作者與商務人士的高解析度螢幕系列，強調色彩準確度與多工處理。",
@@ -10249,6 +10416,334 @@ function restoreClassRulesToSheet() {
 }
 
 
+function getEntryDraftType(draft) {
+  if (draft && draft.type) {
+    const t = String(draft.type).toLowerCase();
+    if (t === "rule" || t === "qa") return t;
+  }
+  const text = getEntryDraftCurrentText(draft);
+  return isRuleLikeEntryContent(text) ? "rule" : "qa";
+}
+
+function getEntryDraftCurrentText(draft) {
+  if (!draft) return "";
+  return String(
+    draft.currentText ||
+      draft.currentRule ||
+      draft.currentQA ||
+      draft.text ||
+      "",
+  ).trim();
+}
+
+function isRuleLikeEntryContent(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  const upper = raw.toUpperCase();
+  if (/^(?:活動|別稱|系列|術語|規格|RULE|CLASS_RULES)[_\-]/i.test(raw)) {
+    return true;
+  }
+  if (
+    /(CLASS_RULES|RULE|規格庫|活動期間|登錄期間|指定型號|指定機種|促銷價|建議售價|限時特價|登錄送|延長保固|保固活動|抽獎|贈品|有效期間|來源網址|官網網址|PROMOTION\.TWSAMSUNGCAMPAIGN\.COM|TWSAMSUNGCAMPAIGN)/i.test(
+      upper,
+    )
+  ) {
+    return true;
+  }
+  const hasModel = /\b(?:L?S|L?C|L?F)\d{2}[A-Z0-9]{4,}\b/i.test(raw);
+  const hasRulePrice = /(NT\$|\$\s*\d|建議售價|促銷價|活動價)/i.test(raw);
+  return hasModel && hasRulePrice;
+}
+
+function classifyEntryDraftType(content) {
+  const raw = String(content || "").trim();
+  if (!raw) return "qa";
+  if (isOneLineQaText(raw)) return "qa";
+  if (/^Q[:：].+A[:：]/i.test(raw)) return "qa";
+  return isRuleLikeEntryContent(raw) ? "rule" : "qa";
+}
+
+function normalizeRuleLine(text) {
+  return String(text || "")
+    .replace(/```(?:csv|text|json)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/^[\s"'`]+|[\s"'`]+$/g, "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function buildEntryDraftPreview(draftType, text, actionLabel) {
+  const label = draftType === "rule" ? "CLASS_RULES" : "QA";
+  const title = actionLabel || "已進入建檔模式";
+  return (
+    "⚠️ " +
+    title +
+    "。接下來的對話將視為修改指令，直到輸入 /紀錄 存檔為止。" +
+    "\n\n【預覽】將寫入 " +
+    label +
+    "：\n" +
+    text +
+    "\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消"
+  );
+}
+
+function simpleRuleFallback(input) {
+  const text = normalizeRuleLine(input);
+  if (!text) return "RULE_手動建檔,手動建檔RULE,請補充規則內容";
+  const key = /(活動|促銷|登錄|保固|抽獎|贈品|promotion|campaign)/i.test(text)
+    ? "活動_手動建檔"
+    : "RULE_手動建檔";
+  const type = key.indexOf("活動_") === 0 ? "電腦螢幕活動RULE" : "手動建檔RULE";
+  return normalizeRuleLine(key + "," + type + "," + text);
+}
+
+function simpleRuleModifyFallback(currentText, instruction) {
+  const base = normalizeRuleLine(currentText);
+  const ins = normalizeRuleLine(instruction);
+  if (!base) return simpleRuleFallback(ins);
+  if (!ins) return base;
+  if (/^(改成|改為|換成|取代)/.test(ins)) {
+    return simpleRuleFallback(ins.replace(/^(改成|改為|換成|取代)\s*/, ""));
+  }
+  return normalizeRuleLine(base + "；" + ins);
+}
+
+function extractSamsungCampaignUrl(text) {
+  const raw = String(text || "");
+  const match = raw.match(/https?:\/\/promotion\.twsamsungcampaign\.com\/[^\s，,。)）]+/i);
+  return match ? match[0].replace(/["'<>]+$/g, "") : "";
+}
+
+function stripHtmlToPlainText(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveSamsungMonitorCampaignUrl(url) {
+  const safeUrl = String(url || "").trim();
+  if (!/^https?:\/\/promotion\.twsamsungcampaign\.com\//i.test(safeUrl)) {
+    return "";
+  }
+  if (/\/rule\.aspx(?:\?|$)/i.test(safeUrl)) {
+    return safeUrl;
+  }
+
+  try {
+    const res = UrlFetchApp.fetch(safeUrl, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) return safeUrl;
+    const html = res.getContentText();
+    const linkMatch =
+      html.match(/href=["']([^"']*20\d{2}-mnt[^"']*rule\.aspx[^"']*)["']/i) ||
+      html.match(/href=["']([^"']*mnt[^"']*rule\.aspx[^"']*)["']/i);
+    if (!linkMatch || !linkMatch[1]) return safeUrl;
+    const href = linkMatch[1];
+    if (/^https?:\/\//i.test(href)) return href;
+    return "https://promotion.twsamsungcampaign.com/" + href.replace(/^\/+/, "");
+  } catch (e) {
+    writeLog(`[Campaign Fetch] 活動首頁解析失敗: ${e.message}`);
+    return safeUrl;
+  }
+}
+
+function fetchSamsungCampaignRuleText(url) {
+  const resolvedUrl = resolveSamsungMonitorCampaignUrl(url);
+  if (!resolvedUrl) return { url: "", text: "" };
+  try {
+    const res = UrlFetchApp.fetch(resolvedUrl, { muteHttpExceptions: true });
+    const code = res.getResponseCode();
+    if (code !== 200) {
+      writeLog(`[Campaign Fetch] ${resolvedUrl} 回應 ${code}`);
+      return { url: resolvedUrl, text: "" };
+    }
+    const plainText = stripHtmlToPlainText(res.getContentText());
+    return { url: resolvedUrl, text: plainText.substring(0, 12000) };
+  } catch (e) {
+    writeLog(`[Campaign Fetch] 讀取活動頁失敗: ${e.message}`);
+    return { url: resolvedUrl, text: "" };
+  }
+}
+
+function callGeminiToPolishRule(input, userId = null) {
+  const normalizedInput = normalizeRuleLine(input);
+  if (/^(活動|別稱|系列|術語|RULE|規格)[_\-]/i.test(normalizedInput)) {
+    return normalizedInput;
+  }
+
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
+
+  const campaignUrl = extractSamsungCampaignUrl(input);
+  const campaignContext = campaignUrl
+    ? fetchSamsungCampaignRuleText(campaignUrl)
+    : { url: "", text: "" };
+  const sourceForPrompt = campaignContext.text
+    ? `${input}\n\n【官方活動頁文字，來源：${campaignContext.url}】\n${campaignContext.text}`
+    : input;
+
+  const prompt = `你是「三星客服 CLASS_RULES 規則庫建檔專家」。
+
+任務：把使用者提供的內容整理成 Google Sheet CLASS_RULES 的「A 欄單列 CSV 字串」。
+
+【使用者內容】
+${sourceForPrompt}
+
+請只輸出一行，不要 Markdown，不要解釋。
+
+格式建議：
+活動_YYYYMM主題,電腦螢幕活動RULE,有效期間...,登錄期間...,適用型號...,優惠內容...,來源網址...
+或
+RULE_主題,規則類型,完整規則說明...
+
+嚴格規則：
+1. 只能整理使用者提供的資訊，禁止新增不存在的型號、價格、日期或贈品。
+2. 若是三星活動、促銷、登錄送、延長保固，第一欄用「活動_」開頭，並保留來源網址。
+3. 若內容包含非螢幕產品，只有明確屬於「電腦螢幕/Monitor/Odyssey/ViewFinity/Smart Monitor」的資訊可以保留。
+4. 型號必須完整保留，禁止縮寫或截短。
+5. 若官方活動頁有手機、家電或其他贈品資訊，只能作為「螢幕活動的贈品/抽獎內容」保留，不可把它整理成非螢幕產品規格。
+6. 輸出必須是一行，可含逗號，但不可換行。`;
+
+  const payload = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      maxOutputTokens: 1800,
+      temperature: 0.2,
+    },
+  };
+
+  try {
+    const res = UrlFetchApp.fetch(
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
+      {
+        method: "post",
+        headers: { "Content-Type": "application/json" },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      },
+    );
+    const code = res.getResponseCode();
+    const body = res.getContentText();
+    writeLog(`[PolishRule API] Code: ${code}, Body: ${body.substring(0, 500)}`);
+    if (code !== 200) {
+      writeLog(`[PolishRule API Error] Code: ${code}`);
+      return simpleRuleFallback(input);
+    }
+
+    const json = JSON.parse(body);
+    if (json.usageMetadata) {
+      const usage = json.usageMetadata;
+      const costUSD =
+        (usage.promptTokenCount / 1000000) * PRICE_POLISH_INPUT +
+        (usage.candidatesTokenCount / 1000000) * PRICE_POLISH_OUTPUT;
+      const costTWD = costUSD * EXCHANGE_RATE;
+      lastTokenUsage = {
+        input: usage.promptTokenCount,
+        output: usage.candidatesTokenCount,
+        total: usage.totalTokenCount,
+        costTWD: costTWD,
+      };
+    } else {
+      lastTokenUsage = null;
+    }
+
+    const candidates = json && json.candidates ? json.candidates : [];
+    const firstCandidate = candidates.length > 0 ? candidates[0] : null;
+    let rawText = "";
+    if (
+      firstCandidate &&
+      firstCandidate.content &&
+      firstCandidate.content.parts &&
+      firstCandidate.content.parts.length > 0 &&
+      firstCandidate.content.parts[0].text
+    ) {
+      rawText = firstCandidate.content.parts[0].text;
+    }
+    return rawText ? normalizeRuleLine(rawText) : simpleRuleFallback(input);
+  } catch (e) {
+    writeLog(`[PolishRule Error] ${e.message}`);
+    return simpleRuleFallback(input);
+  }
+}
+
+function callGeminiToModifyRule(currentText, instruction) {
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
+
+  const prompt = `依修改指令調整下列 CLASS_RULES 單列規則。
+規則：只回一行 A 欄 CSV 字串、不可換行、不可新增使用者沒提供的事實、型號禁止截短。
+目前：${currentText}
+修改：${instruction}`;
+
+  const payload = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      maxOutputTokens: 1200,
+      temperature: 0.2,
+    },
+  };
+
+  try {
+    const res = UrlFetchApp.fetch(
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+      {
+        method: "post",
+        headers: { "Content-Type": "application/json" },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      },
+    );
+    const code = res.getResponseCode();
+    const body = res.getContentText();
+    writeLog(`[ModifyRule API] Code: ${code}, Body: ${body.substring(0, 500)}`);
+    if (code !== 200) return simpleRuleModifyFallback(currentText, instruction);
+
+    const json = JSON.parse(body);
+    if (json.usageMetadata) {
+      const usage = json.usageMetadata;
+      const costUSD =
+        (usage.promptTokenCount / 1000000) * PRICE_FAST_INPUT +
+        (usage.candidatesTokenCount / 1000000) * PRICE_FAST_OUTPUT;
+      lastTokenUsage = {
+        input: usage.promptTokenCount,
+        output: usage.candidatesTokenCount,
+        total: usage.totalTokenCount,
+        costTWD: costUSD * EXCHANGE_RATE,
+      };
+    }
+
+    const candidates = json && json.candidates ? json.candidates : [];
+    const firstCandidate = candidates.length > 0 ? candidates[0] : null;
+    let rawText = "";
+    if (
+      firstCandidate &&
+      firstCandidate.content &&
+      firstCandidate.content.parts &&
+      firstCandidate.content.parts.length > 0 &&
+      firstCandidate.content.parts[0].text
+    ) {
+      rawText = firstCandidate.content.parts[0].text;
+    }
+    return rawText
+      ? normalizeRuleLine(rawText)
+      : simpleRuleModifyFallback(currentText, instruction);
+  } catch (e) {
+    writeLog(`[ModifyRule Error] ${e.message}`);
+    return simpleRuleModifyFallback(currentText, instruction);
+  }
+}
+
 function startNewEntryDraft(content, userId) {
   try {
     writeLog(
@@ -10262,13 +10757,18 @@ function startNewEntryDraft(content, userId) {
     var totalInputTokens = 0;
     var totalOutputTokens = 0;
 
-    // Step 1: AI 產生初版 QA
+    const draftType = classifyEntryDraftType(content);
+
+    // Step 1: AI 產生初版 QA/RULE
     // v27.9.45: 傳入 userId 以便在模型失效時通知
-    const polishedText = callGeminiToPolish(content, userId);
+    const polishedText =
+      draftType === "rule"
+        ? callGeminiToPolishRule(content, userId)
+        : callGeminiToPolish(content, userId);
     writeLog(
       userId,
       "UserRecord",
-      `[NewDraft] 初版 QA: ${polishedText.substring(0, 150)}`,
+      `[NewDraft] 初版 ${draftType.toUpperCase()}: ${polishedText.substring(0, 150)}`,
     );
 
     // 累計費用
@@ -10276,6 +10776,37 @@ function startNewEntryDraft(content, userId) {
       totalCostTWD += lastTokenUsage.costTWD;
       totalInputTokens += lastTokenUsage.input || 0;
       totalOutputTokens += lastTokenUsage.output || 0;
+    }
+
+    if (draftType === "rule") {
+      var ruleDraft = {
+        type: "rule",
+        targetSheet: SHEET_NAMES.CLASS_RULES,
+        originalContent: content,
+        conversation: [],
+        currentText: polishedText,
+        currentRule: polishedText,
+        userId: userId,
+        pendingMergeChoice: false,
+      };
+      CacheService.getScriptCache().put(
+        CACHE_KEYS.ENTRY_DRAFT_PREFIX + userId,
+        JSON.stringify(ruleDraft),
+        CONFIG.DRAFT_TTL_SEC,
+      );
+
+      var rulePreview = buildEntryDraftPreview(
+        "rule",
+        polishedText,
+        "已進入 RULE 建檔模式",
+      );
+      if (totalCostTWD > 0) {
+        rulePreview += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
+          4,
+        )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+      }
+      writeLog(userId, "UserRecord", `[NewDraft Reply] RULE 草稿已建立`);
+      return rulePreview;
     }
 
     // Step 2: 搜尋現有 QA 是否有相似的
@@ -10316,8 +10847,11 @@ function startNewEntryDraft(content, userId) {
 
       // 建立等待選擇的 draft
       var draft = {
+        type: "qa",
+        targetSheet: SHEET_NAMES.QA,
         originalContent: content,
         conversation: [],
+        currentText: polishedText,
         currentQA: polishedText,
         userId: userId,
         pendingMergeChoice: true,
@@ -10358,8 +10892,11 @@ function startNewEntryDraft(content, userId) {
 
     // 沒找到相似，直接進入正常建檔模式
     var draft = {
+      type: "qa",
+      targetSheet: SHEET_NAMES.QA,
       originalContent: content,
       conversation: [],
+      currentText: polishedText,
       currentQA: polishedText,
       userId: userId,
       pendingMergeChoice: false,
@@ -10370,12 +10907,7 @@ function startNewEntryDraft(content, userId) {
       CONFIG.DRAFT_TTL_SEC,
     );
 
-    var alertMsg =
-      "⚠️ 已進入建檔模式。接下來的對話將視為修改指令，直到輸入 /紀錄 存檔為止。";
-    var preview =
-      "\n\n【預覽】將寫入 QA：\n" +
-      polishedText +
-      "\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消";
+    var preview = buildEntryDraftPreview("qa", polishedText, "已進入 QA 建檔模式");
 
     // v27.9.16: 附加費用資訊
     if (totalCostTWD > 0) {
@@ -10389,7 +10921,7 @@ function startNewEntryDraft(content, userId) {
       "UserRecord",
       `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`,
     );
-    return alertMsg + preview;
+    return preview;
   } catch (e) {
     writeLog(userId, "Error", `[NewDraft Error] ${e.message}`);
     return "❌ 分析失敗：" + e.message;
@@ -10399,6 +10931,8 @@ function startNewEntryDraft(content, userId) {
 function handleDraftModification(feedback, userId, replyToken, currentDraft) {
   try {
     writeLog(`[DraftMod] 用戶說: ${feedback}`);
+    const draftType = getEntryDraftType(currentDraft);
+    const currentDraftText = getEntryDraftCurrentText(currentDraft);
 
     // 檢查是否在等待選擇 1/2
     if (currentDraft.pendingMergeChoice === true) {
@@ -10415,8 +10949,11 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         deleteQARows(currentDraft.matchedQARows);
 
         var newDraft = {
+          type: "qa",
+          targetSheet: SHEET_NAMES.QA,
           originalContent: currentDraft.originalContent,
           conversation: [],
+          currentText: currentDraft.mergedVersion,
           currentQA: currentDraft.mergedVersion,
           userId: userId,
           pendingMergeChoice: false,
@@ -10439,8 +10976,11 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         writeLog(`[DraftMod] 用戶選擇 2: 另開新條`);
 
         var newDraft = {
+          type: "qa",
+          targetSheet: SHEET_NAMES.QA,
           originalContent: currentDraft.originalContent,
           conversation: [],
+          currentText: currentDraft.freshVersion,
           currentQA: currentDraft.freshVersion,
           userId: userId,
           pendingMergeChoice: false,
@@ -10464,8 +11004,11 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         deleteQARows(currentDraft.matchedQARows);
 
         var newDraft = {
+          type: "qa",
+          targetSheet: SHEET_NAMES.QA,
           originalContent: currentDraft.originalContent,
           conversation: [],
+          currentText: currentDraft.freshVersion,
           currentQA: currentDraft.freshVersion,
           userId: userId,
           pendingMergeChoice: false,
@@ -10495,8 +11038,11 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
         conversation.push(feedback);
 
         var updatedDraft = {
+          type: "qa",
+          targetSheet: SHEET_NAMES.QA,
           originalContent: currentDraft.originalContent + "\n[補充] " + feedback,
           conversation: conversation,
+          currentText: updatedFresh,
           currentQA: updatedFresh,
           userId: userId,
           pendingMergeChoice: true, // 依然在選擇階段
@@ -10540,7 +11086,9 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     if (isStandaloneDraftChoiceNumber(feedback)) {
       replyMessage(
         replyToken,
-        "目前這份草稿沒有等待 1/2/3 選項喔。\n\n如果要修改 QA，請直接輸入要補充或改寫的內容；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
+        "目前這份草稿沒有等待 1/2/3 選項喔。\n\n如果要修改目前的 " +
+          (draftType === "rule" ? "RULE" : "QA") +
+          " 草稿，請直接輸入要補充或改寫的內容；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
       );
       writeLog(`[DraftMod Reply] 忽略非選擇狀態的純數字: ${feedback}`);
       return;
@@ -10549,7 +11097,9 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     if (!isDraftFeedbackLikelyRelevant(feedback, currentDraft)) {
       replyMessage(
         replyToken,
-        "這句看起來不像是在修改目前這筆 QA，我先不寫進草稿，避免污染資料庫。\n\n如果你要修改，請直接說要新增、刪除或改成什麼；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
+        "這句看起來不像是在修改目前這筆 " +
+          (draftType === "rule" ? "RULE" : "QA") +
+          "，我先不寫進草稿，避免污染資料庫。\n\n如果你要修改，請直接說要新增、刪除或改成什麼；如果確認要存檔，請輸入 /紀錄。\n\n👉 確認存檔 → /紀錄\n👉 放棄 → /取消",
       );
       writeLog(`[DraftMod Reply] 忽略疑似無關草稿修改: ${feedback}`);
       return;
@@ -10562,30 +11112,41 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
       )}`,
     );
     writeLog(
-      `[DraftMod] 目前 QA: ${(currentDraft.currentQA || "").substring(0, 500)}`,
+      `[DraftMod] 目前 ${draftType.toUpperCase()}: ${currentDraftText.substring(0, 500)}`,
     );
 
     // 累積對話歷史
     var conversation = currentDraft.conversation || [];
     conversation.push(feedback);
 
-    // 帶完整上下文讓 LLM 重新產出 QA
-    var newQA = callGeminiToRefineQA(
-      currentDraft.originalContent,
-      currentDraft.currentQA,
-      conversation,
-    );
+    var newText;
+    if (draftType === "rule") {
+      newText = callGeminiToModifyRule(currentDraftText, feedback);
+    } else {
+      // 帶完整上下文讓 LLM 重新產出 QA
+      newText = callGeminiToRefineQA(
+        currentDraft.originalContent,
+        currentDraft.currentQA || currentDraftText,
+        conversation,
+      );
+    }
 
-    writeLog(`[DraftMod] 新 QA: ${newQA.substring(0, 500)}`);
-    if (isOneLineQaText(newQA)) {
-      newQA = normalizeOneLineQaText(newQA);
+    writeLog(`[DraftMod] 新 ${draftType.toUpperCase()}: ${newText.substring(0, 500)}`);
+    if (draftType === "qa" && isOneLineQaText(newText)) {
+      newText = normalizeOneLineQaText(newText);
+    } else if (draftType === "rule") {
+      newText = normalizeRuleLine(newText);
     }
 
     // 更新 draft
     var newDraft = {
+      type: draftType,
+      targetSheet: draftType === "rule" ? SHEET_NAMES.CLASS_RULES : SHEET_NAMES.QA,
       originalContent: currentDraft.originalContent,
       conversation: conversation,
-      currentQA: newQA,
+      currentText: newText,
+      currentQA: draftType === "qa" ? newText : "",
+      currentRule: draftType === "rule" ? newText : "",
       userId: userId,
       pendingMergeChoice: false,
     };
@@ -10596,8 +11157,10 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
     );
 
     var preview =
-      "🔄 已修正草稿：\n\n【預覽】將寫入 QA：\n" +
-      newQA +
+      "🔄 已修正草稿：\n\n【預覽】將寫入 " +
+      (draftType === "rule" ? "CLASS_RULES" : "QA") +
+      "：\n" +
+      newText +
       "\n\n👉 確認存檔 → /紀錄\n👉 繼續修改 → 直接回覆\n👉 放棄 → /取消";
 
     // v27.9.17: 附加費用資訊
@@ -11416,17 +11979,22 @@ function simpleModifyFallback(currentText, instruction) {
 }
 
 /**
- * 簡化版存檔：直接將整條文字寫入 QA
+ * 簡化版存檔：直接將整條文字寫入 QA 或 CLASS_RULES
  */
 function saveDraftToSheet(draft) {
   // 驗證草稿內容
-  var qaText = draft.currentQA || draft.text; // 相容舊格式
-  if (!qaText || qaText.trim().length < 5) {
+  var draftType = getEntryDraftType(draft);
+  var draftText = getEntryDraftCurrentText(draft);
+  if (!draftText || draftText.trim().length < 5) {
     return "❌ 草稿內容太短，請提供更多資訊。";
   }
 
-  // 自動修復格式：確保有 " / A："
-  qaText = autoFixQAFormat(qaText);
+  if (draftType === "rule") {
+    draftText = normalizeRuleLine(draftText);
+  } else {
+    // 自動修復格式：確保有 " / A："
+    draftText = autoFixQAFormat(draftText);
+  }
 
   const lock = LockService.getScriptLock();
   let hasLock = false;
@@ -11435,13 +12003,15 @@ function saveDraftToSheet(draft) {
     lock.waitLock(10000);
     hasLock = true;
 
-    const sheet = ss.getSheetByName(SHEET_NAMES.QA);
+    const targetSheetName =
+      draftType === "rule" ? SHEET_NAMES.CLASS_RULES : SHEET_NAMES.QA;
+    const sheet = ss.getSheetByName(targetSheetName);
     if (!sheet) {
-      return "❌ 找不到 QA 工作表";
+      return "❌ 找不到 " + targetSheetName + " 工作表";
     }
 
-    // 直接寫入 QA 文字
-    sheet.appendRow([qaText]);
+    // 直接寫入 A 欄單列字串；CLASS_RULES 不展開多欄，避免破壞既有解析架構。
+    sheet.appendRow([draftText]);
     SpreadsheetApp.flush();
 
     // 提早釋放鎖定，避免與 syncGeminiKnowledgeBase 發生死鎖
@@ -11452,18 +12022,18 @@ function saveDraftToSheet(draft) {
       hasLock = false;
     }
 
-    // 清除快取並同步知識庫
+    // 清除快取並排程同步知識庫，避免 LINE webhook 主線程超過 5 秒。
     CacheService.getScriptCache().remove(
       CACHE_KEYS.ENTRY_DRAFT_PREFIX + draft.userId,
     );
-    syncGeminiKnowledgeBase();
+    scheduleImmediateRebuild();
 
     writeLog(
       draft.userId || "UNKNOWN",
       "UserRecord",
-      `[Draft Saved to QA] ${qaText.substring(0, 50)}...`,
+      `[Draft Saved to ${targetSheetName}] ${draftText.substring(0, 50)}...`,
     );
-    return `✅ 已寫入 QA 並更新知識庫！\n\n寫入內容：${qaText}`;
+    return `✅ 已寫入 ${targetSheetName}，知識庫更新已排程！\n\n寫入內容：${draftText}`;
   } catch (e) {
     writeLog(
       draft.userId || "UNKNOWN",
@@ -13932,11 +14502,15 @@ function isDraftFeedbackLikelyRelevant(feedback, currentDraft) {
   const fb = String(feedback || "").trim();
   if (!fb) return false;
   if (fb.length > 40) return true;
-  if (/(補充|加上|加入|新增|改成|改為|修改|修正|刪除|移除|換成|應該|不對|錯了|答案|問題|型號|規格|步驟|說明|來源|保留)/i.test(fb)) {
+  if (/(補充|加上|加入|新增|改成|改為|修改|修正|刪除|移除|換成|應該|不對|錯了|答案|問題|型號|規格|步驟|說明|來源|保留|活動|促銷|登錄|保固|贈品|價格|期間|網址|RULE|CLASS_RULES)/i.test(fb)) {
     return true;
   }
 
   const base = `${currentDraft && currentDraft.currentQA ? currentDraft.currentQA : ""}\n${
+    currentDraft && currentDraft.currentRule ? currentDraft.currentRule : ""
+  }\n${
+    currentDraft && currentDraft.currentText ? currentDraft.currentText : ""
+  }\n${
     currentDraft && currentDraft.originalContent ? currentDraft.originalContent : ""
   }`;
   const fbTokens = extractDraftGuardTokens(fb);

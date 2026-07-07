@@ -1,5 +1,28 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.027 /紀錄 RULE 與短別稱手冊防呆)
+
+### 目的
+- 讓 LINE 對話視窗中的 `/紀錄` 不只整理 QA，也能把行銷 RULE、活動、促銷價整理成 `CLASS_RULES` 一列。
+- 修正 `G5` 等短別稱不可直接查 PDF 的風險；必須先列出現有 PDF 覆蓋的完整型號供使用者選。
+- 移除不存在的舊錯誤型號範例與特定競品品牌案例，改用真實型號與通用競品範圍防呆。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.027`。
+- `/紀錄 <內容>` 新增 QA/RULE 自動分流；RULE 草稿寫入 `CLASS_RULES`，並維持 A 欄單列 CSV 字串。
+- RULE 內容含 `promotion.twsamsungcampaign.com` 時，會抓取官方活動頁文字後整理螢幕活動規則。
+- QA/RULE 存檔後改用 `scheduleImmediateRebuild()` 背景重建，避免 webhook 主線程同步超時。
+- `#查手冊 G5` 與一般手冊/操作題只命中短別稱時，改列出現有 PDF 覆蓋的完整型號候選，不再直接鎖第一本 PDF。
+- `CLASS_RULES.csv` 與 `restoreClassRulesToSheet()` 新增 2026/5-2026/9 三星螢幕登錄送活動 RULE。
+
+### 測試與文件
+- `verify_sop_static_guards.js` 新增 `/紀錄` QA/RULE 分流、RULE 一行化、背景重建與短別稱手冊選型守門。
+- 同步 `Developer_Manual.md`、`程式編寫開發及功能手冊.md` 與 `User_Manual.md`。
+
+### Prompt
+- 本次未修改 Google Sheet `Prompt!C3`。
+- 本次未修改本地 `Prompt.csv`，也沒有同步或覆蓋正式 Prompt。
+
 ## 2026-07-06 (v29.6.026 維護 Webhook hardening)
 
 ### 目的
@@ -244,7 +267,7 @@
 - `v29.5.258`: TestUI 截斷預覽與完整版在尾端標點正規化後完全相同時，優先保留完整版，移除截斷預覽。
 - `v29.5.259`: Quick Reply 的「📖 查手冊」改回只有 `hasPdfForModel=true` 且尚未查過 PDF 時才顯示；操作/故障題若還沒有型號或未確認手冊，不再先給可能落空的手冊按鈕。
 - `v29.5.260`: 新增 WA/WD/VR 等家電型號提取與家電題 API 暫失敗防呆，避免洗衣機題被誤套用螢幕型號補問模板。
-- `v29.5.261`: 新增早期 Scope Guard；競品-only、三洋、競品 Excel/價格表等問題在價格防呆與 LLM 前先回覆專案範圍。
+- `v29.5.261`: 新增早期 Scope Guard；競品-only、競品 Excel/價格表等問題在價格防呆與 LLM 前先回覆專案範圍。
 - `v29.5.262`: 新增早期時效資訊路由；近期活動/最新上市/CES/延長保固等問題先導官方頁與網路搜尋，不進 Fast Mode 型號泡泡。
 - `v29.5.263`: 型號選擇/補型號回覆不再追加查手冊提醒或查手冊按鈕，避免使用者尚未選型號時流程自相矛盾。
 - `v29.5.264`: API 429 與外層 API 例外回覆改為客服友善語氣；不再對 LINE 使用者顯示「升級付費方案」或「您的請求」。
@@ -253,7 +276,7 @@
 - `v29.5.267`: 型號選擇 Flex UI 產生按鈕前也會執行 `dedupDisplayModels()`，避免 `S49...` 與 `LS49...XZW` 這類同款料號被顯示成兩個選項；靜態測試新增直接執行型號顯示正規化函式的防回歸檢查。
 - `v29.5.268`: 操作/故障題若沒有任何型號訊號且 Fast Mode 未命中可信 QA，會先請使用者補完整型號，不再讓 LLM 用泛用常識猜操作步驟；補型號回覆補上 `[來源:專案流程規則]`。
 - `v29.5.269`: Fast Mode 來源標籤改為精確白名單，只接受 `[來源:QA]` / `[來源:規格庫]` / `[來源:網路搜尋]`；`[來源:QA資料庫]`、`[來源:產品規格表]` 等模糊標籤不再被洗白為可信來源。
-- `v29.5.270`: 價格防呆的型號解析保留完整尾碼，例如 `S34BG850SC3` 不再被截短；本機靜態測試新增價格題不回覆金額、導官方搜尋頁與完整型號 token 檢查。
+- `v29.5.270`: 價格防呆的型號解析保留完整尾碼，例如 `S34BG850SC` 不再被截短；本機靜態測試新增價格題不回覆金額、導官方搜尋頁與完整型號 token 檢查。
 - `v29.5.271`: `sanitizeManualDeflection()` 擴充清理「根據你/您提供的 PDF/手冊/文件/檔案」等變體，深度模式回覆統一改用「根據官方手冊」的客服視角。
 - `v29.5.272`: 無型號操作/故障題若未命中可信 QA，會先要求補完整型號；即使 AI 自行輸出 `[AUTO_SEARCH_PDF]` / `[AUTO_SEARCH_WEB]` / `[NEED_DOC]` 也不可越過此守門，家電題則改請補家電完整型號。
 - `v29.5.273`: 多型號比較/推薦題只有在不含操作、設定、故障、步驟或手冊查證意圖時才可跳過型號泡泡；若比較題同時需要精準操作路徑，會保留型號選擇。
@@ -297,9 +320,9 @@
 - `v29.5.259`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.259 [2026-06-20 04:10]`。
 - `v29.5.259`：`verify_m7_mute_current.js` 通過；未指定型號操作題會先請使用者補完整型號，不再顯示未確認手冊的「查手冊」按鈕；M7 多型號別稱仍進型號選擇。
 - `v29.5.260`：待部署後驗證 `verify_62_compact.js`，確認家電題不再要求 S32/S27 螢幕型號。
-- `v29.5.261`：待部署後驗證 `verify_62_compact.js`，確認三洋與競品 Excel/價格表題會命中 Scope Guard。
+- `v29.5.261`：待部署後驗證 `verify_62_compact.js`，確認競品 Excel/價格表題會命中 Scope Guard。
 - `v29.5.262`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.262 [2026-06-20 05:05]`。
-- `v29.5.262`：`verify_62_compact.js` 通過 9/9；確認三洋與競品 Excel/價格表題會命中 Scope Guard，促銷/最新資訊題會命中 Force Web Intent 或 Price Guard，家電題不再要求 S32/S27 螢幕型號。
+- `v29.5.262`：`verify_62_compact.js` 通過 9/9；確認競品 Excel/價格表題會命中 Scope Guard，促銷/最新資訊題會命中 Force Web Intent 或 Price Guard，家電題不再要求 S32/S27 螢幕型號。
 - 測試基準更新：`verify_route_testset_17_single.js` 新增 `MODEL_SELECT`、`ASK_MODEL`、`API_GUARDED` 分類，資料集保留原問句但依現行 SOP 更新預期路由；回歸結果 17/17 通過。此項僅更新測試與文件，未改 GAS、未部署。
 - `v29.5.263`：已部署到既有 Webhook，健康檢查回傳 `OK - Current Version: v29.5.263 [2026-06-20 05:35]`。
 - `v29.5.263`：`verify_m7_mute_current.js` 通過；M7 型號選擇回覆不再混入提早查手冊提醒。
@@ -310,7 +333,7 @@
 - `v29.5.267`：`node --check` 與 `npm run test:static` 通過；確認型號選擇 UI 最後一關會做 `S/LS` 顯示去重。
 - `v29.5.268`：`node --check` 與 `npm run test:static` 通過；確認無型號操作題防呆存在於 AI 文字 fallback 型號提取之前，且非可信 QA 來源時會要求補完整型號。
 - `v29.5.269`：`node --check` 與 `npm run test:static` 通過；確認 Fast Mode 只接受精確來源標籤，模糊 QA/規格來源不會被洗白。
-- `v29.5.270`：`node --check` 與 `npm run test:static` 通過；確認價格防呆保留 `S34BG850SC3` 完整型號、不輸出數字金額並導三星官方搜尋頁。
+- `v29.5.270`：`node --check` 與 `npm run test:static` 通過；確認價格防呆保留 `S34BG850SC` 完整型號、不輸出數字金額並導三星官方搜尋頁。
 - `v29.5.271`：`node --check` 與 `npm run test:static` 通過；確認「你/您提供的 PDF/手冊/文件/檔案」會被改寫為官方手冊口吻。
 - `tools/check_deploy_readiness.ps1` 實測輸出：本機 `v29.5.271`、遠端 HEAD `v29.5.271`、壞 API 文案 `False`、正式 health `v29.5.263`、版本數 `200`，並提示刪舊版本後重跑 `deploy.bat`。
 - `v29.5.276`：`npm run test:static` 通過；確認操作/故障/明確手冊查證題若沒有可信 Fast Mode 來源，不能因 AI 產出通用步驟就停在 Fast Mode，會升級官方手冊查證。
@@ -575,7 +598,7 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 ### 驗證 (TestUI 真實測試)
 - 測試腳本：`test_runner/verify_price_no_number.js`
 - 測試結果：`3/3 PASS`
-  - 案例 1：M9/G8/M8/S34BG850SC3 最低價與建議售價
+  - 案例 1：M9/G8/M8/S34BG850SC 最低價與建議售價
   - 案例 2：G8 現在價格多少
   - 案例 3：M7 43 吋售價
 - 驗證重點全部通過：

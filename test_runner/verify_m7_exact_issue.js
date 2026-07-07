@@ -63,6 +63,7 @@ async function main() {
     const q1 =
       "客戶如果想用M7串聯其他的Matt 協議的裝置,是不是要購買smart thing hub";
     const q2 = "#查手冊 客戶如果想用M7串聯其他的Matt 協議的裝置,是不是要購買smart thing hub";
+    const q3 = "#型號:S32CM703UC";
 
     await clearSession();
 
@@ -114,12 +115,35 @@ async function main() {
     }
 
     assertStep(
-      !/^[ \t]*[•●▪◦‧・]/m.test(t3Text),
+      /請選擇 M7 完整型號|請先選完整型號|型號選擇泡泡|\[Flex Message\]/.test(t3Text) ||
+        (t3.logs || []).some((x) => /Alias Select|型號選擇泡泡|model_select_mode/.test(String(x))),
+      "#查手冊 with alias-only M7 should ask for full model instead of loading PDF directly",
+    );
+    assertStep(
+      !/\[來源:\s*[^\\\[\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+      "alias-only manual query must not return a PDF source before full model selection",
+    );
+
+    const t4 = await send(q3);
+    console.log(`\nTURN 4 ${q3}`);
+    (t4.replies || []).forEach((r, i) => console.log(`BOT#${i + 1}: ${r}`));
+
+    const t4Text = (t4.replies || []).join("\n");
+    if (isApiFailureReply(t4Text)) {
+      assertStep(
+        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t4Text),
+        "API failure reply must not be tagged as PDF source",
+      );
+      console.log("\nPASS: verify_m7_exact_issue (API quota guarded after model selection)");
+      return;
+    }
+    assertStep(
+      !/^[ \t]*[•●▪◦‧・]/m.test(t4Text),
       "manual reply still uses bullet symbol instead of numeric list",
     );
     assertStep(
-      /\[來源:\s*[^\\\[\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
-      "manual reply missing real PDF filename source tag",
+      /\[來源:\s*[^\\\[\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t4Text),
+      "selected full model manual reply missing real PDF filename source tag",
     );
 
     console.log("\nPASS: verify_m7_exact_issue");

@@ -556,10 +556,10 @@ const priceGuardCode = [
   extractFunction(linebot, "extractPriceQueryTargets_"),
   extractFunction(linebot, "buildNoPriceReply_"),
   `
-  const priceReply = buildNoPriceReply_("請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。");
+  const priceReply = buildNoPriceReply_("請協助尋找M9、G8、M8、S34BG850SC的市場最低價與建議售價。");
   globalThis.__priceGuardResult = {
     isPrice: isPriceQueryIntent_("G8現在價格多少？"),
-    targets: extractPriceQueryTargets_("請協助尋找M9、G8、M8、S34BG850SC3的市場最低價與建議售價。"),
+    targets: extractPriceQueryTargets_("請協助尋找M9、G8、M8、S34BG850SC的市場最低價與建議售價。"),
     reply: priceReply
   };
   `,
@@ -574,8 +574,8 @@ assertStep(
 );
 
 assertStep(
-  priceGuardContext.__priceGuardResult.targets.includes("S34BG850SC3"),
-  "price guard should preserve full model tokens like S34BG850SC3",
+  priceGuardContext.__priceGuardResult.targets.includes("S34BG850SC"),
+  "price guard should preserve full model tokens like S34BG850SC",
 );
 
 assertStep(
@@ -634,6 +634,85 @@ assertStep(
   packageJson.scripts &&
     packageJson.scripts["check:webhook-version"] === "node ensure_formal_version_current.js",
   "package.json must expose check:webhook-version",
+);
+
+const entryDraftCode = [
+  extractFunction(linebot, "extractQaPartsFromText"),
+  extractFunction(linebot, "isOneLineQaText"),
+  extractFunction(linebot, "normalizeRuleLine"),
+  extractFunction(linebot, "isRuleLikeEntryContent"),
+  extractFunction(linebot, "classifyEntryDraftType"),
+  `
+  globalThis.__entryDraftResult = {
+    qaType: classifyEntryDraftType("S27FG532EC 怎麼調整更新率？ / A：到遊戲選單調整更新頻率。"),
+    ruleType: classifyEntryDraftType("本期三星螢幕活動：S27FG532EC 建議售價 5490 促銷價 4990，活動期間 2026/07/01-2026/07/31，來源：https://promotion.twsamsungcampaign.com/test.aspx"),
+    normalizedRule: normalizeRuleLine("活動_測試,電腦螢幕活動RULE\\nS27FG532EC 促銷價 4990\\n來源網址：https://promotion.twsamsungcampaign.com/test.aspx")
+  };
+  `,
+].join("\n\n");
+const entryDraftContext = {};
+vm.createContext(entryDraftContext);
+vm.runInContext(entryDraftCode, entryDraftContext);
+
+assertStep(
+  entryDraftContext.__entryDraftResult.qaType === "qa",
+  "/紀錄 QA content should stay in QA draft mode",
+);
+
+assertStep(
+  entryDraftContext.__entryDraftResult.ruleType === "rule",
+  "/紀錄 promotion or activity content should enter RULE draft mode",
+);
+
+assertStep(
+  !/[\r\n]/.test(entryDraftContext.__entryDraftResult.normalizedRule) &&
+    /promotion\.twsamsungcampaign\.com/.test(entryDraftContext.__entryDraftResult.normalizedRule),
+  "RULE draft text must stay as one CLASS_RULES row and preserve source URL",
+);
+
+const saveDraftSection = extractFunction(linebot, "saveDraftToSheet");
+assertStep(
+  /SHEET_NAMES\.CLASS_RULES/.test(saveDraftSection) &&
+    /scheduleImmediateRebuild\(\)/.test(saveDraftSection) &&
+    !/syncGeminiKnowledgeBase\(\)/.test(saveDraftSection),
+  "/紀錄 saveDraftToSheet must support CLASS_RULES and use background rebuild instead of synchronous sync",
+);
+
+assertStep(
+  /promptAliasOnlyModelSelection\(lastQuestion,\s*userId,\s*replyToken,\s*contextId,\s*"pdf"\)/.test(
+    linebot,
+  ),
+  "#查手冊 must ask for full model when the query only contains a short alias such as G5",
+);
+
+assertStep(
+  /getAliasCandidatesFromExistingPdfs/.test(linebot) &&
+    /PDF_MODEL_INDEX/.test(linebot) &&
+    /短別稱不可直接查 PDF/.test(linebot),
+  "short aliases must be expanded to full-model candidates from existing PDF coverage before PDF search",
+);
+
+const aliasMatchCode = [
+  extractFunction(linebot, "isClassRuleLineMatchedAlias"),
+  `
+  globalThis.__aliasMatchResult = {
+    g5Product: isClassRuleLineMatchedAlias("LS27DG502ECXZW,型號：S27DG502EC,27吋Odyssey G5 IPS 平面電競顯示器 G50D", "G5"),
+    g5SubstringOnly: isClassRuleLineMatchedAlias("活動_測試,S27FG502SC 登錄送", "G5"),
+    m7GenericTerm: isClassRuleLineMatchedAlias("術語_Smart系列,主要是Smart Monitor系列(M5、M7、M8、M9)，也有Odyssey 3D G90XF", "M7"),
+    g95Product: isClassRuleLineMatchedAlias("LS49CG954SCXZW,型號：S49CG954SC,49吋Odyssey OLED G9 曲面電競顯示器 G95SC", "G95SC")
+  };
+  `,
+].join("\n\n");
+const aliasMatchContext = {};
+vm.createContext(aliasMatchContext);
+vm.runInContext(aliasMatchCode, aliasMatchContext);
+
+assertStep(
+  aliasMatchContext.__aliasMatchResult.g5Product === true &&
+    aliasMatchContext.__aliasMatchResult.g5SubstringOnly === false &&
+    aliasMatchContext.__aliasMatchResult.m7GenericTerm === false &&
+    aliasMatchContext.__aliasMatchResult.g95Product === true,
+  "alias candidate matching must avoid substring/generic-term pollution while supporting product aliases",
 );
 
 assertStep(
