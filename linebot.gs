@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.030"; // 2026-07-07 固定 Gemini 2.5 Flash-Lite 控制成本
-const BUILD_TIMESTAMP = "2026-07-07 15:00";
+const GAS_VERSION = "v29.6.034"; // 2026-07-07 補強QA來源推斷
+const BUILD_TIMESTAMP = "2026-07-07 16:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2106,6 +2106,110 @@ function appendSourceTagIfMissing(text, sourceTag) {
   return `${body}\n\n${tag}`;
 }
 
+function tokenizeForSourceInference(text) {
+  const rawTokens =
+    String(text || "")
+      .toUpperCase()
+      .match(/[A-Z0-9]{2,}|[\u4e00-\u9fa5]{2,}/g) || [];
+  const stopWords = {
+    三星: true,
+    螢幕: true,
+    顯示器: true,
+    請問: true,
+    可以: true,
+    是否: true,
+    什麼: true,
+    怎麼: true,
+    如何: true,
+    功能: true,
+    資訊: true,
+    這台: true,
+    這個: true,
+  };
+  const seen = {};
+  const result = [];
+  rawTokens.forEach((token) => {
+    if (!token || token.length < 2 || stopWords[token]) return;
+    if (seen[token]) return;
+    seen[token] = true;
+    result.push(token);
+  });
+  return result;
+}
+
+function loadQaRowsForSourceInference() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const cached = cache.get("qa_source_inference_rows_v1");
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed;
+    }
+
+    let rows = [];
+    const qaCount = parseInt(cache.get("KB_QA_COUNT") || "0", 10);
+    if (qaCount > 0) {
+      let fullQA = "";
+      for (let i = 0; i < qaCount; i++) {
+        fullQA += cache.get(`KB_QA_${i}`) || "";
+      }
+      rows = fullQA
+        .split(/\n{2,}|QA:\s*/g)
+        .map((line) => String(line || "").trim())
+        .filter((line) => line.length >= 20);
+    }
+
+    if (rows.length === 0 && ss) {
+      const qaSheet = ss.getSheetByName(SHEET_NAMES.QA);
+      if (qaSheet && qaSheet.getLastRow() >= 1) {
+        rows = qaSheet
+          .getRange(1, 1, qaSheet.getLastRow(), 1)
+          .getValues()
+          .map((row) => String(row[0] || "").trim())
+          .filter((line) => line.length >= 20 && !/^(問題|Question|QA內容)/i.test(line));
+      }
+    }
+
+    rows = rows.slice(0, 200);
+    if (rows.length > 0) {
+      cache.put("qa_source_inference_rows_v1", JSON.stringify(rows), 21600);
+    }
+    return rows;
+  } catch (e) {
+    writeLog(`[QA Source Inference] ${e.message}`);
+    return [];
+  }
+}
+
+function inferQaSourceTagFromFastReply(userText, replyText, existingTag) {
+  if (existingTag) return existingTag;
+  const userTokens = tokenizeForSourceInference(userText);
+  const replyTokens = tokenizeForSourceInference(replyText);
+  if (userTokens.length < 2 || replyTokens.length < 2) return "";
+
+  const rows = loadQaRowsForSourceInference();
+  const replyUpper = String(replyText || "").toUpperCase();
+  for (let i = 0; i < rows.length; i++) {
+    const rowUpper = String(rows[i] || "").toUpperCase();
+    let userHitCount = 0;
+    for (let j = 0; j < userTokens.length; j++) {
+      if (rowUpper.indexOf(userTokens[j]) >= 0) userHitCount++;
+    }
+    if (userHitCount < 2) continue;
+
+    const rowTokens = tokenizeForSourceInference(rowUpper);
+    let replyHitCount = 0;
+    for (let k = 0; k < rowTokens.length; k++) {
+      if (replyUpper.indexOf(rowTokens[k]) >= 0) replyHitCount++;
+    }
+    if (replyHitCount >= 3) {
+      writeLog(`[QA Source Inference] 回覆命中 QA 來源列 (${userHitCount}/${replyHitCount})`);
+      return "[來源:QA]";
+    }
+  }
+  return "";
+}
+
 function sanitizeLeadDatabasePhrase(text) {
   return String(text || "")
     .replace(/^\s*根據(?:我|目前|我手上)?(?:的)?資料庫[，,：: ]*/i, "")
@@ -2234,6 +2338,43 @@ function isTimelyWebInfoQuery(text) {
   return /(最新上市|最新型號|新機型|新品|近期|最近|CES|雙11|雙12|黑五|BLACK\s*FRIDAY|12月份|促銷|活動|抽獎|登錄|延長保固|保固活動)/i.test(
     q,
   );
+}
+
+function findLocalCampaignRuleForQuery(text) {
+  try {
+    const q = String(text || "");
+    if (!q || !/(活動|促銷|抽獎|登錄|延長保固|保固活動|贈品|本期)/i.test(q)) {
+      return "";
+    }
+
+    const models = extractModelNumbers(q)
+      .map((model) => String(model || "").toUpperCase())
+      .filter((model) => model.length >= 5);
+    if (models.length === 0 || !ss) return "";
+
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet || sheet.getLastRow() <= 1) return "";
+
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      const ruleText = String(rows[i][0] || "");
+      const upperRule = ruleText.toUpperCase();
+      if (
+        upperRule.indexOf("活動_") !== 0 &&
+        upperRule.indexOf("電腦螢幕活動RULE") < 0
+      ) {
+        continue;
+      }
+      for (let j = 0; j < models.length; j++) {
+        if (upperRule.indexOf(models[j]) >= 0) {
+          return ruleText;
+        }
+      }
+    }
+  } catch (e) {
+    writeLog(`[Campaign Rule Guard] ${e.message}`);
+  }
+  return "";
 }
 
 function isServiceHoursQuery(text) {
@@ -5500,6 +5641,7 @@ function constructDynamicPrompt(
 
     // v29.6.025: 強制完整規格回應 + 朋友口吻
     dynamicPrompt += `\n【規格回應強化】當用戶詢問任何型號的「規格」時，你必須從參考資料中**完整提取所有可用的規格欄位**（解析度、更新頻率、反應時間、亮度、對比、HDR、可視角度、介面、重量、尺寸），**不能只給一句籠統回答**。完整範本：「這台是 27 吋 VA 面板，解析度 Full HD 1920x1080，60Hz 更新頻率，4ms 反應時間，亮度 250 cd/㎡，原生對比 3000:1，支援 HDR10，178° 寬視角，介面 HDMI 2 個 + USB 2 個 + WiFi，重量 4.8 kg。」。請嚴格按此豐富度回答。\n`;
+    dynamicPrompt += `\n【活動 RULE 回答鐵律】當用戶詢問「本期、活動、登錄、抽獎、延長保固、贈品」且參考資料中有「電腦螢幕活動RULE」時，你必須完整列出該型號在同一活動 RULE 行內的所有相關權益。若該型號出現在活動 RULE 行，且同一行寫有「月月抽 Galaxy S26 系列手機」或類似共通抽獎資格，必須一併說明；不可只回答 Steam 點卡或延長保固其中一項。最後標註 [來源:規格庫]。\n`;
     dynamicPrompt += `\n【口吻鐵律】你的口吻必須像「熟朋友」而非「客服專員」！嚴禁使用「您好」「我是三星螢幕客服專員」這類官式開頭。直接切入問題，朋友式口吻，例如「這台是...」「它的...」即可。\n`;
 
     // v29.6.032: 中性立場鐵律 (不攻擊它牌、不過度自誇三星)
@@ -7059,7 +7201,11 @@ function handleMessage(event) {
       return;
     }
 
-    if (!msg.startsWith("#") && isTimelyWebInfoQuery(msg)) {
+    if (
+      !msg.startsWith("#") &&
+      isTimelyWebInfoQuery(msg) &&
+      !findLocalCampaignRuleForQuery(msg)
+    ) {
       const timelyReply = buildTimelyWebInfoReply(msg);
       writeLog(`[Force Web Intent v29.5.156] 時效資訊題，改走官網/網路搜尋引導`);
       replyMessage(replyToken, timelyReply, {
@@ -8041,9 +8187,25 @@ function handleMessage(event) {
         const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
         const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
         const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
+        const hasMissingSourceTag = /\[來源[：:]\s*缺失\]/i.test(rawResponse);
+        const looksLikeMissingDataReply =
+          /查無|沒有關於.+(?:資訊|資料|上市|日期)|資料庫(?:中|裡)?(?:沒有|沒有找到|沒有相關|未記載|找不到)|目前沒有.+(?:資訊|資料|上市|日期)/i.test(
+            finalText,
+          );
         writeLog(
           `[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`,
         );
+
+        if (
+          (hasMissingSourceTag || looksLikeMissingDataReply) &&
+          !hasAutoPdf &&
+          !hasAutoWeb &&
+          !hasNeedDoc &&
+          !isInPdfMode
+        ) {
+          writeLog("[Auto Web Block v29.6.033] 偵測到 Fast Mode 查無資料但未輸出 WEB 暗號，補上網路搜尋確認流程");
+          finalText = `${finalText}\n[AUTO_SEARCH_WEB]`;
+        }
 
         // v29.5.132: 若已知有手冊且命中直通車，但 Fast Mode 誤回「找不到 PDF」，
         // 強制補上 PDF 觸發暗號，避免 Odyssey 3D 這類場景卡住。
@@ -8673,7 +8835,7 @@ function handleMessage(event) {
             specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
           }
           
-          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)`;
+          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)\n\n[來源:缺失]`;
           
           // 清除任何暗號標記，乾淨呈現在 UI 上
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
@@ -9643,7 +9805,12 @@ function handleMessage(event) {
         if (!Array.isArray(replyText)) {
           // v29.6.035: 不管 stayedInFastMode 與否, 都要補來源標籤
           // v29.6.038: appendSourceTagIfMissing 已智慧化 (暗號/缺失/預設)
-          replyText = appendSourceTagIfMissing(replyText, fastSourceTag);
+          const inferredFastSourceTag = inferQaSourceTagFromFastReply(
+            msg,
+            replyText,
+            fastSourceTag,
+          );
+          replyText = appendSourceTagIfMissing(replyText, inferredFastSourceTag);
           const stayedInFastMode =
             !aiRequestedPdfSearch && !shouldAttachPdfs && !hasExplicitTrigger;
           if (stayedInFastMode && !skipAliasFeatureGuard) {

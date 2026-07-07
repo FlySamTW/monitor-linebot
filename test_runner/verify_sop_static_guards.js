@@ -70,6 +70,79 @@ assertStep(
   "production Gemini model constants must not use latest aliases",
 );
 
+const campaignRuleGuardCode = [
+  "const writeLog = () => {};",
+  "const SHEET_NAMES = { CLASS_RULES: 'CLASS_RULES' };",
+  `const ss = {
+    getSheetByName(name) {
+      if (name !== SHEET_NAMES.CLASS_RULES) return null;
+      const values = [
+        [
+          "活動_202605_202609螢幕登錄送,電腦螢幕活動RULE,活動內容：S27HG806EF、S32HG806ES 登錄送 Steam 1,000元點卡；指定高階螢幕如 S34BG850SC 登錄送全機延長保固兩年；指定螢幕機種可參加月月抽 Galaxy S26 系列手機"
+        ],
+        [
+          "別稱_G5,Odyssey G5入門電競，型號模式為：G5,S27?G5*,S32?G5*"
+        ]
+      ];
+      return {
+        getLastRow: () => values.length + 1,
+        getRange: () => ({ getValues: () => values })
+      };
+    }
+  };`,
+  extractFunction(linebot, "extractModelNumbers"),
+  extractFunction(linebot, "findLocalCampaignRuleForQuery"),
+  `
+  globalThis.__campaignRuleGuardResult = {
+    exactSteam: !!findLocalCampaignRuleForQuery("S27HG806EF 本期三星螢幕登錄活動送什麼？"),
+    exactWarranty: !!findLocalCampaignRuleForQuery("S34BG850SC 本期登錄活動有什麼資格或贈品？"),
+    aliasOnly: !!findLocalCampaignRuleForQuery("G5 活動有哪些？"),
+    specOnly: !!findLocalCampaignRuleForQuery("S27HG806EF 解析度是多少？")
+  };
+  `,
+].join("\n\n");
+const campaignRuleGuardContext = {};
+vm.createContext(campaignRuleGuardContext);
+vm.runInContext(campaignRuleGuardCode, campaignRuleGuardContext);
+
+assertStep(
+  campaignRuleGuardContext.__campaignRuleGuardResult.exactSteam === true &&
+    campaignRuleGuardContext.__campaignRuleGuardResult.exactWarranty === true,
+  "known local Samsung monitor campaign RULE rows must bypass the timely-web guard",
+);
+
+assertStep(
+  campaignRuleGuardContext.__campaignRuleGuardResult.aliasOnly === false,
+  "alias-only campaign questions must not bypass the timely-web guard as if they were exact model RULE hits",
+);
+
+assertStep(
+  campaignRuleGuardContext.__campaignRuleGuardResult.specOnly === false,
+  "non-campaign spec questions must not be treated as local campaign RULE hits",
+);
+
+const handleMessageSection = extractFunction(linebot, "handleMessage");
+assertStep(
+  /isTimelyWebInfoQuery\(msg\)\s*&&\s*!\s*findLocalCampaignRuleForQuery\(msg\)/.test(
+    handleMessageSection,
+  ),
+  "timely-web guard must let existing local campaign RULE matches proceed into Fast Mode",
+);
+
+assertStep(
+  /looksLikeMissingDataReply[\s\S]*Auto Web Block v29\.6\.033[\s\S]*AUTO_SEARCH_WEB/.test(
+    handleMessageSection,
+  ),
+  "Fast Mode missing-data answers must be converted into the web-search confirmation flow",
+);
+
+assertStep(
+  /需要幫你在網路上進行擴大搜尋嗎[\s\S]*\[來源:缺失\]/.test(
+    handleMessageSection,
+  ),
+  "web-search confirmation rewrite must preserve an honest missing-data source instead of falling back to 規格庫",
+);
+
 assertStep(
   !/JSON\.stringify\(results\)/.test(doPostSection + doGetSection),
   "maintenance webhook endpoints must not stringify undefined results objects",
@@ -325,6 +398,62 @@ assertStep(
 assertStep(
   sourceNormalizeContext.__sourceNormalizeResult.manual === "",
   "Fast Mode must reject manual/PDF source labels when no PDF is attached",
+);
+
+const qaSourceInferenceCode = [
+  "const writeLog = () => {};",
+  "const SHEET_NAMES = { QA: 'QA' };",
+  `const CacheService = {
+    getScriptCache() {
+      const store = {};
+      return {
+        get: (key) => store[key] || null,
+        put: (key, value) => { store[key] = value; }
+      };
+    }
+  };`,
+  `const ss = {
+    getSheetByName(name) {
+      if (name !== SHEET_NAMES.QA) return null;
+      const rows = [
+        ["請問 M8 和 M9 有陀螺儀和 HAS 嗎？畫面會隨著螢幕而直式或橫式顯示嗎？ / A：是的，M8 和 M9 有陀螺儀和 HAS，並且畫面會隨著螢幕而自動切換直式或橫式顯示。"]
+      ];
+      return {
+        getLastRow: () => rows.length,
+        getRange: () => ({ getValues: () => rows })
+      };
+    }
+  };`,
+  extractFunction(linebot, "tokenizeForSourceInference"),
+  extractFunction(linebot, "loadQaRowsForSourceInference"),
+  extractFunction(linebot, "inferQaSourceTagFromFastReply"),
+  `
+  globalThis.__qaSourceInferenceResult = {
+    inferred: inferQaSourceTagFromFastReply(
+      "M8 和 M9 有陀螺儀和 HAS 嗎？畫面會跟著轉嗎？",
+      "是的，M8 和 M9 都有內建陀螺儀和 HAS。畫面會自動跟著旋轉，變成直向或橫向顯示。",
+      ""
+    ),
+    preservesExisting: inferQaSourceTagFromFastReply(
+      "S27FG532EC 的解析度是什麼？",
+      "S27FG532EC 是 QHD 解析度。",
+      "[來源:規格庫]"
+    )
+  };
+  `,
+].join("\n\n");
+const qaSourceInferenceContext = {};
+vm.createContext(qaSourceInferenceContext);
+vm.runInContext(qaSourceInferenceCode, qaSourceInferenceContext);
+
+assertStep(
+  qaSourceInferenceContext.__qaSourceInferenceResult.inferred === "[來源:QA]",
+  "source fallback should infer QA when an untagged Fast Mode answer matches a QA row",
+);
+
+assertStep(
+  qaSourceInferenceContext.__qaSourceInferenceResult.preservesExisting === "[來源:規格庫]",
+  "source fallback must not override an existing trusted source tag",
 );
 
 const fastEscalationCode = [

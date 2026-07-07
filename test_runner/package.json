@@ -8,6 +8,7 @@
     "test:m7": "node run_current_test.js verify_m7_exact_issue.js",
     "test:price": "node run_current_test.js verify_price_no_number.js",
     "test:record-rule": "node run_current_test.js verify_rule_draft_and_alias.js",
+    "test:real10": "node run_current_test.js verify_10_real_conversation.js",
     "test:static": "node verify_api_failure_source_guard.js && node verify_unknown_model_static.js && node verify_sop_static_guards.js"
   },
   "keywords": [],
