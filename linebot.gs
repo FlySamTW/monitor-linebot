@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.039"; // 2026-07-07 選型後手冊答案保留型號
-const BUILD_TIMESTAMP = "2026-07-07 17:35";
+const GAS_VERSION = "v29.6.047"; // 2026-07-07 PDF 選檔 token 比對
+const BUILD_TIMESTAMP = "2026-07-07 18:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -3544,6 +3544,7 @@ const SHEET_NAMES = {
 const CACHE_KEYS = {
   KB_URI_LIST: "kb_list_v15_0",
   KB_URI_LIST_BACKUP: "kb_list_v15_0_backup",
+  MANUAL_PDF_KB_LIST: "manual_pdf_kb_list_v1",
   PDF_MODEL_INDEX_BACKUP: "pdf_model_index_backup_v1",
   KEYWORD_MAP: "keyword_map_v1",
   STRONG_KEYWORDS: "strong_keywords_v1",
@@ -3725,7 +3726,7 @@ function extractPdfModelIndexFromKbList(kbList) {
     }
 
     const fileName = String(file.name || "").toUpperCase();
-    const sModels = fileName.match(/S\d{2}[A-Z]{1,2}\d{3}[A-Z0-9]*/g) || [];
+    const sModels = fileName.match(/S\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*/g) || [];
     const gModels = fileName.match(/G\d{1,2}[A-Z]*/g) || [];
     const mModels = fileName.match(/M\d{1,2}[A-Z]*/g) || [];
     const wModels = fileName.match(/(?:WA|WD|VR)\d+[A-Z\d]*/g) || [];
@@ -3755,6 +3756,63 @@ function persistPdfKbState(kbList) {
   return pdfModels;
 }
 
+function getManualPdfKbList_() {
+  const props = PropertiesService.getScriptProperties();
+  try {
+    const raw = props.getProperty(CACHE_KEYS.MANUAL_PDF_KB_LIST);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(function (item) {
+          return isPdfKbFile(item) && item.name && item.uri;
+        })
+      : [];
+  } catch (e) {
+    writeLog(`[ManualPDF] 讀取手動補傳 PDF 清單失敗: ${e.message}`);
+    return [];
+  }
+}
+
+function mergePdfKbItemsByName_(baseList, extraList) {
+  const byName = {};
+  (Array.isArray(baseList) ? baseList : []).forEach(function (item) {
+    if (item && item.name) {
+      byName[item.name] = item;
+    }
+  });
+  (Array.isArray(extraList) ? extraList : []).forEach(function (item) {
+    if (item && item.name) {
+      byName[item.name] = item;
+    }
+  });
+  return Object.keys(byName).map(function (name) {
+    return byName[name];
+  });
+}
+
+function persistManualPdfKbItem_(item) {
+  if (!isPdfKbFile(item) || !item.name || !item.uri) {
+    throw new Error("Manual PDF KB item is invalid");
+  }
+  const props = PropertiesService.getScriptProperties();
+  const manualList = mergePdfKbItemsByName_(getManualPdfKbList_(), [item]);
+  props.setProperty(CACHE_KEYS.MANUAL_PDF_KB_LIST, JSON.stringify(manualList));
+
+  let currentList = [];
+  try {
+    const currentJson = props.getProperty(CACHE_KEYS.KB_URI_LIST);
+    const parsed = currentJson ? JSON.parse(currentJson) : [];
+    currentList = Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    currentList = [];
+  }
+  const mergedList = mergePdfKbItemsByName_(currentList, manualList);
+  const pdfModels = persistPdfKbState(mergedList);
+  return {
+    manualCount: manualList.length,
+    pdfModelCount: pdfModels.length,
+  };
+}
+
 function stripInlinePdfDataForCache(files) {
   return (Array.isArray(files) ? files : []).map((file) => {
     if (!file) {
@@ -3768,22 +3826,60 @@ function stripInlinePdfDataForCache(files) {
   });
 }
 
+function normalizePdfModelToken_(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/\.PDF$/i, "")
+    .replace(/^L(?=[SCF]\d{2})/, "")
+    .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, "");
+}
+
+function getPdfFileModelTokens_(fileName) {
+  const baseName = String(fileName || "")
+    .toUpperCase()
+    .replace(/\.PDF$/i, "");
+  return baseName
+    .split(/[^A-Z0-9]+/)
+    .map(normalizePdfModelToken_)
+    .filter(function (token) {
+      return token.length >= 2;
+    });
+}
+
+function isPdfSalesSuffix_(suffix) {
+  return /^[A-Z]{1,4}$/.test(String(suffix || ""));
+}
+
+function isPdfModelTokenMatch_(pdfToken, queryModel) {
+  const token = normalizePdfModelToken_(pdfToken);
+  const model = normalizePdfModelToken_(queryModel);
+  if (!token || !model) {
+    return false;
+  }
+  if (token === model) {
+    return true;
+  }
+  if (model.startsWith(token) && isPdfSalesSuffix_(model.substring(token.length))) {
+    return true;
+  }
+  if (token.startsWith(model) && isPdfSalesSuffix_(token.substring(model.length))) {
+    return true;
+  }
+  return false;
+}
+
+function pdfFileNameMatchesModelToken_(fileName, model) {
+  return getPdfFileModelTokens_(fileName).some(function (token) {
+    return isPdfModelTokenMatch_(token, model);
+  });
+}
+
 function pdfFileNameMatchesModels(fileName, exactModels) {
-  const upperName = String(fileName || "").toUpperCase();
   return (Array.isArray(exactModels) ? exactModels : []).some((model) => {
-    const upperModel = String(model || "").toUpperCase();
-    if (!upperModel) {
+    if (!model) {
       return false;
     }
-    if (upperName.includes(upperModel)) {
-      return true;
-    }
-    if (upperModel.startsWith("S") && upperModel.length >= 7) {
-      const coreModel = upperModel.replace(/^S\d{2}/, "");
-      const compactName = upperName.replace(/[^A-Z0-9]/g, "");
-      return compactName.includes(coreModel);
-    }
-    return false;
+    return pdfFileNameMatchesModelToken_(fileName, model);
   });
 }
 
@@ -4396,6 +4492,31 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       } catch (driveErr) {
         writeLog(`[Sync] ⚠️ Drive 讀取失敗: ${driveErr.message}`);
       }
+    }
+
+    const manualPdfKbList = getManualPdfKbList_();
+    if (manualPdfKbList.length > 0) {
+      manualPdfKbList.forEach(function (item) {
+        if (
+          !newKbList.some(function (existing) {
+            return existing && existing.name === item.name;
+          })
+        ) {
+          newKbList.push(item);
+        }
+        if (
+          !drivePdfCatalog.some(function (existing) {
+            return existing && existing.name === item.name;
+          })
+        ) {
+          drivePdfCatalog.push({
+            name: item.name,
+            mimeType: "application/pdf",
+          });
+        }
+      });
+      syncLogs.push(`ManualPDF: ${manualPdfKbList.length}`);
+      writeLog(`[Sync] 合併手動補傳 PDF: ${manualPdfKbList.length}`);
     }
 
     // v29.5.53: PDF Model Index - 從 PDF 檔名提取型號建立索引
@@ -5329,16 +5450,7 @@ function getRelevantKBFiles(
     // 輔助函式：檢查某個型號是否在 PDF Index 中有對應
     function checkModelInPdfIndex(modelToCheck) {
       return pdfModelIndex.some((m) => {
-        const isMonitor = (m.startsWith("S") || m.startsWith("C") || m.startsWith("F") || m.startsWith("L")) && m.length >= 5;
-        if (isMonitor) {
-          const coreCheck = modelToCheck.replace(/^(?:L?[SCFG])\d{2}/i, "");
-          const coreIndex = m.replace(/^(?:L?[SCFG])\d{2}/i, "");
-          if (coreIndex && coreCheck && (coreIndex.includes(coreCheck) || coreCheck.includes(coreIndex))) {
-            return true;
-          }
-          return m.includes(modelToCheck) || modelToCheck.includes(m);
-        }
-        return m === modelToCheck;
+        return isPdfModelTokenMatch_(m, modelToCheck);
       });
     }
 
@@ -5417,7 +5529,9 @@ function getRelevantKBFiles(
 
     // Tier 1: 精準匹配 (完整型號如 G90XF, G80SD)
     // v29.5.51: Remove limit here, collect ALL candidates first, then Sort & Slice
-    const isTier1 = exactModels.some((model) => fileName.includes(model));
+    const isTier1 = exactModels.some((model) =>
+      pdfFileNameMatchesModelToken_(fileName, model),
+    );
     if (isTier1) {
       tier1.push(file);
       return;
@@ -5431,11 +5545,14 @@ function getRelevantKBFiles(
       const getScore = (f) => {
         const name = f.name.toUpperCase();
         // Priority 1: Primary Model (Detailed)
-        if (primaryModel && name.includes(primaryModel)) return 100;
+        if (primaryModel && pdfFileNameMatchesModelToken_(name, primaryModel)) return 100;
         // Priority 2: Any monitor model in exactModels (weighted by its index in array to prioritize user's explicit query)
         for (let i = 0; i < exactModels.length; i++) {
           const m = exactModels[i];
-          if (m.match(/^(?:L?[SCFG])\d{2}/i) && name.includes(m)) {
+          if (
+            m.match(/^(?:L?[SCFG])\d{2}/i) &&
+            pdfFileNameMatchesModelToken_(name, m)
+          ) {
             return 80 - i;
           }
         }
@@ -5482,7 +5599,7 @@ function getRelevantKBFiles(
   // This solves the S27AG500NC issue where aliases (G5) pulled in a second unrelated PDF.
   if (primaryModel && filesToAttach.length > 1) {
     const firstMatch = filesToAttach.find((f) =>
-      f.name.toUpperCase().includes(primaryModel.toUpperCase()),
+      pdfFileNameMatchesModelToken_(f.name, primaryModel),
     );
     if (firstMatch) {
       writeLog(
@@ -13264,38 +13381,72 @@ function doPost(e) {
     }
 
     if (json.action === "upload_manual_pdf") {
-      const authKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
-      if (!json.secret || json.secret !== authKey) {
+      const props = PropertiesService.getScriptProperties();
+      const authKey = props.getProperty("GEMINI_API_KEY") || "";
+      const uploadToken = props.getProperty("MANUAL_UPLOAD_TOKEN") || "";
+      const uploadTokenExpiresAt = Number(props.getProperty("MANUAL_UPLOAD_TOKEN_EXPIRES_AT") || "0");
+      const isUploadTokenValid =
+        uploadToken &&
+        json.secret === uploadToken &&
+        uploadTokenExpiresAt > Date.now();
+      if (!json.secret || (json.secret !== authKey && !isUploadTokenValid)) {
         return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Unauthorized" }))
           .setMimeType(ContentService.MimeType.JSON);
       }
       
-      const folderId = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
+      const folderId = props.getProperty("DRIVE_FOLDER_ID");
       if (!folderId) {
         return ContentService.createTextOutput(JSON.stringify({ success: false, error: "DRIVE_FOLDER_ID Script Property is not set" }))
           .setMimeType(ContentService.MimeType.JSON);
       }
       
       try {
+        const safeFileName = validateManualPdfFileName_(json.fileName);
         const pdfBytes = Utilities.base64Decode(json.pdfBase64);
-        const blob = Utilities.newBlob(pdfBytes, "application/pdf", json.fileName);
-        let fileId;
-        try {
-          const file = Drive.Files.insert({
-            title: json.fileName,
-            mimeType: "application/pdf",
-            parents: [{ id: folderId }]
-          }, blob);
-          fileId = file.id;
-        } catch (driveErr) {
-          writeLog(`[Webhook PDF] Advanced Drive API 失敗，嘗試使用 DriveApp: ${driveErr.message}`);
-          const folder = DriveApp.getFolderById(folderId);
-          const file = folder.createFile(blob);
-          fileId = file.getId();
+        assertStandardPdfBytes_(pdfBytes);
+        const folder = DriveApp.getFolderById(folderId);
+        const existing = folder.getFilesByName(safeFileName);
+        if (existing.hasNext()) {
+          const file = existing.next();
+          return ContentService.createTextOutput(JSON.stringify({
+            success: true,
+            skipped: true,
+            fileId: file.getId(),
+            fileName: safeFileName,
+            size: file.getSize(),
+          })).setMimeType(ContentService.MimeType.JSON);
         }
-        writeLog(`[Webhook PDF] 成功上傳手冊 PDF: ${json.fileName} (ID: ${fileId})`);
-        return ContentService.createTextOutput(JSON.stringify({ success: true, fileId: fileId }))
-          .setMimeType(ContentService.MimeType.JSON);
+        const blob = Utilities.newBlob(pdfBytes, "application/pdf", safeFileName);
+        try {
+          let fileId;
+          try {
+            const file = Drive.Files.insert({
+              title: safeFileName,
+              mimeType: "application/pdf",
+              parents: [{ id: folderId }]
+            }, blob);
+            fileId = file.id;
+          } catch (driveErr) {
+            writeLog(`[Webhook PDF] Advanced Drive API 失敗，嘗試使用 DriveApp: ${driveErr.message}`);
+            const file = folder.createFile(blob);
+            fileId = file.getId();
+          }
+          writeLog(`[Webhook PDF] 成功上傳手冊 PDF: ${safeFileName} (ID: ${fileId})`);
+          return ContentService.createTextOutput(JSON.stringify({ success: true, fileId: fileId, fileName: safeFileName, source: "drive" }))
+            .setMimeType(ContentService.MimeType.JSON);
+        } catch (driveWriteErr) {
+          writeLog(`[Webhook PDF] Drive 寫入失敗，改用 Gemini Files API: ${safeFileName} - ${driveWriteErr.message}`);
+          const geminiResult = upsertManualPdfToGemini_(safeFileName, pdfBytes);
+          return ContentService.createTextOutput(JSON.stringify({
+            success: true,
+            fileName: safeFileName,
+            source: "gemini_file_api",
+            uri: geminiResult.uri,
+            manualCount: geminiResult.manualCount,
+            pdfModelCount: geminiResult.pdfModelCount,
+            driveError: driveWriteErr.message,
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
       } catch (err) {
         writeLog(`[Webhook PDF Error] 上傳失敗: ${err.message}`);
         return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
@@ -15056,6 +15207,149 @@ function adminUpdatePromptC3(newPrompt) {
     cell: "Prompt!C3",
     length: promptText.length,
     version: (promptText.match(/Prompt v([\d.]+)/) || [])[1] || "unknown",
+  };
+}
+
+function validateManualPdfFileName_(fileName) {
+  const safeName = String(fileName || "").trim();
+  if (!safeName) {
+    throw new Error("fileName is required");
+  }
+  if (!/^[A-Z0-9,]+\.pdf$/i.test(safeName)) {
+    throw new Error("PDF file name must contain only model codes separated by commas");
+  }
+  const modelParts = safeName.replace(/\.pdf$/i, "").split(",");
+  if (
+    modelParts.some(function (part) {
+      return !/^[A-Z]+\d[A-Z0-9]*\d$/.test(part);
+    })
+  ) {
+    throw new Error("Each model code in the PDF file name must end with a number");
+  }
+  return safeName;
+}
+
+function assertStandardPdfBytes_(pdfBytes) {
+  if (!pdfBytes || pdfBytes.length < 5) {
+    throw new Error("PDF payload is empty");
+  }
+  const signature = String.fromCharCode(
+    pdfBytes[0],
+    pdfBytes[1],
+    pdfBytes[2],
+    pdfBytes[3],
+    pdfBytes[4],
+  );
+  if (signature !== "%PDF-") {
+    throw new Error("Payload is not a standard PDF");
+  }
+}
+
+function upsertManualPdfToGemini_(fileName, pdfBytes) {
+  const safeName = validateManualPdfFileName_(fileName);
+  assertStandardPdfBytes_(pdfBytes);
+  const existing = getManualPdfKbList_().filter(function (item) {
+    return item.name === safeName && item.uri;
+  });
+  if (existing.length > 0) {
+    const state = persistManualPdfKbItem_(existing[0]);
+    return {
+      uri: existing[0].uri,
+      skipped: true,
+      manualCount: state.manualCount,
+      pdfModelCount: state.pdfModelCount,
+    };
+  }
+
+  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    throw new Error("缺少 GEMINI_API_KEY，無法上傳到 Gemini Files API");
+  }
+  const blob = Utilities.newBlob(pdfBytes, "application/pdf", safeName);
+  const uri = uploadFileToGemini(apiKey, blob, pdfBytes.length, "application/pdf");
+  if (!uri) {
+    throw new Error("Gemini Files API 上傳失敗");
+  }
+  const item = {
+    name: safeName,
+    uri: uri,
+    mimeType: "application/pdf",
+    source: "manual_file_api",
+  };
+  const state = persistManualPdfKbItem_(item);
+  writeLog(`[ManualPDF] 已補傳至 Gemini Files API: ${safeName}`);
+  return {
+    uri: uri,
+    skipped: false,
+    manualCount: state.manualCount,
+    pdfModelCount: state.pdfModelCount,
+  };
+}
+
+function adminSetManualUploadToken(token, ttlSeconds) {
+  const tokenText = String(token || "").trim();
+  const ttl = Math.min(Math.max(Number(ttlSeconds || 3600), 60), 21600);
+  if (!/^[A-Za-z0-9_-]{24,}$/.test(tokenText)) {
+    throw new Error("Token must be at least 24 URL-safe characters");
+  }
+  const props = PropertiesService.getScriptProperties();
+  const expiresAt = Date.now() + ttl * 1000;
+  props.setProperty("MANUAL_UPLOAD_TOKEN", tokenText);
+  props.setProperty("MANUAL_UPLOAD_TOKEN_EXPIRES_AT", String(expiresAt));
+  return {
+    ok: true,
+    expiresAt: new Date(expiresAt).toISOString(),
+    ttlSeconds: ttl,
+  };
+}
+
+function adminClearManualUploadToken() {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty("MANUAL_UPLOAD_TOKEN");
+  props.deleteProperty("MANUAL_UPLOAD_TOKEN_EXPIRES_AT");
+  return { ok: true };
+}
+
+function adminUploadManualPdfFromBase64(fileName, pdfBase64) {
+  const safeName = validateManualPdfFileName_(fileName);
+  const base64Text = String(pdfBase64 || "").trim();
+  if (!base64Text) {
+    throw new Error("pdfBase64 is required");
+  }
+
+  const folderId =
+    CONFIG.DRIVE_FOLDER_ID ||
+    PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
+  if (!folderId) {
+    throw new Error("DRIVE_FOLDER_ID is not configured");
+  }
+
+  const pdfBytes = Utilities.base64Decode(base64Text);
+  assertStandardPdfBytes_(pdfBytes);
+
+  const folder = DriveApp.getFolderById(folderId);
+  const existing = folder.getFilesByName(safeName);
+  if (existing.hasNext()) {
+    const file = existing.next();
+    return {
+      ok: true,
+      skipped: true,
+      reason: "already_exists",
+      fileName: safeName,
+      fileId: file.getId(),
+      size: file.getSize(),
+    };
+  }
+
+  const blob = Utilities.newBlob(pdfBytes, "application/pdf", safeName);
+  const file = folder.createFile(blob);
+  writeLog(`[AdminUploadManual] Uploaded ${safeName} (${file.getId()})`);
+  return {
+    ok: true,
+    skipped: false,
+    fileName: safeName,
+    fileId: file.getId(),
+    size: file.getSize(),
   };
 }
 

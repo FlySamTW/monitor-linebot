@@ -1,5 +1,83 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.047 / PDF 選檔 token 比對)
+
+### 目的
+- 修正實測 `S32BM80如何恢復出廠` 時，PDF 選檔誤用 substring 導致載入 `S32BM801,S43BM700.pdf`，而不是新補傳的 `S27BM500,S32BM80,...pdf`。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.047`。
+- 新增 PDF 檔名型號 token 比對 helper。
+- `PDF_MODEL_INDEX` 判斷、Tier1 選檔、排序與單檔鎖定統一改用 token 比對。
+
+### 驗證
+- 靜態守門新增 `S32BM80` 不得誤中 `S32BM801`，以及短別稱不得靠 substring 命中 PDF。
+
+## 2026-07-07 (v29.6.046 / 手動補傳 PDF 持久索引)
+
+### 目的
+- 解決 GAS 執行身分可讀 Drive 手冊資料夾但無法新增檔案時，新機 PDF 無法進入 LINEBot 手冊知識庫的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.046`。
+- `upload_manual_pdf` 在 Drive 寫入失敗時改上傳到 Gemini Files API，並持久寫入 `MANUAL_PDF_KB_LIST`。
+- `syncGeminiKnowledgeBase()` 合併手動補傳 PDF 到 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`，避免重建時被 Drive 清單移除。
+- `extractPdfModelIndexFromKbList()` 支援 `S32BM80` 這類尾端兩位數型號。
+
+### 驗證
+- 已將 `三星螢幕使用手冊/new` 中 11 份 Drive 缺檔補傳到 Gemini Files API。
+- `PDF_MODEL_INDEX` 先驗出新模型已進索引，但發現 `S32BM80` 被舊正則漏掉，因此同步修正並新增靜態守門。
+
+## 2026-07-07 (v29.6.043 / 啟用 Execution API)
+
+### 目的
+- 讓後台 `clasp run` 可以設定短效手冊上傳 token，完成大型 PDF 批次補傳流程的正式前置。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.043`。
+- `appsscript.json` 新增 `executionApi.access = MYSELF`。
+
+### 部署驗證
+- 部署後需先用 `clasp run adminSetManualUploadToken` 實測後台函式可執行，再進行 WebApp `upload_manual_pdf` 批次上傳。
+
+## 2026-07-07 (v29.6.042 / 短效手冊上傳 token)
+
+### 目的
+- 解決 `clasp run` 不適合傳大型 PDF base64 的限制，改用短效 token 搭配既有 WebApp 端點批次補傳 `new` 手冊。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.042`。
+- 新增 `adminSetManualUploadToken()` / `adminClearManualUploadToken()`。
+- `upload_manual_pdf` 支援 `MANUAL_UPLOAD_TOKEN`，並補上檔名規則、PDF 檔頭與同名檔案跳過防呆。
+
+### 文件
+- 兩份開發手冊更新短效 token 上傳流程。
+
+## 2026-07-07 (v29.6.041 / 排除 logs 暫存檔上雲)
+
+### 目的
+- 修正 `v29.6.040` 部署時 `clasp push` 誤把 `logs\samsung_support_LS27F612EACXZW.html` 納入 Apps Script HEAD 的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.041`。
+- `.claspignore` 新增 `logs/**`，避免本機查證暫存檔被推送上雲。
+
+### 部署
+- 需要重新推送並更新既有正式 Webhook，讓雲端 HEAD 移除誤追蹤的 logs HTML 檔。
+
+## 2026-07-07 (v29.6.040 / 後台補傳手冊工具)
+
+### 目的
+- 補齊 `三星螢幕使用手冊/new` 中仍未進 Drive 的新機手冊，不再只等待人工拖曳上傳。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.040`。
+- 新增 `adminUploadManualPdfFromBase64()`，供 `clasp run` 以已授權 Apps Script 身分上傳標準 PDF 到既有 Drive 手冊資料夾。
+- 上傳函式會拒絕不合規檔名、尾端仍有英文字尾墜的型號與非 `%PDF-` 標準檔頭；Drive 已有同名檔案時跳過，不重複新增。
+
+### 文件
+- `程式編寫開發及功能手冊.md` 與 `Developer_Manual.md` 補上 PDF 手冊檔名規則與後台上傳工具說明。
+
 ## 2026-07-07 (v29.6.039 / 選型後手冊答案保留型號)
 
 ### 目的

@@ -1016,6 +1016,55 @@ assertStep(
   "alias candidate matching must avoid substring/generic-term pollution while supporting product aliases",
 );
 
+const pdfModelIndexCode = [
+  extractFunction(linebot, "isPdfKbFile"),
+  extractFunction(linebot, "extractPdfModelIndexFromKbList"),
+  `
+  globalThis.__pdfModelIndexResult = extractPdfModelIndexFromKbList([
+    { name: "S27BM500,S32BM80,S32BM702,S32BM703,S32BM801,S43BM700.pdf", mimeType: "application/pdf" },
+    { name: "F22T450,F24T450,F27T450.pdf", mimeType: "application/pdf" },
+    { name: "S49CG954,S49FG916.pdf", mimeType: "application/pdf" }
+  ]);
+  `,
+].join("\n\n");
+const pdfModelIndexContext = {};
+vm.createContext(pdfModelIndexContext);
+vm.runInContext(pdfModelIndexCode, pdfModelIndexContext);
+
+assertStep(
+  ["S32BM80", "F22T450", "F24T450", "F27T450", "S49FG916"].every((model) =>
+    pdfModelIndexContext.__pdfModelIndexResult.includes(model),
+  ),
+  "PDF model index extraction must include two-digit suffix and F-series manual filenames",
+);
+
+const pdfFileMatchCode = [
+  extractFunction(linebot, "normalizePdfModelToken_"),
+  extractFunction(linebot, "getPdfFileModelTokens_"),
+  extractFunction(linebot, "isPdfSalesSuffix_"),
+  extractFunction(linebot, "isPdfModelTokenMatch_"),
+  extractFunction(linebot, "pdfFileNameMatchesModelToken_"),
+  `
+  globalThis.__pdfFileMatchResult = {
+    exactTwoDigit: pdfFileNameMatchesModelToken_("S27BM500,S32BM80,S32BM702.pdf", "S32BM80"),
+    rejectExtraDigit: pdfFileNameMatchesModelToken_("S32BM801,S43BM700.pdf", "S32BM80"),
+    allowSalesSuffix: pdfFileNameMatchesModelToken_("S27FG532.pdf", "S27FG532EC"),
+    rejectShortAlias: pdfFileNameMatchesModelToken_("S27FG532.pdf", "G5")
+  };
+  `,
+].join("\n\n");
+const pdfFileMatchContext = {};
+vm.createContext(pdfFileMatchContext);
+vm.runInContext(pdfFileMatchCode, pdfFileMatchContext);
+
+assertStep(
+  pdfFileMatchContext.__pdfFileMatchResult.exactTwoDigit === true &&
+    pdfFileMatchContext.__pdfFileMatchResult.rejectExtraDigit === false &&
+    pdfFileMatchContext.__pdfFileMatchResult.allowSalesSuffix === true &&
+    pdfFileMatchContext.__pdfFileMatchResult.rejectShortAlias === false,
+  "PDF file matching must use model tokens, reject extra digits, allow sales suffixes, and reject short aliases",
+);
+
 assertStep(
   fs.existsSync(path.join(root, "test_runner", "run_current_test.js")),
   "run_current_test.js must exist as the guarded online TestUI wrapper",

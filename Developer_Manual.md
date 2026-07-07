@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.034)
+# Samsung LINE Bot 完整流程解析 (v29.6.047)
 
 ## 📋 核心哲學
 
@@ -29,7 +29,7 @@
 - `/紀錄` 內容是 Samsung 活動網址時，必須先抓官方頁內容產生 RULE 草稿；即使 Gemini 429，也不可退化成只把網址存進 `CLASS_RULES`。
 - 正式 Gemini 模型必須固定為 `models/gemini-2.5-flash-lite`；不可用 `gemini-flash-lite-latest` 這類會漂移的 alias，以免成本估算失真。
 
-## ✅ 現行鐵律 SOP（v29.6.034）
+## ✅ 現行鐵律 SOP（v29.6.047）
 
 1. **先 QA/規格庫**：讀取 Google Sheet 的 QA、CLASS_RULES 與 `Prompt!C3` 指令。
 2. **再 PDF 手冊**：只有 Fast Mode 不足、使用者明確 `#查手冊`、或型號泡泡選擇後進入手冊模式，才掛載 PDF。
@@ -334,6 +334,10 @@ Google Drive ──────► Gemini File API
 - 多個型號共用同一本手冊時，檔名以半形逗號 `,` 分隔，格式為 `型號本體,型號本體.pdf`，逗號前後不加空白。
 - 檔名只保留型號本體，尾端國家碼、銷售碼或顏色碼英文字尾墜必須移除；例如 `S27FG532EC` 命名為 `S27FG532.pdf`，`S49CG954EC S49FG916EC` 命名為 `S49CG954,S49FG916.pdf`，不可命名成 `S27FG532EC.pdf` 或 `S49CG954EC,S49FG916EC.pdf`。
 - 若第一頁沒有可讀型號，或檔案不是標準 PDF 檔頭，不可直接上傳；必須先另外查證來源或重新下載官方 PDF。
+- 代理人可用 `clasp run adminSetManualUploadToken` 設定短效 `MANUAL_UPLOAD_TOKEN`，再透過既有 WebApp `upload_manual_pdf` 批次補傳大型 PDF；完成後必須執行 `adminClearManualUploadToken`。後台與 WebApp 上傳都會拒絕不合規檔名、非標準 PDF，並在 Drive 已有同名檔案時跳過。
+- 若 GAS 執行身分對 Drive 手冊資料夾只有讀取權、沒有新增檔案權限，`upload_manual_pdf` 會改把 PDF 上傳到 Gemini Files API，並把檔名/URI 寫入 `MANUAL_PDF_KB_LIST`、合併回 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`；之後 `/重啟` 或 `?sync=1` 也會合併這批手動補傳 PDF，不會被 Drive 清單洗掉。
+- `PDF_MODEL_INDEX` 必須支援 `S32BM80` 這類尾端兩位數的 S 系列型號，不可只吃 `Sxx + 英文 + 三位數`。
+- PDF 選檔不得用 `fileName.includes(model)`；必須以檔名中的型號 token 比對，避免 `S32BM80` 誤中 `S32BM801`，也避免 `M8/G5` 這類別稱靠 substring 直接查 PDF。
 
 ### 應用場景
 
@@ -365,6 +369,40 @@ Google Drive ──────► Gemini File API
 ---
 
 ## 📜 版本更新紀錄
+
+### v29.6.047 (2026-07-07)
+
+- **Fix (PDF Selection)**: PDF 選檔改用檔名型號 token 比對，不再用 substring；`S32BM80` 不會誤載 `S32BM801,S43BM700.pdf`。
+- **Guard (Alias Pollution)**: `M8/G5` 等短別稱不再因檔名 substring 被當成精準 PDF 命中。
+- **Test**: `verify_sop_static_guards.js` 新增 PDF 檔名 token 比對守門。
+
+### v29.6.046 (2026-07-07)
+
+- **Fix (Manual PDF Fallback)**: `upload_manual_pdf` 在 Drive 寫入失敗時改走 Gemini Files API，並持久寫入 `MANUAL_PDF_KB_LIST`、`KB_URI_LIST`、`PDF_MODEL_INDEX`。
+- **Fix (Sync Merge)**: 同步流程會合併手動補傳 PDF，避免重建時因 Drive 資料夾沒有該檔案而把新機手冊索引移除。
+- **Fix (PDF Index Regex)**: `extractPdfModelIndexFromKbList()` 支援 `S32BM80` 這類尾端兩位數型號。
+- **Test**: `verify_sop_static_guards.js` 新增 PDF 型號索引守門，覆蓋 `S32BM80`、`F22T450/F24T450/F27T450`、`S49FG916`。
+
+### v29.6.043 (2026-07-07)
+
+- **Ops (Execution API)**: `appsscript.json` 啟用 `executionApi.access = MYSELF`，讓代理人可用 `clasp run adminSetManualUploadToken` 設定短效手冊上傳 token。
+- **Deploy Gate**: 手冊批次補傳前必須先確認 `clasp run` 能執行後台函式；否則 WebApp 端點會因沒有有效 `MANUAL_UPLOAD_TOKEN` 回 `Unauthorized`。
+
+### v29.6.042 (2026-07-07)
+
+- **Ops (Manual Upload Token)**: 新增 `adminSetManualUploadToken()` 與 `adminClearManualUploadToken()`，用 `clasp run` 設定短效手冊上傳 token，避免用命令列傳大型 PDF base64。
+- **Fix (Manual Upload Endpoint)**: `upload_manual_pdf` 支援短效 token、檔名/PDF 檔頭驗證與同名檔案跳過，可用於批次補傳 `new` 資料夾 PDF。
+
+### v29.6.041 (2026-07-07)
+
+- **Fix (Clasp Ignore)**: `.claspignore` 新增 `logs/**`，避免查證暫存 HTML/PDF/JSON 被 `clasp push` 當成 GAS 專案檔推到雲端。
+- **Deploy**: 重新推送並更新既有正式 Webhook，清掉前一版誤追蹤的 `logs\samsung_support_LS27F612EACXZW.html`。
+
+### v29.6.040 (2026-07-07)
+
+- **Ops (Manual Upload)**: 新增 `adminUploadManualPdfFromBase64()`，供 `clasp run` 以已授權 Apps Script 身分把本機標準 PDF 上傳到 Drive 手冊資料夾；不新增匿名 WebApp 上傳入口。
+- **Guard (Manual Filename)**: 後台上傳會拒絕不合規 PDF 檔名、尾端仍有英文字尾墜的型號，以及非 `%PDF-` 標準檔頭。
+- **Goal**: 用於補齊 `三星螢幕使用手冊/new` 中仍未進 Drive 的新機手冊，讓正式 `PDF_MODEL_INDEX` 可重建到新機型。
 
 ### v29.5.283 (2026-06-20)
 
