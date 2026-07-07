@@ -55,6 +55,15 @@ assertStep(localVersion, "linebot.gs must expose GAS_VERSION");
 const doPostSection = extractFunction(linebot, "doPost");
 const doGetSection = extractFunction(linebot, "doGet");
 
+assertStep(
+  /function getDoGetMaintenanceSecret_/.test(doGetSection) &&
+    /function isDoGetMaintenanceAuthorized_/.test(doGetSection) &&
+    /function doGetUnauthorized_/.test(doGetSection) &&
+    /OPENCODE_WRITE_SECRET/.test(doGetSection) &&
+    /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(doGetSection),
+  "doGet maintenance helpers must require a real secret before sensitive operations",
+);
+
 const productionGeminiModels = [
   "GEMINI_MODEL_FAST",
   "GEMINI_MODEL_THINK",
@@ -193,9 +202,8 @@ assertStep(testModelsEnd > testModelsStart, "doGet testModels branch end not fou
 const testModelsSection = doGetSection.slice(testModelsStart, testModelsEnd);
 
 assertStep(
-  /OPENCODE_WRITE_SECRET/.test(testModelsSection) &&
-    /providedSecret/.test(testModelsSection) &&
-    /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(testModelsSection),
+  /isDoGetMaintenanceAuthorized_\(\)/.test(testModelsSection) &&
+    /doGetUnauthorized_\(\)/.test(testModelsSection),
   "doGet testModels must require a secret before making any LLM calls",
 );
 
@@ -206,6 +214,32 @@ assertStep(
     !/models\/gemini-(?!2\.5-flash-lite)/i.test(stripNonExecutableComments(testModelsSection)) &&
     !/gemini-[^"']*(latest|exp)/i.test(stripNonExecutableComments(testModelsSection)),
   "doGet testModels must only test the pinned production Flash Lite model constants",
+);
+
+const batchTestStart = doGetSection.indexOf('e.parameter.batchTest === "1"');
+const batchTestEnd = doGetSection.indexOf("v29.6.010: 讀取 CLASS_RULES", batchTestStart);
+assertStep(batchTestStart >= 0, "doGet batchTest branch not found");
+assertStep(batchTestEnd > batchTestStart, "doGet batchTest branch end not found");
+const batchTestSection = doGetSection.slice(batchTestStart, batchTestEnd);
+
+assertStep(
+  /isDoGetMaintenanceAuthorized_\(\)/.test(batchTestSection) &&
+    /doGetUnauthorized_\(\)/.test(batchTestSection) &&
+    /callLLMWithRetry/.test(batchTestSection),
+  "doGet batchTest must require a secret before running multiple LLM calls",
+);
+
+const testRunStart = doGetSection.indexOf('e.parameter.testRun === "1"');
+const testRunEnd = doGetSection.indexOf("v29.6.005: 從「所有紀錄」Sheet", testRunStart);
+assertStep(testRunStart >= 0, "doGet testRun branch not found");
+assertStep(testRunEnd > testRunStart, "doGet testRun branch end not found");
+const testRunSection = doGetSection.slice(testRunStart, testRunEnd);
+
+assertStep(
+  /isDoGetMaintenanceAuthorized_\(\)/.test(testRunSection) &&
+    /doGetUnauthorized_\(\)/.test(testRunSection) &&
+    /handleMessage\(fakeEvent\)/.test(testRunSection),
+  "doGet testRun must require a secret before running the full LINEBot LLM flow",
 );
 
 const postWriteRulesStart = doPostSection.indexOf('json.action === "write_rules"');

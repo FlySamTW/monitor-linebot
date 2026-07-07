@@ -1,5 +1,19 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.036 / LLM 測試入口授權補強)
+
+### 目的
+- 補上公開 doGet 維護測試入口的授權防線，避免 URL 被誤觸或掃描時自動消耗 LLM 配額。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.036`。
+- `batchTest=1` 批次測試入口改為需密鑰後才會跑 10 題 LLM。
+- `testRun=1` 真實流程測試入口改為需密鑰後才會走完整 `handleMessage`。
+- `writeRules=1`、`testModels=1` 改用同一組 doGet 維護授權 helper，移除無密鑰時的測試 fallback。
+
+### 測試
+- `verify_sop_static_guards.js` 新增 `batchTest`、`testRun`、doGet 維護授權 helper 守門。
+
 ## 2026-07-07 (v29.6.035 / LLM 成本守門補強)
 
 ### 目的

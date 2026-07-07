@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.035"; // 2026-07-07 LLM成本守門補強
-const BUILD_TIMESTAMP = "2026-07-07 16:30";
+const GAS_VERSION = "v29.6.036"; // 2026-07-07 LLM測試入口授權補強
+const BUILD_TIMESTAMP = "2026-07-07 16:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -13778,6 +13778,29 @@ function doGet(e) {
   // 確保觸發器存在
   ensureSyncTriggerExists();
 
+  function getDoGetMaintenanceSecret_() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET") ||
+      PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") ||
+      ""
+    );
+  }
+
+  function isDoGetMaintenanceAuthorized_() {
+    const expectedSecret = getDoGetMaintenanceSecret_();
+    const providedSecret = String((e && e.parameter && e.parameter.secret) || "");
+    return !!expectedSecret && providedSecret === expectedSecret;
+  }
+
+  function doGetUnauthorized_() {
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        success: false,
+        error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY",
+      }),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // 若有 test 參數，顯示 TestUI
   if (e && e.parameter && e.parameter.test === "1") {
     return HtmlService.createTemplateFromFile("TestUI")
@@ -13833,13 +13856,8 @@ function doGet(e) {
 
   // v29.6.018: 批次寫入 CLASS_RULES (opencode 專用, GET via query string)
   if (e && e.parameter && e.parameter.writeRules === "1") {
-    const authKey = PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET")
-      || PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY")
-      || "testtesttest"; // 預設 fallback (僅測試用)
-    if (!e.parameter.secret || e.parameter.secret !== authKey) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: false, error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY" }),
-      ).setMimeType(ContentService.MimeType.JSON);
+    if (!isDoGetMaintenanceAuthorized_()) {
+      return doGetUnauthorized_();
     }
     try {
       // GET: rules 透過 query string ?rules=URLENCODE(JSON)
@@ -13900,18 +13918,8 @@ function doGet(e) {
   // v29.6.008: 測試多個 Gemini 模型的可用性
   if (e && e.parameter && e.parameter.testModels === "1") {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-    const expectedSecret =
-      PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET") ||
-      apiKey ||
-      "";
-    const providedSecret = String(e.parameter.secret || "");
-    if (!expectedSecret || providedSecret !== expectedSecret) {
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: false,
-          error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY",
-        }),
-      ).setMimeType(ContentService.MimeType.JSON);
+    if (!isDoGetMaintenanceAuthorized_()) {
+      return doGetUnauthorized_();
     }
 
     const candidates = [
@@ -13946,6 +13954,9 @@ function doGet(e) {
 
   // v29.6.021: 批次自動化測試, 一次跑多題 + 回傳 AI 答案
   if (e && e.parameter && e.parameter.batchTest === "1") {
+    if (!isDoGetMaintenanceAuthorized_()) {
+      return doGetUnauthorized_();
+    }
     const questions = [
       "G80HF 5K 180Hz 規格",
       "Odyssey3D G90XF 裸視3D電競螢幕 規格",
@@ -14048,6 +14059,9 @@ function doGet(e) {
 
   // v29.6.024: 真實 webhook 測試, 走 handleMessage 完整流程
   if (e && e.parameter && e.parameter.testRun === "1") {
+    if (!isDoGetMaintenanceAuthorized_()) {
+      return doGetUnauthorized_();
+    }
     const q = String(e.parameter.q || "S27BM500 多少吋?");
     const uid = String(e.parameter.uid || "TEST_OPENCODE_001");
     IS_TEST_MODE = true;
