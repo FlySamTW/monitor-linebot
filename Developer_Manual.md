@@ -328,6 +328,13 @@ Google Drive ──────► Gemini File API
 | `PDF_MODEL_INDEX`   | Drive PDF 手冊檔名 | ScriptProperties | 記錄 Drive 中有專屬 PDF 手冊的型號清單 |
 | `KB_URI_LIST`       | Gemini File API URI | ScriptProperties | 記錄可直接掛載到 LLM 的 PDF URI |
 
+### PDF 手冊檔名規則
+
+- 上傳到 Drive 或放入 `三星螢幕使用手冊/new` 的 PDF，檔名必須依「PDF 第一頁實際顯示的所有型號」命名，不可依 Samsung 原始下載檔名或人工猜測命名。
+- 多個型號共用同一本手冊時，檔名以半形逗號 `,` 分隔，格式為 `型號本體,型號本體.pdf`，逗號前後不加空白。
+- 檔名只保留型號本體，尾端國家碼、銷售碼或顏色碼英文字尾墜必須移除；例如 `S27FG532EC` 命名為 `S27FG532.pdf`，`S49CG954EC S49FG916EC` 命名為 `S49CG954,S49FG916.pdf`，不可命名成 `S27FG532EC.pdf` 或 `S49CG954EC,S49FG916EC.pdf`。
+- 若第一頁沒有可讀型號，或檔案不是標準 PDF 檔頭，不可直接上傳；必須先另外查證來源或重新下載官方 PDF。
+
 ### 應用場景
 
 1. **避免載入錯誤 PDF**：
@@ -1001,7 +1008,7 @@ Google Drive ──────► Gemini File API
 
 ### v29.6.024 (2026-07-01)
 - 三星官網手冊自動化抓取：
-  - 新增本地 Python 爬蟲腳本 `download_manuals_locally.py`，全自動掃描缺失手冊的型號，下載其官方說明書並依專案規格命名（如 `S27AG500,S28AG700,S32AG500PC,S49AG950.pdf`）存入 `三星螢幕使用手冊`。
+  - 新增本地 Python 爬蟲腳本 `download_manuals_locally.py`，全自動掃描缺失手冊的型號，下載其官方說明書並依專案規格命名（如 `S27AG500,S28AG700,S32AG500,S49AG950.pdf`，尾端國家碼/銷售碼英文字不入檔名）存入 `三星螢幕使用手冊`。
   - 將曾用於繞過 API 權限測試的 `TEMP_BYPASS` 密鑰及 `?downloadManual=1` GET 端點完全刪除，恢復生產環境的 100% 封閉與安全防護。
 
 ### v29.6.025 (2026-07-02)
