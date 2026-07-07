@@ -1,5 +1,19 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.035 / LLM 成本守門補強)
+
+### 目的
+- 全面檢查正式 GAS 程式中仍可能繞過低成本模型常數、誤用舊模型、實驗模型或 latest alias 的 LLM 呼叫路徑。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.035`。
+- 長文去廣告摘要路徑改用 `CONFIG.MODEL_NAME_FAST`，不再硬寫 `models/gemini-2.0-flash`。
+- 話題延續判斷路徑改用 `CONFIG.MODEL_NAME_FAST`，不再硬寫 `models/gemini-2.0-flash-exp`。
+- `?testModels=1` 維護端點改為必須提供密鑰，且只測 Fast / Think / Polish 三個正式模型常數；移除 `2.5-flash`、`3.x` 與 `latest` 候選。
+
+### 測試
+- `verify_sop_static_guards.js` 新增可執行程式模型掃描，禁止高成本 Gemini 模型、`latest` alias、`exp` alias 與硬寫模型 URL 回到正式 GAS 程式。
+
 ## 2026-07-07 (v29.6.034 / QA 來源推斷)
 
 ### 目的

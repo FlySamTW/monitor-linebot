@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.034"; // 2026-07-07 補強QA來源推斷
-const BUILD_TIMESTAMP = "2026-07-07 16:15";
+const GAS_VERSION = "v29.6.035"; // 2026-07-07 LLM成本守門補強
+const BUILD_TIMESTAMP = "2026-07-07 16:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -444,19 +444,18 @@ function getElaborationTopicAnchor_(cache, userId, fallbackText) {
  *   └─ 邏輯：直接刪除舊的 QA Row，並將當前新草稿寫入為全新的一筆，避免合併產生的語意混亂。
  *
  * ════════════════════════════════════════════════════════════════
- * 🔧 模型設定 (未來升級請只改這裡 - 第 271-281 行)
+ * 🔧 現行模型設定 (未來升級請只改檔案最上方模型常數)
  * ════════════════════════════════════════════════════════════════
  *
- * 【一般對話】models/gemini-2.0-flash - 穩定可靠 (Input $0.10/M, Output $0.40/M)
- * 【深度思考】models/gemini-2.0-flash - 相同模型，穩定優先
+ * 【一般對話】GEMINI_MODEL_FAST = models/gemini-2.5-flash-lite
+ * 【深度閱讀】GEMINI_MODEL_THINK = models/gemini-2.5-flash-lite
+ * 【QA/RULE整理】GEMINI_MODEL_POLISH = models/gemini-2.5-flash-lite
  *
  * ⚠️ 重要警告：模型名稱必須是 Google 官方存在的名稱！
- * ⚠️ 使用不存在的名稱可能導致 API 靜默 fallback 到更貴的模型！
- * ⚠️ 參考文件：https://ai.google.dev/gemini-api/docs/models/gemini
+ * ⚠️ 不可使用 latest / exp alias，也不可在主流程硬寫模型 URL。
+ * ⚠️ 變更模型前必須重查官方模型與價格文件，並同步更新 PRICE_* 常數。
  *
- * - gemini-2.0-flash: Input $0.10/1M, Output $0.40/1M (穩定、便宜)
- * - gemini-2.5-flash: Input $0.30/1M, Output $2.50/1M (太貴！GA 版大幅漲價)
- * - gemini-2.5-flash-lite: Input $0.10/1M, Output $0.40/1M (便宜替代方案)
+ * 歷史版本註解中若出現舊模型名稱，僅作事故追蹤；現行 runtime 以最上方常數為準。
  *
  * ════════════════════════════════════════════════════════════════
  * 💸 成本事件記錄 (2025/12/06)
@@ -7019,7 +7018,7 @@ function handleMessage(event) {
           "【去廣告原文】\n(重整後內容)\n\n" +
           `[使用者貼上的原文]\n${msg}`;
 
-        const modelName = "models/gemini-2.0-flash";
+        const modelName = CONFIG.MODEL_NAME_FAST;
         const payload = {
           contents: [
             {
@@ -9322,7 +9321,7 @@ function handleMessage(event) {
                       )}」\n當前用戶訊息：「${msg}」\n\n請判斷：用戶是在「繼續上一個話題（表示未解決或追問）」還是「換了新話題」？\n只回答：SAME（同一話題）或 NEW（新話題）`;
 
                       const topicCheckResponse = UrlFetchApp.fetch(
-                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+                        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
                         {
                           method: "post",
                           contentType: "application/json",
@@ -13896,23 +13895,33 @@ function doGet(e) {
 
   // v29.6.020: 移除測試端點 (setSecret, listProps) - 改用 GAS Properties UI 管理
   // ?writeRules (doGet 端) 仍保留 (若需要快速寫入可使用)
-  // ?testModels 保留 (故障排除用)
+  // ?testModels 保留 (故障排除用；需密鑰，且只測正式低成本模型)
 
   // v29.6.008: 測試多個 Gemini 模型的可用性
   if (e && e.parameter && e.parameter.testModels === "1") {
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const expectedSecret =
+      PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET") ||
+      apiKey ||
+      "";
+    const providedSecret = String(e.parameter.secret || "");
+    if (!expectedSecret || providedSecret !== expectedSecret) {
+      return ContentService.createTextOutput(
+        JSON.stringify({
+          success: false,
+          error: "Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY",
+        }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const candidates = [
-      "models/gemini-2.0-flash",
-      "models/gemini-2.0-flash-lite",
-      "models/gemini-2.5-flash",
-      "models/gemini-2.5-flash-lite",
-      "models/gemini-3.5-flash",
-      "models/gemini-flash-latest",
-      "models/gemini-flash-lite-latest",
-    ];
+      CONFIG.MODEL_NAME_FAST,
+      CONFIG.MODEL_NAME_THINK,
+      GEMINI_MODEL_POLISH,
+    ].filter((modelName, index, list) => modelName && list.indexOf(modelName) === index);
     const results = [];
     for (const modelName of candidates) {
-      const url = "https://generativelanguage.googleapis.com/v1beta/" + modelName + ":generateContent?key=" + apiKey;
+      const url = CONFIG.API_ENDPOINT + "/" + modelName + ":generateContent?key=" + apiKey;
       try {
         const response = UrlFetchApp.fetch(url, {
           method: "post",
@@ -13931,7 +13940,7 @@ function doGet(e) {
       }
     }
     return ContentService.createTextOutput(
-      JSON.stringify(result),
+      JSON.stringify({ success: true, results: results }),
     ).setMimeType(ContentService.MimeType.JSON);
   }
 

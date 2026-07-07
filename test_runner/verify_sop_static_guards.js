@@ -31,6 +31,12 @@ function extractFunction(source, functionName) {
   throw new Error(`${functionName} closing brace not found`);
 }
 
+function stripNonExecutableComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 const linebot = read("linebot.gs");
 const deployBat = read("deploy.bat");
 const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
@@ -68,6 +74,23 @@ for (const constantName of productionGeminiModels) {
 assertStep(
   !/const\s+GEMINI_MODEL_(FAST|THINK|POLISH)\s*=\s*"[^"]*latest"/.test(linebot),
   "production Gemini model constants must not use latest aliases",
+);
+
+const executableLinebot = stripNonExecutableComments(linebot);
+
+assertStep(
+  !/["']models\/gemini-(?!2\.5-flash-lite["'])[^"']+["']/i.test(executableLinebot),
+  "executable GAS code must not hard-code Gemini models other than models/gemini-2.5-flash-lite",
+);
+
+assertStep(
+  !/gemini-[^"']*(latest|exp)/i.test(executableLinebot),
+  "executable GAS code must not use Gemini latest or experimental aliases",
+);
+
+assertStep(
+  !/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-/i.test(executableLinebot),
+  "Gemini generateContent URLs must use CONFIG model constants instead of hard-coded model paths",
 );
 
 const campaignRuleGuardCode = [
@@ -146,6 +169,28 @@ assertStep(
 assertStep(
   !/JSON\.stringify\(results\)/.test(doPostSection + doGetSection),
   "maintenance webhook endpoints must not stringify undefined results objects",
+);
+
+const testModelsStart = doGetSection.indexOf('e.parameter.testModels === "1"');
+const testModelsEnd = doGetSection.indexOf("v29.6.021: 批次自動化測試", testModelsStart);
+assertStep(testModelsStart >= 0, "doGet testModels branch not found");
+assertStep(testModelsEnd > testModelsStart, "doGet testModels branch end not found");
+const testModelsSection = doGetSection.slice(testModelsStart, testModelsEnd);
+
+assertStep(
+  /OPENCODE_WRITE_SECRET/.test(testModelsSection) &&
+    /providedSecret/.test(testModelsSection) &&
+    /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(testModelsSection),
+  "doGet testModels must require a secret before making any LLM calls",
+);
+
+assertStep(
+  /CONFIG\.MODEL_NAME_FAST/.test(testModelsSection) &&
+    /CONFIG\.MODEL_NAME_THINK/.test(testModelsSection) &&
+    /GEMINI_MODEL_POLISH/.test(testModelsSection) &&
+    !/models\/gemini-(?!2\.5-flash-lite)/i.test(stripNonExecutableComments(testModelsSection)) &&
+    !/gemini-[^"']*(latest|exp)/i.test(stripNonExecutableComments(testModelsSection)),
+  "doGet testModels must only test the pinned production Flash Lite model constants",
 );
 
 const postWriteRulesStart = doPostSection.indexOf('json.action === "write_rules"');
