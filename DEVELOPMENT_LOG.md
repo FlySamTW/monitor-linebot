@@ -1,5 +1,82 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.054 / Smart HEVC 禁止推測格式)
+
+### 目的
+- 修正 PDF 查證答案雖答出 HEVC 支援，卻使用「通常／常見」推測檔案封裝格式的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.054`。
+- Smart Monitor HEVC PDF 查證提示要求搜尋手冊是否有「HEVC 編解碼器僅適用於 MKV / MP4 / TS 檔案類型」限制；禁止使用「通常」「常見」「應該」等推測語。
+
+### 驗證
+- `verify_smart_codec_guard.js` 若選型後 PDF 答案含推測語即失敗。
+
+## 2026-07-07 (v29.6.053 / Smart HEVC PDF 查表提示)
+
+### 目的
+- 修正選型後雖已掛載正確 Smart Monitor PDF，但 LLM 仍回答「手冊未明確記載」的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.053`。
+- Smart Monitor codec 題選型後的 PDF 查詢明確要求查「支援的視訊編解碼器」表格與 HEVC/H.265 注意事項；只有找不到 HEVC/H.265 記載時才可回答未記載。
+
+### 驗證
+- `verify_smart_codec_guard.js` 要求 `#型號:S32FM703` 後必須回答 HEVC 支援結果、保留 PDF 來源與費用，不能再以「未記載」通過。
+
+## 2026-07-07 (v29.6.052 / Smart 選型後鎖 PDF 型號)
+
+### 目的
+- 修正 Smart Monitor HEVC 題點選型號後，PDF 查詢仍帶「Smart系列」廣義詞，導致 LOG 候選型號混入 Odyssey/G90XF/S27FG900XC 的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.052`。
+- `#型號:` PDF 路徑若 pending topic 是 Smart Monitor codec 題，會把查詢改寫成指定型號的 HEVC/H.265 PDF 問題，不再沿用原始廣義 Smart 系列字串。
+
+### 驗證
+- `verify_smart_codec_guard.js` 新增選型後查詢清洗檢查，並要求 LOG 不得出現 G90XF/S27FG900XC。
+
+## 2026-07-07 (v29.6.051 / TestUI 文字+Flex 預覽)
+
+### 目的
+- 修正 TestUI 在混合 `text + Flex` 回覆時，只顯示 `[Flex Message]`，導致來源與費用文字看起來消失。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.051`。
+- `replyMessage()` 測試模式預覽支援 `{type:"text", text:"..."}` 物件，確保 TestUI 顯示與正式 LINE 回覆一致。
+
+### 驗證
+- 靜態守門新增 TestUI 文字物件預覽檢查。
+
+## 2026-07-07 (v29.6.050 / 移除 Smart HEVC 固定答案)
+
+### 目的
+- 修正 v29.6.049 仍保留 Smart Monitor HEVC 固定摘要的錯誤做法；這不符合「選型號 → 掛 PDF → 由 LLM 依 PDF 回答」鐵律。
+- 補回每次可見回覆都必須有來源與費用的要求。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.050`。
+- 刪除 `buildSmartMonitorCodecManualReply` 固定答案函式。
+- Smart Monitor／M 系列 HEVC 題首答與 `#查手冊` 只顯示型號選擇泡泡，不先定論支援與限制。
+- 未呼叫 LLM 的選型提示補 `[來源:專案流程規則]` 與 `[費用:NT$0.0000（未呼叫 LLM）]`。
+
+### 驗證
+- 靜態守門禁止程式內再出現固定 HEVC 答案。
+- `verify_smart_codec_guard.js` 要求前兩回合只顯示選型提示，第三回合點 `#型號:S32FM703` 後才進 PDF 查證，且最終回答需有 PDF 來源與費用。
+
+## 2026-07-07 (v29.6.049 / Smart Monitor HEVC PDF 型號選擇)
+
+### 目的
+- 修正 v29.6.048 雖然改用官方手冊摘要，但仍把「要查哪一台」丟回使用者手打型號的 UX 缺口。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.049`。
+- Smart Monitor／M 系列 HEVC、H.265、播放檔案格式題首答改為「手冊共通摘要 + Smart Monitor PDF 型號選擇泡泡」。
+- `#查手冊` 對同類問題直接顯示可查 PDF 的 Smart Monitor 型號選擇，點選後沿用既有 `#型號:` PDF 查證流程。
+
+### 驗證
+- `verify_smart_codec_guard.js` 擴充為三回合，會繼續送 `#型號:S32FM703`，確認真的掛載 `S32FM702,S32FM703,S32FM803.pdf`，不是停在型號選擇。
+
 ## 2026-07-07 (v29.6.048 / Smart Monitor HEVC 手冊守門)
 
 ### 目的

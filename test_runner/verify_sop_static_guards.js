@@ -1019,13 +1019,11 @@ assertStep(
 const smartCodecGuardCode = [
   extractFunction(linebot, "isMediaCodecSupportQuery"),
   extractFunction(linebot, "isSmartMonitorCodecQuestion"),
-  extractFunction(linebot, "buildSmartMonitorCodecManualReply"),
   `
   globalThis.__smartCodecGuardResult = {
     smartSeriesHevc: isSmartMonitorCodecQuestion("Smart系列播放檔案有沒有支援hevc格式"),
     m7Hevc: isSmartMonitorCodecQuestion("M7 支援 H.265 影片檔嗎"),
-    odysseyOnly: isSmartMonitorCodecQuestion("Odyssey 3D 支援 HEVC 嗎"),
-    reply: buildSmartMonitorCodecManualReply("Smart系列播放檔案有沒有支援hevc格式")
+    odysseyOnly: isSmartMonitorCodecQuestion("Odyssey 3D 支援 HEVC 嗎")
   };
   `,
 ].join("\n\n");
@@ -1041,16 +1039,34 @@ assertStep(
 );
 
 assertStep(
-  /HEVC/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
-    /MKV/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
-    /S32FM702,S32FM703,S32FM803\.pdf/.test(smartCodecGuardContext.__smartCodecGuardResult.reply) &&
-    !/通常/.test(smartCodecGuardContext.__smartCodecGuardResult.reply),
-  "Smart Monitor codec reply must cite official manuals and avoid vague LLM-style claims",
+  !/所以可支援 HEVC 影片播放/.test(linebot) &&
+    !/buildSmartMonitorCodecManualReply/.test(linebot),
+  "Smart Monitor codec guard must not contain a fixed HEVC answer before exact PDF search",
 );
 
 assertStep(
-  /\[Smart Codec Guard v29\.6\.048\].*#查手冊/.test(linebot),
-  "#查手冊 must route Smart Monitor codec questions to the fixed manual-backed answer before PDF selection",
+  /function getSmartMonitorCodecSelectionModels/.test(linebot) &&
+    /function buildSmartMonitorCodecSelectionPayload/.test(linebot) &&
+    /S32FM703/.test(extractFunction(linebot, "getSmartMonitorCodecSelectionModels")) &&
+    /createModelSelectionFlexV3/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
+    /\[來源:專案流程規則\]/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
+    /\[費用:NT\$0\.0000/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")),
+  "Smart Monitor codec guard must provide model-selection bubbles with source and zero-cost disclosure",
+);
+
+assertStep(
+  /\[Smart Codec Guard v29\.6\.054\].*#查手冊 顯示 Smart Monitor PDF 型號選擇/.test(linebot),
+  "#查手冊 must route Smart Monitor codec questions to model choices before exact PDF search",
+);
+
+assertStep(
+  /isSmartMonitorCodecQuestion\(savedTopic\)[\s\S]{0,520}支援的視訊編解碼器[\s\S]{0,360}HEVC 編解碼器僅適用於 MKV \/ MP4 \/ TS[\s\S]{0,180}禁止使用/.test(linebot),
+  "selected Smart Monitor codec model must use a cleaned exact-model PDF query with no speculative file-format claims",
+);
+
+assertStep(
+  /t\.type === "text"[\s\S]{0,120}return String\(t\.text \|\| ""\)/.test(linebot),
+  "TestUI reply preview must display text objects in mixed text+Flex replies",
 );
 
 const pdfModelIndexCode = [

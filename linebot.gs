@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.048"; // 2026-07-07 Smart Monitor HEVC 手冊守門
-const BUILD_TIMESTAMP = "2026-07-07 19:08";
+const GAS_VERSION = "v29.6.054"; // 2026-07-07 Smart HEVC 禁止推測格式
+const BUILD_TIMESTAMP = "2026-07-07 20:34";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2551,37 +2551,54 @@ function isSmartMonitorCodecQuestion(text) {
   return /(SMART\s*MONITOR|SMART系列|SMART\s*系列|智慧螢幕|智慧顯示器|SMART\s*螢幕|M5|M7|M8|M9|M50|M70|M80|M90|S27AM|S32AM|S27BM|S32BM|S43BM|S32CM|S32DM|S32FM|S43DM|S43FM)/i.test(q);
 }
 
-function buildSmartMonitorCodecManualReply(text) {
-  if (!isSmartMonitorCodecQuestion(text)) {
-    return "";
-  }
-  return [
-    "如果你指的是 Smart Monitor／M 系列，官方手冊的「支援的視訊編解碼器」有列 HEVC（H.265 - Main、Main10），所以可支援 HEVC 影片播放。",
-    "",
-    "但「Smart 系列」不能直接概括到所有內建 Smart 功能的電競螢幕；不同型號、不同世代的解析度、影格率、位元率與 Level 上限會不同。",
-    "",
-    "共通限制是：HEVC 編解碼器僅適用於 MKV／MP4／TS 檔案類型。檔案若超過手冊列的相容規格，或使用不支援的編解碼器，可能無法播放或播放不順。",
-    "",
-    "若要確認某一台的精確上限，請提供完整型號，例如 S32FM703、S32BM80、S32AM700。",
-    "",
-    "[來源: S27AM500,S32AM500,S32AM700,S32AM703.pdf／S32BM80.pdf／S32FM702,S32FM703,S32FM803.pdf 官方手冊]",
-  ].join("\n");
+function getSmartMonitorCodecSelectionModels(limit = 10) {
+  const preferredModels = [
+    "S32FM803",
+    "S32FM703",
+    "S32FM702",
+    "S32BM80",
+    "S32AM703",
+    "S32AM700",
+    "S32AM500",
+    "S27AM500",
+  ];
+  const covered = preferredModels.filter((model) =>
+    isModelCoveredByExistingPdf(model),
+  );
+  return dedupDisplayModels(covered.length > 0 ? covered : preferredModels, limit);
 }
 
-function buildSmartMonitorCodecQuickReplyOptions() {
+function buildSmartMonitorCodecSelectionPayload(query, userId) {
+  const models = getSmartMonitorCodecSelectionModels(10);
+  const leadText = [
+    "這題需要查對應型號的官方 PDF 手冊，不能只用 Smart/Tizen 規格或共通摘要直接定論。",
+    "",
+    "下面是目前已建索引、可用來查 Smart Monitor 影音格式細節的官方手冊型號；請點你要查的型號，我會掛載該型號 PDF 後再回答。",
+    "",
+    "[來源:專案流程規則]",
+    "[費用:NT$0.0000（未呼叫 LLM）]",
+  ].join("\n");
+
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.put(`${userId}:suggested_models`, JSON.stringify(models), 300);
+    cache.put(`${userId}:pending_topic`, String(query || ""), 600);
+    cache.put(`${userId}:model_select_mode`, "pdf", 600);
+  } catch (e) {
+    writeLog(`[Smart Codec Selection] 型號選擇快取寫入失敗: ${e.message}`);
+  }
+
+  const flexMsg = createModelSelectionFlexV3(models, {
+    headerText: "🔍 Smart Monitor PDF 型號",
+    altText: "請選擇 Smart Monitor PDF 型號",
+    footerText: "點選型號後會載入對應官方手冊",
+  });
+  const messages = [{ type: "text", text: leadText }, flexMsg];
+
   return {
-    quickReply: {
-      items: [
-        {
-          type: "action",
-          action: {
-            type: "message",
-            label: "🌐 這題再搜網路",
-            text: "#這題再搜網路",
-          },
-        },
-      ],
-    },
+    messages,
+    assistantRecord: leadText,
+    models,
   };
 }
 
@@ -7043,18 +7060,20 @@ function handleMessage(event) {
       return;
     }
 
-    const smartCodecReply = buildSmartMonitorCodecManualReply(msg);
-    if (!msg.startsWith("#") && smartCodecReply) {
-      writeLog(`[Smart Codec Guard v29.6.048] 以 Smart Monitor 官方手冊固定回覆，避免 Fast Mode 泛答: ${msg.substring(0, 80)}`);
-      replyMessage(replyToken, smartCodecReply, buildSmartMonitorCodecQuickReplyOptions());
+    if (!msg.startsWith("#") && isSmartMonitorCodecQuestion(msg)) {
+      const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(msg, userId);
+      writeLog(
+        `[Smart Codec Guard v29.6.054] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+      );
+      replyMessage(replyToken, smartCodecPayload.messages);
       writeRecordDirectly(userId, msg, contextId, "user", "");
-      writeRecordDirectly(userId, smartCodecReply, contextId, "assistant", "");
+      writeRecordDirectly(userId, smartCodecPayload.assistantRecord, contextId, "assistant", "");
       const smartCodecHistory = getHistoryFromCacheOrSheet(contextId);
       updateHistorySheetAndCache(
         contextId,
         smartCodecHistory,
         { role: "user", content: msg },
-        { role: "assistant", content: smartCodecReply },
+        { role: "assistant", content: smartCodecPayload.assistantRecord },
       );
       return;
     }
@@ -7632,9 +7651,11 @@ function handleMessage(event) {
           }
         }
 
-        const queryText = savedTopic
-          ? `${savedTopic} (型號: ${selectedModel})`
-          : selectedModel;
+        const queryText = isSmartMonitorCodecQuestion(savedTopic)
+          ? `請查官方手冊「支援的視訊編解碼器」表格與 HEVC/H.265 相關注意事項：${selectedModel} 播放檔案是否支援 HEVC/H.265 格式？如果表格列有 HEVC（H.265 - Main、Main10）就回答支援。請同時搜尋手冊是否有「HEVC 編解碼器僅適用於 MKV / MP4 / TS 檔案類型」這類限制；若有就列出 MKV/MP4/TS，若沒有就明確說手冊未列出檔案類型限制。禁止使用「通常」「常見」「應該」等推測語。只有找不到 HEVC/H.265 記載時才回答手冊未記載。 (型號: ${selectedModel})`
+          : savedTopic
+            ? `${savedTopic} (型號: ${selectedModel})`
+            : selectedModel;
 
         showLoadingAnimation(userId, 60);
         writeLog(
@@ -7819,18 +7840,20 @@ function handleMessage(event) {
         return;
       }
 
-      const smartCodecManualReply = buildSmartMonitorCodecManualReply(lastQuestion);
-      if (smartCodecManualReply) {
-        writeLog(`[Smart Codec Guard v29.6.048] #查手冊 改用 Smart Monitor 官方手冊固定回覆，避免歷史型號污染: ${lastQuestion.substring(0, 80)}`);
-        replyMessage(replyToken, smartCodecManualReply, buildSmartMonitorCodecQuickReplyOptions());
+      if (isSmartMonitorCodecQuestion(lastQuestion)) {
+        const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
+        writeLog(
+          `[Smart Codec Guard v29.6.054] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+        );
+        replyMessage(replyToken, smartCodecPayload.messages);
         updateHistorySheetAndCache(
           contextId,
           history,
           { role: "user", content: lastQuestion },
-          { role: "assistant", content: smartCodecManualReply },
+          { role: "assistant", content: smartCodecPayload.assistantRecord },
         );
         writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, smartCodecManualReply, contextId, "assistant", "");
+        writeRecordDirectly(userId, smartCodecPayload.assistantRecord, contextId, "assistant", "");
         return;
       }
 
@@ -13677,6 +13700,9 @@ function replyMessage(tk, txt, options = {}) {
         preview = txt
           .map((t) => {
             if (typeof t === "string") return t;
+            if (t && typeof t === "object" && t.type === "text") {
+              return String(t.text || "");
+            }
             if (t && typeof t === "object")
               return t.altText || "[Flex Message]";
             return String(t || "");
