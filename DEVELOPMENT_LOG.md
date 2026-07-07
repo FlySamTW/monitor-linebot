@@ -13,6 +13,7 @@
 
 ### 測試
 - `verify_sop_static_guards.js` 新增可執行程式模型掃描，禁止高成本 Gemini 模型、`latest` alias、`exp` alias 與硬寫模型 URL 回到正式 GAS 程式。
+- `verify_sop_static_guards.js` 同步鎖定正式 `LLM_PROVIDER` 與未啟用的 OpenRouter 模型，避免改一行常數就繞過成本策略。
 
 ## 2026-07-07 (v29.6.034 / QA 來源推斷)
 

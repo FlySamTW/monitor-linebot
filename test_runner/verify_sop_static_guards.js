@@ -60,6 +60,21 @@ const productionGeminiModels = [
   "GEMINI_MODEL_THINK",
   "GEMINI_MODEL_POLISH",
 ];
+
+const providerMatch = linebot.match(/const\s+LLM_PROVIDER\s*=\s*"([^"]+)"/);
+assertStep(providerMatch, "LLM_PROVIDER must be defined");
+assertStep(
+  providerMatch[1] === "Gemini",
+  "production LLM_PROVIDER must stay on Gemini unless a new cost review intentionally updates this guard",
+);
+
+const openRouterModelMatch = linebot.match(/const\s+OPENROUTER_MODEL\s*=\s*"([^"]+)"/);
+assertStep(openRouterModelMatch, "OPENROUTER_MODEL must be defined");
+assertStep(
+  openRouterModelMatch[1] === "qwen/qwen-2.5-7b-instruct",
+  "inactive OpenRouter fallback must not drift to an unreviewed or high-cost model",
+);
+
 for (const constantName of productionGeminiModels) {
   const match = linebot.match(
     new RegExp(`const\\s+${constantName}\\s*=\\s*"([^"]+)"`),
