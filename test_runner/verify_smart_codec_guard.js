@@ -76,7 +76,7 @@ async function run() {
     assertStep(/請選擇 Smart Monitor PDF 型號/.test(firstReplies), "first answer must offer Smart Monitor PDF model choices", firstReplies);
     assertStep(/\[來源:專案流程規則\]/.test(firstReplies) && /\[費用:NT\$0\.0000（未呼叫 LLM）\]/.test(firstReplies), "first answer must include source and zero-cost disclosure", firstReplies);
     assertStep(!/所以可支援 HEVC|HEVC 編解碼器僅適用於 MKV|通常|Plex|Kodi/i.test(firstReplies), "first answer must not use fixed, vague, or invented playback claims", firstReplies);
-    assertStep(/Smart Codec Guard v29\.6\.054/.test(firstLogs) && /S32FM703/.test(firstLogs), "first answer must be routed by the Smart codec guard with selectable models", firstLogs);
+    assertStep(/Smart Codec Guard v29\.6\.061/.test(firstLogs) && /S32FM703/.test(firstLogs), "first answer must be routed by the Smart codec guard with selectable models", firstLogs);
     assertStep(!/AI Raw Response|PDF 匹配|S27FG502/i.test(firstLogs), "first answer must not call the LLM or wrong Odyssey PDF route", firstLogs);
 
     const manual = await call(frame, "testMessage", "#查手冊", userId);
@@ -118,7 +118,7 @@ async function run() {
       "selected model PDF answer must use the S32FM703 Smart Monitor manual",
       selectedReplies + "\n---LOGS---\n" + selectedLogs,
     );
-    assertStep(/支援.*HEVC|HEVC.*支援|H\.265/.test(selectedReplies) && !/未明確記載|未記載/.test(selectedReplies), "selected model PDF answer must answer the HEVC support result from the manual", selectedReplies);
+    assertStep(/支援[\s\S]{0,120}(HEVC|H\.265|H265)|(HEVC|H\.265|H265)[\s\S]{0,120}支援/i.test(selectedReplies) && !/未明確記載|未記載/.test(selectedReplies), "selected model PDF answer must answer the HEVC support result from the manual", selectedReplies);
     assertStep(!/通常|常見|應該/.test(selectedReplies), "selected model PDF answer must not speculate beyond the manual", selectedReplies);
     assertStep(/本次對話預估花費|本次.*費用|NT\$[0-9]+\.[0-9]{4}/.test(selectedReplies), "selected model PDF answer must include cost disclosure", selectedReplies);
 

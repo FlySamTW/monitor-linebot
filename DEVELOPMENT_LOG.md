@@ -1,5 +1,94 @@
 # 開發對話紀錄
 
+## 2026-07-07 (v29.6.061 / 回覆孤立括號清理)
+
+### 目的
+- 修正正式 TestUI 對話紀錄中，部分 PDF 追問回覆在來源標籤前殘留孤立 `]` 的顯示問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.061`。
+- `replyMessage()` 送出前先執行 `cleanReplyVisibleTextArtifacts_()`，清理可見文字中的孤立右括號，再套用來源/費用守門。
+
+### 驗證
+- `verify_10_questions_5_rounds.js` 每輪都檢查來源前不可殘留孤立右括號。
+
+## 2026-07-07 (v29.6.060 / Smart HEVC PDF 支援結論守門)
+
+### 目的
+- 修正 Smart codec 單項測試人工審查時發現的問題：PDF 回答有時只說 HEVC/H.265 被記載，沒有明確回答是否支援。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.060`。
+- 新增 `enforceSmartCodecPdfSupportConclusion_()`，只套用 Smart Monitor HEVC/H.265 選型後的 PDF 回答；表格列有 HEVC/H.265 且沒有否定語時，補出明確支援結論。
+
+### 驗證
+- `verify_smart_codec_guard.js` 與 `verify_10_questions_5_rounds.js` 第三輪改嚴，不能只靠出現 H.265 字樣通過。
+
+## 2026-07-07 (v29.6.059 / Smart HEVC 再詳細正向判斷修正)
+
+### 目的
+- 修正人工審核 0 failures 紀錄時發現的問題：第 5 輪仍可能把第三輪已確認支援整理成「未確認」，或把第四輪已明確列出 MKV/MP4/TS 的限制整理得過度保守。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.059`。
+- HEVC/H.265 支援判斷與檔案類型限制判斷先正規化空白，允許跨換行與列表格式。
+- 已列出 MKV/MP4/TS 時，`#再詳細說明` 會明確保留該限制。
+
+### 驗證
+- `verify_10_questions_5_rounds.js` 新增 T3/T5 支援結論一致、T4/T5 檔案限制一致檢查。
+
+## 2026-07-07 (v29.6.058 / Smart HEVC 再詳細否定語守門)
+
+### 目的
+- 修正 v29.6.057 加嚴回歸後仍發現的問題：`#再詳細說明` 在部分對話中沒有拿到明確選定型號，且會把「沒有記載是否支援 HEVC」整理成「支援 HEVC」。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.058`。
+- `#型號:` 分支暫存 `last_selected_model`，`#再詳細說明` 優先使用該 cache。
+- HEVC 支援與檔案類型限制整理先處理否定語，再處理正向支援句。
+
+### 驗證
+- 10 題 5 輪測試第 5 輪要求整理句含所選型號，並允許「未找到明確列出」這類正確否定語。
+
+## 2026-07-07 (v29.6.057 / Smart HEVC 再詳細模型與限制修正)
+
+### 目的
+- 修正 10 題 5 輪自審時發現的第 5 輪問題：`#再詳細說明` 會把使用者選定型號誤抓成 PDF 檔名第一個型號，且可能把「未列出 MKV/MP4/TS 限制」反向整理成「手冊列出 MKV/MP4/TS」。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.057`。
+- `buildSmartCodecElaborationFromPreviousPdf()` 改從對話歷史的 `#型號:` 取得使用者選定型號。
+- HEVC 檔案類型限制整理先判斷否定語，再決定是否能列 MKV/MP4/TS。
+
+### 驗證
+- `verify_10_questions_5_rounds.js` 第五輪新增「沿用所選型號」與「未列出限制不得改寫成已列出」檢查。
+
+## 2026-07-07 (v29.6.056 / 回覆來源與費用總守門)
+
+### 目的
+- 修正部分早退、錯誤、Quick Reply 或 Flex 回覆分支仍可能漏掉來源與費用的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.056`。
+- 新增 `enforceReplyAuditTrail_()`，所有 `replyMessage()` 輸出前都會檢查可見文字是否含來源與費用。
+- 每次新 `handleMessage()` 先清空 `lastTokenUsage` 與 `lastSearchSources`，避免沿用上一題的費用或來源狀態。
+- 型號選擇 Flex 與舊 `replyFlexMessage()` 統一改走 `replyMessage()`，不再直接呼叫 LINE reply endpoint。
+
+### 驗證
+- `verify_sop_static_guards.js` 新增來源/費用總守門、每題費用重置、reply endpoint 不可繞過 `replyMessage()` 檢查。
+
+## 2026-07-07 (v29.6.055 / Smart HEVC 再詳細延續 PDF)
+
+### 目的
+- 修正 Smart Monitor HEVC/H.265 題在 PDF 回答後按 `#再詳細說明`，卻倒退成泛用操作題補型號的問題。
+
+### 程式修正
+- `linebot.gs` 升級至 `v29.6.055`。
+- 新增 `buildSmartCodecElaborationFromPreviousPdf()`，從上一則官方 PDF 查證回答延伸整理 HEVC/H.265 支援與檔案類型限制，不再呼叫 LLM。
+
+### 驗證
+- `verify_10_questions_5_rounds.js` 第五輪加嚴，要求 `#再詳細說明` 延續 HEVC/PDF 主題並含來源與費用。
+
 ## 2026-07-07 (v29.6.054 / Smart HEVC 禁止推測格式)
 
 ### 目的

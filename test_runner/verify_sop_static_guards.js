@@ -1055,7 +1055,7 @@ assertStep(
 );
 
 assertStep(
-  /\[Smart Codec Guard v29\.6\.054\].*#查手冊 顯示 Smart Monitor PDF 型號選擇/.test(linebot),
+  /\[Smart Codec Guard v29\.6\.061\].*#查手冊 顯示 Smart Monitor PDF 型號選擇/.test(linebot),
   "#查手冊 must route Smart Monitor codec questions to model choices before exact PDF search",
 );
 
@@ -1065,8 +1065,48 @@ assertStep(
 );
 
 assertStep(
+    /function buildSmartCodecElaborationFromPreviousPdf/.test(linebot) &&
+    /function enforceSmartCodecPdfSupportConclusion_/.test(linebot) &&
+    /HEVC\/PDF 再詳細說明沿用上一則手冊結果/.test(linebot) &&
+    /last_selected_model/.test(linebot) &&
+    /getSelectedModelFromRecentHistory_/.test(linebot) &&
+    /supportScan/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
+    /limitScan/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
+    /saysNoFileTypeLimit/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
+    /未呼叫 LLM/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")),
+  "Smart Monitor codec #再詳細說明 must continue the previous PDF result instead of falling into generic operation flow",
+);
+
+assertStep(
   /t\.type === "text"[\s\S]{0,120}return String\(t\.text \|\| ""\)/.test(linebot),
   "TestUI reply preview must display text objects in mixed text+Flex replies",
+);
+
+assertStep(
+    /function enforceReplyAuditTrail_/.test(linebot) &&
+    /function hasVisibleSourceAudit_/.test(linebot) &&
+    /function hasVisibleCostAudit_/.test(linebot) &&
+    /function cleanReplyVisibleTextArtifacts_/.test(linebot) &&
+    /function replyMessage\(tk,\s*txt,\s*options\s*=\s*\{\}\)\s*\{\s*txt\s*=\s*cleanReplyVisibleTextArtifacts_\(txt\);\s*txt\s*=\s*enforceReplyAuditTrail_\(txt\)/.test(linebot) &&
+    /\[Reply Audit Guard v29\.6\.061\]/.test(linebot),
+  "all LINE/TestUI replies must pass the final visible source/cost audit guard",
+);
+
+assertStep(
+  /lastTokenUsage\s*=\s*null;\s*lastSearchSources\s*=\s*null;/.test(
+    extractFunction(linebot, "handleMessage"),
+  ),
+  "each new user message must reset token/search usage before calculating the current reply cost",
+);
+
+assertStep(
+  (linebot.match(/https:\/\/api\.line\.me\/v2\/bot\/message\/reply/g) || [])
+    .length === 1 &&
+    /replyMessage\(replyToken,\s*messages\);[\s\S]{0,120}已透過 replyMessage 發送 Flex Selection/.test(
+      linebot,
+    ) &&
+    /function replyFlexMessage[\s\S]{0,260}replyMessage\(replyToken/.test(linebot),
+  "no LINE reply path may bypass replyMessage source/cost enforcement",
 );
 
 const pdfModelIndexCode = [

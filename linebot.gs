@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.054"; // 2026-07-07 Smart HEVC 禁止推測格式
-const BUILD_TIMESTAMP = "2026-07-07 20:34";
+const GAS_VERSION = "v29.6.061"; // 2026-07-07 回覆孤立括號清理
+const BUILD_TIMESTAMP = "2026-07-07 22:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2600,6 +2600,141 @@ function buildSmartMonitorCodecSelectionPayload(query, userId) {
     assistantRecord: leadText,
     models,
   };
+}
+
+function getSelectedModelFromRecentHistory_(history) {
+  if (!Array.isArray(history)) return "";
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i] || {};
+    if (item.role !== "user") continue;
+    const content = String(item.content || "");
+    const selected = content.match(/#型號\s*[:：]\s*([A-Z0-9]+)/i);
+    if (selected && selected[1]) return selected[1].toUpperCase();
+  }
+  return "";
+}
+
+function collectRecentSmartCodecPdfText_(text, history) {
+  const chunks = [String(text || "").trim()].filter(Boolean);
+  if (Array.isArray(history)) {
+    for (let i = history.length - 1; i >= 0 && chunks.length < 3; i--) {
+      const item = history[i] || {};
+      const content = String(item.content || "").trim();
+      if (
+        item.role === "assistant" &&
+        content &&
+        content !== chunks[0] &&
+        /\(官方手冊PDF\)/.test(content) &&
+        /(HEVC|H\.265|H265|視訊編解碼器)/i.test(content)
+      ) {
+        chunks.push(content);
+      }
+    }
+  }
+  return chunks.join("\n\n");
+}
+
+function buildSmartCodecElaborationFromPreviousPdf(text, history, selectedModelFromCache) {
+  const body = String(text || "").trim();
+  if (
+    !/(HEVC|H\.265|H265|視訊編解碼器)/i.test(body) ||
+    !/\(官方手冊PDF\)/.test(body)
+  ) {
+    return "";
+  }
+
+  const combinedBody = collectRecentSmartCodecPdfText_(body, history);
+  const sourceMatch = combinedBody.match(/\[來源[:：]\s*([^\]]+官方手冊PDF[^\]]*)\]/);
+  const sourceTag = sourceMatch
+    ? `[來源: ${sourceMatch[1].trim()}]`
+    : "[來源:上一則官方手冊PDF]";
+  const selectedModel =
+    String(selectedModelFromCache || "").trim().toUpperCase() ||
+    getSelectedModelFromRecentHistory_(history);
+  const bodyWithoutSource = body.replace(/\[來源[:：][^\]]+\]/g, "");
+  const modelMatch = bodyWithoutSource.match(/\bS\d{2}[A-Z]{2}\d{3}\b/i);
+  const modelText = selectedModel || (modelMatch ? modelMatch[0].toUpperCase() : "該型號");
+  const supportScan = combinedBody.replace(/\s+/g, " ");
+  const limitScan = body.replace(/\s+/g, " ");
+  const noSupportConfirmed =
+    /(?:並未|未|沒有)[^。]{0,60}(?:記載|列出|確認|提及)?[^。]{0,60}(?:是否)?支援[^。]{0,60}(HEVC|H\.265|H265)/i.test(
+      supportScan,
+    ) ||
+    /(?:並未|未|沒有)[^。]{0,30}(?:明確)?[^。]{0,30}(?:列出|記載|確認|提及)[^。]{0,80}(HEVC|H\.265|H265)[^。]{0,80}(支援|情況)/i.test(
+      supportScan,
+    );
+  const supportsHevc =
+    !noSupportConfirmed &&
+    (/(支援[^。]{0,120}(HEVC|H\.265|H265))|((HEVC|H\.265|H265)[^。]{0,120}支援)/i.test(
+      supportScan,
+    ) ||
+      /(HEVC|H\.265|H265)[^。]{0,120}(有被列出|有列出|列出|項目有標示|欄位有標示)/i.test(
+        supportScan,
+      ));
+  const saysNoFileTypeLimit = /(?:並未|未|沒有)[^。]{0,30}(?:明確)?[^。]{0,30}(?:列出|記載|確認|提及)[^。]{0,100}(檔案類型|限制|MKV|MP4|TS)/i.test(
+    limitScan,
+  );
+  const hasFileTypeLimit =
+    !saysNoFileTypeLimit &&
+    /(?:HEVC[^。]{0,100}(?:僅|只)適用於[^。]{0,80}MKV[\s\S]{0,40}MP4[\s\S]{0,40}TS)|(?:明確(?:記載|指出|提到)[^。]{0,160}MKV[\s\S]{0,40}MP4[\s\S]{0,40}TS)|(?:僅支援[^。]{0,80}MKV[\s\S]{0,40}MP4[\s\S]{0,40}TS)|(?:MKV[\s\S]{0,40}MP4[\s\S]{0,40}TS)/i.test(
+      limitScan,
+    );
+
+  const lines = [
+    `延續上一則官方手冊 PDF 查證，${modelText} 的重點如下：`,
+    "",
+    supportsHevc
+      ? "1. 手冊的「支援的視訊編解碼器」表格有列 HEVC／H.265，所以這個型號支援 HEVC／H.265 播放。"
+      : "1. 上一則 PDF 查證沒有確認到 HEVC／H.265 支援結果，因此不能直接定論支援。",
+  ];
+
+  if (hasFileTypeLimit) {
+    lines.push("2. 手冊列出的 HEVC 檔案類型限制包含 MKV、MP4、TS；回答時只能列這些手冊有寫的格式。");
+  } else if (saysNoFileTypeLimit) {
+    lines.push("2. 上一則 PDF 查證未找到手冊明確列出的 HEVC 檔案類型限制，所以不能補推 MKV、MP4、TS 以外或任何未寫明的格式。");
+  } else {
+    lines.push("2. 檔案類型限制要以手冊文字為準；上一則回答若未列出，就不要自行補推格式。");
+  }
+
+  lines.push(
+    "3. 若要再確認另一台型號，請直接點型號泡泡或輸入完整型號後查手冊。",
+    "",
+    sourceTag,
+    "[費用:NT$0.0000（未呼叫 LLM）]",
+  );
+  return lines.join("\n");
+}
+
+function enforceSmartCodecPdfSupportConclusion_(text, selectedModel) {
+  const body = String(text || "").trim();
+  if (!body || !/(HEVC|H\.265|H265)/i.test(body)) return body;
+  const scan = body.replace(/\s+/g, " ");
+  const hasNegativeSupport =
+    /(?:並未|未|沒有)[^。]{0,80}(?:記載|列出|確認|提及)?[^。]{0,80}(?:是否)?支援[^。]{0,80}(HEVC|H\.265|H265)/i.test(
+      scan,
+    ) ||
+    /(?:並未|未|沒有)[^。]{0,60}(?:明確)?[^。]{0,60}(?:列出|記載|確認|提及)[^。]{0,100}(HEVC|H\.265|H265)[^。]{0,80}(支援|情況)/i.test(
+      scan,
+    );
+  if (hasNegativeSupport) return body;
+
+  const hasExplicitSupport =
+    /(支援[^。]{0,120}(HEVC|H\.265|H265))|((HEVC|H\.265|H265)[^。]{0,120}支援)/i.test(
+      scan,
+    );
+  if (hasExplicitSupport) return body;
+
+  const listedInCodecTable =
+    /(支援的視訊(?:編解碼器|訊號)[^。]{0,160}(HEVC|H\.265|H265))|((HEVC|H\.265|H265)[^。]{0,120}(有被記載|有被列出|有列出|列出|欄位有標示|項目有標示))/i.test(
+      scan,
+    );
+  if (!listedInCodecTable) return body;
+
+  const modelText = String(selectedModel || "").trim().toUpperCase();
+  const prefix = modelText
+    ? `針對 ${modelText}：根據官方手冊的「支援的視訊編解碼器」表格，HEVC／H.265 已列於支援表，因此判定為支援。`
+    : "根據官方手冊的「支援的視訊編解碼器」表格，HEVC／H.265 已列於支援表，因此判定為支援。";
+  return `${prefix}\n\n${body}`;
 }
 
 function readContextHealth(cache, userId) {
@@ -6932,6 +7067,147 @@ function formatForLineMobile(text) {
   return processed.trim();
 }
 
+function hasVisibleSourceAudit_(text) {
+  return /\[來源[:：][^\]]+\]/.test(String(text || ""));
+}
+
+function hasVisibleCostAudit_(text) {
+  const s = String(text || "");
+  return (
+    /\[費用\s*[:：]\s*NT\$[^\]]+\]/.test(s) ||
+    /本次(?:對話|建檔|修改|整理)?預估花費\s*[:：]?\s*\n?\s*NT\$[0-9]+\.[0-9]{4}/.test(
+      s,
+    )
+  );
+}
+
+function buildReplyCostAuditText_() {
+  if (
+    lastTokenUsage &&
+    typeof lastTokenUsage.costTWD === "number" &&
+    isFinite(lastTokenUsage.costTWD)
+  ) {
+    const input =
+      typeof lastTokenUsage.input === "number" ? lastTokenUsage.input : 0;
+    const output =
+      typeof lastTokenUsage.output === "number" ? lastTokenUsage.output : 0;
+    const total =
+      typeof lastTokenUsage.total === "number" ? lastTokenUsage.total : input + output;
+    return `---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${input}/Out:${output}=${total})`;
+  }
+  return "[費用:NT$0.0000（未呼叫 LLM）]";
+}
+
+function appendMissingReplyAuditTrail_(text, needsSource, needsCost) {
+  let s = text === null || text === undefined ? "" : String(text);
+  const suffixLines = [];
+  if (needsSource) {
+    suffixLines.push("[來源:系統流程]");
+  }
+  if (needsCost) {
+    suffixLines.push(buildReplyCostAuditText_());
+  }
+  if (suffixLines.length === 0) return s;
+
+  const suffix = suffixLines.join("\n");
+  const maxTextLength = 3900 - suffix.length;
+  if (s.length > maxTextLength) {
+    s = s.substring(0, Math.max(0, maxTextLength)).trim();
+  }
+  return `${s.trim()}\n\n${suffix}`.trim();
+}
+
+function collectVisibleReplyText_(txt) {
+  if (Array.isArray(txt)) {
+    return txt
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && item.type === "text") {
+          return String(item.text || "");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  if (txt && typeof txt === "object") {
+    if (txt.type === "text") return String(txt.text || "");
+    return "";
+  }
+  return txt === null || txt === undefined ? "" : String(txt);
+}
+
+function cleanReplyTextArtifacts_(text) {
+  return String(text === null || text === undefined ? "" : text)
+    .replace(/\n\s*\]\s*(?=\n+\[來源[:：])/g, "\n")
+    .replace(/([。！？])\s*\]\s*(?=\n+\[來源[:：])/g, "$1");
+}
+
+function cleanReplyVisibleTextArtifacts_(txt) {
+  if (Array.isArray(txt)) {
+    return txt.map((item) => {
+      if (typeof item === "string") return cleanReplyTextArtifacts_(item);
+      if (item && typeof item === "object" && item.type === "text") {
+        return Object.assign({}, item, {
+          text: cleanReplyTextArtifacts_(item.text || ""),
+        });
+      }
+      return item;
+    });
+  }
+  if (txt && typeof txt === "object" && txt.type === "text") {
+    return Object.assign({}, txt, {
+      text: cleanReplyTextArtifacts_(txt.text || ""),
+    });
+  }
+  if (txt && typeof txt === "object") return txt;
+  return cleanReplyTextArtifacts_(txt);
+}
+
+function enforceReplyAuditTrail_(txt) {
+  const visibleText = collectVisibleReplyText_(txt);
+  const needsSource = !hasVisibleSourceAudit_(visibleText);
+  const needsCost = !hasVisibleCostAudit_(visibleText);
+  if (!needsSource && !needsCost) return txt;
+
+  if (Array.isArray(txt)) {
+    const audited = txt.slice();
+    for (let i = audited.length - 1; i >= 0; i--) {
+      const item = audited[i];
+      if (typeof item === "string") {
+        audited[i] = appendMissingReplyAuditTrail_(item, needsSource, needsCost);
+        writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+        return audited;
+      }
+      if (item && typeof item === "object" && item.type === "text") {
+        audited[i] = Object.assign({}, item, {
+          text: appendMissingReplyAuditTrail_(item.text || "", needsSource, needsCost),
+        });
+        writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+        return audited;
+      }
+    }
+    const auditText = appendMissingReplyAuditTrail_("", needsSource, needsCost);
+    writeLog("[Reply Audit Guard v29.6.061] Flex-only 回覆已新增來源/費用文字泡泡");
+    return [{ type: "text", text: auditText }].concat(audited).slice(0, 5);
+  }
+
+  if (txt && typeof txt === "object") {
+    if (txt.type === "text") {
+      writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+      return Object.assign({}, txt, {
+        text: appendMissingReplyAuditTrail_(txt.text || "", needsSource, needsCost),
+      });
+    }
+    const auditText = appendMissingReplyAuditTrail_("", needsSource, needsCost);
+    writeLog("[Reply Audit Guard v29.6.061] Flex-only 回覆已新增來源/費用文字泡泡");
+    return [{ type: "text", text: auditText }, txt];
+  }
+
+  writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+  return appendMissingReplyAuditTrail_(txt, needsSource, needsCost);
+}
+
 function writeRecordDirectly(u, t, c, r, f) {
   // 🧪 TEST MODE: 不寫入「所有紀錄」Sheet (清除測試介面時請移除此判斷)
   if (IS_TEST_MODE) {
@@ -6972,6 +7248,8 @@ function handleMessage(event) {
 
     userId = event.source.userId;
     replyToken = event.replyToken;
+    lastTokenUsage = null;
+    lastSearchSources = null;
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
     let userMessage = event.message.text;
@@ -7063,7 +7341,7 @@ function handleMessage(event) {
     if (!msg.startsWith("#") && isSmartMonitorCodecQuestion(msg)) {
       const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(msg, userId);
       writeLog(
-        `[Smart Codec Guard v29.6.054] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+        `[Smart Codec Guard v29.6.061] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
       );
       replyMessage(replyToken, smartCodecPayload.messages);
       writeRecordDirectly(userId, msg, contextId, "user", "");
@@ -7545,6 +7823,7 @@ function handleMessage(event) {
     if (msg.startsWith("#型號:")) {
       const selectedModel = msg.replace("#型號:", "").trim().toUpperCase();
       writeLog(`[Model Select v29.5.120] 🎯 用戶選擇型號: ${selectedModel}`);
+      cache.put(`${userId}:last_selected_model`, selectedModel, 21600);
       const modelSelectModeKey = `${userId}:model_select_mode`;
       const modelSelectMode = cache.get(modelSelectModeKey) || "pdf";
 
@@ -7712,6 +7991,12 @@ function handleMessage(event) {
           finalText = sanitizeManualDeflection(finalText);
           finalText = enforceManualUncertaintyGuard(finalText, queryText);
           finalText = enforceManualNumberedList(finalText);
+          if (isSmartMonitorCodecQuestion(savedTopic)) {
+            finalText = enforceSmartCodecPdfSupportConclusion_(
+              finalText,
+              selectedModel,
+            );
+          }
           if (
             selectedModel &&
             finalText.toUpperCase().indexOf(selectedModel.toUpperCase()) < 0
@@ -7843,7 +8128,7 @@ function handleMessage(event) {
       if (isSmartMonitorCodecQuestion(lastQuestion)) {
         const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
         writeLog(
-          `[Smart Codec Guard v29.6.054] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+          `[Smart Codec Guard v29.6.061] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
         );
         replyMessage(replyToken, smartCodecPayload.messages);
         updateHistorySheetAndCache(
@@ -7997,6 +8282,25 @@ function handleMessage(event) {
           historyForContinue,
           { role: "user", content: msg },
           { role: "assistant", content: retryText },
+        );
+        return;
+      }
+
+      const smartCodecElaboration = buildSmartCodecElaborationFromPreviousPdf(
+        lastAssistantMsg.content,
+        historyForContinue,
+        cache.get(`${userId}:last_selected_model`) || "",
+      );
+      if (smartCodecElaboration) {
+        replyMessage(replyToken, smartCodecElaboration);
+        writeLog(`[Quick Reply v29.6.061] HEVC/PDF 再詳細說明沿用上一則手冊結果`);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, smartCodecElaboration, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          historyForContinue,
+          { role: "user", content: msg },
+          { role: "assistant", content: smartCodecElaboration },
         );
         return;
       }
@@ -9039,41 +9343,8 @@ function handleMessage(event) {
               }
               messages.push(flexMsg);
 
-              // 使用 replyToken 一次發送
-              const url = "https://api.line.me/v2/bot/message/reply";
-              // v29.5.12: Correct key is LINE_TOKEN
-              let accessToken =
-                PropertiesService.getScriptProperties().getProperty(
-                  "LINE_TOKEN",
-                );
-              if (accessToken) accessToken = accessToken.trim();
-              if (!accessToken) {
-                writeLog("[Fatal Error] 找不到 LINE_TOKEN，Flex 發送中止");
-                return;
-              }
-              const res = UrlFetchApp.fetch(url, {
-                method: "post",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: "Bearer " + accessToken,
-                },
-                payload: JSON.stringify({
-                  replyToken: replyToken,
-                  messages: messages,
-                }),
-                muteHttpExceptions: true,
-              });
-
-              // v29.5.05: Check response code to catch silent failures
-              if (res.getResponseCode() === 200) {
-                writeLog(
-                  `[Smart Router v29.4.14] 已發送 Flex Selection (含前導文字)`,
-                );
-              } else {
-                writeLog(
-                  `[Flex Error] 發送失敗 (${res.getResponseCode()}): ${res.getContentText()}`,
-                );
-              }
+              replyMessage(replyToken, messages);
+              writeLog(`[Smart Router v29.6.061] 已透過 replyMessage 發送 Flex Selection`);
               return; // 結束
             }
           }
@@ -10230,6 +10501,7 @@ function handleCommand(c, u, cid) {
     cache.remove(`${u}:direct_search_models`);
     cache.remove(`${u}:hit_alias_key`);
     cache.remove(`${u}:pending_topic`);
+    cache.remove(`${u}:last_selected_model`);
     cache.remove(`${u}:model_select_mode`);
     cache.remove(`${u}:qa_offer_payload`);
     cache.remove(`${u}:suggested_models`);
@@ -10270,6 +10542,7 @@ function handleCommand(c, u, cid) {
     cache.remove(`${u}:direct_search_models`);
     cache.remove(`${u}:hit_alias_key`);
     cache.remove(`${u}:pending_topic`);
+    cache.remove(`${u}:last_selected_model`);
     cache.remove(`${u}:model_select_mode`);
     cache.remove(`${u}:qa_offer_payload`);
     cache.remove(`${u}:suggested_models`);
@@ -13691,6 +13964,9 @@ function getHistoryModels(userId) {
 }
 
 function replyMessage(tk, txt, options = {}) {
+  txt = cleanReplyVisibleTextArtifacts_(txt);
+  txt = enforceReplyAuditTrail_(txt);
+
   // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
   if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN") {
     // v29.5.130: TestUI 依賴 testMessage() 從 Log 收集回覆；這裡補寫 [Reply] 讓前端能顯示
@@ -14753,6 +15029,7 @@ function clearTestSession(userId) {
   cache.remove(`${userId}:elaboration_state`);
   cache.remove(`${userId}:last_meaningful_query`);
   cache.remove(`${userId}:pending_topic`);
+  cache.remove(`${userId}:last_selected_model`);
   cache.remove(`${userId}:model_select_mode`);
   cache.remove(`${userId}:qa_offer_payload`);
   cache.remove(`${userId}:suggested_models`);
@@ -15669,59 +15946,12 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
  * 發送 Flex Message
  */
 function replyFlexMessage(replyToken, flexContainer, altText) {
-  // 🧪 TEST MODE START (v29.5.98 Fixed)
-  if (
-    (typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE) ||
-    replyToken === "TEST_REPLY_TOKEN"
-  ) {
-    writeLog(
-      `[Flex Reply] Alt: ${altText}, JSON: ${JSON.stringify(flexContainer)}`,
-    );
-    return 200;
-  }
-  // 🧪 TEST MODE END
-
-  const url = "https://api.line.me/v2/bot/message/reply";
-  // v29.5.12: Correct key is LINE_TOKEN
-  const accessToken =
-    PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
-
-  const payload = {
-    replyToken: replyToken,
-    messages: [
-      {
-        type: "flex",
-        altText: altText || "請查看選單",
-        contents: flexContainer,
-      },
-    ],
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(url, {
-      method: "post",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + accessToken,
-      },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    });
-
-    const resCode = response.getResponseCode();
-    const resBody = response.getContentText();
-
-    if (resCode !== 200) {
-      writeLog(`[Reply Flex Error] ${resCode}: ${resBody}`);
-    }
-    // v29.5.0: Simplify Reply Log (Silent Success)
-    // else { writeLog(`[Reply Flex Success]`); }
-
-    return resCode;
-  } catch (e) {
-    writeLog(`[Reply Flex Exception] ${e.message}`);
-    return 500;
-  }
+  replyMessage(replyToken, {
+    type: "flex",
+    altText: altText || "請查看選單",
+    contents: flexContainer,
+  });
+  return 200;
 }
 
 /**

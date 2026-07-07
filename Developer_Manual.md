@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.054)
+# Samsung LINE Bot 完整流程解析 (v29.6.061)
 
 ## 📋 核心哲學
 
@@ -29,9 +29,9 @@
 - `/紀錄` 內容是 Samsung 活動網址時，必須先抓官方頁內容產生 RULE 草稿；即使 Gemini 429，也不可退化成只把網址存進 `CLASS_RULES`。
 - 正式 Gemini 模型必須固定為 `models/gemini-2.5-flash-lite`；不可用 `gemini-flash-lite-latest` 這類會漂移的 alias，以免成本估算失真。
 - Smart Monitor／M 系列的 HEVC、H.265、影片格式、播放檔案支援題，不可先做固定手冊摘要或直接定論支援；必須先提供已建索引的 Smart Monitor 型號選擇泡泡，點選型號後才掛載該型號官方 PDF 由 LLM 回答。
-- 每次可見回覆都必須有來源與費用；未呼叫 LLM 的流程提示也要標 `[來源:專案流程規則]` 與 `[費用:NT$0.0000（未呼叫 LLM）]`。
+- 每次可見回覆都必須有來源與費用；未呼叫 LLM 的流程提示也要標 `[來源:專案流程規則]` 與 `[費用:NT$0.0000（未呼叫 LLM）]`；`replyMessage()` 是最後總守門，不可繞過。
 
-## ✅ 現行鐵律 SOP（v29.6.054）
+## ✅ 現行鐵律 SOP（v29.6.061）
 
 1. **先 QA/規格庫**：讀取 Google Sheet 的 QA、CLASS_RULES 與 `Prompt!C3` 指令。
 2. **再 PDF 手冊**：只有 Fast Mode 不足、使用者明確 `#查手冊`、或型號泡泡選擇後進入手冊模式，才掛載 PDF。
@@ -371,6 +371,47 @@ Google Drive ──────► Gemini File API
 ---
 
 ## 📜 版本更新紀錄
+
+### v29.6.061 (2026-07-07)
+
+- **Fix (Reply Artifact Cleanup)**: `replyMessage()` 送出前會先清理來源標籤前殘留的孤立 `]`，避免 LINE/TestUI 顯示髒字元。
+- **Test**: 10 題 5 輪測試每一輪都檢查來源前不可殘留孤立右括號。
+
+### v29.6.060 (2026-07-07)
+
+- **Fix (Smart Codec PDF Support Conclusion)**: Smart Monitor HEVC/H.265 選型後的 PDF 回答若只說「HEVC 有被記載／列出」但未明講支援，系統會在來源補標前補成明確支援結論。
+- **Scope**: 只套用在 Smart Monitor codec 題的 `#型號:` PDF 流程，不影響一般手冊查詢。
+- **Test**: `verify_smart_codec_guard.js` 與 10 題 5 輪測試改嚴，第三輪不能只靠出現 H.265 字樣通過，必須明確回答支援或未記載。
+
+### v29.6.059 (2026-07-07)
+
+- **Fix (Smart Codec Positive Guard)**: HEVC/H.265 支援與 MKV/MP4/TS 限制判斷會先正規化空白，支援跨換行、分號與列表格式，避免把已確認支援整理成未確認。
+- **Fix (Smart Codec Limit List)**: 已明確列出 MKV、MP4、TS 的回答，`#再詳細說明` 會保留為已列出限制，不再退回「若未列出就不要補推」的保守句。
+- **Test**: 10 題 5 輪測試新增 T3/T5、T4/T5 對照，若第三輪已確認支援或第四輪已明確列出限制，第五輪必須延續同一結論。
+
+### v29.6.058 (2026-07-07)
+
+- **Fix (Smart Codec Negative Guard)**: `#再詳細說明` 對 HEVC/H.265 支援與檔案類型限制先辨識「沒有／未記載／未列出」否定語，避免把「沒有記載是否支援」整理成支援。
+- **Fix (Selected Model Cache)**: `#型號:` 分支會暫存 `last_selected_model`，後續 `#再詳細說明` 優先使用 cache 中的使用者選定型號。
+- **Test**: 10 題 5 輪測試要求第 5 輪整理句本身包含所選型號，不可只靠 PDF 檔名通過。
+
+### v29.6.057 (2026-07-07)
+
+- **Fix (Smart Codec Elaboration Model Lock)**: `#再詳細說明` 會從對話歷史中的 `#型號:` 取得使用者實際選定型號，不再從 PDF 檔名第一個型號誤抓成其他機型。
+- **Fix (Smart Codec Limit Polarity)**: HEVC 檔案類型限制整理時先判斷「未列出／未明確記載」否定語，不再把上一輪「未列出 MKV/MP4/TS 限制」改寫成「手冊列出 MKV/MP4/TS」。
+- **Test**: `verify_10_questions_5_rounds.js` 第五輪加嚴，要求保留所選型號，且不得把上一輪未列出的限制反向改寫成已列出。
+
+### v29.6.056 (2026-07-07)
+
+- **Fix (Reply Source/Cost Guard)**: `replyMessage()` 出訊息前統一套用 `enforceReplyAuditTrail_()`；任何 LINE/TestUI 可見回覆若缺來源或費用，會補上可見審計資訊。
+- **Fix (Cost Isolation)**: 每則 `handleMessage()` 新訊息一開始重置 `lastTokenUsage` 與 `lastSearchSources`，避免 GAS 重用執行環境時沿用上一題費用或搜尋來源。
+- **Fix (No Reply Bypass)**: 型號選擇 Flex 與舊 `replyFlexMessage()` 改走 `replyMessage()`，避免任何回覆路徑繞過來源/費用守門。
+- **Test**: `verify_sop_static_guards.js` 新增來源/費用總守門、每題費用重置、LINE reply endpoint 不可繞過 `replyMessage()` 的靜態檢查。
+
+### v29.6.055 (2026-07-07)
+
+- **Fix (Smart Codec Elaboration)**: `#再詳細說明` 若上一則是 Smart Monitor HEVC/H.265 官方 PDF 查證結果，會延續上一則 PDF 結論整理，不再掉回泛用操作題補型號流程。
+- **Test**: `verify_10_questions_5_rounds.js` 第五輪加嚴，要求延續 HEVC/PDF 主題，禁止再次要求完整型號或轉成按鍵操作題。
 
 ### v29.6.054 (2026-07-07)
 
