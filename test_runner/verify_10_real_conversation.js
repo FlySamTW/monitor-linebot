@@ -74,10 +74,10 @@ const cases = [
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/S27FG532EC/i, /QHD|2560\s*x\s*1440/i, /200\s*Hz/i, /IPS/i, /\[來源:\s*規格庫\]/]) &&
+          hasAll(reply, [/S27FG532EC/i, /QHD|2560\s*x\s*1440/i, /200\s*Hz/i, /IPS/i, /\[來源:\s*官方規格庫\]/]) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
-        reason: "需回答 QHD/200Hz/IPS 並標註規格庫來源",
+        reason: "需回答 QHD/200Hz/IPS 並標註官方規格庫來源",
       };
     },
   },
@@ -89,7 +89,7 @@ const cases = [
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/S27DG502EC/i, /S27FG532EC/i, /180\s*Hz/i, /200\s*Hz/i, /\[來源:\s*規格庫\]/]) &&
+          hasAll(reply, [/S27DG502EC/i, /S27FG532EC/i, /180\s*Hz/i, /200\s*Hz/i, /\[來源:\s*官方規格庫\]/]) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
         reason: "需比較兩台並分別提到 180Hz/200Hz",
@@ -104,7 +104,7 @@ const cases = [
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/M8/i, /M9/i, /陀螺儀/, /HAS/i, /自動|跟著|切換/, /\[來源:\s*QA\]/]) &&
+          hasAll(reply, [/M8/i, /M9/i, /陀螺儀/, /HAS/i, /自動|跟著|切換/, /\[來源:\s*QA庫\]/]) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
         reason: "需命中 QA，說明陀螺儀、HAS 與畫面旋轉",
@@ -119,7 +119,7 @@ const cases = [
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/Mac/i, /不支援|不能|不行/, /Windows/i, /DisplayPort|DP|HDMI\s*2\.1/i, /USB/i, /\[來源:\s*QA\]/]) &&
+          hasAll(reply, [/Mac/i, /不支援|不能|不行/, /Windows/i, /DisplayPort|DP|HDMI\s*2\.1/i, /USB/i, /\[來源:\s*QA庫\]/]) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
         reason: "需命中 QA，指出 Mac 不支援、Windows 與連接方式",
@@ -132,12 +132,12 @@ const cases = [
     question: "S27HG806EF 本期三星螢幕登錄活動送什麼？",
     requireLlm: true,
     check(reply, logs) {
-      const blockedByTimelyGuard = /\[Force Web Intent|即時資訊路由|我不能用舊資料直接下結論/.test(
+      const blockedByTimelyGuard = /\[Force Web Intent|我不能用舊資料直接下結論/.test(
         `${logs}\n${reply}`,
       );
       return {
         pass:
-          hasAll(reply, [/S27HG806EF/i, /Steam/i, /1,?000\s*元?點卡/i, /\[來源:\s*規格庫\]/]) &&
+          hasAll(reply, [/S27HG806EF/i, /Steam/i, /1,?000\s*元?點卡/i, /\[來源:\s*官方活動庫\]/]) &&
           !blockedByTimelyGuard &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
@@ -151,12 +151,12 @@ const cases = [
     question: "S34BG850SC 本期登錄活動有什麼資格或贈品？",
     requireLlm: true,
     check(reply, logs) {
-      const blockedByTimelyGuard = /\[Force Web Intent|即時資訊路由|我不能用舊資料直接下結論/.test(
+      const blockedByTimelyGuard = /\[Force Web Intent|我不能用舊資料直接下結論/.test(
         `${logs}\n${reply}`,
       );
       return {
         pass:
-          hasAll(reply, [/S34BG850SC/i, /延長保固|保固兩年|兩年保固/, /Galaxy\s*S26|月月抽/i, /\[來源:\s*規格庫\]/]) &&
+          hasAll(reply, [/S34BG850SC/i, /延長保固|保固兩年|兩年保固/, /Galaxy\s*S26|月月抽/i, /\[來源:\s*官方活動庫\]/]) &&
           !blockedByTimelyGuard &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
@@ -199,11 +199,11 @@ const cases = [
       check(reply, logs) {
         return {
           pass:
-            hasAll(reply, [/S27DG502EC/i, /出廠資料重設|出廠預設值|安全\s*PIN/i, /\[來源:.*官方手冊PDF.*\]/]) &&
-            /AttachPDFs:\s*true|PDF 匹配|官方手冊PDF|Files API/i.test(logs) &&
+            hasAll(reply, [/S27DG502EC/i, /出廠資料重設|出廠預設值|安全\s*PIN/i, /\[來源:\s*官方手冊\]/]) &&
+            /AttachPDFs:\s*true|PDF 匹配|官方手冊|Files API/i.test(logs) &&
             hasRealLlmLog(logs) &&
             hasNoHardFailure(logs, reply),
-          reason: "選定 S27DG502EC 後必須繼續掛載 PDF，回答出廠資料重設步驟並標註官方手冊PDF",
+          reason: "選定 S27DG502EC 後必須繼續掛載 PDF，回答出廠資料重設步驟並標註官方手冊",
         };
       },
     },
@@ -216,11 +216,11 @@ const cases = [
     check(reply, logs) {
       return {
         pass:
-          hasAll(reply, [/S32FM703/i, /設定|所有設定/i, /一般與隱私權/i, /出廠資料重設|出廠預設值/i, /安全\s*PIN|PIN/i, /\[來源:.*S32FM702,S32FM703,S32FM803\.pdf.*官方手冊PDF.*\]/]) &&
-          /Fast 回答不足|AUTO_SEARCH_PDF|AttachPDFs:\s*true|載入 PDF|官方手冊PDF|Files API/i.test(logs) &&
+          hasAll(reply, [/S32FM703/i, /設定|所有設定/i, /一般與隱私權/i, /出廠資料重設|出廠預設值/i, /安全\s*PIN|PIN/i, /\[來源:\s*官方手冊\]/]) &&
+          /Fast 回答不足|AUTO_SEARCH_PDF|AttachPDFs:\s*true|載入 PDF|官方手冊|S32FM702,S32FM703,S32FM803\.pdf|Files API/i.test(logs) &&
           hasRealLlmLog(logs) &&
           hasNoHardFailure(logs, reply),
-        reason: "一般恢復出廠題不可停在 PIN 忘記 QA，需自動掛載 S32FM703 官方手冊PDF回答一般出廠資料重設路徑",
+        reason: "一般恢復出廠題不可停在 PIN 忘記 QA，需自動掛載 S32FM703 官方手冊回答一般出廠資料重設路徑",
       };
     },
   },

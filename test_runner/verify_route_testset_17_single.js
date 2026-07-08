@@ -61,7 +61,7 @@ function isApiGuardedReply(replies) {
 
 function hasFakeSourceOnApiGuard(replies) {
   const text = (replies || []).join("\n");
-  return /\[來源:\s*(?:QA|規格庫|產品規格表|.*\.pdf\s*\(官方手冊PDF\))\]/i.test(
+  return /\[來源:\s*(?:QA庫|官方規格庫|官方活動庫|官方手冊|網路搜尋|AI內建資料庫)\]/i.test(
     text,
   );
 }

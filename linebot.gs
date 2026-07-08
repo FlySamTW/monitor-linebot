@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.061"; // 2026-07-07 回覆孤立括號清理
-const BUILD_TIMESTAMP = "2026-07-07 22:35";
+const GAS_VERSION = "v29.6.067"; // 2026-07-08 來源語氣、費用與手冊查詢修復
+const BUILD_TIMESTAMP = "2026-07-08 12:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -261,7 +261,7 @@ function getElaborationTopicAnchor_(cache, userId, fallbackText) {
  * 🔥 v27.9.15 更新 (QA 全掃排序)：
  * - 新增：當 Input tokens 超過 20,000 時，在回覆末尾顯示「知識庫超載警告」
  * 🔥 v27.9.13 更新 (來源標註細分)：
- * - 新增：區分「[來源: 規格庫]」(CLASS_RULES) 和「[來源: QA]」(QA Sheet) 標籤
+ * - 新增：區分 CLASS_RULES 與 QA Sheet 的來源標籤
  * 🔥 v27.9.12 更新 (PDF 匹配條件修正)：
  * - 修正：只有當 AI 明確輸出 [AUTO_SEARCH_PDF] 時才觸發 PDF 智慧匹配
  * - 效果：規格問題（如「M5有支援Smart嗎」）不再強制反問型號，直接用 CLASS_RULES 回答
@@ -391,7 +391,7 @@ function getElaborationTopicAnchor_(cache, userId, fallbackText) {
  *
  * 🔥 v27.8.13 更新 (來源標註)：
  * - 嚴格執行「資料來源標註」規範：
- *   └─ 修正：在 Prompt 中強制要求 AI 若非引用手冊，必須明確標註「[來源: 網路搜尋]」或「[來源: 一般知識]」。
+ *   └─ 修正：在 Prompt 中強制要求 AI 若非引用手冊，必須明確標註網路搜尋來源；舊版 AI 自帶知識來源標籤已停用。
  *   └─ 目的：落實 QA -> CLASS_RULES -> PDF -> Web/Brain 的層級，並對使用者誠實揭露資訊來源。
  *
  * 🔥 v27.8.12 更新 (架構重構)：
@@ -1376,11 +1376,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-          const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-            4,
-          )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
-            lastTokenUsage.total
-          })`;
+          const tokenInfo = `\n\n${buildReplyCostAuditText_()}`;
           replyText += tokenInfo;
         }
 
@@ -1524,11 +1520,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           // 只在有有效回答和有 lastTokenUsage 時才顯示費用
           let replyText = finalText;
           if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-            const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-              4,
-            )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
-              lastTokenUsage.total
-            })`;
+            const tokenInfo = `\n\n${buildReplyCostAuditText_()}`;
             replyText += tokenInfo;
           }
 
@@ -1634,11 +1626,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-          const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-            4,
-          )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
-            lastTokenUsage.total
-          })`;
+          const tokenInfo = `\n\n${buildReplyCostAuditText_()}`;
           replyText += tokenInfo;
         }
 
@@ -2024,7 +2012,8 @@ function appendPdfSourceTag(text, files, maxCount = 1) {
   }
   const label = buildPdfSourceLabelFromFiles(files, maxCount);
   if (!label) return cleaned;
-  return `${cleaned}\n\n[來源: ${label} (官方手冊PDF)]`;
+  writeLog(`[Source Audit] 官方手冊來源 PDF: ${label}`);
+  return `${cleaned}\n\n[來源:官方手冊]`;
 }
 
 /**
@@ -2047,6 +2036,44 @@ function stripAnySourceTags(text) {
     .trim();
 }
 
+function isCampaignRuleReplyText_(text) {
+  return /(電腦螢幕活動RULE|活動|促銷|登錄|抽獎|延長保固|贈品|Steam|點卡|月月抽|Galaxy\s*S26)/i.test(
+    String(text || ""),
+  );
+}
+
+function normalizeAllowedSourceTag_(sourceText, fullText) {
+  const src = String(sourceText || "").trim();
+  if (!src) return "";
+  if (/^QA$|QA庫|QA資料庫/i.test(src)) return "[來源:QA庫]";
+  if (/網路搜尋|^WEB$/i.test(src)) return "[來源:網路搜尋]";
+  if (/官方手冊|產品手冊|手冊|PDF|\.pdf|上一則官方/i.test(src)) {
+    return "[來源:官方手冊]";
+  }
+  if (/AI內建資料庫|AI內建|LLM內建|內建資料庫|一般知識|通用知識|常識/i.test(src)) {
+    return "[來源:AI內建資料庫]";
+  }
+  if (/官方活動庫|活動|促銷|RULE|登錄|抽獎|延長保固|贈品/i.test(src)) {
+    return "[來源:官方活動庫]";
+  }
+  if (/官方規格庫|規格庫|產品規格|規格表|CLASS_RULES/i.test(src)) {
+    return isCampaignRuleReplyText_(fullText)
+      ? "[來源:官方活動庫]"
+      : "[來源:官方規格庫]";
+  }
+  return "";
+}
+
+function normalizeVisibleSourceTags_(text) {
+  return String(text || "")
+    .replace(/[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/gi, (match, src) => {
+      return normalizeAllowedSourceTag_(src, text);
+    })
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /**
  * 將 LLM 原始來源標籤正規化為系統允許格式（Fast Mode 用）。
  */
@@ -2055,8 +2082,13 @@ function normalizeSourceTagFromRaw(rawText) {
   const m = raw.match(/[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/i);
   if (!m || !m[1]) return "";
   const src = m[1].trim();
-  if (/^QA$/i.test(src)) return "[來源:QA]";
-  if (/^規格庫$/.test(src)) return "[來源:規格庫]";
+  if (/^QA$/i.test(src)) return "[來源:QA庫]";
+  if (/^QA庫$/i.test(src)) return "[來源:QA庫]";
+  if (/^規格庫$/.test(src)) {
+    return isCampaignRuleReplyText_(raw) ? "[來源:官方活動庫]" : "[來源:官方規格庫]";
+  }
+  if (/^官方規格庫$/.test(src)) return "[來源:官方規格庫]";
+  if (/^官方活動庫$/.test(src)) return "[來源:官方活動庫]";
   if (/^網路搜尋$|^Web$/i.test(src)) return "[來源:網路搜尋]";
   if (/QA|規格|產品規格|規格表|資料庫/i.test(src)) {
     writeLog(`[Anti-Hallucination] 🛑 Fast Mode 偵測到 AI 自帶模糊來源標記「${src}」，拒絕洗白為可信來源！`);
@@ -2094,12 +2126,7 @@ function appendSourceTagIfMissing(text, sourceTag) {
     if (/主要服務三星|三星客服|LG|BENQ|ASUS|Acer|Dell|HP 的資訊|我這邊沒有/.test(body)) {
       return body;
     }
-    // 含「資料庫沒有」「找不到」「未記載」字樣 → 標 [來源:缺失]
-    if (/資料庫(中|裡)?(沒有|沒有找到|沒有相關|未記載|找不到)|沒有找到|未登錄|目前沒有/.test(body)) {
-      return `${body}\n\n[來源:缺失]`;
-    }
-    // 其他 → 預設 [來源:規格庫]
-    return `${body}\n\n[來源:規格庫]`;
+    return body;
   }
   if (/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/i.test(body)) return body;
   return `${body}\n\n${tag}`;
@@ -2203,9 +2230,51 @@ function inferQaSourceTagFromFastReply(userText, replyText, existingTag) {
     }
     if (replyHitCount >= 3) {
       writeLog(`[QA Source Inference] 回覆命中 QA 來源列 (${userHitCount}/${replyHitCount})`);
-      return "[來源:QA]";
+      return "[來源:QA庫]";
     }
   }
+  return "";
+}
+
+function isKnowledgeMissingReply_(text) {
+  return /查無|沒有關於.+(?:資訊|資料|上市|日期)|(?:目前|手邊|我目前手邊).{0,12}資料.{0,8}沒有|沒有\s*\d{4}\s*年?.{0,20}(?:上市資訊|上市日期|上市時間)|沒有.{0,20}(?:上市資訊|上市日期|上市時間)|資料庫(?:中|裡)?(?:沒有|沒有找到|沒有相關|未記載|找不到)|目前沒有.+(?:資訊|資料|上市|日期)|建議.{0,20}(?:官網|官方社群|官方網站)/i.test(
+    String(text || ""),
+  );
+}
+
+function inferFastLocalSourceTag_(userText, replyText, existingTag) {
+  const qaTag = inferQaSourceTagFromFastReply(userText, replyText, existingTag);
+  if (qaTag) return qaTag;
+
+  const user = String(userText || "");
+  const reply = String(replyText || "");
+  const combined = `${user}\n${reply}`;
+  if (
+    hasVisibleSourceAudit_(reply) ||
+    isKnowledgeMissingReply_(reply) ||
+    isModelSelectionOrNeedModelReply(reply)
+  ) {
+    return "";
+  }
+
+  if (isCampaignRuleReplyText_(combined)) {
+    return "[來源:官方活動庫]";
+  }
+
+  const knownModels = extractModelNumbers(user)
+    .map((m) => String(m || "").toUpperCase())
+    .filter((m) => m && isKnownFullModelToken(m));
+  const mentionsSpecFact =
+    /(解析度|更新率|刷新率|面板|IPS|VA|OLED|QHD|UHD|FHD|HDR|Hz|亮度|尺寸|吋|反應時間|DisplayPort|HDMI|USB|Type-?C|喇叭|耳機孔|支援|規格|比較)/i.test(
+      combined,
+    );
+  if (knownModels.length > 0 && mentionsSpecFact) {
+    writeLog(
+      `[Source Inference] Fast Mode 已知型號規格回答補官方規格庫來源: ${knownModels.join(", ")}`,
+    );
+    return "[來源:官方規格庫]";
+  }
+
   return "";
 }
 
@@ -2280,6 +2349,21 @@ function isFactoryResetQueryWithoutPinIssue(text) {
   return asksFactoryReset && !asksPinRecovery;
 }
 
+function buildFactoryResetManualSearchQuery_(query, targetModelName) {
+  const original = String(query || "").trim();
+  if (!isFactoryResetQueryWithoutPinIssue(original)) {
+    return original;
+  }
+  const modelText = String(targetModelName || "").trim();
+  return [
+    `請查官方手冊中${modelText ? `「${modelText}」` : ""}「恢復出廠 / 出廠資料重設 / 重設」的實際操作路徑。`,
+    "請優先比對 Smart Monitor / Tizen 選單相關字詞：設定、所有設定、一般與隱私權、重設、出廠資料重設、安全 PIN。",
+    "只回答手冊中找得到的操作路徑；如果手冊沒有這些字詞，請明確說手冊未記載，並輸出 [AUTO_SEARCH_WEB]，不要改用一般常識或線上資源猜測。",
+    "",
+    `使用者原問題：${original}`,
+  ].join("\n");
+}
+
 function isPinRecoveryQuery(text) {
   const q = String(text || "");
   return /(忘記|遺失|不記得|找不到).{0,12}(PIN|密碼|碼)|(?:PIN|密碼|碼).{0,12}(忘記|遺失|不記得|找不到)/i.test(
@@ -2301,13 +2385,11 @@ function isPinRecoveryOnlyAnswer(text) {
 
 function buildNeedModelForOperationReply() {
   return [
-    "這題會跟不同型號的按鍵配置、選單路徑或遙控器設計有關，我需要先確認完整型號，才不會給你錯的操作步驟。",
+    "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。",
     "",
     "請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。",
     "",
     "收到型號後，我會依 QA/規格庫先查；如果仍不足，再接著查官方手冊。",
-    "",
-    "[來源:專案流程規則]",
   ].join("\n");
 }
 
@@ -2323,8 +2405,6 @@ function buildNeedApplianceModelForOperationReply() {
     "這題是三星家電相關問題，不會套用螢幕型號來判斷。",
     "",
     "目前 AI 暫時無法穩定查證，請稍後再試；如果要我精準比對功能或操作方式，也可以補上家電完整型號（例如 WA、WD、VR 開頭的型號）。",
-    "",
-    "[來源:專案流程規則]",
   ].join("\n");
 }
 
@@ -2355,8 +2435,6 @@ function buildOutOfProjectScopeReply(text) {
     "我這邊主要回答三星產品與本專案已整理的三星相關資料，不能代替你整理競品品牌清單或即時市場報價。",
     "",
     "你可以改問三星螢幕、Smart Monitor、Odyssey、ViewFinity、Galaxy Watch 與三星家電相關問題；若需要價格，我會引導到三星官方頁面，不會直接回覆市場數字價格。",
-    "",
-    "[來源:專案範圍規則]",
   ].join("\n");
 }
 
@@ -2420,8 +2498,6 @@ function buildServiceHoursReply() {
     "2. 三星台灣服務中心查詢：https://www.samsung.com/tw/support/service-center/",
     "",
     "如果你要我幫你查最新資訊，請按「🌐 這題再搜網路」。",
-    "",
-    "[來源:三星官方服務頁]",
   ].join("\n");
 }
 
@@ -2435,8 +2511,6 @@ function buildTimelyWebInfoReply(text) {
     "3. 三星台灣新聞中心：https://news.samsung.com/tw/",
     "",
     "如果你要我幫你查最新資料，請按「🌐 這題再搜網路」。",
-    "",
-    "[來源:即時資訊路由]",
   ].join("\n");
 }
 
@@ -2464,7 +2538,9 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
   }
 
   const trustedFastSource =
-    info.fastSourceTag === "[來源:QA]" || info.fastSourceTag === "[來源:規格庫]";
+    info.fastSourceTag === "[來源:QA庫]" ||
+    info.fastSourceTag === "[來源:官方規格庫]" ||
+    info.fastSourceTag === "[來源:官方活動庫]";
   if (!trustedFastSource) {
     return true;
   }
@@ -2571,11 +2647,10 @@ function getSmartMonitorCodecSelectionModels(limit = 10) {
 function buildSmartMonitorCodecSelectionPayload(query, userId) {
   const models = getSmartMonitorCodecSelectionModels(10);
   const leadText = [
-    "這題需要查對應型號的官方 PDF 手冊，不能只用 Smart/Tizen 規格或共通摘要直接定論。",
+    "這題會跟實際型號有關，我先讓你選要查哪一台。",
     "",
-    "下面是目前已建索引、可用來查 Smart Monitor 影音格式細節的官方手冊型號；請點你要查的型號，我會掛載該型號 PDF 後再回答。",
+    "你點型號後，我會照那本官方手冊幫你查，不會先用共通說法猜。",
     "",
-    "[來源:專案流程規則]",
     "[費用:NT$0.0000（未呼叫 LLM）]",
   ].join("\n");
 
@@ -2589,9 +2664,9 @@ function buildSmartMonitorCodecSelectionPayload(query, userId) {
   }
 
   const flexMsg = createModelSelectionFlexV3(models, {
-    headerText: "🔍 Smart Monitor PDF 型號",
+    headerText: "選要查的型號",
     altText: "請選擇 Smart Monitor PDF 型號",
-    footerText: "點選型號後會載入對應官方手冊",
+    footerText: "點選後查官方手冊",
   });
   const messages = [{ type: "text", text: leadText }, flexMsg];
 
@@ -2624,7 +2699,7 @@ function collectRecentSmartCodecPdfText_(text, history) {
         item.role === "assistant" &&
         content &&
         content !== chunks[0] &&
-        /\(官方手冊PDF\)/.test(content) &&
+        /\[來源[:：]\s*官方手冊\]/.test(content) &&
         /(HEVC|H\.265|H265|視訊編解碼器)/i.test(content)
       ) {
         chunks.push(content);
@@ -2638,16 +2713,13 @@ function buildSmartCodecElaborationFromPreviousPdf(text, history, selectedModelF
   const body = String(text || "").trim();
   if (
     !/(HEVC|H\.265|H265|視訊編解碼器)/i.test(body) ||
-    !/\(官方手冊PDF\)/.test(body)
+    !/\[來源[:：]\s*官方手冊\]/.test(body)
   ) {
     return "";
   }
 
   const combinedBody = collectRecentSmartCodecPdfText_(body, history);
-  const sourceMatch = combinedBody.match(/\[來源[:：]\s*([^\]]+官方手冊PDF[^\]]*)\]/);
-  const sourceTag = sourceMatch
-    ? `[來源: ${sourceMatch[1].trim()}]`
-    : "[來源:上一則官方手冊PDF]";
+  const sourceTag = "[來源:官方手冊]";
   const selectedModel =
     String(selectedModelFromCache || "").trim().toUpperCase() ||
     getSelectedModelFromRecentHistory_(history);
@@ -2728,7 +2800,10 @@ function enforceSmartCodecPdfSupportConclusion_(text, selectedModel) {
     /(支援的視訊(?:編解碼器|訊號)[^。]{0,160}(HEVC|H\.265|H265))|((HEVC|H\.265|H265)[^。]{0,120}(有被記載|有被列出|有列出|列出|欄位有標示|項目有標示))/i.test(
       scan,
     );
-  if (!listedInCodecTable) return body;
+  const onlyDiscussesHevcFileLimit =
+    !!String(selectedModel || "").trim() &&
+    /(檔案類型|檔案格式|MKV|MP4|TS|限制)/i.test(scan);
+  if (!listedInCodecTable && !onlyDiscussesHevcFileLimit) return body;
 
   const modelText = String(selectedModel || "").trim().toUpperCase();
   const prefix = modelText
@@ -2867,8 +2942,6 @@ function buildUnknownFullModelReply(models) {
     `我在目前的 QA、規格庫與手冊索引裡找不到這個完整型號：${list}。`,
     "",
     "請先確認型號是否有打錯，或補上產品背貼/外盒上的完整型號；確認後我再依 QA/規格庫先查，仍不足才接著查官方手冊或官方頁面。",
-    "",
-    "[來源:專案型號驗證規則]",
   ].join("\n");
 }
 
@@ -3028,8 +3101,6 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
     mode === "pdf"
       ? "請先選完整型號，我再依現有官方手冊查證。"
       : "請先選完整型號，我再依該型號回答。",
-    "",
-    "[來源:專案流程規則]",
   ].join("\n");
   const flexMsg = createModelSelectionFlexV3(models, {
     headerText: `🔍 ${aliasToken} 型號確認`,
@@ -3151,10 +3222,10 @@ function enforceManualNumberedList(text) {
  */
 function sanitizeManualDeflection(text) {
   const normalized = String(text || "")
-    .replace(/根據[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "根據官方手冊")
-    .replace(/[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "官方手冊內容")
-    .replace(/根據(?:這份|該份|提供的)\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "根據官方手冊")
-    .replace(/依照[你您]提供的\s*(?:PDF|手冊|文件|檔案)(?:\s*(?:文件|檔案|內容))?/gi, "依照官方手冊")
+    .replace(/根據[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
+    .replace(/[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "官方手冊內容")
+    .replace(/根據(?:這份|該份|提供的)\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
+    .replace(/依照[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "依照官方手冊")
     .trim();
   const lines = normalized.split(/\n+/);
   const filtered = lines.filter((line) => {
@@ -3811,6 +3882,7 @@ const DEBUG_SHOW_TOKENS =
 
 // 最後一次 API 呼叫的 Token 資訊 (用於測試模式顯示)
 let lastTokenUsage = null;
+let lastLlmCallAttempted = false;
 
 // v29.5.112: 最後一次網路搜尋的來源列表 (用於顯示在回覆中)
 let lastSearchSources = null;
@@ -3909,7 +3981,6 @@ function buildNoPriceReply_(msg) {
   }
   lines.push("");
   lines.push("若你要，我可以再幫你整理這些型號目前在官網是否有促銷活動。");
-  lines.push("[來源:三星官網]");
   return lines.join("\n");
 }
 
@@ -5995,7 +6066,7 @@ function constructDynamicPrompt(
 
     // v29.6.025: 強制完整規格回應 + 朋友口吻
     dynamicPrompt += `\n【規格回應強化】當用戶詢問任何型號的「規格」時，你必須從參考資料中**完整提取所有可用的規格欄位**（解析度、更新頻率、反應時間、亮度、對比、HDR、可視角度、介面、重量、尺寸），**不能只給一句籠統回答**。完整範本：「這台是 27 吋 VA 面板，解析度 Full HD 1920x1080，60Hz 更新頻率，4ms 反應時間，亮度 250 cd/㎡，原生對比 3000:1，支援 HDR10，178° 寬視角，介面 HDMI 2 個 + USB 2 個 + WiFi，重量 4.8 kg。」。請嚴格按此豐富度回答。\n`;
-    dynamicPrompt += `\n【活動 RULE 回答鐵律】當用戶詢問「本期、活動、登錄、抽獎、延長保固、贈品」且參考資料中有「電腦螢幕活動RULE」時，你必須完整列出該型號在同一活動 RULE 行內的所有相關權益。若該型號出現在活動 RULE 行，且同一行寫有「月月抽 Galaxy S26 系列手機」或類似共通抽獎資格，必須一併說明；不可只回答 Steam 點卡或延長保固其中一項。最後標註 [來源:規格庫]。\n`;
+    dynamicPrompt += `\n【活動 RULE 回答鐵律】當用戶詢問「本期、活動、登錄、抽獎、延長保固、贈品」且參考資料中有「電腦螢幕活動RULE」時，你必須完整列出該型號在同一活動 RULE 行內的所有相關權益。若該型號出現在活動 RULE 行，且同一行寫有「月月抽 Galaxy S26 系列手機」或類似共通抽獎資格，必須一併說明；不可只回答 Steam 點卡或延長保固其中一項。最後標註 [來源:官方活動庫]。\n`;
     dynamicPrompt += `\n【口吻鐵律】你的口吻必須像「熟朋友」而非「客服專員」！嚴禁使用「您好」「我是三星螢幕客服專員」這類官式開頭。直接切入問題，朋友式口吻，例如「這台是...」「它的...」即可。\n`;
 
     // v29.6.032: 中性立場鐵律 (不攻擊它牌、不過度自誇三星)
@@ -6016,11 +6087,11 @@ function constructDynamicPrompt(
     dynamicPrompt += "2. 官方產品手冊 (PDF, 透過 Files API)\n";
     dynamicPrompt += "3. 網路搜尋結果 (用戶明確要求井號搜尋網路 才用)\n\n";
     dynamicPrompt += "若上述三個來源都**沒有答案**:\n";
-    dynamicPrompt += "- 必須老實回答「資料庫沒有, 找不到」+ 標記 `[來源:缺失]`\n";
+    dynamicPrompt += "- 必須老實回答「本機 QA庫與官方規格庫目前找不到」，並輸出 `[AUTO_SEARCH_WEB]` 或 `[AUTO_SEARCH_PDF]`，不要標註不存在的來源。\n";
     dynamicPrompt += "- 必須輸出 `[AUTO_SEARCH_PDF]` 或 `[AUTO_SEARCH_WEB]` 暗號\n";
     dynamicPrompt += "- **嚴禁**用「一般常見」「通常來說」「一般而言」這類暗示 LLM 知識的措辭\n";
     dynamicPrompt += "- **嚴禁**用「我想」「我覺得」「通常」這類主觀判斷\n\n";
-    dynamicPrompt += "若你**主動**從規格庫整理了事實 (例如把「1000R」「Fast IPS」拼湊成回答), 必須在最後明確標記 `[來源:規格庫]`。\n";
+    dynamicPrompt += "若你**主動**從官方規格庫整理了事實 (例如把「1000R」「Fast IPS」拼湊成回答), 必須在最後明確標記 `[來源:官方規格庫]`。\n";
 
     // 🆕 v29.5.227: 極速模式防幻覺與誠實來源鐵律 (徹底封鎖一般知識漏洞，不准瞎編展示據點與營業資訊)
     dynamicPrompt += `\n⚠️【極速模式防幻覺與誠實來源鐵律 (嚴格執行)】
@@ -6029,19 +6100,18 @@ function constructDynamicPrompt(
    - 針對**操作設定、故障排除**等深度問題，且資料庫無記載：你必須老實回答資料庫無記載，並**在回答最後輸出 \`[AUTO_SEARCH_PDF]\` 暗號**，引導用戶查手冊。
    - 針對**展示店、據點、服務時間、新品規格、其他一般客服**等非操作問題，且資料庫無記載：你**絕對不准瞎編任何據點或地址**，你必須老實表示目前資料庫中沒有相關資訊，並**在回答最後輸出 \`[AUTO_SEARCH_WEB]\` 暗號**！系統會自動強行攔截，提示並詢問用戶是否要擴大搜尋網路，用戶點擊同意後才會啟動聯網搜尋。
 3. **來源標記真實誠實原則**：回答最末尾的來源標記必須與你的參考來源 100% 實事求是：
-   - 僅當引用了 QA 資料庫的內容時，標註 \`[來源:QA]\`。
-   - 僅當引用了規格庫 (CLASS_RULES) 的規格時，標註 \`[來源:規格庫]\`。
-   - **嚴格禁止、絕對禁止標註 \`[來源:一般知識]\`！我們不再信任任何「一般知識」！除了一般禮貌性問候閒聊（如「你好」）可不帶來源外，任何具體產品/服務/據點諮詢，若無 QA/規格庫支援，一律必須輸出 \`[AUTO_SEARCH_WEB]\` 或 \`[AUTO_SEARCH_PDF]\`。**
-   - **當前極速模式下未加載手冊，絕對、100% 禁止標註 \`[來源:產品手冊]\`！**
+   - 僅當引用了 QA 資料庫的內容時，標註 \`[來源:QA庫]\`。
+   - 僅當引用了 CLASS_RULES 的一般產品規格時，標註 \`[來源:官方規格庫]\`。
+   - 僅當引用了 CLASS_RULES 內的活動、促銷、登錄、贈品、延長保固 RULE 時，標註 \`[來源:官方活動庫]\`。
+   - **嚴格禁止、絕對禁止標註任何「一般知識」來源！除了一般禮貌性問候閒聊（如「你好」）可不帶來源外，任何具體產品/服務/據點諮詢，若無本機資料支援，一律必須輸出 \`[AUTO_SEARCH_WEB]\` 或 \`[AUTO_SEARCH_PDF]\`。**
+   - **當前極速模式下未加載手冊，絕對、100% 禁止標註 \`[來源:官方手冊]\`！**
 4. **新品與新規格無資料防線**：如果用戶詢問新品或新規格（如 6K 螢幕），且資料庫中沒有，你必須誠實表示無此產品規格。嚴禁利用網路搜尋來胡編官方尚未登錄之新機或新規格。\n`;
 
     // Fast Mode hardcoded prompt removed; runtime instructions come from Google Sheet Prompt!C3.
   } else if (kbFiles.length > 0) {
     // Phase 2 & 3: 深度模式 (Deep Mode)
     // v27.8.6: 防護機制 - 確保真的有掛載 PDF
-    const sourceLabel = targetModelName
-      ? `${targetModelName} 產品手冊`
-      : "產品手冊";
+    const sourceLabel = "官方手冊";
     if (kbFiles.length === 0) {
       dynamicPrompt += `\n【系統異常】雖然進入深度模式，但系統無法讀取產品手冊 (File Count: 0)。\n請誠實告知用戶：「很抱歉，我目前無法讀取相關產品手冊，請確認你詢問的型號是否正確，或嘗試重新輸入完整的產品型號。」\n禁止瞎掰或假裝有看手冊。`;
     } else {
@@ -6071,6 +6141,7 @@ function callLLMWithRetry(
   forceWebSearch = false,
   targetModelName = null,
 ) {
+  lastLlmCallAttempted = true;
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
   if (!apiKey) throw new Error("API Key Missing");
@@ -6118,9 +6189,31 @@ function callLLMWithRetry(
     }
   }
 
+  let effectiveQuery = query;
+  if (attachPDFs && !forceWebSearch && isFactoryResetQueryWithoutPinIssue(query)) {
+    const rewrittenQuery = buildFactoryResetManualSearchQuery_(query, targetModelName);
+    if (rewrittenQuery && rewrittenQuery !== query) {
+      effectiveQuery = rewrittenQuery;
+      if (Array.isArray(effectiveMessages) && effectiveMessages.length > 0) {
+        effectiveMessages = effectiveMessages.slice();
+        for (let i = effectiveMessages.length - 1; i >= 0; i--) {
+          if (effectiveMessages[i] && effectiveMessages[i].role === "user") {
+            effectiveMessages[i] = Object.assign({}, effectiveMessages[i], {
+              content: rewrittenQuery,
+            });
+            break;
+          }
+        }
+      }
+      writeLog(
+        `[PDF Query Rewrite] 出廠重設題改用手冊關鍵字查詢: ${rewrittenQuery.substring(0, 180)}`,
+      );
+    }
+  }
+
   // 1. 建構 Prompt
   let dynamicPrompt = constructDynamicPrompt(
-    query,
+    effectiveQuery,
     effectiveMessages,
     filesToAttach,
     forceWebSearch,
@@ -6885,6 +6978,7 @@ function callOpenRouter(
   tools = undefined,
   isOnline = false,
 ) {
+  lastLlmCallAttempted = true;
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("OPENROUTER_API_KEY");
   if (!apiKey) throw new Error("缺少 OPENROUTER_API_KEY");
@@ -7075,9 +7169,7 @@ function hasVisibleCostAudit_(text) {
   const s = String(text || "");
   return (
     /\[費用\s*[:：]\s*NT\$[^\]]+\]/.test(s) ||
-    /本次(?:對話|建檔|修改|整理)?預估花費\s*[:：]?\s*\n?\s*NT\$[0-9]+\.[0-9]{4}/.test(
-      s,
-    )
+    /\[費用\s*[:：]\s*未知（已呼叫 LLM）\]/.test(s)
   );
 }
 
@@ -7093,17 +7185,25 @@ function buildReplyCostAuditText_() {
       typeof lastTokenUsage.output === "number" ? lastTokenUsage.output : 0;
     const total =
       typeof lastTokenUsage.total === "number" ? lastTokenUsage.total : input + output;
-    return `---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${input}/Out:${output}=${total})`;
+    return `[費用:NT$${lastTokenUsage.costTWD.toFixed(4)}（In:${input}/Out:${output}=${total}）]`;
+  }
+  if (lastLlmCallAttempted) {
+    writeLog("[Reply Audit Guard v29.6.067] LLM 已呼叫但缺少 token/cost metadata，回覆改標未知費用");
+    return "[費用:未知（已呼叫 LLM）]";
   }
   return "[費用:NT$0.0000（未呼叫 LLM）]";
+}
+
+function buildAggregateCostAuditText_(costTWD, inputTokens, outputTokens) {
+  const cost = typeof costTWD === "number" && isFinite(costTWD) ? costTWD : 0;
+  const input = typeof inputTokens === "number" ? inputTokens : 0;
+  const output = typeof outputTokens === "number" ? outputTokens : 0;
+  return `[費用:NT$${cost.toFixed(4)}（In:${input}/Out:${output}）]`;
 }
 
 function appendMissingReplyAuditTrail_(text, needsSource, needsCost) {
   let s = text === null || text === undefined ? "" : String(text);
   const suffixLines = [];
-  if (needsSource) {
-    suffixLines.push("[來源:系統流程]");
-  }
   if (needsCost) {
     suffixLines.push(buildReplyCostAuditText_());
   }
@@ -7137,8 +7237,45 @@ function collectVisibleReplyText_(txt) {
   return txt === null || txt === undefined ? "" : String(txt);
 }
 
+function stripLegacyCostAudit_(text) {
+  return String(text || "")
+    .replace(
+      /\n{0,2}---\s*\n\s*本次(?:對話|建檔|修改|整理)?預估花費\s*[：:]?\s*\n?\s*NT\$[0-9]+\.[0-9]{4}\s*(?:\n?\(In:[^)]+\))?/g,
+      "",
+    )
+    .replace(
+      /\n{0,2}---\s*\n\s*本次(?:對話|建檔|修改|整理)?預估花費\s*[：:]?\s*NT\$[0-9]+\.[0-9]{4}(?:\s*\(In:[^)]+\))?/g,
+      "",
+    )
+    .replace(
+      /\n{0,2}本次(?:對話|建檔|修改|整理)?預估花費\s*[：:]?\s*\n?\s*NT\$[0-9]+\.[0-9]{4}\s*(?:\n?\(In:[^)]+\))?/g,
+      "",
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function stripRebuildableCostAudit_(text) {
+  const shouldRebuild =
+    lastLlmCallAttempted ||
+    (lastTokenUsage &&
+      typeof lastTokenUsage.costTWD === "number" &&
+      isFinite(lastTokenUsage.costTWD));
+  if (!shouldRebuild) {
+    return String(text || "");
+  }
+  return String(text || "")
+    .replace(/\n{0,2}\[費用\s*[:：]\s*(?:NT\$[^\]]+|未知（已呼叫 LLM）)\]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function cleanReplyTextArtifacts_(text) {
-  return String(text === null || text === undefined ? "" : text)
+  return normalizeVisibleSourceTags_(
+    stripRebuildableCostAudit_(
+      stripLegacyCostAudit_(String(text === null || text === undefined ? "" : text)),
+    ),
+  )
     .replace(/\n\s*\]\s*(?=\n+\[來源[:：])/g, "\n")
     .replace(/([。！？])\s*\]\s*(?=\n+\[來源[:：])/g, "$1");
 }
@@ -7166,7 +7303,7 @@ function cleanReplyVisibleTextArtifacts_(txt) {
 
 function enforceReplyAuditTrail_(txt) {
   const visibleText = collectVisibleReplyText_(txt);
-  const needsSource = !hasVisibleSourceAudit_(visibleText);
+  const needsSource = false;
   const needsCost = !hasVisibleCostAudit_(visibleText);
   if (!needsSource && !needsCost) return txt;
 
@@ -7176,35 +7313,35 @@ function enforceReplyAuditTrail_(txt) {
       const item = audited[i];
       if (typeof item === "string") {
         audited[i] = appendMissingReplyAuditTrail_(item, needsSource, needsCost);
-        writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+        writeLog("[Reply Audit Guard v29.6.067] 已補上缺漏的費用");
         return audited;
       }
       if (item && typeof item === "object" && item.type === "text") {
         audited[i] = Object.assign({}, item, {
           text: appendMissingReplyAuditTrail_(item.text || "", needsSource, needsCost),
         });
-        writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+        writeLog("[Reply Audit Guard v29.6.067] 已補上缺漏的費用");
         return audited;
       }
     }
     const auditText = appendMissingReplyAuditTrail_("", needsSource, needsCost);
-    writeLog("[Reply Audit Guard v29.6.061] Flex-only 回覆已新增來源/費用文字泡泡");
+    writeLog("[Reply Audit Guard v29.6.067] Flex-only 回覆已新增費用文字泡泡");
     return [{ type: "text", text: auditText }].concat(audited).slice(0, 5);
   }
 
   if (txt && typeof txt === "object") {
     if (txt.type === "text") {
-      writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+      writeLog("[Reply Audit Guard v29.6.067] 已補上缺漏的費用");
       return Object.assign({}, txt, {
         text: appendMissingReplyAuditTrail_(txt.text || "", needsSource, needsCost),
       });
     }
     const auditText = appendMissingReplyAuditTrail_("", needsSource, needsCost);
-    writeLog("[Reply Audit Guard v29.6.061] Flex-only 回覆已新增來源/費用文字泡泡");
+    writeLog("[Reply Audit Guard v29.6.067] Flex-only 回覆已新增費用文字泡泡");
     return [{ type: "text", text: auditText }, txt];
   }
 
-  writeLog("[Reply Audit Guard v29.6.061] 已補上缺漏的來源/費用");
+  writeLog("[Reply Audit Guard v29.6.067] 已補上缺漏的費用");
   return appendMissingReplyAuditTrail_(txt, needsSource, needsCost);
 }
 
@@ -7249,6 +7386,7 @@ function handleMessage(event) {
     userId = event.source.userId;
     replyToken = event.replyToken;
     lastTokenUsage = null;
+    lastLlmCallAttempted = false;
     lastSearchSources = null;
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
@@ -7341,7 +7479,7 @@ function handleMessage(event) {
     if (!msg.startsWith("#") && isSmartMonitorCodecQuestion(msg)) {
       const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(msg, userId);
       writeLog(
-        `[Smart Codec Guard v29.6.061] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+        `[Smart Codec Guard v29.6.067] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
       );
       replyMessage(replyToken, smartCodecPayload.messages);
       writeRecordDirectly(userId, msg, contextId, "user", "");
@@ -7554,6 +7692,7 @@ function handleMessage(event) {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
 
         try {
+          lastLlmCallAttempted = true;
           const response = UrlFetchApp.fetch(apiUrl, {
             method: "post",
             contentType: "application/json",
@@ -7596,7 +7735,7 @@ function handleMessage(event) {
 
           const articleBodyForQaSeed = replyText.trim();
           const costStr = cost < 0.01 ? "0.01" : cost.toFixed(2);
-          const footer = `\n\n[來源: 使用者提供長文] [模式: 去廣告摘要] [費用: NT$${costStr}]`;
+          const footer = `\n\n[模式:去廣告摘要]\n[費用:NT$${costStr}]`;
           replyText += footer;
 
           const relatedToProject = isProjectRelevantLongContent(msg);
@@ -8014,7 +8153,7 @@ function handleMessage(event) {
 
           let replyText = finalText;
           if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-            replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+            replyText += `\n\n${buildReplyCostAuditText_()}`;
           }
 
           // v29.5.126: #型號: handler 已查 PDF，不再顯示「查手冊」
@@ -8128,7 +8267,7 @@ function handleMessage(event) {
       if (isSmartMonitorCodecQuestion(lastQuestion)) {
         const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
         writeLog(
-          `[Smart Codec Guard v29.6.061] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+        `[Smart Codec Guard v29.6.067] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
         );
         replyMessage(replyToken, smartCodecPayload.messages);
         updateHistorySheetAndCache(
@@ -8213,7 +8352,7 @@ function handleMessage(event) {
 
         let replyText = finalText;
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-          replyText += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+          replyText += `\n\n${buildReplyCostAuditText_()}`;
         }
 
         const manualReplyAnchor = computeReplyAnchor_(finalText);
@@ -8293,7 +8432,7 @@ function handleMessage(event) {
       );
       if (smartCodecElaboration) {
         replyMessage(replyToken, smartCodecElaboration);
-        writeLog(`[Quick Reply v29.6.061] HEVC/PDF 再詳細說明沿用上一則手冊結果`);
+        writeLog(`[Quick Reply v29.6.067] HEVC/PDF 再詳細說明沿用上一則手冊結果`);
         writeRecordDirectly(userId, msg, contextId, "user", "");
         writeRecordDirectly(userId, smartCodecElaboration, contextId, "assistant", "");
         updateHistorySheetAndCache(
@@ -8754,10 +8893,7 @@ function handleMessage(event) {
         const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
         const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
         const hasMissingSourceTag = /\[來源[：:]\s*缺失\]/i.test(rawResponse);
-        const looksLikeMissingDataReply =
-          /查無|沒有關於.+(?:資訊|資料|上市|日期)|資料庫(?:中|裡)?(?:沒有|沒有找到|沒有相關|未記載|找不到)|目前沒有.+(?:資訊|資料|上市|日期)/i.test(
-            finalText,
-          );
+        const looksLikeMissingDataReply = isKnowledgeMissingReply_(finalText);
         writeLog(
           `[Signal Check] PDF暗號:${hasAutoPdf}, Web暗號:${hasAutoWeb}, NeedDoc:${hasNeedDoc}`,
         );
@@ -8890,7 +9026,7 @@ function handleMessage(event) {
           operationIntent &&
           !userHasModelSignal &&
           !isInPdfMode &&
-          fastSourceTag !== "[來源:QA]"
+          fastSourceTag !== "[來源:QA庫]"
         ) {
           finalText = isSamsungHomeApplianceQuery(`${msg || ""}\n${userMessage || ""}`)
             ? buildNeedApplianceModelForOperationReply()
@@ -9335,8 +9471,6 @@ function handleMessage(event) {
                   : needSpecificModelIntent
                     ? "這題會因完整型號不同而有不同操作方式，請先選型號，我再依該型號回答。"
                     : "你問的內容可能對應多個完整型號，請先選型號，我再精準回答。",
-                "",
-                "[來源:專案流程規則]",
               ].join("\n");
               if (leadText && leadText.length > 0) {
                 messages.push({ type: "text", text: leadText });
@@ -9344,7 +9478,7 @@ function handleMessage(event) {
               messages.push(flexMsg);
 
               replyMessage(replyToken, messages);
-              writeLog(`[Smart Router v29.6.061] 已透過 replyMessage 發送 Flex Selection`);
+              writeLog(`[Smart Router v29.6.067] 已透過 replyMessage 發送 Flex Selection`);
               return; // 結束
             }
           }
@@ -9369,7 +9503,7 @@ function handleMessage(event) {
             specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
           }
           
-          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)\n\n[來源:缺失]`;
+          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)`;
           
           // 清除任何暗號標記，乾淨呈現在 UI 上
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
@@ -9855,6 +9989,7 @@ function handleMessage(event) {
                         200,
                       )}」\n當前用戶訊息：「${msg}」\n\n請判斷：用戶是在「繼續上一個話題（表示未解決或追問）」還是「換了新話題」？\n只回答：SAME（同一話題）或 NEW（新話題）`;
 
+                      lastLlmCallAttempted = true;
                       const topicCheckResponse = UrlFetchApp.fetch(
                         `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
                         {
@@ -10196,11 +10331,7 @@ function handleMessage(event) {
 
         // v27.0.0: 修復費用顯示邏輯（確保費用正確對應當前查詢）
         if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-          const tokenInfo = `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(
-            4,
-          )}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${
-            lastTokenUsage.total
-          })`;
+          const tokenInfo = `\n\n${buildReplyCostAuditText_()}`;
           // v29.3.21: 修正多泡泡模式下的字串拼接
           if (Array.isArray(replyText)) {
             replyText[replyText.length - 1] += tokenInfo;
@@ -10215,7 +10346,7 @@ function handleMessage(event) {
             : replyText;
           const isWebSearchPhase =
             checkText.includes("🔍 網路搜尋補充資料") ||
-            checkText.includes("[來源: 網路搜尋]");
+            checkText.includes("[來源:網路搜尋]");
           const tokenThreshold = isWebSearchPhase ? 40000 : 20000;
 
           if (lastTokenUsage.input > tokenThreshold) {
@@ -10339,7 +10470,7 @@ function handleMessage(event) {
         if (!Array.isArray(replyText)) {
           // v29.6.035: 不管 stayedInFastMode 與否, 都要補來源標籤
           // v29.6.038: appendSourceTagIfMissing 已智慧化 (暗號/缺失/預設)
-          const inferredFastSourceTag = inferQaSourceTagFromFastReply(
+          const inferredFastSourceTag = inferFastLocalSourceTag_(
             msg,
             replyText,
             fastSourceTag,
@@ -10859,8 +10990,10 @@ function handleCommand(c, u, cid) {
           writeLog(`[Web Search v29.5.280] 搜尋失敗，不追加補充資料標記`);
         } else if (lastSearchSources && lastSearchSources.length > 0) {
           result += `\n\n(📊 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+          result += "\n[來源:網路搜尋]";
         } else {
           result += "\n\n(🌐 網路搜尋補充資料)";
+          result += "\n[來源:網路搜尋]";
         }
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
@@ -10880,7 +11013,7 @@ function handleCommand(c, u, cid) {
 
       // v29.5.85: Append Token Cost for Manual Web Search
       if (DEBUG_SHOW_TOKENS && lastTokenUsage && lastTokenUsage.costTWD) {
-        result += `\n\n---\n本次對話預估花費：\nNT$${lastTokenUsage.costTWD.toFixed(4)}\n(In:${lastTokenUsage.input}/Out:${lastTokenUsage.output}=${lastTokenUsage.total})`;
+        result += `\n\n${buildReplyCostAuditText_()}`;
       }
       // v29.5.111: 修復對話記憶問題
       // 🔥 關鍵修正：保存原始問題 (userMsg) 而非指令文字 (cmd)
@@ -11465,6 +11598,7 @@ RULE_主題,規則類型,完整規則說明...
   };
 
   try {
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
       {
@@ -11541,6 +11675,7 @@ function callGeminiToModifyRule(currentText, instruction) {
   };
 
   try {
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
@@ -11647,9 +11782,11 @@ function startNewEntryDraft(content, userId) {
         "已進入 RULE 建檔模式",
       );
       if (totalCostTWD > 0) {
-        rulePreview += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
-          4,
-        )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+        rulePreview += `\n\n${buildAggregateCostAuditText_(
+          totalCostTWD,
+          totalInputTokens,
+          totalOutputTokens,
+        )}`;
       }
       writeLog(userId, "UserRecord", `[NewDraft Reply] RULE 草稿已建立`);
       return rulePreview;
@@ -11727,9 +11864,11 @@ function startNewEntryDraft(content, userId) {
 
       // v27.9.16: 附加費用資訊
       if (totalCostTWD > 0) {
-        replyMsg += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
-          4,
-        )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+        replyMsg += `\n\n${buildAggregateCostAuditText_(
+          totalCostTWD,
+          totalInputTokens,
+          totalOutputTokens,
+        )}`;
       }
 
       writeLog(userId, "UserRecord", `[NewDraft Reply] 等待用戶選擇 1/2/3`);
@@ -11757,9 +11896,11 @@ function startNewEntryDraft(content, userId) {
 
     // v27.9.16: 附加費用資訊
     if (totalCostTWD > 0) {
-      preview += `\n\n---\n本次建檔預估花費：NT$${totalCostTWD.toFixed(
-        4,
-      )} (In:${totalInputTokens}/Out:${totalOutputTokens})`;
+      preview += `\n\n${buildAggregateCostAuditText_(
+        totalCostTWD,
+        totalInputTokens,
+        totalOutputTokens,
+      )}`;
     }
 
     writeLog(
@@ -11919,7 +12060,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
 
         // 費用標記
         if (lastTokenUsage && lastTokenUsage.costTWD) {
-          replyMsg += `\n\n---\n本次修改預估花費：NT$${lastTokenUsage.costTWD.toFixed(4)}`;
+          replyMsg += `\n\n${buildReplyCostAuditText_()}`;
         }
 
         replyMessage(replyToken, replyMsg);
@@ -12011,9 +12152,7 @@ function handleDraftModification(feedback, userId, replyToken, currentDraft) {
 
     // v27.9.17: 附加費用資訊
     if (lastTokenUsage && lastTokenUsage.costTWD) {
-      preview += `\n\n---\n本次修改預估花費：NT$${lastTokenUsage.costTWD.toFixed(
-        4,
-      )} (In:${lastTokenUsage.input}/Out:${lastTokenUsage.output})`;
+      preview += `\n\n${buildReplyCostAuditText_()}`;
     }
 
     replyMessage(replyToken, preview);
@@ -12078,6 +12217,7 @@ function findSimilarQA(newContent, polishedQA) {
     };
 
     // v24.2.3: 簡單搜尋用 Fast 模型
+    lastLlmCallAttempted = true;
     var res = UrlFetchApp.fetch(
       CONFIG.API_ENDPOINT +
         "/" +
@@ -12225,6 +12365,7 @@ function callGeminiToMergeQA(existingQAs, newQA) {
 
   try {
     // v24.2.3: 語意合併用 Think 模型
+    lastLlmCallAttempted = true;
     var res = UrlFetchApp.fetch(
       CONFIG.API_ENDPOINT +
         "/" +
@@ -12376,6 +12517,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
 
   try {
     // v24.2.3: 對話修改用 Think 模型
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`,
       {
@@ -12515,6 +12657,7 @@ function callGeminiToPolish(input, userId = null) {
 
   try {
     // v27.9.20: 使用 GEMINI_MODEL_POLISH（程式最前面設定），只有這裡會用到
+    lastLlmCallAttempted = true;
     let res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
       {
@@ -12541,6 +12684,7 @@ function callGeminiToPolish(input, userId = null) {
 
       // 2. 自動切換至 Fast Mode 重試
       writeLog(`[Polish Fallback] Switching to ${CONFIG.MODEL_NAME_FAST}`);
+      lastLlmCallAttempted = true;
       res = UrlFetchApp.fetch(
         `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
         {
@@ -12677,6 +12821,7 @@ function callGeminiToModify(currentText, instruction) {
     }
 
     // v24.2.3: 簡單格式化用 Fast 模型
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
@@ -12969,6 +13114,7 @@ function handleAutoQA(u, cid) {
       },
     };
     // v24.2.3: 簡單整理用 Fast 模型
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
@@ -13004,9 +13150,7 @@ function handleAutoQA(u, cid) {
               usage.candidatesTokenCount
             }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
           );
-          costInfo = `\n\n---\n本次整理預估花費：NT$${costTWD.toFixed(4)} (In:${
-            usage.promptTokenCount
-          }/Out:${usage.candidatesTokenCount})`;
+          costInfo = `\n\n${buildReplyCostAuditText_()}`;
         }
 
         const cands = j && j.candidates ? j.candidates : [];
@@ -13589,6 +13733,7 @@ function callGeminiToSummarize(messages) {
     }
 
     // v24.2.3: 簡單摘要用 Fast 模型
+    lastLlmCallAttempted = true;
     const res = UrlFetchApp.fetch(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
@@ -14655,22 +14800,21 @@ function doGet(e) {
     } catch (err) {
       TEST_LOGS.push(`[Fatal] ${err.message}`);
     }
-    // 抓 AI Reply
+    // 抓正式 Reply；只有沒有正式出口紀錄時，才退回中間稿。
     let reply = "";
-    for (const log of TEST_LOGS) {
-      // v29.6.037: 改用 parseLogContent 避免 [來源:規格庫] 內 [ 字符誤切
-      if (log.indexOf("[Reply]") > -1) {
-        reply = parseLogContent(log, "[Reply]");
-        break;
-      }
-      if (log.indexOf("[AI Reply]") > -1) {
-        reply = parseLogContent(log, "[AI Reply]");
-        break;
-      }
-      if (log.indexOf("[AI Raw Response]") > -1) {
-        reply = parseLogContent(log, "[AI Raw Response]");
-        break;
-      }
+    const replyLog = TEST_LOGS.find((log) => log.indexOf("[Reply]") > -1);
+    const fallbackLog = !replyLog
+      ? TEST_LOGS.find((log) => log.indexOf("[AI Reply]") > -1)
+      : null;
+    const rawFallbackLog = !replyLog && !fallbackLog
+      ? TEST_LOGS.find((log) => log.indexOf("[AI Raw Response]") > -1)
+      : null;
+    if (replyLog) {
+      reply = parseLogContent(replyLog, "[Reply]");
+    } else if (fallbackLog) {
+      reply = parseLogContent(fallbackLog, "[AI Reply]");
+    } else if (rawFallbackLog) {
+      reply = parseLogContent(rawFallbackLog, "[AI Raw Response]");
     }
     reply = reply.substring(0, 1500);
     return ContentService.createTextOutput(
@@ -14820,16 +14964,20 @@ function testMessage(msg, userId) {
   var botResponses = [];
   var seenContent = new Set();
   var hasOfficialReply = false;
+  var hasReplyLog = TEST_LOGS.some((l) => l.indexOf("[Reply]") > -1);
   var hasFlexSelectionFlow = TEST_LOGS.some(
     (l) =>
       l.indexOf("已發送 Flex Selection") > -1 ||
       l.indexOf("型號泡泡選擇模式") > -1,
   );
 
-  // 1️⃣ 優先找 [Reply] 和 [AI Reply]
+  // 1️⃣ 優先找正式 [Reply]；只有沒有正式出口紀錄時才收 [AI Reply] 中間稿。
   for (var i = 0; i < TEST_LOGS.length; i++) {
     var log = TEST_LOGS[i];
     if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
+      if (hasReplyLog && log.indexOf("[AI Reply]") > -1) {
+        continue;
+      }
       if (hasFlexSelectionFlow && log.indexOf("[AI Reply]") > -1) {
         continue;
       }

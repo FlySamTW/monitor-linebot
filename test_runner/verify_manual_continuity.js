@@ -106,7 +106,7 @@ async function main() {
       .join("\n");
     if (isApiFailureReply(allReplyText)) {
       assertStep(
-        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(allReplyText),
+        !/\[來源:\s*官方手冊\]/i.test(allReplyText),
         "API failure reply must not be tagged as PDF source",
       );
       console.log("\nPASS: verify_manual_continuity (API quota guarded)");

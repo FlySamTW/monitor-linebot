@@ -59,10 +59,7 @@ function hasSource(text) {
 
 function hasCost(text) {
   const s = String(text || "");
-  return (
-    /\[費用\s*[:：]\s*NT\$[^\]]+\]/.test(s) ||
-    /本次對話預估花費\s*[:：]?\s*\n?NT\$[0-9]+\.[0-9]{4}/.test(s)
-  );
+  return /\[費用\s*[:：]\s*(?:NT\$[^\]]+|未知（已呼叫 LLM）)\]/.test(s);
 }
 
 function addCheck(checks, pass, message, details = "") {
@@ -81,7 +78,11 @@ function validateTurn({
   const checks = [];
   const allText = `${replies}\n${logs}`;
 
-  addCheck(checks, hasSource(replies), `Q${scenario.index}T${turnIndex} 回覆有來源`, replies);
+  if (turnIndex === 1 || turnIndex === 2) {
+    addCheck(checks, !hasSource(replies), `Q${scenario.index}T${turnIndex} 選型流程不硬湊來源`, replies);
+  } else {
+    addCheck(checks, hasSource(replies), `Q${scenario.index}T${turnIndex} 事實回覆有來源`, replies);
+  }
   addCheck(checks, hasCost(replies), `Q${scenario.index}T${turnIndex} 回覆有費用`, replies);
   addCheck(
     checks,
@@ -121,7 +122,7 @@ function validateTurn({
       `Q${scenario.index}T3 回答 HEVC/H.265 支援或未記載結果`,
       replies,
     );
-    addCheck(checks, /\(官方手冊PDF\)/.test(replies), `Q${scenario.index}T3 使用官方手冊 PDF 來源`, replies);
+    addCheck(checks, /\[來源:官方手冊\]/.test(replies), `Q${scenario.index}T3 使用官方手冊來源`, replies);
     addCheck(checks, !/S27FG900XC|G90XF|S27FG502/i.test(logs), `Q${scenario.index}T3 不混入 Odyssey/G 系列錯誤候選`, logs);
     addCheck(checks, !/通常|常見|應該|Plex|Kodi/i.test(replies), `Q${scenario.index}T3 不推測手冊外內容`, replies);
   }

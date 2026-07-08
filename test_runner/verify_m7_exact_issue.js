@@ -88,7 +88,7 @@ async function main() {
     );
     if (isApiFailureReply(t2Text)) {
       assertStep(
-        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t2Text),
+        !/\[來源:\s*官方手冊\]/i.test(t2Text),
         "API failure reply must not be tagged as PDF source",
       );
       console.log("\nPASS: verify_m7_exact_issue (API quota guarded on turn2)");
@@ -107,7 +107,7 @@ async function main() {
     const t3Text = (t3.replies || []).join("\n");
     if (isApiFailureReply(t3Text)) {
       assertStep(
-        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+        !/\[來源:\s*官方手冊\]/i.test(t3Text),
         "API failure reply must not be tagged as PDF source",
       );
       console.log("\nPASS: verify_m7_exact_issue (API quota guarded)");
@@ -120,7 +120,7 @@ async function main() {
       "#查手冊 with alias-only M7 should ask for full model instead of loading PDF directly",
     );
     assertStep(
-      !/\[來源:\s*[^\\\[\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+      !/\[來源:\s*官方手冊\]/i.test(t3Text),
       "alias-only manual query must not return a PDF source before full model selection",
     );
 
@@ -131,7 +131,7 @@ async function main() {
     const t4Text = (t4.replies || []).join("\n");
     if (isApiFailureReply(t4Text)) {
       assertStep(
-        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t4Text),
+        !/\[來源:\s*官方手冊\]/i.test(t4Text),
         "API failure reply must not be tagged as PDF source",
       );
       console.log("\nPASS: verify_m7_exact_issue (API quota guarded after model selection)");
@@ -142,8 +142,9 @@ async function main() {
       "manual reply still uses bullet symbol instead of numeric list",
     );
     assertStep(
-      /\[來源:\s*[^\\\[\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t4Text),
-      "selected full model manual reply missing real PDF filename source tag",
+      /\[來源:\s*官方手冊\]/i.test(t4Text) &&
+        (t4.logs || []).some((x) => /\.pdf/i.test(String(x))),
+      "selected full model manual reply missing official-manual source or PDF filename log",
     );
 
     console.log("\nPASS: verify_m7_exact_issue");

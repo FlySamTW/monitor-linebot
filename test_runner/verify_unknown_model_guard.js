@@ -68,8 +68,8 @@ async function main() {
     assertStep(/S32FD812/.test(text), "reply should name the unknown model");
     assertStep(/找不到|未登錄|確認型號/.test(text), "reply should ask to confirm the model");
     assertStep(
-      /\[來源:專案型號驗證規則\]/.test(text),
-      "reply should carry the project model-validation source tag",
+      !/\[來源:/.test(text),
+      "unknown-model flow reply should not invent a source tag",
     );
     assertStep(
       !/(有\s*3\.?5\s*mm|有耳機孔|內建.*耳機孔|OLED|IPS|VA|更新率|刷新率|解析度|HDR|Hz|毫秒)/i.test(

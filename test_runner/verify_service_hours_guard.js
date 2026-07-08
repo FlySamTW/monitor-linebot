@@ -63,7 +63,7 @@ async function main() {
       console.log(`Q: ${q}\n${text}\n`);
       assertStep(!/^🕒\s*現在是/m.test(text), "service-hours query was misrouted to current-time reply");
       assertStep(/服務\/營業時間資訊|三星台灣聯絡我們|服務中心查詢/.test(text), "missing service-hours official guidance");
-      assertStep(/\[來源:三星官方服務頁\]/.test(text), "missing service-hours source tag");
+      assertStep(!/\[來源:/.test(text), "service-hours routing prompt must not invent a source tag");
     }
 
     console.log("PASS: verify_service_hours_guard");

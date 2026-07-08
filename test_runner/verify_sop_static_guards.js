@@ -184,10 +184,9 @@ assertStep(
 );
 
 assertStep(
-  /需要幫你在網路上進行擴大搜尋嗎[\s\S]*\[來源:缺失\]/.test(
-    handleMessageSection,
-  ),
-  "web-search confirmation rewrite must preserve an honest missing-data source instead of falling back to 規格庫",
+  /需要幫你在網路上進行擴大搜尋嗎/.test(handleMessageSection) &&
+    !/\[來源:缺失\]/.test(handleMessageSection),
+  "web-search confirmation rewrite must not invent a missing-data source tag",
 );
 
 assertStep(
@@ -454,11 +453,16 @@ assertStep(
 
 const sourceNormalizeCode = [
   "const writeLog = () => {};",
+  extractFunction(linebot, "isCampaignRuleReplyText_"),
   extractFunction(linebot, "normalizeSourceTagFromRaw"),
   `
   globalThis.__sourceNormalizeResult = {
     exactQa: normalizeSourceTagFromRaw("[來源:QA]"),
+    exactQaDb: normalizeSourceTagFromRaw("[來源:QA庫]"),
     exactRules: normalizeSourceTagFromRaw("[來源:規格庫]"),
+    exactOfficialRules: normalizeSourceTagFromRaw("[來源:官方規格庫]"),
+    exactCampaign: normalizeSourceTagFromRaw("[來源:規格庫]\\n這次活動有 Steam 點卡與延長保固。"),
+    exactOfficialCampaign: normalizeSourceTagFromRaw("[來源:官方活動庫]"),
     fuzzyQaDb: normalizeSourceTagFromRaw("[來源:QA資料庫]"),
     fuzzySpecTable: normalizeSourceTagFromRaw("[來源:產品規格表]"),
     manual: normalizeSourceTagFromRaw("[來源:產品手冊]")
@@ -470,13 +474,33 @@ vm.createContext(sourceNormalizeContext);
 vm.runInContext(sourceNormalizeCode, sourceNormalizeContext);
 
 assertStep(
-  sourceNormalizeContext.__sourceNormalizeResult.exactQa === "[來源:QA]",
-  "Fast Mode should still accept exact [來源:QA]",
+  sourceNormalizeContext.__sourceNormalizeResult.exactQa === "[來源:QA庫]",
+  "Fast Mode should normalize exact QA source into [來源:QA庫]",
 );
 
 assertStep(
-  sourceNormalizeContext.__sourceNormalizeResult.exactRules === "[來源:規格庫]",
-  "Fast Mode should still accept exact [來源:規格庫]",
+  sourceNormalizeContext.__sourceNormalizeResult.exactQaDb === "[來源:QA庫]",
+  "Fast Mode should preserve exact [來源:QA庫] labels",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactRules === "[來源:官方規格庫]",
+  "Fast Mode should normalize exact rules source into [來源:官方規格庫]",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactOfficialRules === "[來源:官方規格庫]",
+  "Fast Mode should preserve exact [來源:官方規格庫] labels",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactCampaign === "[來源:官方活動庫]",
+  "campaign RULE answers should normalize into [來源:官方活動庫]",
+);
+
+assertStep(
+  sourceNormalizeContext.__sourceNormalizeResult.exactOfficialCampaign === "[來源:官方活動庫]",
+  "Fast Mode should preserve exact [來源:官方活動庫] labels",
 );
 
 assertStep(
@@ -531,7 +555,7 @@ const qaSourceInferenceCode = [
     preservesExisting: inferQaSourceTagFromFastReply(
       "S27FG532EC 的解析度是什麼？",
       "S27FG532EC 是 QHD 解析度。",
-      "[來源:規格庫]"
+      "[來源:官方規格庫]"
     )
   };
   `,
@@ -541,12 +565,12 @@ vm.createContext(qaSourceInferenceContext);
 vm.runInContext(qaSourceInferenceCode, qaSourceInferenceContext);
 
 assertStep(
-  qaSourceInferenceContext.__qaSourceInferenceResult.inferred === "[來源:QA]",
+  qaSourceInferenceContext.__qaSourceInferenceResult.inferred === "[來源:QA庫]",
   "source fallback should infer QA when an untagged Fast Mode answer matches a QA row",
 );
 
 assertStep(
-  qaSourceInferenceContext.__qaSourceInferenceResult.preservesExisting === "[來源:規格庫]",
+  qaSourceInferenceContext.__qaSourceInferenceResult.preservesExisting === "[來源:官方規格庫]",
   "source fallback must not override an existing trusted source tag",
 );
 
@@ -571,14 +595,14 @@ const fastEscalationCode = [
       userQuestion: "M8 和 M9 有陀螺儀嗎？",
       hasPdfForModel: true,
       operationIntent: true,
-      fastSourceTag: "[來源:QA]",
+      fastSourceTag: "[來源:QA庫]",
       normalizedFastAnswer: genericStepAnswer
     }),
     trustedRules: shouldEscalateFastAnswerToPdf({
       userQuestion: "S27FG532EC 如何調整刷新率？",
       hasPdfForModel: true,
       operationIntent: true,
-      fastSourceTag: "[來源:規格庫]",
+      fastSourceTag: "[來源:官方規格庫]",
       normalizedFastAnswer: genericStepAnswer
     }),
     capabilityOnly: shouldEscalateFastAnswerToPdf({
@@ -593,21 +617,21 @@ const fastEscalationCode = [
       userQuestion: "S32FM703如何恢復出廠",
       hasPdfForModel: true,
       operationIntent: true,
-      fastSourceTag: "[來源:QA]",
+      fastSourceTag: "[來源:QA庫]",
       normalizedFastAnswer: pinRecoveryOnlyAnswer
     }),
     factoryResetGenericQaSteps: shouldEscalateFastAnswerToPdf({
       userQuestion: "S32FM703如何恢復出廠",
       hasPdfForModel: true,
       operationIntent: true,
-      fastSourceTag: "[來源:QA]",
+      fastSourceTag: "[來源:QA庫]",
       normalizedFastAnswer: "1. 開啟螢幕選單。\\n2. 進入支援。\\n3. 選擇自我診斷。\\n4. 選擇重設。"
     }),
     pinForgotQa: shouldEscalateFastAnswerToPdf({
       userQuestion: "S32FM703 PIN碼忘記如何恢復出廠",
       hasPdfForModel: true,
       operationIntent: true,
-      fastSourceTag: "[來源:QA]",
+      fastSourceTag: "[來源:QA庫]",
       normalizedFastAnswer: pinRecoveryOnlyAnswer
     })
   };
@@ -737,10 +761,11 @@ assertStep(
 );
 
 assertStep(
-  /const leadText\s*=\s*\[[\s\S]*\[來源:專案流程規則\][\s\S]*\]\.join\("\\n"\)/.test(
-    linebot,
-  ),
-  "model-selection lead text must be deterministic and carry a project-flow source tag",
+  /const leadText\s*=\s*\[[\s\S]*\]\.join\("\\n"\)/.test(linebot) &&
+    !/const leadText\s*=\s*\[[\s\S]*\[來源:專案流程規則\][\s\S]*\]\.join\("\\n"\)/.test(
+      linebot,
+    ),
+  "model-selection lead text must be deterministic and must not invent a project-flow source tag",
 );
 
 const modelChosenPdfStart = linebot.indexOf('if (msg.startsWith("#型號:"))');
@@ -774,7 +799,7 @@ const operationGuardSection = linebot.slice(
 );
 
 assertStep(
-  /operationIntent[\s\S]*!\s*userHasModelSignal[\s\S]*fastSourceTag\s*!==\s*"\[來源:QA\]"/.test(
+  /operationIntent[\s\S]*!\s*userHasModelSignal[\s\S]*fastSourceTag\s*!==\s*"\[來源:QA庫\]"/.test(
     operationGuardSection,
   ),
   "no-model operation guard must ask for a model unless Fast Mode used a trusted QA source",
@@ -798,17 +823,19 @@ assertStep(
 );
 
 assertStep(
-  /function buildNeedModelForOperationReply[\s\S]*\[來源:專案流程規則\]/.test(
-    linebot,
-  ),
-  "full-model request reply should carry a true project-flow source tag",
+  /function buildNeedModelForOperationReply/.test(linebot) &&
+    !/function buildNeedModelForOperationReply[\s\S]*?\n}\s*[\s\S]*?\[來源:專案流程規則\]/.test(
+      extractFunction(linebot, "buildNeedModelForOperationReply"),
+    ),
+  "full-model request reply must not carry an invented project-flow source tag",
 );
 
 assertStep(
-  /function buildNeedApplianceModelForOperationReply[\s\S]*\[來源:專案流程規則\]/.test(
-    linebot,
-  ),
-  "appliance full-model request reply should carry a true project-flow source tag",
+  /function buildNeedApplianceModelForOperationReply/.test(linebot) &&
+    !/\[來源:專案流程規則\]/.test(
+      extractFunction(linebot, "buildNeedApplianceModelForOperationReply"),
+    ),
+  "appliance full-model request reply must not carry an invented project-flow source tag",
 );
 
 const manualDeflectionCode = [
@@ -1049,13 +1076,14 @@ assertStep(
     /function buildSmartMonitorCodecSelectionPayload/.test(linebot) &&
     /S32FM703/.test(extractFunction(linebot, "getSmartMonitorCodecSelectionModels")) &&
     /createModelSelectionFlexV3/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
-    /\[來源:專案流程規則\]/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
+    !/\[來源:專案流程規則\]/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
+    /這題會跟實際型號有關/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
     /\[費用:NT\$0\.0000/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")),
-  "Smart Monitor codec guard must provide model-selection bubbles with source and zero-cost disclosure",
+  "Smart Monitor codec guard must provide natural model-selection bubbles with zero-cost disclosure and no fake source",
 );
 
 assertStep(
-  /\[Smart Codec Guard v29\.6\.061\].*#查手冊 顯示 Smart Monitor PDF 型號選擇/.test(linebot),
+  /\[Smart Codec Guard v[\d.]+\].*#查手冊 顯示 Smart Monitor PDF 型號選擇/.test(linebot),
   "#查手冊 must route Smart Monitor codec questions to model choices before exact PDF search",
 );
 
@@ -1084,19 +1112,19 @@ assertStep(
 
 assertStep(
     /function enforceReplyAuditTrail_/.test(linebot) &&
-    /function hasVisibleSourceAudit_/.test(linebot) &&
     /function hasVisibleCostAudit_/.test(linebot) &&
+    /lastLlmCallAttempted/.test(linebot) &&
     /function cleanReplyVisibleTextArtifacts_/.test(linebot) &&
     /function replyMessage\(tk,\s*txt,\s*options\s*=\s*\{\}\)\s*\{\s*txt\s*=\s*cleanReplyVisibleTextArtifacts_\(txt\);\s*txt\s*=\s*enforceReplyAuditTrail_\(txt\)/.test(linebot) &&
-    /\[Reply Audit Guard v29\.6\.061\]/.test(linebot),
-  "all LINE/TestUI replies must pass the final visible source/cost audit guard",
+    /\[Reply Audit Guard v[\d.]+\]/.test(linebot),
+  "all LINE/TestUI replies must pass the final visible cost audit guard",
 );
 
 assertStep(
-  /lastTokenUsage\s*=\s*null;\s*lastSearchSources\s*=\s*null;/.test(
+  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;/.test(
     extractFunction(linebot, "handleMessage"),
   ),
-  "each new user message must reset token/search usage before calculating the current reply cost",
+  "each new user message must reset token/search/LLM usage before calculating the current reply cost",
 );
 
 assertStep(

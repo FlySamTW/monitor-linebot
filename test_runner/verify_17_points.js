@@ -21,7 +21,7 @@ function isApiFailureReply(text) {
 }
 
 function hasFakeSuccessMarker(text) {
-  return /網路搜尋補充資料|已搜尋\s*\d+\s*個來源|\[來源:\s*.*(?:官方手冊PDF|QA|規格庫|網路搜尋)/i.test(
+  return /網路搜尋補充資料|已搜尋\s*\d+\s*個來源|\[來源:\s*(?:官方手冊|QA庫|官方規格庫|官方活動庫|網路搜尋|AI內建資料庫)\]/i.test(
     String(text || ""),
   );
 }

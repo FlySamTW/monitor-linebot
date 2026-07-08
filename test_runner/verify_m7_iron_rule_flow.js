@@ -94,7 +94,7 @@ async function main() {
     const t3Text = (t3.replies || []).join("\n");
     if (isApiFailureReply(t3Text)) {
       assertStep(
-        !/\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
+        !/\[來源:\s*官方手冊\]/i.test(t3Text),
         "API failure reply must not be tagged as PDF source",
       );
       console.log("\nPASS: verify_m7_iron_rule_flow (API quota guarded)");
@@ -102,8 +102,9 @@ async function main() {
     }
 
     assertStep(
-      /\[來源:\s*[^\]]+\.pdf\s*\(官方手冊PDF\)\]/i.test(t3Text),
-      "turn3 missing real pdf source tag",
+      /\[來源:\s*官方手冊\]/i.test(t3Text) &&
+        (t3.logs || []).some((x) => /\.pdf/i.test(String(x))),
+      "turn3 missing official-manual source or PDF filename log",
     );
     assertStep(
       !/根據你提供的\s*PDF\s*文件|根據您提供的\s*PDF\s*文件/i.test(t3Text),

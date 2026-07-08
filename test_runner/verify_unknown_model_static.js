@@ -130,8 +130,8 @@ assertStep(
 assertStep(
   /S32FD812/.test(result.reply) &&
     /找不到/.test(result.reply) &&
-    /\[來源:專案型號驗證規則\]/.test(result.reply),
-  "unknown model reply should name the model, avoid specs, and carry the project source tag",
+    !/\[來源:/.test(result.reply),
+  "unknown model reply should name the model, avoid specs, and not invent a source tag",
 );
 
 console.log("PASS: verify_unknown_model_static");
