@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.067)
+# Samsung LINE Bot 完整流程解析 (v29.6.068)
 
 ## 📋 核心哲學
 
@@ -30,8 +30,11 @@
 - 正式 Gemini 模型必須固定為 `models/gemini-2.5-flash-lite`；不可用 `gemini-flash-lite-latest` 這類會漂移的 alias，以免成本估算失真。
 - Smart Monitor／M 系列的 HEVC、H.265、影片格式、播放檔案支援題，不可先做固定手冊摘要或直接定論支援；必須先提供現有手冊庫內的 Smart Monitor 型號選擇泡泡，點選型號後才掛載該型號官方 PDF 由 LLM 回答。
 - 只要本輪牽涉 LLM 呼叫，最後可見回覆一定要標費用；未呼叫 LLM 的流程提示可標 `[費用:NT$0.0000（未呼叫 LLM）]`，但不得為流程提示編造來源。
+- `#再詳細說明` 若上一則來源是官方手冊，必須重新掛載同一本 PDF 並呼叫 LLM；不可把上一則結果用程式固定改寫、不可標零費用、不可用字串規則補產品結論。
+- `/重啟` 只可清除該使用者的對話與快取，絕不可清空、覆寫或還原全域 `CLASS_RULES`；`/紀錄` 建立的 QA/RULE 是 append-only 知識庫。
+- TestUI、LOG、RULE、PDF 索引、同步與維運端點均為管理功能，必須以 `MAINTENANCE_SECRET` 或既有 `OPENCODE_WRITE_SECRET` 授權；絕不可拿 Gemini API 金鑰當維運密碼。
 
-## ✅ 現行鐵律 SOP（v29.6.067）
+## ✅ 現行鐵律 SOP（v29.6.068）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。
 2. **再官方手冊**：只有 Fast Mode 不足、使用者明確 `#查手冊`、或型號泡泡選擇後進入手冊模式，才掛載 PDF RAG。
@@ -64,6 +67,9 @@
 28. **服務/營業時間不可誤判為現在時間**：使用者問「服務時間、客服時間、營業時間、今天有沒有營業」時，不得觸發 RealTime「現在幾點」捷徑；未即時搜尋前只引導官方頁或請使用者按網搜，不標來源；實際網搜後才標 `[來源:網路搜尋]`。
 29. **短別稱不可直接查 PDF**：只命中 `G5`、`M8`、`S9` 等系列別稱時，不得鎖第一個 PDF；必須先列出現有 PDF 覆蓋的完整型號並請使用者選。
 30. **建檔分流**：`/紀錄 <內容>` 先由系統判斷 QA/RULE。QA 寫 `QA`；促銷、活動、價格、規格規則寫 `CLASS_RULES`，並以背景排程更新知識庫，避免 webhook 超時。
+31. **手冊追問必須再查證**：上一則若標 `[來源:官方手冊]`，按「再詳細說明」必須重新附掛相同型號 PDF、呼叫 LLM 以白話解釋結論／影響／限制，並顯示本輪真實費用。
+32. **禁止題型事實補丁**：程式可固定輸出流程提示、錯誤訊息與驗證失敗說明；不得針對 HEVC、SmartThings 或其他題型，用字串比對後硬塞「支援／不支援／可能需要」等產品事實。
+33. **正式資料不可由測試變更**：TestUI 必須使用短效授權 token；測試模式只可預覽，嚴禁寫入 QA、CLASS_RULES 或覆寫既有資料。
 
 ---
 
@@ -448,7 +454,7 @@ Google Drive ──────► Gemini File API
 
 ### v29.6.048 (2026-07-07)
 
-- **Fix (Smart Codec Guard)**: Smart Monitor／M 系列 HEVC、H.265、播放檔案格式題改由官方手冊固定回覆，避免 Fast Mode 以規格庫泛答。
+- **歷史作法（已於 v29.6.068 廢止）**：曾以程式固定回覆 Smart Monitor／M 系列 HEVC、H.265、播放檔案格式題；此作法會略過重新掛載 PDF 與 LLM 解釋，現已禁止。
 - **Fix (Manual Route)**: `#查手冊` 遇到 Smart Monitor 編解碼題時，不再進入一般 PDF 選檔器，避免被歷史 S27FG900XC／Odyssey 型號污染。
 - **Test**: `verify_sop_static_guards.js` 新增 Smart Monitor codec 靜態守門；`verify_smart_codec_guard.js` 透過正式 TestUI 驗證原始提問與 `#查手冊` 都不再進錯 PDF。
 

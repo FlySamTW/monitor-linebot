@@ -1,7 +1,13 @@
 const puppeteer = require("puppeteer");
 
+const testSecret = process.env.LINEBOT_TEST_SECRET;
+if (!testSecret) {
+  throw new Error("LINEBOT_TEST_SECRET is required for formal TestUI access");
+}
 const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1&secret=" +
+  encodeURIComponent(testSecret);
+let testUiAccessToken = "";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +35,7 @@ async function call(frame, fnName, ...args) {
           [f](...a);
       }),
     fnName,
-    args,
+    args.concat(testUiAccessToken),
   );
 }
 
@@ -55,6 +61,8 @@ async function run() {
     await page.goto(TEST_URL, { waitUntil: "networkidle0", timeout: 60000 });
     const frame = await findFrame(page);
     if (!frame) throw new Error("TestUI frame not found");
+    testUiAccessToken = await frame.evaluate(() => TEST_UI_ACCESS_TOKEN);
+    if (!testUiAccessToken) throw new Error("TestUI access token missing");
 
     const userId = `TEST_SMART_CODEC_${Date.now()}`;
     await call(frame, "clearTestSession", userId);
@@ -126,6 +134,20 @@ async function run() {
     );
     assertStep(!/通常|常見|應該/.test(selectedReplies), "selected model PDF answer must not speculate beyond the manual", selectedReplies);
     assertStep(/\[費用\s*[:：]\s*(?:NT\$[^\]]+|未知（已呼叫 LLM）)\]/.test(selectedReplies), "selected model PDF answer must include bracketed cost disclosure", selectedReplies);
+
+    const elaborated = await call(frame, "testMessage", "#再詳細說明", userId);
+    const elaboratedReplies = joined(elaborated, "replies");
+    const elaboratedLogs = joined(elaborated, "logs");
+    console.log("\nTURN 4 USER: #再詳細說明");
+    console.log(`TURN 4 BOT:\n${elaboratedReplies}`);
+    assertStep(/\[來源:官方手冊\]/.test(elaboratedReplies), "manual elaboration must retain the official-manual source", elaboratedReplies);
+    assertStep(/\[費用:NT\$(?!0\.0000)|\[費用:未知（已呼叫 LLM）\]/.test(elaboratedReplies), "manual elaboration must disclose a real LLM cost", elaboratedReplies);
+    assertStep(/AttachPDFs:\s*true/.test(elaboratedLogs) && /\[Manual Elaboration\].*呼叫 LLM/.test(elaboratedLogs), "manual elaboration must reattach PDF and call the LLM", elaboratedLogs);
+    assertStep(
+      selectedReplies.replace(/\[費用:[^\]]+\]/g, "").trim() !== elaboratedReplies.replace(/\[費用:[^\]]+\]/g, "").trim(),
+      "manual elaboration must not repeat the previous answer verbatim",
+      elaboratedReplies,
+    );
 
     console.log("\nPASS: verify_smart_codec_guard");
   } finally {

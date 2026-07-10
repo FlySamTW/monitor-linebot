@@ -2,8 +2,14 @@ const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
 
+const testSecret = process.env.LINEBOT_TEST_SECRET;
+if (!testSecret) {
+  throw new Error("LINEBOT_TEST_SECRET is required for formal TestUI access");
+}
 const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1&secret=" +
+  encodeURIComponent(testSecret);
+let testUiAccessToken = "";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,7 +41,7 @@ async function call(frame, fnName, ...args) {
         }
       }),
     fnName,
-    args,
+    args.concat(testUiAccessToken),
   );
 }
 
@@ -252,6 +258,8 @@ async function run() {
   await page.goto(TEST_URL, { waitUntil: "networkidle0", timeout: 60000 });
   const frame = await findFrame(page);
   if (!frame) throw new Error("TestUI frame not found");
+  testUiAccessToken = await frame.evaluate(() => TEST_UI_ACCESS_TOKEN);
+  if (!testUiAccessToken) throw new Error("TestUI access token missing");
 
   const runId = `REAL10_${Date.now()}`;
   const records = [];

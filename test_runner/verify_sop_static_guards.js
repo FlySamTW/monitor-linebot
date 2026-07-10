@@ -56,11 +56,12 @@ const doPostSection = extractFunction(linebot, "doPost");
 const doGetSection = extractFunction(linebot, "doGet");
 
 assertStep(
-  /function getDoGetMaintenanceSecret_/.test(doGetSection) &&
-    /function isDoGetMaintenanceAuthorized_/.test(doGetSection) &&
-    /function doGetUnauthorized_/.test(doGetSection) &&
-    /OPENCODE_WRITE_SECRET/.test(doGetSection) &&
-    /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(doGetSection),
+    /function getDoGetMaintenanceSecret_/.test(linebot) &&
+    /function isDoGetMaintenanceAuthorized_/.test(linebot) &&
+    /function buildUnauthorizedResponse_/.test(linebot) &&
+    /MAINTENANCE_SECRET/.test(linebot) &&
+    /OPENCODE_WRITE_SECRET/.test(linebot) &&
+    !/getDoGetMaintenanceSecret_[\s\S]{0,400}GEMINI_API_KEY/.test(linebot),
   "doGet maintenance helpers must require a real secret before sensitive operations",
 );
 
@@ -201,8 +202,8 @@ assertStep(testModelsEnd > testModelsStart, "doGet testModels branch end not fou
 const testModelsSection = doGetSection.slice(testModelsStart, testModelsEnd);
 
 assertStep(
-  /isDoGetMaintenanceAuthorized_\(\)/.test(testModelsSection) &&
-    /doGetUnauthorized_\(\)/.test(testModelsSection),
+  /isDoGetMaintenanceAuthorized_\(e\)/.test(testModelsSection) &&
+    /buildUnauthorizedResponse_\(\)/.test(testModelsSection),
   "doGet testModels must require a secret before making any LLM calls",
 );
 
@@ -222,8 +223,8 @@ assertStep(batchTestEnd > batchTestStart, "doGet batchTest branch end not found"
 const batchTestSection = doGetSection.slice(batchTestStart, batchTestEnd);
 
 assertStep(
-  /isDoGetMaintenanceAuthorized_\(\)/.test(batchTestSection) &&
-    /doGetUnauthorized_\(\)/.test(batchTestSection) &&
+  /isDoGetMaintenanceAuthorized_\(e\)/.test(batchTestSection) &&
+    /buildUnauthorizedResponse_\(\)/.test(batchTestSection) &&
     /callLLMWithRetry/.test(batchTestSection),
   "doGet batchTest must require a secret before running multiple LLM calls",
 );
@@ -235,8 +236,8 @@ assertStep(testRunEnd > testRunStart, "doGet testRun branch end not found");
 const testRunSection = doGetSection.slice(testRunStart, testRunEnd);
 
 assertStep(
-  /isDoGetMaintenanceAuthorized_\(\)/.test(testRunSection) &&
-    /doGetUnauthorized_\(\)/.test(testRunSection) &&
+  /isDoGetMaintenanceAuthorized_\(e\)/.test(testRunSection) &&
+    /buildUnauthorizedResponse_\(\)/.test(testRunSection) &&
     /handleMessage\(fakeEvent\)/.test(testRunSection),
   "doGet testRun must require a secret before running the full LINEBot LLM flow",
 );
@@ -248,7 +249,9 @@ assertStep(postWriteRulesEnd > postWriteRulesStart, "doPost write_rules branch e
 const postWriteRulesSection = doPostSection.slice(postWriteRulesStart, postWriteRulesEnd);
 
 assertStep(
-  /Unauthorized, need secret=OPENCODE_WRITE_SECRET or GEMINI_API_KEY/.test(postWriteRulesSection) &&
+  /getDoGetMaintenanceSecret_\(\)/.test(postWriteRulesSection) &&
+    /Unauthorized/.test(postWriteRulesSection) &&
+    !/GEMINI_API_KEY/.test(postWriteRulesSection) &&
     /Array\.isArray\(json\.rules\)/.test(postWriteRulesSection) &&
     /No rules provided/.test(postWriteRulesSection) &&
     /Rules must not be blank/.test(postWriteRulesSection) &&
@@ -1074,7 +1077,8 @@ assertStep(
 assertStep(
   /function getSmartMonitorCodecSelectionModels/.test(linebot) &&
     /function buildSmartMonitorCodecSelectionPayload/.test(linebot) &&
-    /S32FM703/.test(extractFunction(linebot, "getSmartMonitorCodecSelectionModels")) &&
+    /PDF_MODEL_INDEX/.test(extractFunction(linebot, "getSmartMonitorCodecSelectionModels")) &&
+    /\^S\\d\{2\}\[A-Z\]\*M\\d\{2,3\}/.test(extractFunction(linebot, "getSmartMonitorCodecSelectionModels")) &&
     /createModelSelectionFlexV3/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
     !/\[來源:專案流程規則\]/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
     /這題會跟實際型號有關/.test(extractFunction(linebot, "buildSmartMonitorCodecSelectionPayload")) &&
@@ -1093,16 +1097,15 @@ assertStep(
 );
 
 assertStep(
-    /function buildSmartCodecElaborationFromPreviousPdf/.test(linebot) &&
-    /function enforceSmartCodecPdfSupportConclusion_/.test(linebot) &&
-    /HEVC\/PDF 再詳細說明沿用上一則手冊結果/.test(linebot) &&
-    /last_selected_model/.test(linebot) &&
-    /getSelectedModelFromRecentHistory_/.test(linebot) &&
-    /supportScan/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
-    /limitScan/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
-    /saysNoFileTypeLimit/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")) &&
-    /未呼叫 LLM/.test(extractFunction(linebot, "buildSmartCodecElaborationFromPreviousPdf")),
-  "Smart Monitor codec #再詳細說明 must continue the previous PDF result instead of falling into generic operation flow",
+    !/function buildSmartCodecElaborationFromPreviousPdf/.test(linebot) &&
+    !/function enforceSmartCodecPdfSupportConclusion_/.test(linebot) &&
+    !/HEVC\/PDF 再詳細說明沿用上一則手冊結果/.test(linebot) &&
+    /function buildManualElaborationQuery_/.test(linebot) &&
+    /previousWasManual/.test(linebot) &&
+    /manualResponse\s*=\s*callLLMWithRetry/.test(linebot) &&
+    /manualFiles,\s*true/.test(linebot) &&
+    !/未呼叫 LLM/.test(extractFunction(linebot, "buildManualElaborationQuery_")),
+  "manual #再詳細說明 must reattach the same PDF and call the LLM; fixed HEVC answers are forbidden",
 );
 
 assertStep(

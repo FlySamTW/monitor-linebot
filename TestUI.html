@@ -9,6 +9,10 @@
     />
     <title>LINE Debugger Pro v3.6 (雲端歷史 + 快速回覆)</title>
 
+    <script>
+      const TEST_UI_ACCESS_TOKEN = <?!= JSON.stringify(testUiAccessToken || "") ?>;
+    </script>
+
     <!-- 強制 Mock 機制 -->
     <script>
       (function () {
@@ -735,8 +739,8 @@
         // 1. 從後端載入歷史紀錄
         loadCloudHistory();
 
-        // 2. 自動重啟
-        addToQueue("/重啟");
+        // 2. 僅清除測試快取；不可執行正式 LINE 指令。
+        google.script.run.clearTestSession("TEST_DEV_001", TEST_UI_ACCESS_TOKEN);
       };
 
       // --- 雲端歷史系統 ---
@@ -759,13 +763,13 @@
             historyData = [...defaultCmds]; // 失敗則用預設值
             renderHistory();
           })
-          .getCloudHistory();
+          .getCloudHistory(TEST_UI_ACCESS_TOKEN);
       }
 
       function saveCloudHistory() {
         // 為了效能，不要每次打字都存，前端先更新 UI
         // 後端非同步儲存
-        google.script.run.saveCloudHistory(historyData);
+        google.script.run.saveCloudHistory(historyData, TEST_UI_ACCESS_TOKEN);
         renderHistory();
       }
 
@@ -895,7 +899,7 @@
          renderQueue();
          doSendMessage(text); 
       })
-      .checkPdfCost(text);
+      .checkPdfCost(text, TEST_UI_ACCESS_TOKEN);
   }
 
   function showCostModal(text, reason) {
@@ -982,7 +986,7 @@
               addMsg("bot", "❌ Error: " + err);
               setTimeout(processQueue, 1000);
             })
-            .testMessage(text, "TEST_DEV_001");
+            .testMessage(text, "TEST_DEV_001", TEST_UI_ACCESS_TOKEN);
         } catch (e) {
           console.error(e);
           isBotProcessing = false;
@@ -1095,7 +1099,7 @@
             addMsg("bot", "❌ Error: " + err);
             setTimeout(processQueue, 1000);
           })
-          .testMessage(text, "TEST_DEV_001");
+          .testMessage(text, "TEST_DEV_001", TEST_UI_ACCESS_TOKEN);
       }
 
       function removeMsg(id) {
@@ -1150,7 +1154,7 @@
         currentQuickReplies = [];
         renderQueue();
         isBotProcessing = false;
-        google.script.run.clearTestSession("TEST_DEV_001");
+        google.script.run.clearTestSession("TEST_DEV_001", TEST_UI_ACCESS_TOKEN);
       }
 
       function copyLogs() {
