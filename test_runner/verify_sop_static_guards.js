@@ -848,7 +848,8 @@ const manualDeflectionCode = [
     sanitizeManualDeflection("根據你提供的 PDF 文件，請照以下步驟操作。"),
     sanitizeManualDeflection("根據您提供的PDF，內容如下。"),
     sanitizeManualDeflection("依照你提供的手冊內容，可以這樣處理。"),
-    sanitizeManualDeflection("根據這份 PDF 檔案，功能如下。")
+    sanitizeManualDeflection("根據這份 PDF 檔案，功能如下。"),
+    sanitizeManualDeflection("根據手冊內容，螢幕支援 USB-C。具體操作方式請參考 S32FM703UC 的使用者手冊。")
   ].join("\\n");
   `,
 ].join("\n\n");
@@ -864,8 +865,14 @@ assertStep(
 );
 
 assertStep(
-  /官方手冊/.test(manualDeflectionContext.__manualDeflectionResult),
+  /官方手冊/.test(manualDeflectionContext.__manualDeflectionResult) &&
+    !/具體操作方式請參考/.test(manualDeflectionContext.__manualDeflectionResult),
   "manual/PDF deflection sanitizer should rewrite user-provided-manual phrasing to official-manual phrasing",
+);
+
+assertStep(
+  /網路搜尋模式[\s\S]{0,120}result = sanitizeManualDeflection\(result\)/.test(linebot),
+  "manual-to-web integrated replies must remove instructions that send the user back to the manual",
 );
 
 const priceGuardCode = [
@@ -1124,10 +1131,260 @@ assertStep(
 );
 
 assertStep(
-  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;/.test(
+  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;/.test(
     extractFunction(linebot, "handleMessage"),
   ),
   "each new user message must reset token/search/LLM usage before calculating the current reply cost",
+);
+
+const crossDeviceScopeCode = [
+  extractFunction(linebot, "isCrossDeviceMonitorQuery"),
+  extractFunction(linebot, "isIncorrectCrossDeviceScopeRefusal"),
+  extractFunction(linebot, "hasUnsupportedCrossDeviceExternalAdvice"),
+  extractFunction(linebot, "sanitizeUnsupportedCrossDeviceExternalAdvice"),
+  extractFunction(linebot, "hasUnsupportedCrossDeviceManualExternalClaim_"),
+  extractFunction(linebot, "sanitizeUnsupportedCrossDeviceManualClaims_"),
+  extractFunction(linebot, "hasUnsupportedCrossDeviceWebSpeculation_"),
+  extractFunction(linebot, "sanitizeUnsupportedCrossDeviceWebSpeculation_"),
+  extractFunction(linebot, "getRecentOfficialManualAnswer_"),
+  extractFunction(linebot, "getWattageValues_"),
+  extractFunction(linebot, "hasManualAnchorWattageConflict_"),
+  extractFunction(linebot, "sanitizeManualAnchorWattageConflict_"),
+  extractFunction(linebot, "removeCrossDeviceManualHeadingOnlyLines_"),
+  extractFunction(linebot, "getOfficialUrlContextCandidates"),
+  extractFunction(linebot, "getSuccessfulUrlContextSources"),
+  extractFunction(linebot, "combineLlmUsage_"),
+  extractFunction(linebot, "shouldOfferCrossDeviceWebVerification"),
+  extractFunction(linebot, "appendCrossDeviceWebVerificationNotice"),
+  extractFunction(linebot, "markPdfConsultedForUser_"),
+  extractFunction(linebot, "hasPdfBeenConsultedForUser_"),
+  `
+  const values = new Map();
+  const fakeCache = {
+    put: (key, value) => values.set(key, value),
+    get: (key) => values.has(key) ? values.get(key) : null
+  };
+  markPdfConsultedForUser_(fakeCache, "u1");
+  globalThis.__crossDeviceScopeResult = {
+    iphoneM7: isCrossDeviceMonitorQuery("iPhone 17要如何以type c連接M7顯示"),
+    androidMonitor: isCrossDeviceMonitorQuery("Android手機怎麼投放到Smart Monitor"),
+    macbookViewFinity: isCrossDeviceMonitorQuery("MacBook用USB-C接ViewFinity沒有畫面"),
+    ps5Odyssey: isCrossDeviceMonitorQuery("PS5用HDMI連Odyssey螢幕如何設定"),
+    phoneOnly: isCrossDeviceMonitorQuery("iPhone 17怎麼恢復原廠設定"),
+    refusal: isIncorrectCrossDeviceScopeRefusal("我只負責電腦螢幕與智慧家電喔😅"),
+    unsupportedPhoneSetting: hasUnsupportedCrossDeviceExternalAdvice(
+      "請檢查 iPhone 17 的設定，確認是否啟用 USB 影像輸出。"
+    ),
+    unsupportedCableGuess: hasUnsupportedCrossDeviceExternalAdvice(
+      "你可以嘗試使用不同品牌的 USB-C 纜線。"
+    ),
+    unsupportedTryPhone: hasUnsupportedCrossDeviceExternalAdvice(
+      "建議你可以試試看用 USB-C 纜線連接 iPhone 17。"
+    ),
+    unsupportedAdapterGuess: hasUnsupportedCrossDeviceExternalAdvice(
+      "如果不行，可能需要確認 iPhone 17，或改用其他轉接方式。"
+    ),
+    unsupportedManualDisplayClaim: hasUnsupportedCrossDeviceManualExternalClaim_(
+      "透過 USB Type-C 連接，你的 iPhone 17 畫面可以顯示在螢幕上。"
+    ),
+    unsupportedManualChargeClaim: hasUnsupportedCrossDeviceManualExternalClaim_(
+      "USB Type-C 連接埠可以為你的 iPhone 17 充電。"
+    ),
+    sanitizedManualClaims: sanitizeUnsupportedCrossDeviceManualClaims_(
+      "螢幕端支援 USB-C 影像輸入。你的 iPhone 17 可以顯示在螢幕上。\\n手冊記載最大供電為 65W。"
+    ),
+    unsupportedWebSettingGuess: hasUnsupportedCrossDeviceWebSpeculation_(
+      "若沒有畫面，可能需要在 iPhone 的設定中尋找螢幕鏡像選項，這是常見邏輯。"
+    ),
+    webOfficialFactSafe: hasUnsupportedCrossDeviceWebSpeculation_(
+      "Apple 官方規格明載 iPhone 17 支援原生 DisplayPort 輸出，最高可達 4K HDR。"
+    ),
+    sanitizedWebAnswer: sanitizeUnsupportedCrossDeviceWebSpeculation_(
+      "iPhone 17 支援 DisplayPort 輸出。\\n可能需要在 iPhone 設定中找鏡像選項。\\n請使用支援影像的 USB-C 線材。"
+    ),
+    manualOnlySafe: hasUnsupportedCrossDeviceExternalAdvice(
+      "手冊記載螢幕端 USB-C 連接埠支援影像輸入，但未記載 iPhone 17 的設定。"
+    ),
+    sanitizedManual: sanitizeUnsupportedCrossDeviceExternalAdvice(
+      "1. 手冊記載螢幕端 USB-C 支援影像輸入。建議你可以試試看用 USB-C 纜線連接 iPhone 17。\\n\\n2. 手冊記載最大供電為 65W。"
+    ),
+    manualAnchor: getRecentOfficialManualAnswer_([
+      { role: "assistant", content: "舊回答" },
+      { role: "assistant", content: "螢幕端最大供電為 65W。\\n[來源:官方手冊]\\n[費用:NT$0.1]" }
+    ]),
+    wattConflict: hasManualAnchorWattageConflict_(
+      "螢幕端最大供電為 65W。",
+      "iPhone 充電為 20W。螢幕 USB-C 最大供電為 90W。"
+    ),
+    wattSanitized: sanitizeManualAnchorWattageConflict_(
+      "螢幕端最大供電為 65W。",
+      "iPhone 充電為 20W。\\n螢幕 USB-C 最大供電為 90W。\\n請使用可傳影像的線材。"
+    ),
+    cleanedManualList: removeCrossDeviceManualHeadingOnlyLines_(
+      "1. USB Type-C 連接埠：\\n2. 螢幕支援影像傳輸。\\n3. 連接要求：\\n4. 最大供電為 65W。"
+    ),
+    iphoneOfficialUrl: getOfficialUrlContextCandidates(
+      "iPhone 17要如何以type c連接M7顯示"
+    )[0],
+    successfulUrlSources: getSuccessfulUrlContextSources({
+      urlMetadata: [
+        {
+          retrievedUrl: "https://www.apple.com/tw/iphone-17/specs/",
+          urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS"
+        },
+        {
+          retrievedUrl: "https://example.com/fail",
+          urlRetrievalStatus: "URL_RETRIEVAL_STATUS_ERROR"
+        }
+      ]
+    }),
+    combinedCost: combineLlmUsage_(
+      { input: 10, output: 2, total: 12, costTWD: 0.1 },
+      { input: 20, output: 3, total: 23, costTWD: 0.2 }
+    ),
+    manualNeedsWeb: shouldOfferCrossDeviceWebVerification(
+      "iPhone 17要如何以type c連接M7顯示",
+      "手冊中並未明確提及 iPhone 17，因此無法直接確認。",
+      false
+    ),
+    completeManualDoesNotNeedWeb: shouldOfferCrossDeviceWebVerification(
+      "iPhone 17要如何以type c連接M7顯示",
+      "USB Type-C 連接後可以顯示畫面。",
+      false
+    ),
+    noticeIsNatural: appendCrossDeviceWebVerificationNotice("螢幕端支援 USB-C。").includes("這題再搜網路"),
+    cacheMarksPdf: hasPdfBeenConsultedForUser_(fakeCache, "u1", []),
+    historyMarksPdf: hasPdfBeenConsultedForUser_(
+      { get: () => null },
+      "u2",
+      [{ role: "assistant", content: "已查到。\\n[來源:官方手冊]" }]
+    )
+  };
+  `,
+].join("\n\n");
+const crossDeviceScopeContext = {};
+vm.createContext(crossDeviceScopeContext);
+vm.runInContext(crossDeviceScopeCode, crossDeviceScopeContext);
+
+assertStep(
+  crossDeviceScopeContext.__crossDeviceScopeResult.iphoneM7 === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.androidMonitor === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.macbookViewFinity === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.ps5Odyssey === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.phoneOnly === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.refusal === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedPhoneSetting === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedCableGuess === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedTryPhone === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedAdapterGuess === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualDisplayClaim === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualChargeClaim === true &&
+    /螢幕端支援 USB-C 影像輸入/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
+    /65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
+    !/iPhone 17 可以顯示/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedWebSettingGuess === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.webOfficialFactSafe === false &&
+    /DisplayPort 輸出/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
+    !/鏡像選項/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
+    /USB-C 線材/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.manualOnlySafe === false &&
+    /螢幕端 USB-C 支援影像輸入/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManual) &&
+    /最大供電為 65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManual) &&
+    !/試試看/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManual) &&
+    /65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.manualAnchor) &&
+    !/來源|費用/.test(crossDeviceScopeContext.__crossDeviceScopeResult.manualAnchor) &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.wattConflict === true &&
+    /iPhone 充電為 20W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.wattSanitized) &&
+    !/90W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.wattSanitized) &&
+    /可傳影像的線材/.test(crossDeviceScopeContext.__crossDeviceScopeResult.wattSanitized) &&
+    !/連接埠：|連接要求：/.test(crossDeviceScopeContext.__crossDeviceScopeResult.cleanedManualList) &&
+    /影像傳輸/.test(crossDeviceScopeContext.__crossDeviceScopeResult.cleanedManualList) &&
+    /65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.cleanedManualList) &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.iphoneOfficialUrl === "https://www.apple.com/tw/iphone-17/specs/" &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.successfulUrlSources.length === 1 &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.combinedCost.total === 35 &&
+    Math.abs(crossDeviceScopeContext.__crossDeviceScopeResult.combinedCost.costTWD - 0.3) < 0.000001 &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.manualNeedsWeb === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.completeManualDoesNotNeedWeb === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.noticeIsNatural === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.cacheMarksPdf === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.historyMarksPdf === true,
+  "cross-device monitor questions must remain in scope while pure phone questions stay out of scope",
+);
+
+assertStep(
+  /buildCrossDeviceMonitorPromptRule\(query\)/.test(linebot) &&
+    /Cross Device Evidence Guard v29\.6\.073/.test(linebot) &&
+    /correctedText\s*=\s*callLLMWithRetry/.test(linebot) &&
+    /evidenceCorrectionAttempted\s*=\s*false/.test(linebot) &&
+    /!evidenceCorrectionAttempted/.test(linebot) &&
+    /targetModelName,\s*true,\s*webGroundingRetryAttempted,\s*\)/.test(linebot) &&
+    /兩次 LLM 合計費用/.test(linebot) &&
+    /第二次仍違反來源邊界/.test(linebot) &&
+    /sanitizeUnsupportedCrossDeviceExternalAdvice/.test(linebot) &&
+    /hasUnsupportedCrossDeviceManualExternalClaim_/.test(linebot) &&
+    /sanitizeUnsupportedCrossDeviceManualClaims_/.test(linebot) &&
+    !/若詢問手機\/平板，回覆「我只負責電腦螢幕與智慧家電喔/.test(
+      fs.readFileSync(path.join(root, "Prompt.csv"), "utf8"),
+    ),
+  "cross-device monitor scope guard must override bad refusals without hiding retry cost",
+);
+
+assertStep(
+  /Cross Device Manual Anchor v29\.6\.076/.test(linebot) &&
+    /getRecentOfficialManualAnswer_\(effectiveMessages\)/.test(linebot) &&
+    /hasManualAnchorWattageConflict_\(recentOfficialManualAnswer, text\)/.test(linebot) &&
+    /pdfConsulted && isCrossDeviceMonitorQuery\(userMsg\)/.test(linebot) &&
+    /result \+= "\\n\[來源:官方手冊\]"/.test(linebot),
+  "cross-device web continuation must preserve manual facts and expose both real sources",
+);
+
+assertStep(
+  /Official Page Fetch v29\.6\.077/.test(linebot) &&
+    /fetchOfficialUrlEvidence_\(officialUrlContexts\)/.test(linebot) &&
+    /程式直接擷取的官方技術規格頁證據/.test(linebot) &&
+    /directOfficialPageEvidence\.length > 0[\s\S]{0,700}lastWebEvidenceValid = true/.test(linebot) &&
+    /Cross Device Web Evidence v29\.6\.077/.test(linebot),
+  "known official URLs must be fetched as auditable evidence before cross-device web answers",
+);
+
+assertStep(
+  /hasUnsupportedCrossDeviceWebSpeculation_/.test(linebot) &&
+    /sanitizeUnsupportedCrossDeviceWebSpeculation_/.test(linebot) &&
+    /Cross Device Web Evidence v29\.6\.077/.test(linebot),
+  "web answers must remove unsupported device-setting speculation without deleting official facts",
+);
+
+assertStep(
+  /let lastWebEvidenceValid = false;/.test(linebot) &&
+    /grounding\.groundingChunks[\s\S]{0,180}grounding\.groundingSupports/.test(linebot) &&
+    /webGroundingRetryAttempted\s*=\s*false/.test(linebot) &&
+    /Grounding Audit v29\.6\.075/.test(linebot) &&
+    /第二次仍無可稽核來源，拒絕輸出假網搜答案/.test(linebot) &&
+    /lastWebEvidenceValid\s*&&[\s\S]{0,160}lastSearchSources/.test(linebot) &&
+    /tools\.unshift\(\{ url_context: \{\} \}\)/.test(linebot) &&
+    /URL_RETRIEVAL_STATUS_SUCCESS/.test(linebot) &&
+    /官方頁讀取成功/.test(linebot),
+  "web answers must require auditable grounding chunks and supports before showing the web-search source",
+);
+
+assertStep(
+  /Cross Device Web Handoff v29\.6\.070/.test(linebot) &&
+    (linebot.match(/markPdfConsultedForUser_\(cache, userId\)/g) || []).length >= 2 &&
+    /const pdfConsulted = hasPdfBeenConsultedForUser_\(cache, u, history\)/.test(linebot) &&
+    /本次直接進網路搜尋/.test(linebot),
+  "a completed manual lookup must be remembered so explicit web follow-up cannot rerun the PDF stage",
+);
+
+assertStep(
+  /Cross Device Router v29\.6\.074/.test(linebot) &&
+    /isCrossDeviceMonitorQuery\(msg\)[\s\S]{0,180}promptAliasOnlyModelSelection\([\s\S]{0,180}"pdf"/.test(
+      extractFunction(linebot, "handleMessage"),
+    ) &&
+    /hasTrustedFastCrossDeviceQa[\s\S]{0,260}return "\[AUTO_SEARCH_PDF\]"/.test(
+      extractFunction(linebot, "callLLMWithRetry"),
+    ),
+  "cross-device alias questions must deterministically select a PDF model before Fast LLM speculation",
 );
 
 assertStep(

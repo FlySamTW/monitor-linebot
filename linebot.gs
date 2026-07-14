@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.068"; // 2026-07-11 移除固定手冊答案、封閉維運入口、保護累積知識庫
-const BUILD_TIMESTAMP = "2026-07-11 03:23";
+const GAS_VERSION = "v29.6.080"; // 2026-07-14 整合網搜去除手冊推諉
+const BUILD_TIMESTAMP = "2026-07-14 15:45";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2400,6 +2400,344 @@ function isSamsungHomeApplianceQuery(text) {
   );
 }
 
+function isCrossDeviceMonitorQuery(text) {
+  const q = String(text || "");
+  const hasExternalDevice =
+    /(IPHONE|IPAD|ANDROID|GALAXY\s*(?:PHONE|TAB|S\d{1,2}|A\d{1,2}|Z\s*(?:FLIP|FOLD))|手機|平板|MACBOOK|MAC\s*MINI|筆電|NOTEBOOK|LAPTOP|桌機|PC|PS[45]|PLAYSTATION|XBOX|NINTENDO\s*SWITCH|SWITCH|STEAM\s*DECK|相機)/i.test(
+      q,
+    );
+  const hasMonitorTarget =
+    /(螢幕|顯示器|MONITOR|DISPLAY|SMART\s*MONITOR|ODYSSEY|VIEWFINITY|\bM[5789]\b|\bS\d{2}[A-Z0-9]{4,}(?:UC|SC|EC|WC|XC)?\b)/i.test(
+      q,
+    );
+  const hasDisplayConnectionIntent =
+    /(連接|接上|投影|投放|鏡像|顯示|輸出|畫面|DEX|AIRPLAY|MIRACAST|HDMI|DISPLAYPORT|DP|TYPE\s*-?\s*C|USB\s*-?\s*C|THUNDERBOLT|無線連線|播放)/i.test(
+      q,
+    );
+  return hasExternalDevice && hasMonitorTarget && hasDisplayConnectionIntent;
+}
+
+function isIncorrectCrossDeviceScopeRefusal(text) {
+  const q = String(text || "");
+  return /(我只負責|不屬於(?:我的|本專案)?(?:服務|回答|專業)?範圍|不在(?:我的|本專案)?(?:服務|回答|專業)?範圍|這不屬於螢幕問題|無法回答)[\s\S]{0,80}(手機|平板|電腦螢幕|智慧家電|產品)/i.test(
+    q,
+  );
+}
+
+function buildCrossDeviceMonitorPromptRule(query) {
+  if (!isCrossDeviceMonitorQuery(query)) return "";
+  return `
+【跨裝置連接螢幕題最高優先規則】
+這題的主體是「如何把外部裝置連到三星螢幕」，不是在詢問外部裝置本身的規格。
+即使題目提到 iPhone、iPad、Android、Galaxy 手機、MacBook、筆電、遊戲機或其他訊號來源，也絕對不可用「我只負責電腦螢幕與智慧家電」拒答。
+你只能根據目前提供或實際搜尋到的來源，回答該三星螢幕支援的輸入方式、必要條件與操作步驟。
+若目前只有螢幕官方手冊，而手冊沒有記載外部裝置端的相容性或設定，就只整理螢幕端條件並明說裝置端尚待查證；不得補寫手機設定、轉接器、上市狀態、換線測試或其他無來源建議。
+手冊模式請先用一句話說清楚「目前能確認什麼、還不能確認什麼」，再用最多 3 點整理真正影響連接的螢幕端條件。不要逐條照搬警告、不要重複結論，也不要把標題編成獨立的數字項目。
+`;
+}
+
+function hasUnsupportedCrossDeviceExternalAdvice(text) {
+  const answer = String(text || "");
+  return /(IPHONE\s*\d*[\s\S]{0,45}(?:未上市|尚未上市|尚未公布)|一般來說[\s\S]{0,80}(?:IPHONE|APPLE|手機|平板)|(?:檢查|開啟|啟用|調整)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:設定|影像輸出|螢幕鏡射)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:設定|影像輸出|螢幕鏡射)[\s\S]{0,25}(?:檢查|開啟|啟用|調整)|(?:建議|可以|請)[\s\S]{0,35}(?:試試看|嘗試)[\s\S]{0,60}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:可能需要|建議|請)[\s\S]{0,25}(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:是否)?支援|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:是否|需要)[\s\S]{0,30}支援|APPLE[\s\S]{0,30}(?:轉接線|轉接器|認證配件)|(?:其他|不同|APPLE|官方)?[\s\S]{0,15}轉接(?:方式|器|線)|嘗試使用不同品牌[\s\S]{0,30}(?:線材|纜線|TYPE\s*-?\s*C|USB\s*-?\s*C))/i.test(
+    answer,
+  );
+}
+
+function sanitizeUnsupportedCrossDeviceExternalAdvice(text) {
+  const original = String(text || "").trim();
+  if (!original) return "";
+
+  return original
+    .split(/\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+      const sentences = trimmed.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [trimmed];
+      return sentences
+        .map((sentence) => sentence.trim())
+        .filter(
+          (sentence) =>
+            sentence && !hasUnsupportedCrossDeviceExternalAdvice(sentence),
+        )
+        .join("");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function hasUnsupportedCrossDeviceManualExternalClaim_(text) {
+  const answer = String(text || "");
+  if (hasUnsupportedCrossDeviceExternalAdvice(answer)) return true;
+  return /(?:可以|可|能夠|能)[\s\S]{0,45}(?:連接|顯示|輸出|充電)[\s\S]{0,45}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:可以|可|能夠|能|支援)[\s\S]{0,45}(?:顯示|影像輸出|視訊輸出|充電|連接)|(?:為|替)[\s\S]{0,20}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,20}充電/i.test(
+    answer,
+  );
+}
+
+function sanitizeUnsupportedCrossDeviceManualClaims_(text) {
+  const original = String(text || "").trim();
+  if (!original) return "";
+  return original
+    .split(/\n/)
+    .map((line) => {
+      const sentences = line.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [line];
+      return sentences
+        .map((sentence) => sentence.trim())
+        .filter(
+          (sentence) =>
+            sentence &&
+            !hasUnsupportedCrossDeviceManualExternalClaim_(sentence),
+        )
+        .join("");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function hasUnsupportedCrossDeviceWebSpeculation_(text) {
+  const answer = String(text || "");
+  if (hasUnsupportedCrossDeviceExternalAdvice(answer)) return true;
+  return /(?:可能|也許|或許|通常|常見|依賴)[\s\S]{0,55}(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)|(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)[\s\S]{0,55}(?:可能|也許|或許|通常|常見|依賴)|官方規格未[\s\S]{0,80}(?:常見|一般|推測|可能)/i.test(
+    answer,
+  );
+}
+
+function sanitizeUnsupportedCrossDeviceWebSpeculation_(text) {
+  const original = String(text || "").trim();
+  if (!original) return "";
+  return original
+    .split(/\n/)
+    .map((line) => {
+      const sentences = line.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [line];
+      return sentences
+        .map((sentence) => sentence.trim())
+        .filter(
+          (sentence) =>
+            sentence && !hasUnsupportedCrossDeviceWebSpeculation_(sentence),
+        )
+        .join("");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getRecentOfficialManualAnswer_(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const item = rows[i];
+    if (!item || !/^(?:assistant|model)$/i.test(String(item.role || ""))) {
+      continue;
+    }
+    const content = String(item.content || "");
+    if (!/\[來源[:：]\s*官方手冊\]/i.test(content)) continue;
+    return content
+      .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+      .replace(/[\[（\(]費用[：:][^\]）\)]*[\]）\)]/g, "")
+      .trim()
+      .substring(0, 2200);
+  }
+  return "";
+}
+
+function getWattageValues_(text) {
+  const values = [];
+  const pattern = /\b(\d{1,3})\s*W\b/gi;
+  let match;
+  while ((match = pattern.exec(String(text || ""))) !== null) {
+    values.push(Number(match[1]));
+  }
+  return Array.from(new Set(values));
+}
+
+function hasManualAnchorWattageConflict_(manualAnswer, webAnswer) {
+  const allowed = getWattageValues_(manualAnswer);
+  if (allowed.length === 0) return false;
+  const sentences =
+    String(webAnswer || "").match(/[^。！？!?\n]+[。！？!?]?/g) || [];
+  return sentences.some((sentence) => {
+    if (!/(螢幕|顯示器|MONITOR|USB\s*-?\s*C|TYPE\s*-?\s*C|供電)/i.test(sentence)) {
+      return false;
+    }
+    const values = getWattageValues_(sentence);
+    return values.some((value) => !allowed.includes(value));
+  });
+}
+
+function sanitizeManualAnchorWattageConflict_(manualAnswer, webAnswer) {
+  if (!hasManualAnchorWattageConflict_(manualAnswer, webAnswer)) {
+    return String(webAnswer || "").trim();
+  }
+  const allowed = getWattageValues_(manualAnswer);
+  return String(webAnswer || "")
+    .split(/\n/)
+    .map((line) => {
+      const sentences = line.match(/[^。！？!?]+[。！？!?]?/g) || [line];
+      return sentences
+        .filter((sentence) => {
+          if (!/(螢幕|顯示器|MONITOR|USB\s*-?\s*C|TYPE\s*-?\s*C|供電)/i.test(sentence)) {
+            return true;
+          }
+          const values = getWattageValues_(sentence);
+          return values.every((value) => allowed.includes(value));
+        })
+        .join("");
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getOfficialUrlContextCandidates(query) {
+  const q = String(query || "");
+  const urls = [];
+  const iphoneMatch = q.match(/\bIPHONE\s*(\d{1,2})\b/i);
+  if (iphoneMatch) {
+    urls.push(
+      `https://www.apple.com/tw/iphone-${iphoneMatch[1]}/specs/`,
+    );
+  }
+  return urls.slice(0, 3);
+}
+
+function getSuccessfulUrlContextSources(urlContextMetadata) {
+  const rows =
+    urlContextMetadata && Array.isArray(urlContextMetadata.urlMetadata)
+      ? urlContextMetadata.urlMetadata
+      : [];
+  return rows
+    .filter(
+      (item) =>
+        item &&
+        item.retrievedUrl &&
+        item.urlRetrievalStatus === "URL_RETRIEVAL_STATUS_SUCCESS",
+    )
+    .map((item) => String(item.retrievedUrl));
+}
+
+function fetchOfficialUrlEvidence_(urls) {
+  const evidence = [];
+  (Array.isArray(urls) ? urls : []).slice(0, 3).forEach((url) => {
+    try {
+      const response = UrlFetchApp.fetch(String(url), {
+        muteHttpExceptions: true,
+        followRedirects: true,
+        headers: { "User-Agent": "Mozilla/5.0 Samsung-LineBot-Evidence/1.0" },
+      });
+      const code = response.getResponseCode();
+      if (code !== 200) {
+        writeLog(`[Official Page Fetch v29.6.077] ${url} 回應 ${code}`);
+        return;
+      }
+      const plainText = stripHtmlToPlainText(response.getContentText());
+      if (plainText.length < 300) {
+        writeLog(`[Official Page Fetch v29.6.077] ${url} 文字內容不足`);
+        return;
+      }
+
+      const snippets = [];
+      const patterns = [
+        /DisplayPort/gi,
+        /USB[\s‑–—-]*C/gi,
+        /視訊輸出/gi,
+        /影像輸出/gi,
+        /連接器支援/gi,
+      ];
+      patterns.forEach((pattern) => {
+        let match;
+        let count = 0;
+        while ((match = pattern.exec(plainText)) !== null && count < 3) {
+          const start = Math.max(0, match.index - 420);
+          const end = Math.min(plainText.length, match.index + 900);
+          snippets.push(plainText.substring(start, end));
+          count++;
+        }
+      });
+      const text = Array.from(new Set(snippets)).join("\n...\n").substring(0, 12000);
+      evidence.push({ url: String(url), text: text || plainText.substring(0, 12000) });
+      writeLog(
+        `[Official Page Fetch v29.6.077] 官方頁擷取成功: ${url} (${(text || plainText).length} 字)`,
+      );
+    } catch (e) {
+      writeLog(`[Official Page Fetch v29.6.077] ${url} 讀取失敗: ${e.message}`);
+    }
+  });
+  return evidence;
+}
+
+function removeCrossDeviceManualHeadingOnlyLines_(text) {
+  return String(text || "")
+    .split(/\n/)
+    .filter((line) => {
+      const cleaned = line
+        .replace(/^\s*(?:\d+[.、)]|[•●▪◦‧・-])\s*/, "")
+        .trim();
+      return !(
+        cleaned.length > 0 &&
+        cleaned.length <= 32 &&
+        /[:：]$/.test(cleaned) &&
+        !/[。！？!?]/.test(cleaned)
+      );
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function combineLlmUsage_(firstUsage, secondUsage) {
+  if (!firstUsage || !secondUsage) return secondUsage || firstUsage || null;
+  return {
+    input:
+      Number(firstUsage.input || 0) + Number(secondUsage.input || 0),
+    output:
+      Number(firstUsage.output || 0) + Number(secondUsage.output || 0),
+    total:
+      Number(firstUsage.total || 0) + Number(secondUsage.total || 0),
+    costTWD:
+      Number(firstUsage.costTWD || 0) + Number(secondUsage.costTWD || 0),
+  };
+}
+
+function shouldOfferCrossDeviceWebVerification(query, answer, requestedWeb) {
+  if (!isCrossDeviceMonitorQuery(query)) return false;
+  if (requestedWeb) return true;
+  return /(手冊|資料)[\s\S]{0,45}(?:未|沒有|並未)[\s\S]{0,30}(?:提及|記載|說明)|無法(?:直接)?確認|不能(?:直接)?確認|尚無法確認/i.test(
+    String(answer || ""),
+  );
+}
+
+function appendCrossDeviceWebVerificationNotice(text) {
+  const body = String(text || "").trim();
+  if (!body) {
+    return "官方手冊目前不足以確認外部裝置端的相容性。你可以點下方「這題再搜網路」，我再接著查它目前的官方資料。";
+  }
+  return `${body}\n\n螢幕端能確認的條件我先整理在上面。外部裝置端是否支援這種影像輸出，還要查它目前的官方資料；你可以點下方「這題再搜網路」，我再接著查。`;
+}
+
+function markPdfConsultedForUser_(cache, userId) {
+  cache.put(`${userId}:pdf_consulted`, "true", 600);
+  cache.put(`pdf_consulted_${userId}`, "true", 600);
+}
+
+function hasPdfBeenConsultedForUser_(cache, userId, history) {
+  if (
+    cache.get(`${userId}:pdf_consulted`) === "true" ||
+    cache.get(`pdf_consulted_${userId}`) === "true"
+  ) {
+    return true;
+  }
+
+  const recentAssistant = (Array.isArray(history) ? history : [])
+    .slice()
+    .reverse()
+    .find((item) => item && item.role === "assistant" && item.content);
+  return Boolean(
+    recentAssistant &&
+      /\[來源[:：]\s*官方手冊\]/i.test(String(recentAssistant.content)),
+  );
+}
+
 function buildNeedApplianceModelForOperationReply() {
   return [
     "這題是三星家電相關問題，不會套用螢幕型號來判斷。",
@@ -3134,6 +3472,7 @@ function enforceManualNumberedList(text) {
  */
 function sanitizeManualDeflection(text) {
   const normalized = String(text || "")
+    .replace(/根據(?:產品)?手冊(?:內容|資訊)?/gi, "根據官方手冊")
     .replace(/根據[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
     .replace(/[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "官方手冊內容")
     .replace(/根據(?:這份|該份|提供的)\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
@@ -3781,6 +4120,7 @@ let lastLlmCallAttempted = false;
 
 // v29.5.112: 最後一次網路搜尋的來源列表 (用於顯示在回覆中)
 let lastSearchSources = null;
+let lastWebEvidenceValid = false;
 
 /**
  * 從型號或關鍵字提取 LS 編號，產生三星官網搜尋連結
@@ -5930,6 +6270,8 @@ function constructDynamicPrompt(
     }
   }
 
+  dynamicPrompt += buildCrossDeviceMonitorPromptRule(query);
+
   // System Protocols
   dynamicPrompt += `\n【最高指導原則】\n1. 以下提供的【精選 QA & 規格】與【產品手冊】為唯一真理。\n2. 若過去的對話歷史 (History) 與目前的規格書衝突，請無視舊歷史，以目前的規格書為準。\n3. 切勿被舊對話中的錯誤資訊誤導。對話歷史僅供理解脈絡，嚴禁將過去對話中的任何瞎編資訊當作事實繼續回答。\n4. 若以上來源均無資料，嚴禁使用 LLM 內建知識（通用知識/一般知識/常識）編造任何具體資訊（包含地址、電話、營業時間、設定步驟），必須誠實告知無資料或輸出 [AUTO_SEARCH_PDF]/[AUTO_SEARCH_WEB]。\n`;
   dynamicPrompt += `\n【語言絕對守則】\n1. **繁體中文 (台灣)**：所有回應必須使用 純正台灣繁體中文，嚴禁使用中國大陸用語或簡體中文。\n2. **用語轉換表 (必須強制執行)**：\n   - ❌ (禁) 视频 → ✅ (用) 影片\n   - ❌ (禁) 屏幕/显示器 → ✅ (用) 螢幕\n   - ❌ (禁) 程序/软件 → ✅ (用) 程式/軟體\n   - ❌ (禁) 设置 → ✅ (用) 設定\n   - ❌ (禁) 激活 → ✅ (用) 啟用\n   - ❌ (禁) 信息/消息 → ✅ (用) 訊息\n   - ❌ (禁) 任务栏 → ✅ (用) 工作列\n   - ❌ (禁) 硬件 → ✅ (用) 硬體\n   - ❌ (禁) 设备 → ✅ (用) 裝置\n   - ❌ (禁) 打印 → ✅ (用) 列印\n   - ❌ (禁) 链接 → ✅ (用) 連結\n   - ❌ (禁) 支持 → ✅ (用) 支援\n   - ❌ (禁) 质量 → ✅ (用) 品質\n   - ❌ (禁) 项目 → ✅ (用) 項目\n   - ❌ (禁) 默认 → ✅ (用) 預設\n3. **除錯指令**：若參考資料為簡體，你必須在腦中先翻譯成台灣繁體再輸出，**絕對禁止**直接複製簡體原文。`;
@@ -6035,6 +6377,8 @@ function callLLMWithRetry(
   userId = null,
   forceWebSearch = false,
   targetModelName = null,
+  evidenceCorrectionAttempted = false,
+  webGroundingRetryAttempted = false,
 ) {
   lastLlmCallAttempted = true;
   const apiKey =
@@ -6084,6 +6428,16 @@ function callLLMWithRetry(
     }
   }
 
+  const recentOfficialManualAnswer = forceWebSearch
+    ? getRecentOfficialManualAnswer_(effectiveMessages)
+    : "";
+  const officialUrlContexts = forceWebSearch
+    ? getOfficialUrlContextCandidates(query)
+    : [];
+  const directOfficialPageEvidence = forceWebSearch
+    ? fetchOfficialUrlEvidence_(officialUrlContexts)
+    : [];
+
   let effectiveQuery = query;
   if (attachPDFs && !forceWebSearch && isFactoryResetQueryWithoutPinIssue(query)) {
     const rewrittenQuery = buildFactoryResetManualSearchQuery_(query, targetModelName);
@@ -6115,6 +6469,27 @@ function callLLMWithRetry(
     imageBlob, // imageBlob is handled separately
     targetModelName,
   );
+  if (
+    forceWebSearch &&
+    isCrossDeviceMonitorQuery(effectiveQuery) &&
+    recentOfficialManualAnswer
+  ) {
+    dynamicPrompt += `\n\n【已由官方手冊查證的螢幕端錨點】
+${recentOfficialManualAnswer}
+
+這段只用來固定螢幕端已查證的事實。網路搜尋只補外部裝置端的官方資料，不得把螢幕端的輸入介面、線材條件、供電瓦數或限制改成網路文章中的其他型號資訊。若搜尋結果與錨點衝突，以官方手冊錨點為準。最後請把兩邊資訊整合成朋友式、專業且容易照做的答案。`;
+    writeLog(
+      `[Cross Device Manual Anchor v29.6.076] 網搜沿用官方手冊螢幕端事實 (${recentOfficialManualAnswer.length} 字)`,
+    );
+  }
+  if (directOfficialPageEvidence.length > 0) {
+    dynamicPrompt += `\n\n【程式直接擷取的官方技術規格頁證據】
+${directOfficialPageEvidence
+  .map((item) => `來源網址：${item.url}\n${item.text}`)
+  .join("\n\n")}
+
+以上文字由程式直接從官方網址取得。回答外部裝置端能力時必須逐字核對這段證據；證據已明載的能力不得說成「未明確標示」，也不得以「可能、理論上、待確認」弱化。只提供證據支援且與使用者問題直接相關的連接方法，不延伸無來源的設定、轉接器或替代測試。`;
+  }
 
   // 刪除舊的註解掉的 imageBlob 邏輯
   const geminiContents = [];
@@ -6224,6 +6599,12 @@ function callLLMWithRetry(
     // 解決：在 user message 中加入「時效性詞彙」讓 AI 認為必須搜尋即時資訊
     writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.110)`);
     tools = [{ google_search: {} }];
+    if (officialUrlContexts.length > 0) {
+      tools.unshift({ url_context: {} });
+      writeLog(
+        `[URL Context v29.6.075] 加入官方頁: ${officialUrlContexts.join(", ")}`,
+      );
+    }
     writeLog(`[Search Tool Payload] tools=${JSON.stringify(tools)}`);
 
     // v29.5.110: 強化 System Prompt - 加入時效性指令
@@ -6232,7 +6613,11 @@ function callLLMWithRetry(
       "Asia/Taipei",
       "yyyy年MM月dd日",
     );
-    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。`;
+    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。${
+      officialUrlContexts.length > 0
+        ? `\n請同時讀取這些官方技術規格頁，並優先以其內容作答：${officialUrlContexts.join(" ")}`
+        : ""
+    }`;
 
     // v29.5.110: 修改 user message - 加入時效性關鍵詞觸發搜尋
     // Gemini 會判斷「最新」「今天」這類詞彙為需要即時資訊，從而強制搜尋
@@ -6246,7 +6631,11 @@ function callLLMWithRetry(
         const textPart = lastContent.parts.find((p) => p.text);
         if (textPart && !textPart.text.includes("最新")) {
           // 在問題前加上時效性詞彙
-          textPart.text = `【請搜尋最新網路資訊】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟。${textPart.text}`;
+          textPart.text = `【請搜尋最新網路資訊】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟。${
+            officialUrlContexts.length > 0
+              ? `請讀取官方頁 ${officialUrlContexts.join(" ")}。`
+              : ""
+          }${textPart.text}`;
           writeLog(
             `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
           );
@@ -6604,8 +6993,9 @@ function callLLMWithRetry(
             const finishReason = candidates[0].finishReason;
             const hasToolCalls = firstPart && firstPart.functionCall;
 
-            // v29.5.112: 重置搜尋來源 (每次 API 呼叫前清除)
+            // 每次 API 呼叫前清除，避免沿用上一輪的搜尋證據。
             lastSearchSources = null;
+            lastWebEvidenceValid = false;
 
             // v29.5.109: 完整記錄 Grounding Metadata (Web Search 結果)
             if (grounding) {
@@ -6694,6 +7084,17 @@ function callLLMWithRetry(
                 writeLog(`[Grounding] groundingChunks 不存在或為空`);
               }
 
+              lastWebEvidenceValid = Boolean(
+                forceWebSearch &&
+                  grounding.groundingChunks &&
+                  grounding.groundingChunks.length > 0 &&
+                  grounding.groundingSupports &&
+                  grounding.groundingSupports.length > 0,
+              );
+              writeLog(
+                `[Grounding Audit v29.6.075] 可稽核 Google Search 證據: ${lastWebEvidenceValid}`,
+              );
+
               if (grounding.searchEntryPoint) {
                 writeLog(`[Grounding] 有 searchEntryPoint (搜尋建議 Widget)`);
               }
@@ -6705,6 +7106,45 @@ function callLLMWithRetry(
             } else if (forceWebSearch) {
               writeLog(
                 `[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`,
+              );
+            }
+
+            const successfulUrlContexts = getSuccessfulUrlContextSources(
+              candidates[0].urlContextMetadata,
+            );
+            if (successfulUrlContexts.length > 0) {
+              const urlDomains = successfulUrlContexts
+                .map((url) => {
+                  const match = url.match(/^https?:\/\/([^/]+)/i);
+                  return match ? match[1].replace(/^www\./i, "") : url;
+                })
+                .filter(Boolean);
+              lastSearchSources = Array.from(
+                new Set([...(lastSearchSources || []), ...urlDomains]),
+              ).slice(0, 5);
+              lastWebEvidenceValid = true;
+              writeLog(
+                `[URL Context v29.6.075] 官方頁讀取成功: ${successfulUrlContexts.join(", ")}`,
+              );
+            } else if (officialUrlContexts.length > 0) {
+              writeLog(
+                "[URL Context v29.6.075] 官方頁未回傳成功的 urlContextMetadata",
+              );
+            }
+
+            if (directOfficialPageEvidence.length > 0) {
+              const fetchedDomains = directOfficialPageEvidence
+                .map((item) => {
+                  const match = String(item.url || "").match(/^https?:\/\/([^/]+)/i);
+                  return match ? match[1].replace(/^www\./i, "") : "";
+                })
+                .filter(Boolean);
+              lastSearchSources = Array.from(
+                new Set([...(lastSearchSources || []), ...fetchedDomains]),
+              ).slice(0, 5);
+              lastWebEvidenceValid = true;
+              writeLog(
+                `[Official Page Fetch v29.6.077] 直接官方頁證據有效: ${fetchedDomains.join(", ")}`,
               );
             }
 
@@ -6772,6 +7212,182 @@ function callLLMWithRetry(
                 `[API Error] 回應全空 (No text/grounding/finish), 可能工具執行失敗`,
               );
               throw new Error("Empty response text from API");
+            }
+
+            if (forceWebSearch && !lastWebEvidenceValid) {
+              const firstUsage = lastTokenUsage
+                ? Object.assign({}, lastTokenUsage)
+                : null;
+              if (!webGroundingRetryAttempted) {
+                const today = Utilities.formatDate(
+                  new Date(),
+                  "Asia/Taipei",
+                  "yyyy年MM月dd日",
+                );
+                const groundedQuery = [
+                  effectiveQuery,
+                  "",
+                  `系統更正：今天是 ${today}。上一輪沒有取得可稽核的網頁來源，不得把 AI 內建知識當成網路搜尋結果。`,
+                  "請重新使用 Google Search，優先查 Apple 台灣官方技術規格與 Samsung 台灣官方支援頁。只有 groundingChunks 實際支援的內容才可回答；先核對產品是否已上市，再提供精簡、可操作的結論。",
+                ].join("\n");
+                const groundedMessages = Array.isArray(effectiveMessages)
+                  ? effectiveMessages.slice()
+                  : [];
+                for (let i = groundedMessages.length - 1; i >= 0; i--) {
+                  if (
+                    groundedMessages[i] &&
+                    groundedMessages[i].role === "user"
+                  ) {
+                    groundedMessages[i] = Object.assign({}, groundedMessages[i], {
+                      content: groundedQuery,
+                    });
+                    break;
+                  }
+                }
+                writeLog(
+                  "[Grounding Audit v29.6.073] 無 groundingChunks/groundingSupports，重試一次官方來源搜尋",
+                );
+                const groundedText = callLLMWithRetry(
+                  groundedQuery,
+                  groundedMessages,
+                  filesToAttach,
+                  attachPDFs,
+                  imageBlob,
+                  true,
+                  userId,
+                  forceWebSearch,
+                  targetModelName,
+                  evidenceCorrectionAttempted,
+                  true,
+                );
+                if (firstUsage && lastTokenUsage) {
+                  lastTokenUsage = combineLlmUsage_(firstUsage, lastTokenUsage);
+                  writeLog(
+                    `[Grounding Audit v29.6.073] 兩次網搜 LLM 合計費用: NT$${lastTokenUsage.costTWD.toFixed(4)}`,
+                  );
+                }
+                return groundedText;
+              }
+
+              writeLog(
+                "[Grounding Audit v29.6.073] 第二次仍無可稽核來源，拒絕輸出假網搜答案",
+              );
+              return "這次網路搜尋沒有取得可核對的網頁來源，所以我先不把 AI 內建資料當成搜尋答案。請稍後再點一次「這題再搜網路」。";
+            }
+
+            const isCrossDeviceQuery =
+              isCrossDeviceMonitorQuery(effectiveQuery);
+            const hasTrustedFastCrossDeviceQa =
+              /\[來源[:：]\s*QA庫\]/i.test(text);
+            if (
+              isCrossDeviceQuery &&
+              !attachPDFs &&
+              !forceWebSearch &&
+              !hasTrustedFastCrossDeviceQa
+            ) {
+              writeLog(
+                "[Cross Device Router v29.6.074] Fast Mode 未命中 QA，禁止用規格庫推論外部裝置相容性，升級官方手冊",
+              );
+              return "[AUTO_SEARCH_PDF]";
+            }
+            const hasWrongScopeRefusal =
+              isCrossDeviceQuery && isIncorrectCrossDeviceScopeRefusal(text);
+            const hasUnsupportedExternalAdvice =
+              isCrossDeviceQuery &&
+              attachPDFs &&
+              hasUnsupportedCrossDeviceManualExternalClaim_(text);
+            if (
+              (hasWrongScopeRefusal || hasUnsupportedExternalAdvice) &&
+              !evidenceCorrectionAttempted
+            ) {
+              const firstUsage = lastTokenUsage
+                ? Object.assign({}, lastTokenUsage)
+                : null;
+              const correctedQuery = [
+                effectiveQuery,
+                "",
+                "系統更正：這是外部裝置連接三星螢幕的問題，問題主體是螢幕，不得以手機／平板超出服務範圍拒答。",
+                "只可使用目前提供或實際搜尋到的來源。若目前掛載的是螢幕官方手冊，只整理手冊明載的螢幕端連接條件；手冊沒有寫的外部裝置設定、轉接器、上市狀態或測試方式一律不要補，也不可斷言該手機一定能顯示或充電，改為明說裝置端尚待查證。先給一句結論，再以最多 3 點解釋真正影響連接的條件；優先整理螢幕端輸入介面、手冊要求的線材／影像協定，以及手冊明載的供電瓦數。不要逐條照搬手冊警告。請用朋友式、專業且深入淺出的方式重新回答。",
+              ].join("\n");
+              const correctedMessages = Array.isArray(effectiveMessages)
+                ? effectiveMessages.slice()
+                : [];
+              for (let i = correctedMessages.length - 1; i >= 0; i--) {
+                if (
+                  correctedMessages[i] &&
+                  correctedMessages[i].role === "user"
+                ) {
+                  correctedMessages[i] = Object.assign(
+                    {},
+                    correctedMessages[i],
+                    { content: correctedQuery },
+                  );
+                  break;
+                }
+              }
+              writeLog(
+                `[Cross Device Evidence Guard v29.6.073] 攔截${hasWrongScopeRefusal ? "錯誤範圍拒答" : "無來源裝置端建議"}，保留相同來源重新回答`,
+              );
+              const correctedText = callLLMWithRetry(
+                correctedQuery,
+                correctedMessages,
+                filesToAttach,
+                attachPDFs,
+                imageBlob,
+                true,
+                userId,
+                forceWebSearch,
+                targetModelName,
+                true,
+                webGroundingRetryAttempted,
+              );
+              if (firstUsage && lastTokenUsage) {
+                lastTokenUsage = combineLlmUsage_(firstUsage, lastTokenUsage);
+                writeLog(
+                  `[Cross Device Evidence Guard v29.6.073] 兩次 LLM 合計費用: NT$${lastTokenUsage.costTWD.toFixed(4)}`,
+                );
+              }
+              if (
+                isIncorrectCrossDeviceScopeRefusal(correctedText) ||
+                (attachPDFs &&
+                  hasUnsupportedCrossDeviceManualExternalClaim_(correctedText))
+              ) {
+                writeLog(
+                  `[Cross Device Evidence Guard v29.6.073] 第二次仍違反來源邊界，移除無來源句子後再提供${attachPDFs ? "網路查證" : "官方手冊"}`,
+                );
+                const boundedText = sanitizeUnsupportedCrossDeviceManualClaims_(
+                  correctedText,
+                );
+                if (boundedText) {
+                  return `${boundedText}\n\n${attachPDFs ? "[AUTO_SEARCH_WEB]" : "[AUTO_SEARCH_PDF]"}`;
+                }
+                return attachPDFs ? "[AUTO_SEARCH_WEB]" : "[AUTO_SEARCH_PDF]";
+              }
+              return correctedText;
+            }
+
+            if (
+              forceWebSearch &&
+              recentOfficialManualAnswer &&
+              hasManualAnchorWattageConflict_(recentOfficialManualAnswer, text)
+            ) {
+              writeLog(
+                "[Cross Device Manual Anchor v29.6.076] 攔截網搜與官方手冊不一致的螢幕端瓦數",
+              );
+              text = sanitizeManualAnchorWattageConflict_(
+                recentOfficialManualAnswer,
+                text,
+              );
+            }
+            if (
+              forceWebSearch &&
+              isCrossDeviceQuery &&
+              hasUnsupportedCrossDeviceWebSpeculation_(text)
+            ) {
+              writeLog(
+                "[Cross Device Web Evidence v29.6.077] 移除網搜回答中沒有來源支援的裝置端推測句",
+              );
+              text = sanitizeUnsupportedCrossDeviceWebSpeculation_(text);
             }
 
             return text;
@@ -7283,6 +7899,7 @@ function handleMessage(event) {
     lastTokenUsage = null;
     lastLlmCallAttempted = false;
     lastSearchSources = null;
+    lastWebEvidenceValid = false;
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
     let userMessage = event.message.text;
@@ -8018,13 +8635,28 @@ function handleMessage(event) {
 
         if (response) {
           let finalText = stripAnySourceTags(formatForLineMobile(response));
+          const requestedWeb = /\[AUTO_SEARCH_WEB\]/i.test(finalText);
           finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
           finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
           finalText = sanitizeManualDeflection(finalText);
           finalText = enforceManualUncertaintyGuard(finalText, queryText);
+          if (isCrossDeviceMonitorQuery(queryText)) {
+            finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
+          }
           finalText = enforceManualNumberedList(finalText);
+          const offerWebVerification = shouldOfferCrossDeviceWebVerification(
+            queryText,
+            finalText,
+            requestedWeb,
+          );
+          if (offerWebVerification) {
+            finalText = appendCrossDeviceWebVerificationNotice(finalText);
+            writeLog(
+              "[Cross Device Web Handoff v29.6.070] 手冊只確認螢幕端，保留回答並提供裝置端網搜入口",
+            );
+          }
           if (
             selectedModel &&
             finalText.toUpperCase().indexOf(selectedModel.toUpperCase()) < 0
@@ -8038,6 +8670,7 @@ function handleMessage(event) {
           }
           if (relevantFiles.length > 0) {
             finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+            markPdfConsultedForUser_(cache, userId);
           }
 
           let replyText = finalText;
@@ -8223,13 +8856,28 @@ function handleMessage(event) {
 
       if (response && response !== '[KB_EXPIRED]') {
         let finalText = stripAnySourceTags(formatForLineMobile(response));
+        const requestedWeb = /\[AUTO_SEARCH_WEB\]/i.test(finalText);
         finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
         finalText = sanitizeManualDeflection(finalText);
         finalText = enforceManualUncertaintyGuard(finalText, lastQuestion);
+        if (isCrossDeviceMonitorQuery(lastQuestion)) {
+          finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
+        }
         finalText = enforceManualNumberedList(finalText);
+        const offerWebVerification = shouldOfferCrossDeviceWebVerification(
+          lastQuestion,
+          finalText,
+          requestedWeb,
+        );
+        if (offerWebVerification) {
+          finalText = appendCrossDeviceWebVerificationNotice(finalText);
+          writeLog(
+            "[Cross Device Web Handoff v29.6.070] #查手冊只確認螢幕端，保留回答並提供裝置端網搜入口",
+          );
+        }
 
         // v29.5.158: 來源標註改為真實 PDF 檔名，避免顯示不存在的手冊名稱
         if (relevantFiles.length > 0) {
@@ -8237,6 +8885,7 @@ function handleMessage(event) {
         }
         if (relevantFiles.length > 0) {
           finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+          markPdfConsultedForUser_(cache, userId);
         }
 
         let replyText = finalText;
@@ -8537,6 +9186,8 @@ function handleMessage(event) {
       const qrOptions =
         qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
       replyMessage(replyToken, cmdResult, qrOptions);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, cmdResult, contextId, "assistant", "");
       return;
     }
 
@@ -8605,6 +9256,22 @@ function handleMessage(event) {
       writeLog("[PDF Mode] 偵測到型號變化，清除 PDF Mode，回到 Fast Mode");
       isInPdfMode = false;
       cache.remove(pdfModeKey);
+    }
+
+    if (
+      isCrossDeviceMonitorQuery(msg) &&
+      promptAliasOnlyModelSelection(
+        msg,
+        userId,
+        replyToken,
+        contextId,
+        "pdf",
+      )
+    ) {
+      writeLog(
+        "[Cross Device Router v29.6.074] 跨裝置短別稱直接走官方手冊型號選擇，不先呼叫 Fast LLM",
+      );
+      return;
     }
 
     // E. 直通車檢查 (Direct Search)
@@ -10806,9 +11473,13 @@ function handleCommand(c, u, cid) {
 
     // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
     // 檢查是否已查過 PDF，若未查過且有型號，優先執行 PDF Search
-    const pdfConsulted =
-      cache.get(`pdf_consulted_${u}`) === "true" ||
-      cache.get(`${u}:pdf_consulted`) === "true";
+    const pdfConsulted = hasPdfBeenConsultedForUser_(cache, u, history);
+    if (pdfConsulted) {
+      markPdfConsultedForUser_(cache, u);
+      writeLog(
+        "[SOP v29.6.070] 已由快取或最近官方手冊回答確認查過 PDF，本次直接進網路搜尋",
+      );
+    }
     // 嘗試從 Cache 取得上次的型號列表 (需要 Smart Router 有寫入)
     // 注意：cache key 必須與 Smart Router 一致。Smart Router 寫入的是 `last_models_json_${userId}` 嗎？
     // 檢查 checkDirectDeepSearch 把型號存哪了 -> `last_model_list_${userId}` (假設)
@@ -10910,19 +11581,31 @@ function handleCommand(c, u, cid) {
       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
       if (!triggerPDF) {
         // 網路搜尋模式
+        result = sanitizeManualDeflection(result);
         if (isApiFailureReply(result)) {
           writeLog(`[Web Search v29.5.280] 搜尋失敗，不追加補充資料標記`);
-        } else if (lastSearchSources && lastSearchSources.length > 0) {
+        } else if (
+          lastWebEvidenceValid &&
+          lastSearchSources &&
+          lastSearchSources.length > 0
+        ) {
           result += `\n\n(📊 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+          if (pdfConsulted && isCrossDeviceMonitorQuery(userMsg)) {
+            result += "\n[來源:官方手冊]";
+          }
           result += "\n[來源:網路搜尋]";
         } else {
-          result += "\n\n(🌐 網路搜尋補充資料)";
-          result += "\n[來源:網路搜尋]";
+          writeLog(
+            "[Grounding Audit v29.6.073] 無可稽核來源，不追加 [來源:網路搜尋]",
+          );
         }
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
         result = stripAnySourceTags(result);
         result = sanitizeManualDeflection(result);
+        if (isCrossDeviceMonitorQuery(userMsg)) {
+          result = removeCrossDeviceManualHeadingOnlyLines_(result);
+        }
         result = enforceManualNumberedList(result);
         if (filesToAttach.length > 0) {
           result = appendPdfSourceTag(result, filesToAttach, 1);
