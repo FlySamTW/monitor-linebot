@@ -1,5 +1,21 @@
 # 開發對話紀錄
 
+## 2026-07-14 (v29.6.082 / 降低跨裝置 PDF 同步耗時)
+
+- `v29.6.081` 修復正式 `doPost` 回 `status:error`，但同題正式隔離測試仍顯示 PDF 手冊輪約 18.5 秒，LINE 體感仍可能長時間點點點。
+- 根因是跨裝置 PDF 回覆若混入手冊外手機端推測，原流程會保留同本 PDF 再呼叫一次 Gemini 更正；這很嚴格，但在 LINE 同步 webhook 會多花一次 PDF LLM 時間與費用。
+- 現在只有「錯誤範圍拒答」才重新呼叫 LLM；若只是 PDF 回覆混入手冊外裝置端內容，改為直接移除越界句並保留手冊事實，再提供 `[AUTO_SEARCH_WEB]` 讓使用者查裝置端官方資料。
+- 這版不新增個案固定答案、不放寬來源邊界；目標是減少一次同步 LLM，降低 LINE 點點點等待時間與費用。
+- 正式 Webhook 已更新既有 Deployment ID 至 `@1263`；隔離 `doPost` 三輪同題均回 `{"status":"ok"}`，不再出現 `status:error`。實測耗時約 11.7 秒、12.2 秒、11.0 秒，仍不是 LINE 體感最佳狀態，後續若要根治需繼續削減同步 Sheet/LLM 路徑或改變回覆架構。
+- Headless TestUI 仍因 `TestUI frame not found` 無法作為本輪可見回覆驗收證據；本輪只能宣告正式 webhook 狀態與耗時改善，不能宣告完整 LINE 視窗已由本機驗收通過。
+
+## 2026-07-14 (v29.6.081 / webhook 錯誤可觀測性與事件隔離)
+
+- 使用者回報手機 LINE 同題一直顯示點點點、疑似沒有回覆；正式健康檢查確認 Webhook 已是 `v29.6.080`，但隔離 `doPost` 測試回 `{"status":"error"}`。
+- 根因之一是測試 webhook 事件缺 `webhookEventId` 時，`isDuplicateEvent()` 會把空值丟進 `CacheService` 當 key 造成例外；外層 `doPost` catch 又沒有寫 LOG，導致正式路徑失敗時無法判斷卡在哪。
+- `isDuplicateEvent()` 現在遇到缺 `webhookEventId` 會略過去重並記錄，不再中斷處理；`doPost` 改為逐事件 try/catch，單筆事件錯誤會寫入 LOG 並嘗試回覆使用者，不拖垮整個 webhook。
+- 這版只修正式 LINE 路徑穩定性與診斷能力，不改核心 prompt、不新增個案固定答案、不改模型；正式模型仍固定 `models/gemini-2.5-flash-lite`。
+
 ## 2026-07-14 (v29.6.080 / 整合網搜去除手冊推諉)
 
 - `v29.6.079` 正式回答已移除手機設定猜測，但整合網搜仍要求使用者「具體操作請參考手冊」，與系統已查完手冊的狀態矛盾，人工驗收不通過。

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.080"; // 2026-07-14 整合網搜去除手冊推諉
-const BUILD_TIMESTAMP = "2026-07-14 15:45";
+const GAS_VERSION = "v29.6.082"; // 2026-07-14 降低跨裝置 PDF 同步耗時
+const BUILD_TIMESTAMP = "2026-07-14 16:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -7296,6 +7296,17 @@ ${directOfficialPageEvidence
               isCrossDeviceQuery &&
               attachPDFs &&
               hasUnsupportedCrossDeviceManualExternalClaim_(text);
+            if (hasUnsupportedExternalAdvice && !hasWrongScopeRefusal) {
+              writeLog(
+                "[Cross Device Evidence Guard v29.6.082] PDF 回覆混入手冊外裝置端內容，直接清理越界句以避免第二次同步 LLM",
+              );
+              const boundedText =
+                sanitizeUnsupportedCrossDeviceManualClaims_(text);
+              if (boundedText) {
+                return `${boundedText}\n\n[AUTO_SEARCH_WEB]`;
+              }
+              return "[AUTO_SEARCH_WEB]";
+            }
             if (
               (hasWrongScopeRefusal || hasUnsupportedExternalAdvice) &&
               !evidenceCorrectionAttempted
@@ -14406,7 +14417,10 @@ function doPost(e) {
     const events = json.events || [];
 
     events.forEach(function (event) {
-      if (event.type === "message") {
+      try {
+        if (event.type !== "message") {
+          return;
+        }
         const eventId = event.webhookEventId;
         if (isDuplicateEvent(eventId)) return;
 
@@ -14462,12 +14476,24 @@ function doPost(e) {
             handleImageMessage(event.message.id, userId, replyToken, contextId);
           }
         }
+      } catch (eventErr) {
+        const token = event && event.replyToken;
+        const source = event && event.source ? event.source.userId || event.source.groupId || "UNKNOWN" : "UNKNOWN";
+        writeLog(source, "Error", `[Webhook Event Error] ${eventErr && eventErr.stack ? eventErr.stack : eventErr}`);
+        if (token) {
+          try {
+            replyMessage(token, "我這邊剛剛處理到一半出錯了，請再送一次同樣的問題。");
+          } catch (replyErr) {
+            writeLog(source, "Error", `[Webhook Event Error Reply Failed] ${replyErr.message}`);
+          }
+        }
       }
     });
     return ContentService.createTextOutput(
       JSON.stringify({ status: "ok" }),
     ).setMimeType(ContentService.MimeType.JSON);
   } catch (e) {
+    writeLog("UNKNOWN", "Error", `[Webhook Fatal] ${e && e.stack ? e.stack : e}`);
     return ContentService.createTextOutput(
       JSON.stringify({ status: "error" }),
     ).setMimeType(ContentService.MimeType.JSON);
@@ -14687,6 +14713,10 @@ function getBotUserId() {
 }
 
 function isDuplicateEvent(id) {
+  if (!id) {
+    writeLog("[Duplicate Guard] webhookEventId 缺失，略過去重但不中斷處理");
+    return false;
+  }
   const c = CacheService.getScriptCache();
   if (c.get(id)) return true;
   c.put(id, "1", 60);
