@@ -2569,6 +2569,81 @@ function sanitizePriceNumbers_(text) {
   return processed;
 }
 
+function getLongestCommonSubstringLength_(str1, str2) {
+  const s1 = String(str1 || "").toUpperCase().replace(/[\s,，。;；.()（）\[\]]/g, "");
+  const s2 = String(str2 || "").toUpperCase().replace(/[\s,，。;；.()（）\[\]]/g, "");
+  let maxLen = 0;
+  const dp = Array(s1.length + 1).fill(0).map(() => Array(s2.length + 1).fill(0));
+  for (let i = 1; i <= s1.length; i++) {
+    for (let j = 1; j <= s2.length; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+        if (dp[i][j] > maxLen) {
+          maxLen = dp[i][j];
+        }
+      }
+    }
+  }
+  return maxLen;
+}
+
+function findLocalMatchInQA(query, userId) {
+  try {
+    const cache = CacheService.getScriptCache();
+    let fullQA = "";
+    const qaCount = parseInt(cache.get("KB_QA_COUNT") || "0");
+    if (qaCount > 0) {
+      for (let i = 0; i < qaCount; i++) {
+        fullQA += cache.get(`KB_QA_${i}`) || "";
+      }
+    } else {
+      const qaSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.QA);
+      if (qaSheet && qaSheet.getLastRow() >= 1) {
+        const data = qaSheet.getRange(1, 1, qaSheet.getLastRow(), 1).getValues();
+        fullQA = data
+          .map((row) => {
+            if (!row[0]) return "";
+            const text = row[0].toString();
+            return text.length < 20 && text.match(/^(問題|Question|QA內容)/i) ? "" : `QA: ${text}`;
+          })
+          .filter(Boolean)
+          .join("\n\n");
+      }
+    }
+
+    if (!fullQA) return null;
+
+    const qaItems = fullQA.split("\n\n");
+    const upperQuery = String(query || "").toUpperCase();
+    
+    let bestMatch = null;
+    let maxMatchLen = 0;
+
+    qaItems.forEach(item => {
+      const parts = item.split(/\/\s*A[:：]/i);
+      const questionPart = (parts[0] || "").replace(/^QA:\s*/i, "").trim();
+      const answerPart = (parts[1] || "").trim();
+      if (!questionPart || !answerPart) return;
+
+      const lcsLen = getLongestCommonSubstringLength_(upperQuery, questionPart);
+      // 如果最長公共子字串長度 >= 6 個字，或者占了 QA 問題長度的 70% 以上，則視為命中
+      const threshold = Math.min(6, Math.ceil(questionPart.length * 0.7));
+      if (lcsLen >= threshold && lcsLen > maxMatchLen) {
+        maxMatchLen = lcsLen;
+        bestMatch = {
+          question: questionPart,
+          answer: answerPart
+        };
+      }
+    });
+
+    return bestMatch;
+  } catch (e) {
+    writeLog(`[QA Local Match Error] ${e.message}`);
+    return null;
+  }
+}
+
 function getWattageValues_(text) {
   const values = [];
   const pattern = /\b(\d{1,3})\s*W\b/gi;
@@ -3843,26 +3918,21 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
 
-    // v29.6.089: Optimization for PDF Mode (Compromise Solution)
-    // Retention of context-relevant QA items to prevent losing newly recorded QA in PDF mode
+    // v29.6.090: Optimization for PDF Mode (Compromise Solution)
+    // Retention of context-relevant QA items using LCS to prevent losing newly recorded QA in PDF mode
     if (isPDFMode) {
       if (fullQA) {
         const qaItems = fullQA.split("\n\n");
-        const matchTokens = [];
-        if (injectedModelsList && injectedModelsList.length > 0) {
-          injectedModelsList.forEach(m => matchTokens.push(m.toUpperCase()));
-        }
-        const words = upperMsg.match(/[A-Z0-9]{3,20}/g) || [];
-        words.forEach(w => matchTokens.push(w));
-        
         const filteredQa = qaItems.filter(item => {
-          const upperItem = item.toUpperCase();
-          return matchTokens.some(token => upperItem.includes(token));
+          const parts = item.split(/\/\s*A[:：]/i);
+          const questionPart = parts[0] || item;
+          const lcsLen = getLongestCommonSubstringLength_(upperMsg, questionPart);
+          return lcsLen >= 2; // 連續 2 個字以上相同就保留！
         });
         
         fullQA = filteredQa.join("\n\n");
         writeLog(
-          `[DynamicContext v29.6.089] PDF Mode: Selected ${filteredQa.length}/${qaItems.length} context-relevant QA items.`,
+          `[DynamicContext v29.6.090] PDF Mode: Selected ${filteredQa.length}/${qaItems.length} context-relevant QA items via LCS.`,
         );
       } else {
         fullQA = "";
@@ -8653,6 +8723,28 @@ function handleMessage(event) {
         writeLog(
           `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
         );
+
+        // ── 🆕 v29.6.090: 本地 QA 直通車 ──
+        // 優先在本地比對 QA 庫，若有精準命中，直接回覆，不需呼叫 LLM 查手冊！
+        const localMatch = findLocalMatchInQA(queryText, userId);
+        if (localMatch) {
+          writeLog(`[Local QA Hit v29.6.090] 🎯 本地精準匹配 QA: "${localMatch.question.substring(0, 50)}"`);
+          let matchReply = localMatch.answer;
+          matchReply = formatForLineMobile(matchReply);
+          matchReply += "\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]";
+          
+          replyMessage(replyToken, matchReply);
+          writeRecordDirectly(userId, queryText, contextId, "user", "");
+          writeRecordDirectly(userId, matchReply, contextId, "assistant", "");
+          const localHistory = getHistoryFromCacheOrSheet(contextId);
+          updateHistorySheetAndCache(
+            contextId,
+            localHistory,
+            { role: "user", content: queryText },
+            { role: "assistant", content: matchReply }
+          );
+          return;
+        }
 
       // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
         const kbList = JSON.parse(
