@@ -3843,14 +3843,30 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
 
-    // v29.5.42: Optimization for PDF Mode (Compromise Solution)
-    // Clear QA to save tokens, BUT Retain Light Rules (Definitions/Specs) to prevent "Spec Blindness"
+    // v29.6.089: Optimization for PDF Mode (Compromise Solution)
+    // Retention of context-relevant QA items to prevent losing newly recorded QA in PDF mode
     if (isPDFMode) {
-      fullQA = ""; // Cleared (Save ~6k chars)
-      // lightRules = ""; // RESTORED (Don't clear Rules!)
-      writeLog(
-        `[DynamicContext] PDF Mode Enabled: QA Cleared. Rules Kept (${lightRules.length}c).`,
-      );
+      if (fullQA) {
+        const qaItems = fullQA.split("\n\n");
+        const matchTokens = [];
+        if (injectedModelsList && injectedModelsList.length > 0) {
+          injectedModelsList.forEach(m => matchTokens.push(m.toUpperCase()));
+        }
+        const words = upperMsg.match(/[A-Z0-9]{3,20}/g) || [];
+        words.forEach(w => matchTokens.push(w));
+        
+        const filteredQa = qaItems.filter(item => {
+          const upperItem = item.toUpperCase();
+          return matchTokens.some(token => upperItem.includes(token));
+        });
+        
+        fullQA = filteredQa.join("\n\n");
+        writeLog(
+          `[DynamicContext v29.6.089] PDF Mode: Selected ${filteredQa.length}/${qaItems.length} context-relevant QA items.`,
+        );
+      } else {
+        fullQA = "";
+      }
     }
 
     let relevantContext = "=== 💡 精選問答 (QA - 最優先參考) ===\n";

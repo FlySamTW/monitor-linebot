@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.088)
+# Samsung LINE Bot 完整流程解析 (v29.6.089)
 
 ## 📋 核心哲學
 
@@ -1212,6 +1212,11 @@ Google Drive ──────► Gemini File API
   2. 移除不存在的舊錯誤型號範例與特定競品品牌案例，改以真實型號與通用競品範圍防呆驗證。
 - 規格資料：
   1. 新增 2026/5-2026/9 三星螢幕登錄送活動 RULE，來源為 `https://promotion.twsamsungcampaign.com/2026-mnt-q2-sp/rule.aspx`。
+
+### v29.6.089 (2026-07-16)
+- 解決 PDF Mode 下新建 QA 庫失效之漏洞：
+  1. 重構 `buildDynamicContext` 的過濾邏輯。在進入 `isPDFMode` 深度模式時，代碼不再無條件清空 `fullQA`。
+  2. 實現「話題與型號精選 QA 保留」，自動透過 Regex 抓取與當前使用者對話或推斷型號相關的詞彙，僅精選保留與當前問題相關的 QA 項目，其餘不相關的予以過濾，以達到既省 Token 成本、又保證優先命中 QA 庫之目的。
 
 ### v29.6.088 (2026-07-16)
 - 修復線上嚴重問答漏洞：
