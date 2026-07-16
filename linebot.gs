@@ -11157,9 +11157,10 @@ function handleMessage(event) {
           }
         }
 
-        // v29.5.118: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
+        // v29.6.091: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
+        // v29.6.091: 移除 !msg.startsWith("#") 限制，避免用戶點泡泡或網搜後被句點
         let responseOptions = {};
-        if (!msg.startsWith("/") && !msg.startsWith("#") && replyText) {
+        if (!msg.startsWith("/") && replyText) {
           let currentReplyTextForUi = Array.isArray(replyText)
             ? replyText.join("\n")
             : String(replyText || "");
