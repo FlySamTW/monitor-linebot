@@ -1506,6 +1506,20 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         );
 
         if (response) {
+          if (response === "[KB_EXPIRED]") {
+            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！";
+            replyMessage(replyToken, expiredText);
+            writeRecordDirectly(userId, queryText, contextId, "user", "");
+            writeRecordDirectly(userId, expiredText, contextId, "assistant", "");
+            const expHistory = getHistoryFromCacheOrSheet(contextId);
+            updateHistorySheetAndCache(
+              contextId,
+              expHistory,
+              { role: "user", content: queryText },
+              { role: "assistant", content: expiredText }
+            );
+            return;
+          }
           let finalText = stripAnySourceTags(formatForLineMobile(response));
           finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
           finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
@@ -2544,14 +2558,14 @@ function getRecentOfficialManualAnswer_(messages) {
 function sanitizePriceNumbers_(text) {
   if (!text) return "";
   let processed = String(text);
-  // 替換如 NT$ 32,900, NT$32900 等格式
-  processed = processed.replace(/NT\$\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?/gi, "官網當下優惠價");
-  processed = processed.replace(/(?:TWD|NTD|台幣)\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?/gi, "官網當下優惠價");
+  // 1. 替換如 NT$ 100 以上的格式，小數點後最多 2 位，不匹配 NT$0.xxxx
+  processed = processed.replace(/NT\$\s*(?!0\.\d)\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi, "官網當下優惠價");
+  processed = processed.replace(/(?:TWD|NTD|台幣)\s*(?!0\.\d)\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi, "官網當下優惠價");
   
-  // 替換如 32,900元, 32900元 等格式
-  processed = processed.replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:元|台幣)/g, "官網當下優惠價");
-  // 替換無逗號但長度在 4 到 6 位的純數字 + 元 (例如 32900元)
-  processed = processed.replace(/\b\d{4,6}\s*(?:元|台幣)/g, "官網當下優惠價");
+  // 2. 替換如 32,900元, 32900元 等格式 (排除 0.xxx元)
+  processed = processed.replace(/\b(?!0\.\d)\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*(?:元|台幣)/g, "官網當下優惠價");
+  // 替換無逗號但長度在 4 到 6 位的純數字 + 元 (例如 32900元，排除 0.xxxx元)
+  processed = processed.replace(/\b(?!0\.\d)\d{4,6}\s*(?:元|台幣)/g, "官網當下優惠價");
   return processed;
 }
 
@@ -8666,6 +8680,20 @@ function handleMessage(event) {
         );
 
         if (response) {
+          if (response === "[KB_EXPIRED]") {
+            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！";
+            replyMessage(replyToken, expiredText);
+            writeRecordDirectly(userId, queryText, contextId, "user", "");
+            writeRecordDirectly(userId, expiredText, contextId, "assistant", "");
+            const expHistory = getHistoryFromCacheOrSheet(contextId);
+            updateHistorySheetAndCache(
+              contextId,
+              expHistory,
+              { role: "user", content: queryText },
+              { role: "assistant", content: expiredText }
+            );
+            return;
+          }
           let finalText = stripAnySourceTags(formatForLineMobile(response));
           const requestedWeb = /\[AUTO_SEARCH_WEB\]/i.test(finalText);
           finalText = finalText.replace(/\[AUTO_SEARCH_PDF\]/g, "").trim();
@@ -14996,6 +15024,7 @@ function assertTestUiAuthorized_(token) {
 // - LINE Verify: 不帶參數，返回 200 OK
 // - TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
 function doGet(e) {
+
 
   ensureSyncTriggerExists();
 
