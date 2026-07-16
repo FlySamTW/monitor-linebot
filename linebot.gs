@@ -2438,7 +2438,7 @@ function buildCrossDeviceMonitorPromptRule(query) {
 
 function hasUnsupportedCrossDeviceExternalAdvice(text) {
   const answer = String(text || "");
-  return /(IPHONE\s*\d*[\s\S]{0,45}(?:未上市|尚未上市|尚未公布)|一般來說[\s\S]{0,80}(?:IPHONE|APPLE|手機|平板)|(?:檢查|開啟|啟用|調整)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:設定|影像輸出|螢幕鏡射)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:設定|影像輸出|螢幕鏡射)[\s\S]{0,25}(?:檢查|開啟|啟用|調整)|(?:建議|可以|請)[\s\S]{0,35}(?:試試看|嘗試)[\s\S]{0,60}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:可能需要|建議|請)[\s\S]{0,25}(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:是否)?支援|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:是否|需要)[\s\S]{0,30}支援|APPLE[\s\S]{0,30}(?:轉接線|轉接器|認證配件)|(?:其他|不同|APPLE|官方)?[\s\S]{0,15}轉接(?:方式|器|線)|嘗試使用不同品牌[\s\S]{0,30}(?:線材|纜線|TYPE\s*-?\s*C|USB\s*-?\s*C))/i.test(
+  return /(IPHONE\s*\d*[\s\S]{0,45}(?:未上市|尚未上市|尚未公布)|一般來說[\s\S]{0,80}(?:IPHONE|APPLE|手機|平板)|(?:檢查|開啟|啟用|調整)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:設定|影像輸出|螢幕鏡射)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:設定|影像輸出|螢幕鏡射)[\s\S]{0,25}(?:檢查|開啟|啟用|調整)|(?:建議|可以|請)[\s\S]{0,35}(?:試試看|嘗試)[\s\S]{0,60}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:可能需要|建議|請)[\s\S]{0,25}(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:確認|檢查)[\s\S]{0,35}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:是否)?支援|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,35}(?:是否|需要)[\s\S]{0,30}支援|APPLE[\s\S]{0,30}(?:轉接線|轉接器|認證配件)|(?:其他|不同|APPLE|官方)?[\s\S]{0,15}轉接(?:方式|器|線)|嘗試使用不同品牌[\s\S]{0,30}(?:線材|纜線|TYPE\s*-?\s*C|USB\s*-?\s*C)|(?:請|建議|可以|自行)?\s*(?:參閱|參考|閱讀|查詢|查看)\s*(?:官方)?\s*(?:手冊|官網|說明書|官方網站|連結|產品頁)|(?:依|以)\s*(?:官方)?\s*(?:手冊|官網|說明書|官方網站)\s*(?:為準|公布))/i.test(
     answer,
   );
 }
@@ -2539,6 +2539,20 @@ function getRecentOfficialManualAnswer_(messages) {
       .substring(0, 2200);
   }
   return "";
+}
+
+function sanitizePriceNumbers_(text) {
+  if (!text) return "";
+  let processed = String(text);
+  // 替換如 NT$ 32,900, NT$32900 等格式
+  processed = processed.replace(/NT\$\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?/gi, "官網當下優惠價");
+  processed = processed.replace(/(?:TWD|NTD|台幣)\s*\d{1,3}(?:,\d{3})*(?:\.\d+)?/gi, "官網當下優惠價");
+  
+  // 替換如 32,900元, 32900元 等格式
+  processed = processed.replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\s*(?:元|台幣)/g, "官網當下優惠價");
+  // 替換無逗號但長度在 4 到 6 位的純數字 + 元 (例如 32900元)
+  processed = processed.replace(/\b\d{4,6}\s*(?:元|台幣)/g, "官網當下優惠價");
+  return processed;
 }
 
 function getWattageValues_(text) {
@@ -7678,6 +7692,13 @@ function formatForLineMobile(text) {
     /^\s*根據(?:我|目前|我手上)?(?:的)?資料庫[，,：: ]*/gim,
     "",
   );
+
+  // v29.6.086: 根據手冊/PDF 等競品口吻防呆 (第 13 條)
+  processed = processed.replace(/根據(?:你|您)(?:提供|上傳)的\s*(?:PDF|手冊|文件|說明書|檔案)/gi, "根據官方手冊");
+  processed = processed.replace(/(?:你|您)提供的\s*(?:PDF|手冊|文件|說明書|檔案)/gi, "官方手冊");
+
+  // v29.6.086: 價格數字雙重防呆，確保最終 LINE 回覆絕對不出現具體價格
+  processed = sanitizePriceNumbers_(processed);
 
   processed = formatListSpacing(processed);
   return processed.trim();
