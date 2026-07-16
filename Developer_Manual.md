@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.082)
+# Samsung LINE Bot 完整流程解析 (v29.6.085)
 
 ## 📋 核心哲學
 

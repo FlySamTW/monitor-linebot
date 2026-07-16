@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.082"; // 2026-07-14 降低跨裝置 PDF 同步耗時
+const GAS_VERSION = "v29.6.085"; // 2026-07-16 移除臨時端點，修復紀錄指令 alertMsg 未定義 Bug，修復 Flex 選擇泡泡 footerText 未定義 Bug
 const BUILD_TIMESTAMP = "2026-07-14 16:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
@@ -12325,7 +12325,7 @@ function startNewEntryDraft(content, userId) {
     writeLog(
       userId,
       "UserRecord",
-      `[NewDraft Reply] ${(alertMsg + preview).substring(0, 100)}...`,
+      `[NewDraft Reply] ${preview.substring(0, 100)}...`,
     );
     return preview;
   } catch (e) {
@@ -14975,6 +14975,7 @@ function assertTestUiAuthorized_(token) {
 // - LINE Verify: 不帶參數，返回 200 OK
 // - TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
 function doGet(e) {
+
   ensureSyncTriggerExists();
 
   // 若有 test 參數，顯示 TestUI
@@ -16493,7 +16494,7 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
       contents: [
         {
           type: "text",
-          text: intentConfig ? intentConfig.headerText : "🔍 請選擇型號",
+          text: (intentConfig && intentConfig.headerText) ? intentConfig.headerText : "🔍 請選擇型號",
           color: "#333333",
           size: "md",
           weight: "bold",
@@ -16526,7 +16527,7 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
       contents: [
         {
           type: "text",
-          text: intentConfig
+          text: (intentConfig && intentConfig.footerText)
             ? intentConfig.footerText
             : "點選型號後會載入手冊（約30秒）",
           size: "xxs",
