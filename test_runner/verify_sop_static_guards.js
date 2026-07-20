@@ -47,6 +47,9 @@ const developerManual = read("程式編寫開發及功能手冊.md");
 const aiContext = read("AI_CONTEXT.md");
 const copilotInstructions = read(".github/copilot-instructions.md");
 const toolsReadme = read("tools/README.md");
+const agentsGuide = read("AGENTS.md");
+const iphoneAirRegression = read("test_runner/verify_july16_fixes.js");
+const testUi = read("TestUI.html");
 const packageJson = JSON.parse(read("test_runner/package.json"));
 const localVersion = (linebot.match(/const GAS_VERSION = "(v[\d.]+)"/) || [])[1];
 
@@ -387,9 +390,21 @@ assertStep(
   /deploy_existing_webhook\.ps1/.test(releaseExistingWebhook) &&
     /check_deploy_readiness\.ps1/.test(releaseExistingWebhook) &&
     /npm run test:static/.test(releaseExistingWebhook) &&
+    /git diff --check/.test(releaseExistingWebhook) &&
+    /git diff --cached --check/.test(releaseExistingWebhook) &&
     /npm run check:webhook-version/.test(releaseExistingWebhook) &&
     /\[switch\]\$DryRun/.test(releaseExistingWebhook),
-  "release_existing_webhook.ps1 must orchestrate static guards, existing deployment update, readiness check, and formal version guard",
+  "release_existing_webhook.ps1 must orchestrate static/whitespace guards, existing deployment update, readiness check, and formal version guard",
+);
+
+assertStep(
+  /tools\\release_existing_webhook\.ps1/.test(agentsGuide) &&
+    /唯一正式發布入口/.test(agentsGuide) &&
+    !/clasp push -f;\s*clasp version[\s\S]{0,160}clasp deploy -i/.test(
+      agentsGuide,
+    ) &&
+    /禁止自行拼接 `clasp push`/.test(agentsGuide),
+  "AGENTS.md must direct releases through the guarded release script and forbid the duplicate-version manual flow",
 );
 
 assertStep(
@@ -970,6 +985,33 @@ assertStep(
 
 assertStep(
   packageJson.scripts &&
+    /run_current_test\.js\s+verify_july16_fixes\.js/.test(
+      packageJson.scripts["test:iphone-air"] || "",
+    ) &&
+    /LINEBOT_TEST_SECRET/.test(iphoneAirRegression) &&
+    /encodeURIComponent\(maintenanceSecret\)/.test(iphoneAirRegression) &&
+    /TEST_UI_ACCESS_TOKEN/.test(iphoneAirRegression) &&
+    /clearTestSession",\s*userId,\s*accessToken/.test(iphoneAirRegression) &&
+    /testMessage",\s*message,\s*userId,\s*accessToken/.test(
+      iphoneAirRegression,
+    ) &&
+    /iphone-air\\\/specs/.test(iphoneAirRegression) &&
+    /Local QA Hit v29\\\.6\\\.092/.test(iphoneAirRegression) &&
+    !/\/紀錄\s/.test(iphoneAirRegression),
+  "iPhone Air live regression must be token-authorized, assertive, and read-only against formal QA",
+);
+
+assertStep(
+  /@media\s*\(min-width:\s*901px\)\s*and\s*\(max-height:\s*760px\)/.test(
+    testUi,
+  ) &&
+    /transform:\s*scale\(0\.76\)/.test(testUi) &&
+    /transform-origin:\s*top center/.test(testUi),
+  "TestUI must keep the full phone and control panel visible at 1280x720",
+);
+
+assertStep(
+  packageJson.scripts &&
     packageJson.scripts["check:webhook-version"] === "node ensure_formal_version_current.js",
   "package.json must expose check:webhook-version",
 );
@@ -1131,7 +1173,7 @@ assertStep(
 );
 
 assertStep(
-  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;/.test(
+  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;\s*lastWebEvidenceConflict\s*=\s*false;\s*lastWebSearchAttempted\s*=\s*false;/.test(
     extractFunction(linebot, "handleMessage"),
   ),
   "each new user message must reset token/search/LLM usage before calculating the current reply cost",
@@ -1146,11 +1188,19 @@ const crossDeviceScopeCode = [
   extractFunction(linebot, "sanitizeUnsupportedCrossDeviceManualClaims_"),
   extractFunction(linebot, "hasUnsupportedCrossDeviceWebSpeculation_"),
   extractFunction(linebot, "sanitizeUnsupportedCrossDeviceWebSpeculation_"),
+  extractFunction(linebot, "enforceAppleAirWiredEvidenceBoundary_"),
   extractFunction(linebot, "getRecentOfficialManualAnswer_"),
   extractFunction(linebot, "getWattageValues_"),
   extractFunction(linebot, "hasManualAnchorWattageConflict_"),
   extractFunction(linebot, "sanitizeManualAnchorWattageConflict_"),
   extractFunction(linebot, "removeCrossDeviceManualHeadingOnlyLines_"),
+  extractFunction(linebot, "getOfficialProductIdentityFromQuery_"),
+  extractFunction(linebot, "isOfficialProductPageEvidenceValid_"),
+  extractFunction(linebot, "isPositiveDisplayCapabilitySentence_"),
+  extractFunction(linebot, "isExplicitMonitorSideCapabilitySentence_"),
+  extractFunction(linebot, "hasAppleDisplayEvidenceConflict_"),
+  extractFunction(linebot, "buildEvidenceConflictReply_"),
+  extractFunction(linebot, "isEvidenceConflictReply_"),
   extractFunction(linebot, "getOfficialUrlContextCandidates"),
   extractFunction(linebot, "getSuccessfulUrlContextSources"),
   extractFunction(linebot, "combineLlmUsage_"),
@@ -1190,6 +1240,12 @@ const crossDeviceScopeCode = [
     unsupportedManualChargeClaim: hasUnsupportedCrossDeviceManualExternalClaim_(
       "USB Type-C 連接埠可以為你的 iPhone 17 充電。"
     ),
+    unsupportedManualPhoneUpdate: hasUnsupportedCrossDeviceManualExternalClaim_(
+      "嘗試更新 iPhone Air 的軟體版本。"
+    ),
+    unsupportedManualMonitorSettingGuess: hasUnsupportedCrossDeviceManualExternalClaim_(
+      "檢查 M8 螢幕的 USB Type-C 設定；有些螢幕可能有相關設定可以調整。"
+    ),
     sanitizedManualClaims: sanitizeUnsupportedCrossDeviceManualClaims_(
       "螢幕端支援 USB-C 影像輸入。你的 iPhone 17 可以顯示在螢幕上。\\n手冊記載最大供電為 65W。"
     ),
@@ -1198,6 +1254,16 @@ const crossDeviceScopeCode = [
     ),
     webOfficialFactSafe: hasUnsupportedCrossDeviceWebSpeculation_(
       "Apple 官方規格明載 iPhone 17 支援原生 DisplayPort 輸出，最高可達 4K HDR。"
+    ),
+    airplayUsbConflation: hasUnsupportedCrossDeviceWebSpeculation_(
+      "iPhone Air 的 USB-C 連接埠也支援 AirPlay 鏡像輸出。"
+    ),
+    speculativeWiredConclusion: hasUnsupportedCrossDeviceWebSpeculation_(
+      "iPhone Air 的 USB-C 可能不支援 DisplayPort 影像輸出。"
+    ),
+    boundedAirEvidence: enforceAppleAirWiredEvidenceBoundary_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "Apple 規格未明確提及 DisplayPort。\\niPhone Air 無法顯示的原因可能如下：\\n1. iPhone Air 的 USB-C 不支援影像輸出。\\n建議步驟：使用轉接器。"
     ),
     sanitizedWebAnswer: sanitizeUnsupportedCrossDeviceWebSpeculation_(
       "iPhone 17 支援 DisplayPort 輸出。\\n可能需要在 iPhone 設定中找鏡像選項。\\n請使用支援影像的 USB-C 線材。"
@@ -1226,6 +1292,51 @@ const crossDeviceScopeCode = [
     iphoneOfficialUrl: getOfficialUrlContextCandidates(
       "iPhone 17要如何以type c連接M7顯示"
     )[0],
+    iphoneAirOfficialUrl: getOfficialUrlContextCandidates(
+      "客人的 iPhone 17 Air 為什麼 Type-C 接 M8 沒畫面"
+    )[0],
+    iphone17eOfficialUrl: getOfficialUrlContextCandidates(
+      "iPhone 17e 可以用 USB-C 接 M8 嗎"
+    )[0],
+    iphone16eOfficialUrl: getOfficialUrlContextCandidates(
+      "iPhone 16e 可以用 USB-C 接 M8 嗎"
+    )[0],
+    genericIphoneOfficialUrls: getOfficialUrlContextCandidates(
+      "iPhone 可以用 USB-C 接 M8 嗎"
+    ),
+    airPageIdentityValid: isOfficialProductPageEvidenceValid_(
+      getOfficialProductIdentityFromQuery_("iPhone Air 接 M8"),
+      "https://www.apple.com/tw/iphone-air/specs/",
+      "iPhone Air 技術規格 USB-C 充電與 USB 2"
+    ),
+    wrongAirPageRejected: isOfficialProductPageEvidenceValid_(
+      getOfficialProductIdentityFromQuery_("iPhone Air 接 M8"),
+      "https://www.apple.com/tw/iphone-17/specs/",
+      "iPhone 17 技術規格 DisplayPort"
+    ),
+    airSupportConflict: hasAppleDisplayEvidenceConflict_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "iPhone Air 支援原生 DisplayPort 輸出，可以接螢幕顯示。"
+    ),
+    airPronounSupportConflict: hasAppleDisplayEvidenceConflict_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "這款手機可以透過 USB-C 輸出影像到外接螢幕。"
+    ),
+    monitorSideCapabilitySafe: hasAppleDisplayEvidenceConflict_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "Samsung M8 螢幕端的 USB-C 支援 DisplayPort 影像輸入。"
+    ),
+    airplayCapabilitySafe: hasAppleDisplayEvidenceConflict_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "iPhone Air 支援 AirPlay 無線鏡像輸出，最高可達 4K HDR。"
+    ),
+    airNegativeSafe: hasAppleDisplayEvidenceConflict_(
+      "iPhone Air 用 USB-C 接 M8 顯示",
+      "iPhone Air 的 USB-C 未列 DisplayPort，因此不能宣稱支援有線影像輸出。"
+    ),
+    airplayDoesNotBecomeAirModel: getOfficialProductIdentityFromQuery_(
+      "iPhone 可以用 AirPlay 投放到 M8 嗎"
+    ),
     successfulUrlSources: getSuccessfulUrlContextSources({
       urlMetadata: [
         {
@@ -1279,11 +1390,21 @@ assertStep(
     crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedAdapterGuess === true &&
     crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualDisplayClaim === true &&
     crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualChargeClaim === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualPhoneUpdate === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedManualMonitorSettingGuess === true &&
     /螢幕端支援 USB-C 影像輸入/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
     /65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
     !/iPhone 17 可以顯示/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedManualClaims) &&
     crossDeviceScopeContext.__crossDeviceScopeResult.unsupportedWebSettingGuess === true &&
     crossDeviceScopeContext.__crossDeviceScopeResult.webOfficialFactSafe === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airplayUsbConflation === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.speculativeWiredConclusion === true &&
+    /不能把 Type-C 接頭直接當成支援有線顯示/.test(
+      crossDeviceScopeContext.__crossDeviceScopeResult.boundedAirEvidence
+    ) &&
+    !/原因可能|轉接器/.test(
+      crossDeviceScopeContext.__crossDeviceScopeResult.boundedAirEvidence
+    ) &&
     /DisplayPort 輸出/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
     !/鏡像選項/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
     /USB-C 線材/.test(crossDeviceScopeContext.__crossDeviceScopeResult.sanitizedWebAnswer) &&
@@ -1301,6 +1422,18 @@ assertStep(
     /影像傳輸/.test(crossDeviceScopeContext.__crossDeviceScopeResult.cleanedManualList) &&
     /65W/.test(crossDeviceScopeContext.__crossDeviceScopeResult.cleanedManualList) &&
     crossDeviceScopeContext.__crossDeviceScopeResult.iphoneOfficialUrl === "https://www.apple.com/tw/iphone-17/specs/" &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.iphoneAirOfficialUrl === "https://www.apple.com/tw/iphone-air/specs/" &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.iphone17eOfficialUrl === "https://www.apple.com/tw/iphone-17e/specs/" &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.iphone16eOfficialUrl === "https://www.apple.com/tw/iphone-16e/specs/" &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.genericIphoneOfficialUrls.length === 0 &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airPageIdentityValid === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.wrongAirPageRejected === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airSupportConflict === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airPronounSupportConflict === true &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.monitorSideCapabilitySafe === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airplayCapabilitySafe === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airNegativeSafe === false &&
+    crossDeviceScopeContext.__crossDeviceScopeResult.airplayDoesNotBecomeAirModel === null &&
     crossDeviceScopeContext.__crossDeviceScopeResult.successfulUrlSources.length === 1 &&
     crossDeviceScopeContext.__crossDeviceScopeResult.combinedCost.total === 35 &&
     Math.abs(crossDeviceScopeContext.__crossDeviceScopeResult.combinedCost.costTWD - 0.3) < 0.000001 &&
@@ -1341,11 +1474,144 @@ assertStep(
 
 assertStep(
   /Official Page Fetch v29\.6\.077/.test(linebot) &&
-    /fetchOfficialUrlEvidence_\(officialUrlContexts\)/.test(linebot) &&
+    /fetchOfficialUrlEvidence_\(officialUrlContexts,\s*query\)/.test(linebot) &&
+    /Official Product Guard v29\.6\.092/.test(linebot) &&
+    /isOfficialProductPageEvidenceValid_\(identity,\s*url,\s*plainText\)/.test(linebot) &&
     /程式直接擷取的官方技術規格頁證據/.test(linebot) &&
-    /directOfficialPageEvidence\.length > 0[\s\S]{0,700}lastWebEvidenceValid = true/.test(linebot) &&
+    /directOfficialPageEvidence\.length > 0[\s\S]{0,900}lastWebEvidenceValid = true/.test(linebot) &&
     /Cross Device Web Evidence v29\.6\.077/.test(linebot),
   "known official URLs must be fetched as auditable evidence before cross-device web answers",
+);
+
+const qaMatchCode = [
+  extractFunction(linebot, "normalizeQaMatchText_"),
+  extractFunction(linebot, "getQaEntityTokens_"),
+  extractFunction(linebot, "getQaConnectionTokens_"),
+  extractFunction(linebot, "getQaIntentTokens_"),
+  extractFunction(linebot, "isQaQuestionDirectMatch_"),
+  extractFunction(linebot, "isQaContextRelevant_"),
+  `
+  const airQa = "iPhone Air 無法使用 Type-C 連接 Smart Monitor 顯示嗎？";
+  globalThis.__qaMatchResult = {
+    exactAir: isQaQuestionDirectMatch_(
+      "iPhone 17 Air 為什麼 Type-C 接 M8 沒畫面？",
+      airQa
+    ),
+    reject17e: isQaQuestionDirectMatch_(
+      "iPhone 17e 可以用 USB-C 接 M8 嗎？",
+      airQa
+    ),
+    reject16: isQaQuestionDirectMatch_(
+      "iPhone 16 可以用 Type-C 接 M8 嗎？",
+      airQa
+    ),
+    rejectReset: isQaQuestionDirectMatch_(
+      "iPhone 如何恢復原廠設定？",
+      airQa
+    ),
+    rejectAirPlay: isQaQuestionDirectMatch_(
+      "iPhone 可以用 AirPlay 投放到 M8 嗎？",
+      airQa
+    ),
+    rejectMixedConnection: isQaQuestionDirectMatch_(
+      "iPhone Air 能用 AirPlay 或 USB-C 接 M8 顯示嗎？",
+      airQa
+    ),
+    rejectExactMonitorBypass: isQaQuestionDirectMatch_(
+      "iPhone Air 用 Type-C 接 S32FM803UC 沒畫面",
+      airQa
+    ),
+    pdfContextAir: isQaContextRelevant_(
+      "iPhone Air 用 Type-C 接 S32FM803UC 沒畫面",
+      airQa,
+      ["S32FM803UC"]
+    ),
+    pdfContextReject17e: isQaContextRelevant_(
+      "iPhone 17e 用 Type-C 接 S32FM803UC 沒畫面",
+      airQa,
+      ["S32FM803UC"]
+    )
+  };
+  `,
+].join("\n\n");
+const qaMatchContext = {};
+vm.createContext(qaMatchContext);
+vm.runInContext(qaMatchCode, qaMatchContext);
+
+assertStep(
+  qaMatchContext.__qaMatchResult.exactAir === true &&
+    qaMatchContext.__qaMatchResult.reject17e === false &&
+    qaMatchContext.__qaMatchResult.reject16 === false &&
+    qaMatchContext.__qaMatchResult.rejectReset === false &&
+    qaMatchContext.__qaMatchResult.rejectAirPlay === false &&
+    qaMatchContext.__qaMatchResult.rejectMixedConnection === false &&
+    qaMatchContext.__qaMatchResult.rejectExactMonitorBypass === false &&
+    qaMatchContext.__qaMatchResult.pdfContextAir === true &&
+    qaMatchContext.__qaMatchResult.pdfContextReject17e === false &&
+    !/getLongestCommonSubstringLength_/.test(linebot) &&
+    !/LCS\s*>=|via LCS|lcsLen/.test(linebot),
+  "QA direct replies and PDF context must require matching product entities and intent without LCS",
+);
+
+assertStep(
+  /isCrossDeviceMonitorQuery\(latestUserMsg\)[\s\S]{0,160}isExternalDeviceCompatibilityQa_\(item\)/.test(
+    extractFunction(linebot, "buildDynamicContext"),
+  ),
+  "cross-device PDF mode must not relabel external-device QA facts as Samsung manual evidence",
+);
+
+const qaSourceGuardCode = [
+  extractFunction(linebot, "isExternalDeviceCompatibilityQa_"),
+  extractFunction(linebot, "hasOfficialExternalCompatibilitySource_"),
+  extractFunction(linebot, "buildQaSourceGuardNotice_"),
+  `
+  globalThis.__qaSourceGuardResult = {
+    external: isExternalDeviceCompatibilityQa_(
+      "iPhone Air 可以用 USB-C 接 Smart Monitor 顯示嗎？ / A：可以。"
+    ),
+    missingSource: hasOfficialExternalCompatibilitySource_(
+      "iPhone Air 可以用 USB-C 接 Smart Monitor 顯示嗎？ / A：可以。"
+    ),
+    appleSource: hasOfficialExternalCompatibilitySource_(
+      "來源：https://www.apple.com/tw/iphone-air/specs/"
+    ),
+    fakeSource: hasOfficialExternalCompatibilitySource_(
+      "來源：https://example.com/iphone-air"
+    ),
+    warning: buildQaSourceGuardNotice_(
+      "iPhone Air 可以用 USB-C 接 Smart Monitor 顯示嗎？ / A：可以。"
+    )
+  };
+  `,
+].join("\n\n");
+const qaSourceGuardContext = {};
+vm.createContext(qaSourceGuardContext);
+vm.runInContext(qaSourceGuardCode, qaSourceGuardContext);
+
+assertStep(
+  qaSourceGuardContext.__qaSourceGuardResult.external === true &&
+    qaSourceGuardContext.__qaSourceGuardResult.missingSource === false &&
+    qaSourceGuardContext.__qaSourceGuardResult.appleSource === true &&
+    qaSourceGuardContext.__qaSourceGuardResult.fakeSource === false &&
+    /不會寫入正式 QA/.test(qaSourceGuardContext.__qaSourceGuardResult.warning) &&
+    /QA Source Guard v29\.6\.092/.test(linebot),
+  "external-device compatibility QA must remain preview-only until it includes a manufacturer official URL",
+);
+
+assertStep(
+  /let lastWebEvidenceConflict = false;/.test(linebot) &&
+    /let lastWebSearchAttempted = false;/.test(linebot) &&
+    /function isTerminalWebSearchReply_/.test(linebot) &&
+    /系統\(\?:暫時\)\?忙碌中\?/.test(
+      extractFunction(linebot, "isApiFailureReply"),
+    ) &&
+    /function canOfferAnotherWebSearch_/.test(linebot) &&
+    /terminalWebState[\s\S]{0,1100}canOfferAnotherWebSearch_\(cache,\s*userId,\s*cmdResult\)/.test(
+      extractFunction(linebot, "handleMessage"),
+    ) &&
+    /守門失敗或證據衝突，隱藏再詳細與重複網搜/.test(linebot) &&
+    /testQuickReplyLabels[\s\S]{0,420}使用顯式 Quick Reply:/.test(linebot),
+  "Quick Reply must hide elaboration/repeated web search after terminal failures or evidence conflicts and expose labels in TestUI logs",
 );
 
 assertStep(

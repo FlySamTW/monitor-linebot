@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.085"; // 2026-07-16 移除臨時端點，修復紀錄指令 alertMsg 未定義 Bug，修復 Flex 選擇泡泡 footerText 未定義 Bug
-const BUILD_TIMESTAMP = "2026-07-14 16:55";
+const GAS_VERSION = "v29.6.092"; // 2026-07-20 修正 iPhone 產品身分、QA 誤配、證據衝突與 Quick Reply 終止狀態
+const BUILD_TIMESTAMP = "2026-07-20 20:56";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2012,9 +2012,46 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
  * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
  */
 function isApiFailureReply(text) {
-  return /目前請求過於頻繁|已達配額限制|系統暫時忙碌|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
+  return /目前請求過於頻繁|已達配額限制|系統(?:暫時)?忙碌中?|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
     String(text || ""),
   );
+}
+
+function isTerminalWebSearchReply_(text) {
+  return (
+    isApiFailureReply(text) ||
+    isEvidenceConflictReply_(text) ||
+    /沒有取得可核對的網頁來源|無可稽核來源|網路搜尋連線逾時|已經嘗試多種角度搜尋/i.test(
+      String(text || ""),
+    )
+  );
+}
+
+function getWebSearchAttemptCount_(cache, userId) {
+  if (!cache || !userId) return 0;
+  const dissatisfiedCount = parseInt(
+    cache.get(`dissatisfied_count_${userId}`) || "0",
+    10,
+  );
+  const legacyWebCount = parseInt(
+    cache.get(`${userId}:web_search_count`) || "0",
+    10,
+  );
+  return Math.max(
+    Number.isFinite(dissatisfiedCount) ? dissatisfiedCount : 0,
+    Number.isFinite(legacyWebCount) ? legacyWebCount : 0,
+  );
+}
+
+function canOfferAnotherWebSearch_(cache, userId, replyText) {
+  if (isTerminalWebSearchReply_(replyText)) return false;
+  if (
+    lastWebEvidenceConflict ||
+    (lastWebSearchAttempted && !lastWebEvidenceValid)
+  ) {
+    return false;
+  }
+  return getWebSearchAttemptCount_(cache, userId) < 2;
 }
 
 function appendPdfSourceTag(text, files, maxCount = 1) {
@@ -2483,7 +2520,7 @@ function sanitizeUnsupportedCrossDeviceExternalAdvice(text) {
 function hasUnsupportedCrossDeviceManualExternalClaim_(text) {
   const answer = String(text || "");
   if (hasUnsupportedCrossDeviceExternalAdvice(answer)) return true;
-  return /(?:可以|可|能夠|能)[\s\S]{0,45}(?:連接|顯示|輸出|充電)[\s\S]{0,45}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:可以|可|能夠|能|支援)[\s\S]{0,45}(?:顯示|影像輸出|視訊輸出|充電|連接)|(?:為|替)[\s\S]{0,20}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,20}充電/i.test(
+  return /(?:可以|可|能夠|能)[\s\S]{0,45}(?:連接|顯示|輸出|充電)[\s\S]{0,45}(?:IPHONE|IPAD|ANDROID|手機|平板)|(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,45}(?:可以|可|能夠|能|支援)[\s\S]{0,45}(?:顯示|影像輸出|視訊輸出|充電|連接)|(?:為|替)[\s\S]{0,20}(?:IPHONE|IPAD|ANDROID|手機|平板)[\s\S]{0,20}充電|(?:嘗試|請|建議)[\s\S]{0,20}(?:更新|升級)[\s\S]{0,30}(?:IPHONE|IPAD|ANDROID|手機|平板)|有時[\s\S]{0,25}軟體更新[\s\S]{0,35}解決連接問題|(?:檢查|調整)[\s\S]{0,20}(?:M[5-9]|SMART\s*MONITOR|螢幕)[\s\S]{0,25}設定|(?:有些|某些)[\s\S]{0,15}螢幕[\s\S]{0,20}可能[\s\S]{0,20}設定/i.test(
     answer,
   );
 }
@@ -2512,7 +2549,7 @@ function sanitizeUnsupportedCrossDeviceManualClaims_(text) {
 function hasUnsupportedCrossDeviceWebSpeculation_(text) {
   const answer = String(text || "");
   if (hasUnsupportedCrossDeviceExternalAdvice(answer)) return true;
-  return /(?:可能|也許|或許|通常|常見|依賴)[\s\S]{0,55}(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)|(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)[\s\S]{0,55}(?:可能|也許|或許|通常|常見|依賴)|官方規格未[\s\S]{0,80}(?:常見|一般|推測|可能)/i.test(
+  return /(?:可能|也許|或許|通常|常見|依賴)[\s\S]{0,55}(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)|(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,55}(?:設定|鏡像|顯示輸出|系統功能|相容性)[\s\S]{0,55}(?:可能|也許|或許|通常|常見|依賴)|(?:IPHONE|IPAD|ANDROID|手機|平板|IOS)[\s\S]{0,65}(?:可能|也許|或許)[\s\S]{0,45}(?:不支援|無法|不能|相容性問題|相容性)|官方規格未[\s\S]{0,80}(?:常見|一般|推測|可能)|IPHONE\s*(?:17\s*)?AIR[\s\S]{0,45}USB[\s‑–—_-]*C[\s\S]{0,45}支援[\s\S]{0,25}AIRPLAY|USB[\s‑–—_-]*C[\s\S]{0,35}支援[\s\S]{0,25}AIRPLAY/i.test(
     answer,
   );
 }
@@ -2535,6 +2572,48 @@ function sanitizeUnsupportedCrossDeviceWebSpeculation_(text) {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function enforceAppleAirWiredEvidenceBoundary_(query, text) {
+  const identity = getOfficialProductIdentityFromQuery_(query);
+  const original = String(text || "").trim();
+  if (!original || !identity || identity.id !== "iphone-air") {
+    return original;
+  }
+
+  const keptLines = [];
+  let dropSpeculativeTail = false;
+  original.split(/\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (!dropSpeculativeTail) keptLines.push("");
+      return;
+    }
+    if (
+      /(?:建議的?解決步驟|建議步驟)/i.test(trimmed) ||
+      (/IPHONE\s*(?:17\s*)?AIR/i.test(trimmed) &&
+        /(?:原因可能|可能的原因|可能不支援|不支援(?:有線)?影像輸出|沒有啟用\s*DISPLAY\s*PORT)/i.test(
+          trimmed,
+        ) &&
+        !/(?:未列|未標示|未明確|不能宣稱)/i.test(trimmed))
+    ) {
+      dropSpeculativeTail = true;
+      return;
+    }
+    if (dropSpeculativeTail) return;
+    keptLines.push(line);
+  });
+
+  let bounded = keptLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const verifiedConclusion =
+    "Apple 官方規格只列充電與 USB 2，另把 AirPlay 列為無線投放能力，未列 DisplayPort／DP Alt Mode 有線影像輸出；因此不能把 Type-C 接頭直接當成支援有線顯示。";
+  if (!/不能把\s*TYPE[\s‑–—_-]*C[\s\S]{0,45}(?:DISPLAY\s*PORT|DP\s*ALT|有線顯示)/i.test(bounded)) {
+    bounded = `${bounded}\n\n${verifiedConclusion}`.trim();
+  }
+  return bounded;
 }
 
 function getRecentOfficialManualAnswer_(messages) {
@@ -2569,22 +2648,210 @@ function sanitizePriceNumbers_(text) {
   return processed;
 }
 
-function getLongestCommonSubstringLength_(str1, str2) {
-  const s1 = String(str1 || "").toUpperCase().replace(/[\s,，。;；.()（）\[\]]/g, "");
-  const s2 = String(str2 || "").toUpperCase().replace(/[\s,，。;；.()（）\[\]]/g, "");
-  let maxLen = 0;
-  const dp = Array(s1.length + 1).fill(0).map(() => Array(s2.length + 1).fill(0));
-  for (let i = 1; i <= s1.length; i++) {
-    for (let j = 1; j <= s2.length; j++) {
-      if (s1[i - 1] === s2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-        if (dp[i][j] > maxLen) {
-          maxLen = dp[i][j];
-        }
-      }
+function normalizeQaMatchText_(text) {
+  return String(text || "")
+    .toUpperCase()
+    .replace(/ＩＰＨＯＮＥ/g, "IPHONE")
+    .replace(/ＵＳＢ/g, "USB")
+    .replace(/ＴＹＰＥ/g, "TYPE")
+    .replace(/IPHONE\s*17\s*AIR/g, "IPHONE AIR")
+    .replace(/USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C/g, "USBC")
+    .replace(/DISPLAY[\s‑–—_-]*PORT/g, "DISPLAYPORT")
+    .replace(/[\s,，。；;：:、.!！?？()（）\[\]【】"'`]/g, "");
+}
+
+function getQaEntityTokens_(text) {
+  const upper = String(text || "").toUpperCase();
+  const tokens = [];
+
+  if (/IPHONE\s*(?:17\s*)?AIR(?:\s*版)?(?![A-Z])/i.test(upper)) {
+    tokens.push("APPLE:IPHONE_AIR");
+  } else {
+    const iphoneVariant = upper.match(/\bIPHONE\s*(1[5-7])\s*(E)?\b/i);
+    if (iphoneVariant) {
+      tokens.push(
+        `APPLE:IPHONE_${iphoneVariant[1]}${iphoneVariant[2] ? "E" : ""}`,
+      );
     }
   }
-  return maxLen;
+
+  const modelTokens =
+    upper.match(
+      /\b(?:LS|LC|LF|S|C|F|M|G|WA|WD|VR)\d{1,3}[A-Z0-9-]{0,18}\b/g,
+    ) || [];
+  modelTokens.forEach((token) => {
+    if (!/^M?\d+$/.test(token)) {
+      tokens.push(`MODEL:${token.replace(/-/g, "")}`);
+    }
+  });
+
+  return Array.from(new Set(tokens));
+}
+
+function getQaConnectionTokens_(text) {
+  const upper = String(text || "").toUpperCase();
+  const tokens = [];
+  if (/AIR\s*PLAY|AIRPLAY/i.test(upper)) tokens.push("AIRPLAY");
+  if (/USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C/i.test(upper)) tokens.push("USB_C");
+  if (/DISPLAY[\s‑–—_-]*PORT|\bDP\b/i.test(upper)) tokens.push("DISPLAYPORT");
+  if (/\bHDMI\b/i.test(upper)) tokens.push("HDMI");
+  return Array.from(new Set(tokens));
+}
+
+function getQaIntentTokens_(text) {
+  const raw = String(text || "");
+  const connections = getQaConnectionTokens_(raw);
+  const tokens = [];
+  if (/恢復原廠|原廠設定|重置|出廠資料|FACTORY\s*RESET/i.test(raw)) {
+    tokens.push("FACTORY_RESET");
+  }
+  if (
+    connections.indexOf("AIRPLAY") >= 0 &&
+    /投放|鏡像|顯示|播放|串流|連接/i.test(raw)
+  ) {
+    tokens.push("WIRELESS_DISPLAY");
+  }
+  if (
+    (connections.indexOf("USB_C") >= 0 ||
+      connections.indexOf("DISPLAYPORT") >= 0 ||
+      connections.indexOf("HDMI") >= 0) &&
+    /顯示|畫面|影像|視訊|輸出|連接|沒畫面|無畫面/i.test(raw)
+  ) {
+    tokens.push("WIRED_DISPLAY");
+  }
+  if (/充電|供電|瓦數|W\b/i.test(raw)) tokens.push("POWER");
+  if (/支援|可以|可否|能不能|無法|不能|相容|為什麼/i.test(raw)) {
+    tokens.push("COMPATIBILITY");
+  }
+  return Array.from(new Set(tokens));
+}
+
+function isQaQuestionDirectMatch_(query, question) {
+  const normalizedQuery = normalizeQaMatchText_(query);
+  const normalizedQuestion = normalizeQaMatchText_(question);
+  if (!normalizedQuery || !normalizedQuestion) return false;
+  if (normalizedQuery === normalizedQuestion) return true;
+
+  const queryEntities = getQaEntityTokens_(query);
+  const questionEntities = getQaEntityTokens_(question);
+  if (questionEntities.length === 0) return false;
+
+  const questionAppleEntities = questionEntities.filter(
+    (token) => token.indexOf("APPLE:") === 0,
+  );
+  const queryAppleEntities = queryEntities.filter(
+    (token) => token.indexOf("APPLE:") === 0,
+  );
+  if (
+    questionAppleEntities.length > 0 &&
+    (queryAppleEntities.length === 0 ||
+      questionAppleEntities.some(
+        (token) => queryAppleEntities.indexOf(token) < 0,
+      ))
+  ) {
+    return false;
+  }
+
+  if (
+    questionEntities.some((token) => queryEntities.indexOf(token) < 0)
+  ) {
+    return false;
+  }
+
+  const questionModelEntities = questionEntities.filter(
+    (token) => token.indexOf("MODEL:") === 0,
+  );
+  const queryModelEntities = queryEntities.filter(
+    (token) => token.indexOf("MODEL:") === 0,
+  );
+  if (
+    queryModelEntities.length > 0 &&
+    (questionModelEntities.length !== queryModelEntities.length ||
+      queryModelEntities.some(
+        (token) => questionModelEntities.indexOf(token) < 0,
+      ))
+  ) {
+    return false;
+  }
+
+  const queryConnections = getQaConnectionTokens_(query);
+  const questionConnections = getQaConnectionTokens_(question);
+  if (
+    questionConnections.length === 0 ||
+    questionConnections.length !== queryConnections.length ||
+    questionConnections.some(
+      (token) => queryConnections.indexOf(token) < 0,
+    )
+  ) {
+    return false;
+  }
+
+  const queryIntents = getQaIntentTokens_(query);
+  const questionIntents = getQaIntentTokens_(question);
+  const queryPrimaryIntents = queryIntents.filter(
+    (token) => token !== "COMPATIBILITY",
+  );
+  const questionPrimaryIntents = questionIntents.filter(
+    (token) => token !== "COMPATIBILITY",
+  );
+  return (
+    questionPrimaryIntents.length > 0 &&
+    questionPrimaryIntents.length === queryPrimaryIntents.length &&
+    questionPrimaryIntents.every(
+      (token) => queryPrimaryIntents.indexOf(token) >= 0,
+    )
+  );
+}
+
+function isQaContextRelevant_(query, question, injectedModels) {
+  if (isQaQuestionDirectMatch_(query, question)) return true;
+
+  const normalizedQuery = normalizeQaMatchText_(query);
+  const normalizedQuestion = normalizeQaMatchText_(question);
+  if (
+    normalizedQuestion.length >= 12 &&
+    normalizedQuery.indexOf(normalizedQuestion) >= 0
+  ) {
+    return true;
+  }
+
+  const queryAppleEntities = getQaEntityTokens_(query).filter(
+    (token) => token.indexOf("APPLE:") === 0,
+  );
+  const questionAppleEntities = getQaEntityTokens_(question).filter(
+    (token) => token.indexOf("APPLE:") === 0,
+  );
+  const queryConnections = getQaConnectionTokens_(query);
+  const questionConnections = getQaConnectionTokens_(question);
+  const queryPrimaryIntents = getQaIntentTokens_(query).filter(
+    (token) => token !== "COMPATIBILITY",
+  );
+  const questionPrimaryIntents = getQaIntentTokens_(question).filter(
+    (token) => token !== "COMPATIBILITY",
+  );
+  if (
+    questionAppleEntities.length > 0 &&
+    questionAppleEntities.length === queryAppleEntities.length &&
+    questionAppleEntities.every(
+      (token) => queryAppleEntities.indexOf(token) >= 0,
+    ) &&
+    questionConnections.length > 0 &&
+    questionConnections.every(
+      (token) => queryConnections.indexOf(token) >= 0,
+    ) &&
+    questionPrimaryIntents.length > 0 &&
+    questionPrimaryIntents.every(
+      (token) => queryPrimaryIntents.indexOf(token) >= 0,
+    )
+  ) {
+    return true;
+  }
+
+  const models = Array.isArray(injectedModels) ? injectedModels : [];
+  return models.some((model) => {
+    const token = normalizeQaMatchText_(model);
+    return token.length >= 5 && normalizedQuestion.indexOf(token) >= 0;
+  });
 }
 
 function findLocalMatchInQA(query, userId) {
@@ -2614,27 +2881,22 @@ function findLocalMatchInQA(query, userId) {
     if (!fullQA) return null;
 
     const qaItems = fullQA.split("\n\n");
-    const upperQuery = String(query || "").toUpperCase();
-    
     let bestMatch = null;
-    let maxMatchLen = 0;
 
-    qaItems.forEach(item => {
+    qaItems.some((item) => {
       const parts = item.split(/\/\s*A[:：]/i);
       const questionPart = (parts[0] || "").replace(/^QA:\s*/i, "").trim();
       const answerPart = (parts[1] || "").trim();
-      if (!questionPart || !answerPart) return;
+      if (!questionPart || !answerPart) return false;
 
-      const lcsLen = getLongestCommonSubstringLength_(upperQuery, questionPart);
-      // 如果最長公共子字串長度 >= 6 個字，或者占了 QA 問題長度的 70% 以上，則視為命中
-      const threshold = Math.min(6, Math.ceil(questionPart.length * 0.7));
-      if (lcsLen >= threshold && lcsLen > maxMatchLen) {
-        maxMatchLen = lcsLen;
+      if (isQaQuestionDirectMatch_(query, questionPart)) {
         bestMatch = {
           question: questionPart,
-          answer: answerPart
+          answer: answerPart,
         };
+        return true;
       }
+      return false;
     });
 
     return bestMatch;
@@ -2692,16 +2954,141 @@ function sanitizeManualAnchorWattageConflict_(manualAnswer, webAnswer) {
     .trim();
 }
 
-function getOfficialUrlContextCandidates(query) {
-  const q = String(query || "");
-  const urls = [];
-  const iphoneMatch = q.match(/\bIPHONE\s*(\d{1,2})\b/i);
-  if (iphoneMatch) {
-    urls.push(
-      `https://www.apple.com/tw/iphone-${iphoneMatch[1]}/specs/`,
+function getOfficialProductIdentityFromQuery_(query) {
+  const q = String(query || "")
+    .toUpperCase()
+    .replace(/ＩＰＨＯＮＥ/g, "IPHONE");
+
+  if (/IPHONE\s*(?:17\s*)?AIR(?:\s*版)?(?![A-Z])/i.test(q)) {
+    return {
+      id: "iphone-air",
+      displayName: "iPhone Air",
+      officialUrl: "https://www.apple.com/tw/iphone-air/specs/",
+    };
+  }
+
+  const eVariant = q.match(/\bIPHONE\s*(1[6-7])\s*E\b/i);
+  if (eVariant) {
+    const model = eVariant[1];
+    return {
+      id: `iphone-${model}e`,
+      displayName: `iPhone ${model}e`,
+      officialUrl: `https://www.apple.com/tw/iphone-${model}e/specs/`,
+    };
+  }
+
+  const numbered = q.match(/\bIPHONE\s*(1[5-7])\b/i);
+  if (numbered) {
+    const model = numbered[1];
+    return {
+      id: `iphone-${model}`,
+      displayName: `iPhone ${model}`,
+      officialUrl: `https://www.apple.com/tw/iphone-${model}/specs/`,
+    };
+  }
+
+  return null;
+}
+
+function isOfficialProductPageEvidenceValid_(identity, url, plainText) {
+  if (!identity || !identity.officialUrl) return false;
+  const actualUrl = String(url || "").replace(/[?#].*$/, "").replace(/\/+$/, "");
+  const expectedUrl = String(identity.officialUrl)
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
+  if (actualUrl.toLowerCase() !== expectedUrl.toLowerCase()) return false;
+
+  const text = String(plainText || "");
+  if (identity.id === "iphone-air") {
+    return /IPHONE\s+AIR(?![A-Z])/i.test(text);
+  }
+  const escapedName = identity.displayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(escapedName, "i").test(text);
+}
+
+function isPositiveDisplayCapabilitySentence_(sentence) {
+  const text = String(sentence || "");
+  if (
+    /不支援|未支援|沒有支援|無法|不能|不可|未列|沒有列|未標示|未明確|並未|不具備|不包含|是否支援|需要.{0,20}確認/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /AIR\s*PLAY|AIRPLAY/i.test(text) &&
+    !/DISPLAY\s*PORT|DP\s*ALT|透過\s*USB[\s‑–—_-]*C.{0,30}(?:顯示|影像|視訊|輸出|外接螢幕)/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /(支援|可以|可透過|能夠|具備)/i.test(text) &&
+    /(DISPLAY\s*PORT|USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C)/i.test(text) &&
+    /(顯示|畫面|影像|視訊|輸出|外接螢幕|4K)/i.test(text)
+  );
+}
+
+function isExplicitMonitorSideCapabilitySentence_(sentence) {
+  const text = String(sentence || "");
+  const namesMonitorSide =
+    /(螢幕端|顯示器端|SMART\s*MONITOR|SAMSUNG\s*(?:M[5-9]|SMART)|\bM[5-9]\b|\bS\d{2}[A-Z0-9-]{4,}\b)/i.test(
+      text,
+    );
+  const namesPhoneSide =
+    /(IPHONE|手機端|手機本身|這款手機|APPLE\s*裝置|裝置端)/i.test(text);
+  return namesMonitorSide && !namesPhoneSide;
+}
+
+function hasAppleDisplayEvidenceConflict_(query, answer) {
+  const identity = getOfficialProductIdentityFromQuery_(query);
+  if (!identity || !/(顯示|畫面|影像|視訊|輸出|DISPLAY\s*PORT|USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C)/i.test(query)) {
+    return false;
+  }
+
+  const text = String(answer || "");
+  const sentences = text.match(/[^。！？!?\n]+[。！？!?]?/g) || [text];
+  if (identity.id === "iphone-air") {
+    if (
+      !/IPHONE\s*(?:17\s*)?AIR(?:\s*版)?(?![A-Z])/i.test(text) &&
+      /\bIPHONE\s*17\b/i.test(text)
+    ) {
+      return true;
+    }
+    return sentences.some(
+      (sentence) =>
+        /IPHONE\s*(?:17\s*)?AIR|這款手機|手機本身|裝置端/i.test(sentence) &&
+        isPositiveDisplayCapabilitySentence_(sentence) &&
+        !isExplicitMonitorSideCapabilitySentence_(sentence),
     );
   }
-  return urls.slice(0, 3);
+
+  if (/^iphone-(?:16|17)e$/.test(identity.id)) {
+    return sentences.some(
+      (sentence) =>
+        /IPHONE\s*(?:16|17)\s*E|這款手機|手機本身|裝置端/i.test(sentence) &&
+        isPositiveDisplayCapabilitySentence_(sentence) &&
+        !isExplicitMonitorSideCapabilitySentence_(sentence),
+    );
+  }
+
+  return false;
+}
+
+function buildEvidenceConflictReply_() {
+  return "⚠️ 我查到的資料在產品身分或連接能力上互相衝突，這一輪先不下結論，也不補猜。\n\n我已記錄人工複查；請確認 Apple 的正式產品名稱後再問一次，我會重新從同一款產品的官方規格查證。";
+}
+
+function isEvidenceConflictReply_(text) {
+  return /資料在產品身分或連接能力上互相衝突|資料衝突，?暫不下結論|已記錄人工複查/i.test(
+    String(text || ""),
+  );
+}
+
+function getOfficialUrlContextCandidates(query) {
+  const identity = getOfficialProductIdentityFromQuery_(query);
+  return identity && identity.officialUrl ? [identity.officialUrl] : [];
 }
 
 function getSuccessfulUrlContextSources(urlContextMetadata) {
@@ -2719,8 +3106,9 @@ function getSuccessfulUrlContextSources(urlContextMetadata) {
     .map((item) => String(item.retrievedUrl));
 }
 
-function fetchOfficialUrlEvidence_(urls) {
+function fetchOfficialUrlEvidence_(urls, query) {
   const evidence = [];
+  const identity = getOfficialProductIdentityFromQuery_(query);
   (Array.isArray(urls) ? urls : []).slice(0, 3).forEach((url) => {
     try {
       const response = UrlFetchApp.fetch(String(url), {
@@ -2736,6 +3124,12 @@ function fetchOfficialUrlEvidence_(urls) {
       const plainText = stripHtmlToPlainText(response.getContentText());
       if (plainText.length < 300) {
         writeLog(`[Official Page Fetch v29.6.077] ${url} 文字內容不足`);
+        return;
+      }
+      if (!isOfficialProductPageEvidenceValid_(identity, url, plainText)) {
+        writeLog(
+          `[Official Product Guard v29.6.092] 拒絕產品身分不一致的官方頁: ${url}`,
+        );
         return;
       }
 
@@ -2758,7 +3152,11 @@ function fetchOfficialUrlEvidence_(urls) {
         }
       });
       const text = Array.from(new Set(snippets)).join("\n...\n").substring(0, 12000);
-      evidence.push({ url: String(url), text: text || plainText.substring(0, 12000) });
+      evidence.push({
+        url: String(url),
+        productId: identity ? identity.id : "",
+        text: text || plainText.substring(0, 12000),
+      });
       writeLog(
         `[Official Page Fetch v29.6.077] 官方頁擷取成功: ${url} (${(text || plainText).length} 字)`,
       );
@@ -3918,21 +4316,29 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
     // 3. 程式只做路由，不做預先篩選
     // ═══════════════════════════════════════════════════════════════
 
-    // v29.6.090: Optimization for PDF Mode (Compromise Solution)
-    // Retention of context-relevant QA items using LCS to prevent losing newly recorded QA in PDF mode
+    // v29.6.092: PDF Mode 只保留產品實體與意圖一致的 QA，禁止共同子字串誤配。
     if (isPDFMode) {
       if (fullQA) {
         const qaItems = fullQA.split("\n\n");
-        const filteredQa = qaItems.filter(item => {
+        const filteredQa = qaItems.filter((item) => {
           const parts = item.split(/\/\s*A[:：]/i);
           const questionPart = parts[0] || item;
-          const lcsLen = getLongestCommonSubstringLength_(upperMsg, questionPart);
-          return lcsLen >= 2; // 連續 2 個字以上相同就保留！
+          if (
+            isCrossDeviceMonitorQuery(latestUserMsg) &&
+            isExternalDeviceCompatibilityQa_(item)
+          ) {
+            return false;
+          }
+          return isQaContextRelevant_(
+            latestUserMsg,
+            questionPart,
+            injectedModelsList,
+          );
         });
-        
+
         fullQA = filteredQa.join("\n\n");
         writeLog(
-          `[DynamicContext v29.6.090] PDF Mode: Selected ${filteredQa.length}/${qaItems.length} context-relevant QA items via LCS.`,
+          `[DynamicContext v29.6.092] PDF Mode: Selected ${filteredQa.length}/${qaItems.length} entity-and-intent-matched QA items.`,
         );
       } else {
         fullQA = "";
@@ -4235,6 +4641,8 @@ let lastLlmCallAttempted = false;
 // v29.5.112: 最後一次網路搜尋的來源列表 (用於顯示在回覆中)
 let lastSearchSources = null;
 let lastWebEvidenceValid = false;
+let lastWebEvidenceConflict = false;
+let lastWebSearchAttempted = false;
 
 /**
  * 從型號或關鍵字提取 LS 編號，產生三星官網搜尋連結
@@ -6495,6 +6903,9 @@ function callLLMWithRetry(
   webGroundingRetryAttempted = false,
 ) {
   lastLlmCallAttempted = true;
+  if (forceWebSearch) {
+    lastWebSearchAttempted = true;
+  }
   const apiKey =
     PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
   if (!apiKey) throw new Error("API Key Missing");
@@ -6545,12 +6956,16 @@ function callLLMWithRetry(
   const recentOfficialManualAnswer = forceWebSearch
     ? getRecentOfficialManualAnswer_(effectiveMessages)
     : "";
+  const officialProductIdentity = forceWebSearch
+    ? getOfficialProductIdentityFromQuery_(query)
+    : null;
   const officialUrlContexts = forceWebSearch
     ? getOfficialUrlContextCandidates(query)
     : [];
   const directOfficialPageEvidence = forceWebSearch
-    ? fetchOfficialUrlEvidence_(officialUrlContexts)
+    ? fetchOfficialUrlEvidence_(officialUrlContexts, query)
     : [];
+  const requiresProductIdentityEvidence = Boolean(officialProductIdentity);
 
   let effectiveQuery = query;
   if (attachPDFs && !forceWebSearch && isFactoryResetQueryWithoutPinIssue(query)) {
@@ -7200,6 +7615,7 @@ ${directOfficialPageEvidence
 
               lastWebEvidenceValid = Boolean(
                 forceWebSearch &&
+                  !requiresProductIdentityEvidence &&
                   grounding.groundingChunks &&
                   grounding.groundingChunks.length > 0 &&
                   grounding.groundingSupports &&
@@ -7226,7 +7642,10 @@ ${directOfficialPageEvidence
             const successfulUrlContexts = getSuccessfulUrlContextSources(
               candidates[0].urlContextMetadata,
             );
-            if (successfulUrlContexts.length > 0) {
+            if (
+              successfulUrlContexts.length > 0 &&
+              !requiresProductIdentityEvidence
+            ) {
               const urlDomains = successfulUrlContexts
                 .map((url) => {
                   const match = url.match(/^https?:\/\/([^/]+)/i);
@@ -7240,9 +7659,12 @@ ${directOfficialPageEvidence
               writeLog(
                 `[URL Context v29.6.075] 官方頁讀取成功: ${successfulUrlContexts.join(", ")}`,
               );
-            } else if (officialUrlContexts.length > 0) {
+            } else if (
+              officialUrlContexts.length > 0 &&
+              directOfficialPageEvidence.length === 0
+            ) {
               writeLog(
-                "[URL Context v29.6.075] 官方頁未回傳成功的 urlContextMetadata",
+                "[Official Product Guard v29.6.092] 明確產品頁沒有通過身分驗證，不採用 URL Context 當證據",
               );
             }
 
@@ -7386,7 +7808,7 @@ ${directOfficialPageEvidence
               writeLog(
                 "[Grounding Audit v29.6.073] 第二次仍無可稽核來源，拒絕輸出假網搜答案",
               );
-              return "這次網路搜尋沒有取得可核對的網頁來源，所以我先不把 AI 內建資料當成搜尋答案。請稍後再點一次「這題再搜網路」。";
+              return "這次網路搜尋沒有取得可核對的網頁來源，所以我先不把 AI 內建資料當成搜尋答案，也不繼續重複搜尋。\n\n請確認完整產品名稱後重新提問，我會從同一款產品的官方資料重新查證。";
             }
 
             const isCrossDeviceQuery =
@@ -7513,6 +7935,28 @@ ${directOfficialPageEvidence
                 "[Cross Device Web Evidence v29.6.077] 移除網搜回答中沒有來源支援的裝置端推測句",
               );
               text = sanitizeUnsupportedCrossDeviceWebSpeculation_(text);
+            }
+            if (
+              forceWebSearch &&
+              isCrossDeviceQuery &&
+              directOfficialPageEvidence.length > 0
+            ) {
+              text = enforceAppleAirWiredEvidenceBoundary_(
+                effectiveQuery,
+                text,
+              );
+            }
+            if (
+              forceWebSearch &&
+              isCrossDeviceQuery &&
+              hasAppleDisplayEvidenceConflict_(effectiveQuery, text)
+            ) {
+              lastWebEvidenceValid = false;
+              lastWebEvidenceConflict = true;
+              writeLog(
+                "[Official Product Guard v29.6.092] 回答把其他 iPhone 規格套到目前產品，停止輸出並記錄人工複查",
+              );
+              return buildEvidenceConflictReply_();
             }
 
             return text;
@@ -8032,6 +8476,8 @@ function handleMessage(event) {
     lastLlmCallAttempted = false;
     lastSearchSources = null;
     lastWebEvidenceValid = false;
+    lastWebEvidenceConflict = false;
+    lastWebSearchAttempted = false;
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
     let userMessage = event.message.text;
@@ -8724,11 +9170,12 @@ function handleMessage(event) {
           `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
         );
 
-        // ── 🆕 v29.6.090: 本地 QA 直通車 ──
-        // 優先在本地比對 QA 庫，若有精準命中，直接回覆，不需呼叫 LLM 查手冊！
+        // v29.6.092: 只有產品實體、連接方式與主要意圖全部一致才可走本地 QA。
         const localMatch = findLocalMatchInQA(queryText, userId);
         if (localMatch) {
-          writeLog(`[Local QA Hit v29.6.090] 🎯 本地精準匹配 QA: "${localMatch.question.substring(0, 50)}"`);
+          writeLog(
+            `[Local QA Hit v29.6.092] 產品與意圖精準匹配 QA: "${localMatch.question.substring(0, 50)}"`,
+          );
           let matchReply = localMatch.answer;
           matchReply = formatForLineMobile(matchReply);
           matchReply += "\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]";
@@ -8868,14 +9315,16 @@ function handleMessage(event) {
               },
             });
           }
-          qrItems.push({
-            type: "action",
-            action: {
-              type: "message",
-              label: "🌐 這題再搜網路",
-              text: "#這題再搜網路",
-            },
-          });
+          if (canOfferAnotherWebSearch_(cache, userId, replyText)) {
+            qrItems.push({
+              type: "action",
+              action: {
+                type: "message",
+                label: "🌐 這題再搜網路",
+                text: "#這題再搜網路",
+              },
+            });
+          }
           const qrOptions = { quickReply: { items: qrItems } };
           replyMessage(replyToken, replyText, qrOptions);
           writeLog(`[AI Reply] ${replyText}`);
@@ -9078,14 +9527,16 @@ function handleMessage(event) {
             },
           });
         }
-        manualQrItems.push({
-          type: "action",
-          action: {
-            type: "message",
-            label: "🌐 這題再搜網路",
-            text: "#這題再搜網路",
-          },
-        });
+        if (canOfferAnotherWebSearch_(cache, userId, replyText)) {
+          manualQrItems.push({
+            type: "action",
+            action: {
+              type: "message",
+              label: "🌐 這題再搜網路",
+              text: "#這題再搜網路",
+            },
+          });
+        }
         const qrOptions = { quickReply: { items: manualQrItems } };
         replyMessage(replyToken, replyText, qrOptions);
         writeLog(`[AI Reply] ${replyText}`);
@@ -9230,16 +9681,17 @@ function handleMessage(event) {
         const limitText =
           `這一題我已經補充到第 ${MAX_ELABORATE_PER_ANSWER} 次了。\n` +
           "你可以直接告訴我想深入的段落，或輸入「#查手冊 型號 你的問題」我會改走手冊解答。";
-        const limitQrItems = [
-          {
+        const limitQrItems = [];
+        if (canOfferAnotherWebSearch_(cache, userId, limitText)) {
+          limitQrItems.push({
             type: "action",
             action: {
               type: "message",
               label: "🌐 這題再搜網路",
               text: "#這題再搜網路",
             },
-          },
-        ];
+          });
+        }
         if (hasPdfForModel) {
           limitQrItems.unshift({
             type: "action",
@@ -9324,7 +9776,15 @@ function handleMessage(event) {
         }
       }
       const qrItems = [];
-      if (webElaborationCount < MAX_ELABORATE_PER_ANSWER) {
+      const webSearchAttemptCount = getWebSearchAttemptCount_(cache, userId);
+      const terminalWebState =
+        lastWebEvidenceConflict ||
+        isTerminalWebSearchReply_(cmdResult) ||
+        (lastWebSearchAttempted && !lastWebEvidenceValid);
+      if (
+        !terminalWebState &&
+        webElaborationCount < MAX_ELABORATE_PER_ANSWER
+      ) {
         qrItems.push({
           type: "action",
           action: {
@@ -9340,16 +9800,21 @@ function handleMessage(event) {
           action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
         });
       }
-      qrItems.push({
-        type: "action",
-        action: {
-          type: "message",
-          label: "🌐 這題再搜網路",
-          text: "#這題再搜網路",
-        },
-      });
+      if (
+        !terminalWebState &&
+        canOfferAnotherWebSearch_(cache, userId, cmdResult)
+      ) {
+        qrItems.push({
+          type: "action",
+          action: {
+            type: "message",
+            label: "🌐 這題再搜網路",
+            text: "#這題再搜網路",
+          },
+        });
+      }
       writeLog(
-        `[Quick Reply v29.5.139] 這題再搜網路回合泡泡數: ${qrItems.length}`,
+        `[Quick Reply v29.6.092] 網搜狀態=${terminalWebState ? "terminal" : lastWebSearchAttempted ? "auditable" : "manual-first"}，嘗試次數=${webSearchAttemptCount}，泡泡數=${qrItems.length}`,
       );
       const qrOptions =
         qrItems.length > 0 ? { quickReply: { items: qrItems } } : {};
@@ -11157,13 +11622,16 @@ function handleMessage(event) {
           }
         }
 
-        // v29.6.091: 統一三按鈕 Quick Reply（繼續問 / 查手冊 / 搜網路）
-        // v29.6.091: 移除 !msg.startsWith("#") 限制，避免用戶點泡泡或網搜後被句點
+        // v29.6.092: Quick Reply 依回答狀態顯示，失敗／衝突／達上限時停止重試入口。
         let responseOptions = {};
         if (!msg.startsWith("/") && replyText) {
           let currentReplyTextForUi = Array.isArray(replyText)
             ? replyText.join("\n")
             : String(replyText || "");
+          const terminalQuickReplyState =
+            lastWebEvidenceConflict ||
+            isTerminalWebSearchReply_(currentReplyTextForUi) ||
+            (lastWebSearchAttempted && !lastWebEvidenceValid);
           const isWaitingForModelSelection =
             forcedModelSelectionTrigger ||
             forcedSopNeedsModelSelection ||
@@ -11205,7 +11673,10 @@ function handleMessage(event) {
             }
           }
 
-          if (elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER) {
+          if (
+            !terminalQuickReplyState &&
+            elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER
+          ) {
             // v29.5.149: 第二個按鈕改為「再詳細說明」→ 找 AI 上次回答並請求展開
             qrItems.push({
               type: "action",
@@ -11237,14 +11708,24 @@ function handleMessage(event) {
               ? replyText.join("\n")
               : String(replyText || "");
           }
-          qrItems.push({
-            type: "action",
-            action: {
-              type: "message",
-              label: "🌐 這題再搜網路",
-              text: "#這題再搜網路",
-            },
-          });
+          if (
+            !terminalQuickReplyState &&
+            canOfferAnotherWebSearch_(cache, userId, currentReplyTextForUi)
+          ) {
+            qrItems.push({
+              type: "action",
+              action: {
+                type: "message",
+                label: "🌐 這題再搜網路",
+                text: "#這題再搜網路",
+              },
+            });
+          }
+          if (terminalQuickReplyState) {
+            writeLog(
+              "[Quick Reply v29.6.092] 守門失敗或證據衝突，隱藏再詳細與重複網搜",
+            );
+          }
 
           if (qrItems.length > 0) {
             responseOptions.quickReply = { items: qrItems };
@@ -11886,10 +12367,57 @@ function normalizeRuleLine(text) {
     .trim();
 }
 
+function isExternalDeviceCompatibilityQa_(text) {
+  const raw = String(text || "");
+  const hasExternalDevice =
+    /(IPHONE|IPAD|MACBOOK|ANDROID|PIXEL|CHROMEBOOK|WINDOWS|SURFACE|PLAYSTATION|PS[345]|XBOX|NINTENDO|SWITCH|手機|平板|筆電|遊戲機)/i.test(
+      raw,
+    );
+  const hasCompatibilityClaim =
+    /(USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C|DISPLAY[\s‑–—_-]*PORT|HDMI|AIRPLAY|鏡像|投放|連接|相容|支援|顯示|畫面|影像輸出|充電)/i.test(
+      raw,
+    );
+  return hasExternalDevice && hasCompatibilityClaim;
+}
+
+function hasOfficialExternalCompatibilitySource_(text) {
+  const urls = String(text || "").match(/https?:\/\/[^\s，。；;）)\]]+/gi) || [];
+  const officialHosts = [
+    /(^|\.)apple\.com$/i,
+    /(^|\.)google\.com$/i,
+    /(^|\.)microsoft\.com$/i,
+    /(^|\.)xbox\.com$/i,
+    /(^|\.)playstation\.com$/i,
+    /(^|\.)sony\.com$/i,
+    /(^|\.)nintendo\.com$/i,
+    /(^|\.)asus\.com$/i,
+    /(^|\.)acer\.com$/i,
+    /(^|\.)dell\.com$/i,
+    /(^|\.)hp\.com$/i,
+    /(^|\.)lenovo\.com$/i,
+  ];
+  return urls.some((url) => {
+    const match = url.match(/^https?:\/\/([^/:?#]+)/i);
+    if (!match) return false;
+    const host = match[1].toLowerCase().replace(/^www\./, "");
+    return officialHosts.some((pattern) => pattern.test(host));
+  });
+}
+
+function buildQaSourceGuardNotice_(text) {
+  if (
+    !isExternalDeviceCompatibilityQa_(text) ||
+    hasOfficialExternalCompatibilitySource_(text)
+  ) {
+    return "";
+  }
+  return "⛔ 這筆屬於外部裝置相容性 QA，目前缺少原廠官方來源網址；可繼續修改預覽，但輸入 /紀錄 時不會寫入正式 QA。";
+}
+
 function buildEntryDraftPreview(draftType, text, actionLabel) {
   const label = draftType === "rule" ? "CLASS_RULES" : "QA";
   const title = actionLabel || "已進入建檔模式";
-  return (
+  let preview =
     "⚠️ " +
     title +
     "。接下來的對話將視為修改指令，直到輸入 /紀錄 存檔為止。" +
@@ -11897,8 +12425,14 @@ function buildEntryDraftPreview(draftType, text, actionLabel) {
     label +
     "：\n" +
     text +
-    "\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消"
-  );
+    "\n\n👉 確認存檔 → /紀錄\n👉 修改內容 → 直接回覆\n👉 放棄 → /取消";
+  if (draftType === "qa") {
+    const sourceNotice = buildQaSourceGuardNotice_(text);
+    if (sourceNotice) {
+      preview += `\n\n${sourceNotice}`;
+    }
+  }
+  return preview;
 }
 
 function simpleRuleFallback(input) {
@@ -13567,6 +14101,15 @@ function saveDraftToSheet(draft) {
   } else {
     // 自動修復格式：確保有 " / A："
     draftText = autoFixQAFormat(draftText);
+    if (
+      isExternalDeviceCompatibilityQa_(draftText) &&
+      !hasOfficialExternalCompatibilitySource_(draftText)
+    ) {
+      writeLog(
+        `[QA Source Guard v29.6.092] 拒絕缺少原廠官方來源的外部裝置相容性 QA`,
+      );
+      return "❌ 尚未寫入 QA：這筆包含外部裝置相容性結論，但沒有原廠官方來源網址。\n\n請直接回覆草稿，補上 Apple、Google、Microsoft、Sony 等原廠官方網址後，再輸入 /紀錄。";
+    }
   }
 
   const lock = LockService.getScriptLock();
@@ -14732,6 +15275,20 @@ function replyMessage(tk, txt, options = {}) {
 
       if (preview) {
         writeLog(`[Reply] ${preview}`);
+      }
+      const testQuickReplyItems =
+        options && options.quickReply && Array.isArray(options.quickReply.items)
+          ? options.quickReply.items
+          : [];
+      if (testQuickReplyItems.length > 0) {
+        const testQuickReplyLabels = testQuickReplyItems
+          .map((item) =>
+            item && item.action ? String(item.action.label || "") : "",
+          )
+          .filter(Boolean);
+        writeLog(
+          `[Reply] 使用顯式 Quick Reply: ${testQuickReplyItems.length} 個選項 (${testQuickReplyLabels.join("、")})`,
+        );
       }
     } catch (e) {
       // ignore

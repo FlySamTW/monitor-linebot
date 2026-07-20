@@ -8,39 +8,28 @@ Google Apps Script (GAS) LINE Bot providing AI customer service for Samsung comp
 
 ### 🚨 完整部署流程 (MANDATORY - 每次修改後必須執行)
 
-```bash
-# ⚠️ 重要：只執行 clasp push 不會更新 LINE Webhook！
-# 必須依序執行以下 4 步驟，Webhook 才會生效：
+```powershell
+# 唯一正式發布入口：先跑靜態測試與 git diff --check，
+# 再建立一個有描述的 Apps Script 版本，並以 -V 更新既有 Webhook。
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\release_existing_webhook.ps1 `
+  -VersionDescription "v29.x.xxx 功能描述"
 
-# Step 1: 推送代碼
-clasp push -f
-
-# Step 2: 建立版本快照
-clasp version "v29.x.xxx 功能描述"
-
-# Step 3: 部署到 Webhook (這步最關鍵！)
-clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
-
-# Step 4: Git 同步
-git add . && git commit -m "v29.x.xxx 功能描述" && git push
-
-# 🔥 一行完整部署指令 (推薦使用)：
-clasp push -f; clasp version "v29.x.xxx"; clasp deploy -i AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA
+# 只驗證發布編排，不推送、不建立版本：
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\release_existing_webhook.ps1 -DryRun
 ```
 
 ### ❌ 常見錯誤
 - 只執行 `clasp push` → Webhook 不會更新，LINE 無反應
-- 忘記 `clasp deploy` → 代碼已上傳但未部署到生產環境
+- 手動執行 `clasp version` 後又用未指定 `-V` 的 `clasp deploy` → 每次可能多燒一個無描述版本
+- 靜態測試或 `git diff --check` 失敗仍部署 → 正式版本、文件與 health 無法稽核
 - 使用錯誤的 Deployment ID → 部署到測試環境
 
 ### Main Commands
 
-```bash
+```powershell
 # Deploy to GAS (Primary)
-./deploy.bat                     # Windows batch deployment
-clasp push -f                   # Push code only (不會更新 Webhook!)
-clasp version "description"     # Create version snapshot
-clasp deploy -i DEPLOYMENT_ID   # Deploy to webhook (必須執行!)
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\release_existing_webhook.ps1 `
+  -VersionDescription "version description"
 
 # Git Operations (Required after each deployment)
 git add .
@@ -263,10 +252,12 @@ PropertiesService.getScriptProperties().setProperty(key, value);
 1. **Update version number** in `linebot.gs` (GAS_VERSION)
 2. **Update prompt version** in `Prompt.csv` if changed
 3. **Test locally** via TestUI if possible
-4. **Run deployment**: `clasp push -f`
-5. **Create version**: `clasp version "description"`
-6. **Deploy webhook**: `clasp deploy -i DEPLOYMENT_ID`
+4. **Run static + whitespace guards**: `npm run test:static` and `git diff --check`
+5. **Run guarded release**: `tools\release_existing_webhook.ps1 -VersionDescription "description"`
+6. **Verify formal health/TestUI**: release script must report the same `GAS_VERSION`
 7. **Commit to git**: `git add . && git commit -m "version" && git push`
+
+禁止自行拼接 `clasp push`、`clasp version`、未帶 `-V` 的 `clasp deploy`；發布工具是唯一正式入口。
 
 ### Code Modification Guidelines
 

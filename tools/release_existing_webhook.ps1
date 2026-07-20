@@ -35,6 +35,7 @@ function Assert-CommandExists {
 
 Assert-CommandExists "npm"
 Assert-CommandExists "powershell"
+Assert-CommandExists "git"
 
 Write-Host "=== Release Existing GAS Webhook ==="
 Write-Host "Deployment ID : $DeploymentId"
@@ -45,7 +46,7 @@ if ($DryRun) {
 }
 
 if (-not $SkipStaticTests) {
-  Invoke-Step "1/4 Static SOP guards" {
+  Invoke-Step "1/5 Static SOP guards" {
     if ($DryRun) {
       Write-Host "DRY RUN: npm run test:static"
       return
@@ -59,10 +60,27 @@ if (-not $SkipStaticTests) {
   }
 } else {
   Write-Host ""
-  Write-Host "=== 1/4 Static SOP guards skipped ===" -ForegroundColor Yellow
+  Write-Host "=== 1/5 Static SOP guards skipped ===" -ForegroundColor Yellow
 }
 
-Invoke-Step "2/4 Push GAS and update existing deployment" {
+Invoke-Step "2/5 Git whitespace guard" {
+  if ($DryRun) {
+    Write-Host "DRY RUN: git diff --check"
+    Write-Host "DRY RUN: git diff --cached --check"
+    return
+  }
+
+  & git diff --check
+  if ($LASTEXITCODE -ne 0) {
+    throw "git diff --check failed. Fix whitespace errors before release."
+  }
+  & git diff --cached --check
+  if ($LASTEXITCODE -ne 0) {
+    throw "git diff --cached --check failed. Fix staged whitespace errors before release."
+  }
+}
+
+Invoke-Step "3/5 Push GAS and update existing deployment" {
   $args = @(
     "-NoProfile",
     "-ExecutionPolicy",
@@ -86,7 +104,7 @@ Invoke-Step "2/4 Push GAS and update existing deployment" {
 }
 
 if (-not $SkipReadinessCheck) {
-  Invoke-Step "3/4 Deployment readiness check" {
+  Invoke-Step "4/5 Deployment readiness check" {
     if ($DryRun) {
       Write-Host "DRY RUN: tools\check_deploy_readiness.ps1"
       return
@@ -95,11 +113,11 @@ if (-not $SkipReadinessCheck) {
   }
 } else {
   Write-Host ""
-  Write-Host "=== 3/4 Deployment readiness check skipped ===" -ForegroundColor Yellow
+  Write-Host "=== 4/5 Deployment readiness check skipped ===" -ForegroundColor Yellow
 }
 
 if (-not $SkipWebhookVersionCheck) {
-  Invoke-Step "4/4 Formal TestUI version guard" {
+  Invoke-Step "5/5 Formal TestUI version guard" {
     if ($DryRun) {
       Write-Host "DRY RUN: npm run check:webhook-version"
       return
@@ -113,7 +131,7 @@ if (-not $SkipWebhookVersionCheck) {
   }
 } else {
   Write-Host ""
-  Write-Host "=== 4/4 Formal TestUI version guard skipped ===" -ForegroundColor Yellow
+  Write-Host "=== 5/5 Formal TestUI version guard skipped ===" -ForegroundColor Yellow
 }
 
 Write-Host ""
