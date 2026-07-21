@@ -1,5 +1,14 @@
 # 開發對話紀錄
 
+## 2026-07-21 (v29.6.093 / 跨裝置 QA/RULE 優先路由修復)
+
+- 最新正式 LOG 顯示 `Cross Device Router v29.6.074` 對「iPhone + M8 短別稱」明文跳過 Fast Mode，直接進型號選擇與 PDF；選型後的 PDF context 為 `Selected 0/30 QA`，實際順序違反 QA/RULE First。
+- 移除該跨裝置短別稱捷徑；所有跨裝置題先做精準 QA 比對，未命中再進含 QA/CLASS_RULES 的 Fast Mode，答案不足才顯示型號選擇並升級 PDF。
+- 精準 QA 命中可零成本直接回覆；模型即使自行標示 `[來源:QA庫]`，也必須通過程式端產品實體、連接方式與意圖精準比對，避免把 iPhone Air QA 誤套到 iPhone 17／17e。
+- 本版不修改 Prompt!C3、不修改正式 QA／CLASS_RULES 內容、不調整 PDF、WEB 或 AI 內建資料庫的既有守門。
+- 正式既有 Webhook 已更新至 Apps Script `@1289`，health、Remote HEAD 與本機皆為 `v29.6.093 [2026-07-21 17:56]`，三個正式部署檔 normalized SHA-256 全部相同。
+- `npm run test:static`、JavaScript 語法與 `git diff --check` 已通過；正式 TestUI 問答因本機無 `LINEBOT_TEST_SECRET` 且瀏覽器攔截 Apps Script URL，本輪未冒充已完成 live 問答驗收。
+
 ## 2026-07-20 (v29.6.092 / iPhone 產品身分、QA 誤配與發布守門修復)
 
 - 最後正式對話確認 `iPhone 17 Air` 被程式映射到一般 `iphone-17/specs`；新的產品解析會先辨識 `iPhone Air`、`17e/16e`，無法唯一判定時不猜官方網址。

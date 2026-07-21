@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.092"; // 2026-07-20 修正 iPhone 產品身分、QA 誤配、證據衝突與 Quick Reply 終止狀態
-const BUILD_TIMESTAMP = "2026-07-20 20:56";
+const GAS_VERSION = "v29.6.093"; // 2026-07-21 修正跨裝置短別稱跳過 QA/RULE 的路由
+const BUILD_TIMESTAMP = "2026-07-21 17:56";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2952,6 +2952,25 @@ function sanitizeManualAnchorWattageConflict_(manualAnswer, webAnswer) {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function replyWithLocalQaMatch_(match, query, userId, replyToken, contextId) {
+  if (!match || !match.answer) return false;
+
+  let matchReply = formatForLineMobile(match.answer);
+  matchReply += "\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]";
+
+  replyMessage(replyToken, matchReply);
+  writeRecordDirectly(userId, query, contextId, "user", "");
+  writeRecordDirectly(userId, matchReply, contextId, "assistant", "");
+  const localHistory = getHistoryFromCacheOrSheet(contextId);
+  updateHistorySheetAndCache(
+    contextId,
+    localHistory,
+    { role: "user", content: query },
+    { role: "assistant", content: matchReply },
+  );
+  return true;
 }
 
 function getOfficialProductIdentityFromQuery_(query) {
@@ -7813,8 +7832,24 @@ ${directOfficialPageEvidence
 
             const isCrossDeviceQuery =
               isCrossDeviceMonitorQuery(effectiveQuery);
+            const exactFastCrossDeviceQa =
+              isCrossDeviceQuery && !attachPDFs && !forceWebSearch
+                ? findLocalMatchInQA(effectiveQuery, userId)
+                : null;
             const hasTrustedFastCrossDeviceQa =
-              /\[來源[:：]\s*QA庫\]/i.test(text);
+              /\[來源[:：]\s*QA庫\]/i.test(text) &&
+              !!exactFastCrossDeviceQa;
+            if (
+              isCrossDeviceQuery &&
+              !attachPDFs &&
+              !forceWebSearch &&
+              /\[來源[:：]\s*QA庫\]/i.test(text) &&
+              !exactFastCrossDeviceQa
+            ) {
+              writeLog(
+                "[QA First Router v29.6.093] Fast 回覆自稱 QA 來源但無精準命中，不採用並繼續升級",
+              );
+            }
             if (
               isCrossDeviceQuery &&
               !attachPDFs &&
@@ -9170,25 +9205,18 @@ function handleMessage(event) {
           `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
         );
 
-        // v29.6.092: 只有產品實體、連接方式與主要意圖全部一致才可走本地 QA。
+        // v29.6.093: 只有產品實體、連接方式與主要意圖全部一致才可走本地 QA。
         const localMatch = findLocalMatchInQA(queryText, userId);
         if (localMatch) {
           writeLog(
-            `[Local QA Hit v29.6.092] 產品與意圖精準匹配 QA: "${localMatch.question.substring(0, 50)}"`,
+            `[Local QA Hit v29.6.093] 產品與意圖精準匹配 QA: "${localMatch.question.substring(0, 50)}"`,
           );
-          let matchReply = localMatch.answer;
-          matchReply = formatForLineMobile(matchReply);
-          matchReply += "\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]";
-          
-          replyMessage(replyToken, matchReply);
-          writeRecordDirectly(userId, queryText, contextId, "user", "");
-          writeRecordDirectly(userId, matchReply, contextId, "assistant", "");
-          const localHistory = getHistoryFromCacheOrSheet(contextId);
-          updateHistorySheetAndCache(
+          replyWithLocalQaMatch_(
+            localMatch,
+            queryText,
+            userId,
+            replyToken,
             contextId,
-            localHistory,
-            { role: "user", content: queryText },
-            { role: "assistant", content: matchReply }
           );
           return;
         }
@@ -9867,6 +9895,27 @@ function handleMessage(event) {
     }
 
     // D. 一般對話
+    // v29.6.093: 跨裝置題也必須遵守 QA -> RULE -> PDF；精準 QA 可直接零成本回覆。
+    if (isCrossDeviceMonitorQuery(msg)) {
+      const crossDeviceLocalQa = findLocalMatchInQA(msg, userId);
+      if (crossDeviceLocalQa) {
+        writeLog(
+          `[QA First Router v29.6.093] 精準 QA 命中，先於 RULE/PDF 回覆: "${crossDeviceLocalQa.question.substring(0, 50)}"`,
+        );
+        replyWithLocalQaMatch_(
+          crossDeviceLocalQa,
+          msg,
+          userId,
+          replyToken,
+          contextId,
+        );
+        return;
+      }
+      writeLog(
+        "[QA First Router v29.6.093] 精準 QA 未命中，繼續 RULE Fast Mode；不足才升級 PDF",
+      );
+    }
+
     const history = getHistoryFromCacheOrSheet(contextId);
     const userMsgObj = { role: "user", content: msg };
 
@@ -9889,22 +9938,6 @@ function handleMessage(event) {
       writeLog("[PDF Mode] 偵測到型號變化，清除 PDF Mode，回到 Fast Mode");
       isInPdfMode = false;
       cache.remove(pdfModeKey);
-    }
-
-    if (
-      isCrossDeviceMonitorQuery(msg) &&
-      promptAliasOnlyModelSelection(
-        msg,
-        userId,
-        replyToken,
-        contextId,
-        "pdf",
-      )
-    ) {
-      writeLog(
-        "[Cross Device Router v29.6.074] 跨裝置短別稱直接走官方手冊型號選擇，不先呼叫 Fast LLM",
-      );
-      return;
     }
 
     // E. 直通車檢查 (Direct Search)

@@ -64,7 +64,7 @@ async function main() {
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const page = await browser.newPage();
-  const userId = `TEST_IPHONE_AIR_V296092_${Date.now()}`;
+  const userId = `TEST_IPHONE_AIR_V296093_${Date.now()}`;
 
   try {
     await page.goto(TEST_URL, { waitUntil: "networkidle0", timeout: 60000 });
@@ -119,7 +119,7 @@ async function main() {
       joined(result, "logs")
         .split("\n")
         .filter((line) =>
-          /Model Select|PDF 匹配|Official Product Guard|Official Page Fetch|URL Context|Grounding|Local QA Hit|Quick Reply v29\.6\.092|使用顯式 Quick Reply|來源/i.test(
+          /QA First Router|Model Select|PDF 匹配|Official Product Guard|Official Page Fetch|URL Context|Grounding|Local QA Hit|Quick Reply v29\.6\.092|使用顯式 Quick Reply|來源/i.test(
             line,
           ),
         )
@@ -128,11 +128,11 @@ async function main() {
 
     const initialText = joined(turns[1].result, "replies");
     assertStep(
-      /M8 型號確認|請選擇 M8 完整型號|請先選完整型號|S32FM803UC/i.test(
-        initialText + joined(turns[1].result, "logs"),
-      ),
-      "M8 cross-device question did not request the exact monitor model",
-      initialText,
+      /\[來源:QA庫\]/.test(initialText) &&
+        /未呼叫 LLM/.test(initialText) &&
+        hasLog(turns[1].result, /QA First Router v29\.6\.093.*精準 QA 命中/),
+      "exact iPhone Air QA was not answered before RULE/PDF",
+      `${initialText}\n${joined(turns[1].result, "logs")}`,
     );
 
     const manualText = joined(turns[2].result, "replies");
@@ -248,9 +248,21 @@ async function main() {
       accessToken,
     );
     assertStep(
-      !hasLog(negativeSelect, /Local QA Hit v29\.6\.092/),
+      !hasLog(negativeSelect, /Local QA Hit v29\.6\.093/),
       "iPhone 17e incorrectly hit the iPhone Air QA",
       joined(negativeSelect, "logs"),
+    );
+    assertStep(
+      hasLog(
+        negativeInitial,
+        /QA First Router v29\.6\.093.*精準 QA 未命中.*RULE Fast Mode/,
+      ) &&
+        hasLog(
+          negativeInitial,
+          /Direct Search.*先走 Fast Mode|走統一流程 \(Fast Mode \+ 完整上下文\)/,
+        ),
+      "iPhone 17e did not evaluate QA/RULE before model selection and PDF",
+      joined(negativeInitial, "logs"),
     );
     assertStep(
       /M8 型號確認|請選擇 M8 完整型號|S32FM803UC/i.test(
