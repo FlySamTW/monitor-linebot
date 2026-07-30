@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.093"; // 2026-07-21 修正跨裝置短別稱跳過 QA/RULE 的路由
-const BUILD_TIMESTAMP = "2026-07-21 17:56";
+const GAS_VERSION = "v29.6.094"; // 2026-07-30 人味回覆、PDF 單次授權與 TestUI 守門
+const BUILD_TIMESTAMP = "2026-07-31 04:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -1326,6 +1326,19 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
       .toUpperCase()
       .match(/^[SC]\d{2}[A-Z]{1,2}\d{2,3}[A-Z]{0,2}$/);
 
+    // v29.6.094: 單獨輸入型號只代表選型，不代表同意付費讀 PDF。
+    if (directModelMatch && !pendingJson) {
+      cache.put(
+        `${userId}:direct_search_models`,
+        JSON.stringify([directModelMatch[0]]),
+        300,
+      );
+      writeLog(
+        `[Manual Consent v29.6.094] 收到型號 ${directModelMatch[0]}，保留 Fast Mode，不自動讀 PDF`,
+      );
+      return false;
+    }
+
     if (directModelMatch && !pendingJson) {
       // 用戶直接輸入型號，且沒有 pending 泡泡狀態
       const inputModel = directModelMatch[0];
@@ -1371,7 +1384,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-        finalText = sanitizeManualDeflection(finalText);
+        finalText = sanitizeManualDeflection(finalText, msg);
         finalText = enforceManualNumberedList(finalText);
 
         let replyText = finalText;
@@ -1403,6 +1416,37 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
 
     const pending = JSON.parse(pendingJson);
     // pending = { originalQuery, aliasKey, options: [{prefix, name, uri, matchedModel}] }
+
+    if (
+      !consumeManualSearchConsent_(
+        cache,
+        userId,
+        pending.originalQuery,
+        "",
+      )
+    ) {
+      cache.remove(pendingKey);
+      cache.put(
+        `${userId}:pending_manual_query`,
+        String(pending.originalQuery || ""),
+        600,
+      );
+      replyMessage(
+        replyToken,
+        buildManualConsentPrompt_("", pending.originalQuery, ""),
+        {
+          quickReply: {
+            items: [
+              {
+                type: "action",
+                action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+              },
+            ],
+          },
+        },
+      );
+      return true;
+    }
 
     // 檢查用戶回覆是否為數字選擇
     const numMatch = msg.match(/^[1-9]$/);
@@ -1527,7 +1571,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
           // v29.3.51: 補上 [AUTO_SEARCH_WEB] 清理，防止暗號外洩
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-          finalText = sanitizeManualDeflection(finalText);
+          finalText = sanitizeManualDeflection(finalText, pending.originalQuery);
           finalText = enforceManualNumberedList(finalText);
 
           // v27.0.0: 修復費用顯示邏輯
@@ -1634,7 +1678,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-        finalText = sanitizeManualDeflection(finalText);
+        finalText = sanitizeManualDeflection(finalText, pending.originalQuery);
         finalText = enforceManualNumberedList(finalText);
 
         // v27.0.0: 修復費用顯示邏輯（同上，確保費用對應當前查詢）
@@ -3268,13 +3312,19 @@ function buildNeedApplianceModelForOperationReply() {
 
 function isOutOfProjectScopeQuery(text) {
   const q = String(text || "");
-  const hasSamsungContext =
-    /(SAMSUNG|三星|ODYSSEY|VIEWFINITY|SMART\s*MONITOR|GALAXY|SMARTTHINGS|\bS\d{2}[A-Z0-9]{4,}|\bM[5789]\b|\bG[56789]\b)/i.test(
+  if (isCrossDeviceMonitorQuery(q)) return false;
+
+  const hasMonitorContext =
+    /(螢幕|顯示器|MONITOR|DISPLAY|ODYSSEY|VIEWFINITY|SMART\s*MONITOR|智慧螢幕|智慧顯示器|\bS\d{2}[A-Z0-9]{4,}|\bM[5789]\b|\bG[56789]\b)/i.test(
       q,
     );
-  if (hasSamsungContext) {
-    return false;
-  }
+  if (hasMonitorContext) return false;
+
+  const purePhoneOrApplianceContext =
+    /(手機|IPHONE|GALAXY\s*(?:S|A|Z|手機)|平板|TABLET|手錶|WATCH|耳機|BUDS|電視|TV|洗衣機|乾衣機|冰箱|冷氣|空氣清淨機|吸塵器|掃地機器人|廚具|筆電|NOTEBOOK)/i.test(
+      q,
+    );
+  if (purePhoneOrApplianceContext) return true;
 
   const mentionsCompetitor =
     /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC)/i.test(
@@ -3285,14 +3335,17 @@ function isOutOfProjectScopeQuery(text) {
       q,
     );
 
-  return mentionsCompetitor && asksMonitorOrPriceOrTable;
+  const clearlyUnrelated =
+    /(高鐵|總統|電影|韓劇|餐廳|天氣|股票|匯率|旅遊|行事曆|郵件|新聞)/i.test(q);
+
+  return (mentionsCompetitor && asksMonitorOrPriceOrTable) || clearlyUnrelated;
 }
 
 function buildOutOfProjectScopeReply(text) {
   return [
-    "我這邊主要回答三星產品與本專案已整理的三星相關資料，不能代替你整理競品品牌清單或即時市場報價。",
+    "這題不在我的服務範圍內，我先不亂答。",
     "",
-    "你可以改問三星螢幕、Smart Monitor、Odyssey、ViewFinity、Galaxy Watch 與三星家電相關問題；若需要價格，我會引導到三星官方頁面，不會直接回覆市場數字價格。",
+    "我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。",
   ].join("\n");
 }
 
@@ -3576,6 +3629,106 @@ function buildManualElaborationQuery_(question, model) {
     "請用熟朋友的自然口吻，依序說明：先講結論、再用白話解釋它的意思、實際使用時會遇到的限制或注意事項。",
     "只能根據手冊內容下結論；手冊沒有寫的地方要直接說未記載，不可用常識補推。",
   ].join("\n");
+}
+
+const MANUAL_SEARCH_CONSENT_TTL_SEC = 600;
+
+function normalizeManualConsentQuery_(text) {
+  return String(text || "")
+    .replace(/^#查手冊\s*/i, "")
+    .replace(/\(型號[:：][^)]+\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function grantManualSearchConsent_(cache, userId, query, models) {
+  const normalizedQuery = normalizeManualConsentQuery_(query);
+  if (!cache || !userId || !normalizedQuery) return false;
+  const normalizedModels = (Array.isArray(models) ? models : [])
+    .map((model) => String(model || "").trim().toUpperCase())
+    .filter(Boolean);
+  cache.put(
+    `${userId}:manual_search_consent`,
+    JSON.stringify({
+      query: normalizedQuery,
+      models: normalizedModels,
+      expiresAt: new Date().getTime() + MANUAL_SEARCH_CONSENT_TTL_SEC * 1000,
+    }),
+    MANUAL_SEARCH_CONSENT_TTL_SEC,
+  );
+  cache.put(`${userId}:pending_manual_query`, String(query || "").trim(), 600);
+  writeLog("[Manual Consent v29.6.094] 已建立 10 分鐘、單次手冊授權");
+  return true;
+}
+
+function consumeManualSearchConsent_(cache, userId, query, selectedModel) {
+  if (!cache || !userId) return false;
+  const key = `${userId}:manual_search_consent`;
+  const raw = cache.get(key);
+  if (!raw) return false;
+
+  let state = null;
+  try {
+    state = JSON.parse(raw);
+  } catch (e) {
+    cache.remove(key);
+    return false;
+  }
+
+  const now = new Date().getTime();
+  const expectedQuery = normalizeManualConsentQuery_(state && state.query);
+  const actualQuery = normalizeManualConsentQuery_(query);
+  const queryMatches =
+    !!expectedQuery &&
+    !!actualQuery &&
+    (expectedQuery === actualQuery ||
+      expectedQuery.includes(actualQuery) ||
+      actualQuery.includes(expectedQuery));
+  const expectedModels = Array.isArray(state && state.models)
+    ? state.models.map((model) => String(model || "").toUpperCase())
+    : [];
+  const actualModel = String(selectedModel || "").trim().toUpperCase();
+  const modelMatches =
+    expectedModels.length === 0 ||
+    !actualModel ||
+    expectedModels.includes(actualModel);
+  const isValid =
+    state &&
+    Number(state.expiresAt || 0) >= now &&
+    queryMatches &&
+    modelMatches;
+
+  // 單次授權不論成功或狀態不一致都立即失效，避免舊授權被換題重用。
+  cache.remove(key);
+  if (isValid) {
+    cache.remove(`${userId}:pending_manual_query`);
+    writeLog("[Manual Consent v29.6.094] 已消耗單次手冊授權");
+    return true;
+  }
+  writeLog("[Manual Consent v29.6.094] 授權過期或題目／型號不一致，拒絕讀取 PDF");
+  return false;
+}
+
+function limitManualPdfFiles_(files, query) {
+  const candidates = (Array.isArray(files) ? files : []).filter(
+    (file) => file && file.mimeType === "application/pdf",
+  );
+  const isComparison = /(比較|差異|差別|VS|VERSUS|哪一台|哪一款)/i.test(
+    String(query || ""),
+  );
+  return candidates.slice(0, isComparison ? 2 : 1);
+}
+
+function buildManualConsentPrompt_(answerText, query, model) {
+  const body = String(answerText || "")
+    .replace(/\[(?:AUTO_SEARCH_PDF|NEED_DOC)(?:[:：][^\]]*)?\]/gi, "")
+    .trim();
+  const target = String(model || "").trim();
+  const question = target
+    ? `如果你要更精準確認 ${target}，要我接著查三星官方手冊嗎？`
+    : "目前的 QA 與規格資料還不足。要我接著查三星官方手冊嗎？";
+  return [body, question].filter(Boolean).join("\n\n");
 }
 
 
@@ -3990,7 +4143,59 @@ function enforceManualNumberedList(text) {
 /**
  * 已查閱手冊時，避免回覆仍要求用戶「自行去查手冊/官網」造成矛盾。
  */
-function sanitizeManualDeflection(text) {
+function sanitizeManualAnswerForQuestion_(text, queryText) {
+  const query = String(queryText || "");
+  let body = String(text || "");
+  const isWiredDisplayQuestion =
+    isCrossDeviceMonitorQuery(query) &&
+    /(沒畫面|無畫面|不顯示|顯示|影像|視訊|DISPLAYPORT|DP\s*ALT|TYPE-?C|USB-?C|HDMI|有線)/i.test(query);
+  if (!isWiredDisplayQuestion) return body.trim();
+
+  const asksPower = /(充電|供電|瓦數|\bW\b|POWER\s*DELIVERY|\bPD\b)/i.test(query);
+  const asksCamera = /(攝影機|相機|鏡頭|WEBCAM)/i.test(query);
+
+  return body
+    .split("\n")
+    .map((line) => {
+      const sentences = line.match(/[^。！？!?]+[。！？!?]?/g) || [line];
+      return sentences
+        .map((sentence) => {
+          const hasDisplayFact = /(畫面|顯示|影像|視訊|DISPLAYPORT|DP\s*ALT|HDMI|USB-?C.*(?:輸入|輸出|傳輸))/i.test(sentence);
+          const isPowerOnly =
+            !asksPower &&
+            /(充電|供電|瓦數|\b\d{2,3}\s*W\b|POWER\s*DELIVERY|\bPD\b)/i.test(sentence) &&
+            !hasDisplayFact;
+          const isCameraOnly =
+            !asksCamera &&
+            /(攝影機|相機|鏡頭|WEBCAM)/i.test(sentence) &&
+            !hasDisplayFact;
+          if (isPowerOnly || isCameraOnly) return "";
+
+          let relevantSentence = sentence;
+          if (!asksPower && hasDisplayFact) {
+            relevantSentence = relevantSentence.replace(
+              /(?:，|,|；|;|、|\s)+(?:並|且|同時|也)?(?:可|可以|支援|提供)?[^。！？!?]{0,40}(?:\b\d{2,3}\s*W\b|充電|POWER\s*DELIVERY|供電|瓦數)[^。！？!?]*/gi,
+              "",
+            );
+          }
+          if (!asksCamera && hasDisplayFact) {
+            relevantSentence = relevantSentence.replace(
+              /(?:，|,|；|;|、|\s)+(?:並|且|同時|也)?(?:可|可以|支援|提供)?[^。！？!?]{0,40}(?:攝影機|相機|鏡頭|WEBCAM)[^。！？!?]*/gi,
+              "",
+            );
+          }
+          return relevantSentence;
+        })
+        .join("")
+        .trim();
+    })
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function sanitizeManualDeflection(text, queryText) {
   const normalized = String(text || "")
     .replace(/根據(?:產品)?手冊(?:內容|資訊)?/gi, "根據官方手冊")
     .replace(/根據[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
@@ -4022,7 +4227,10 @@ function sanitizeManualDeflection(text) {
       hasGenericDeflectionLead
     );
   });
-  return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return sanitizeManualAnswerForQuestion_(
+    filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    queryText,
+  );
 }
 
 /**
@@ -6735,7 +6943,7 @@ function constructDynamicPrompt(
 **你必須提供「上次沒說過的」新內容！**
 
 如果搜尋後發現網路上也沒有更多資訊，你必須誠實說：
-「我搜尋了網路，但這方面的確沒有更詳細的官方說明。建議你可以問問 Sam，他可能有第一手資訊！」
+「我查過目前可稽核的官方資料，但還是沒有足夠證據回答。這次先不猜。」
 
 【🚨 強制搜尋指令】
 今天是 ${today}。用戶要求查詢最新的網路資訊。
@@ -6789,7 +6997,7 @@ function constructDynamicPrompt(
 4. **優先搜尋，允許誠實**：
    - ✅ 必須使用 google_search 工具實際搜尋，基於搜尋結果回答
    - ✅ 若搜到資訊不足，可提供該系列的「已搜到的」資訊
-   - ✅ 若搜尋後真的無結果，誠實說「搜尋了網路但這方面的確沒有更詳細的官方說明，建議問問 Sam」
+   - ✅ 若搜尋後真的無結果，誠實說「目前可稽核的官方資料仍不足，這次先不猜」
    - ❌ 嚴禁編造未搜到的內容，嚴禁用 LLM 內建知識填補搜尋空白
 
 【搜尋示例】
@@ -6895,7 +7103,7 @@ function constructDynamicPrompt(
     } else {
       dynamicPrompt += `\n\n⚠️【深度模式】已載入產品手冊${
         targetModelName ? ` (${targetModelName})` : ""
-      }，請根據手冊內容詳細回答。\n\n【回答格式優化 (嚴格執行)】\n1. **呈現選項/步驟**: 若你需要提供多個選項或步驟，**必須一律使用數字列表 (1., 2., 3., 4.)**，嚴禁使用圓點 (•) 或其他符號。\n2. **引用來源**: 若回答內容來自手冊，請在**整段回答的最後**統一標註 **[來源: ${sourceLabel}]** 即可，**嚴禁**在每一行或每一個列表項後面重複標註。\n3. **網路搜尋**: 若手冊無資料，請輸出特殊指令「[AUTO_SEARCH_WEB]」，系統將自動啟動聯網搜尋第二階段。\n4. **口吻限制**: 禁止對用戶說「根據你提供的 PDF 文件」或類似措辭，請改用「根據官方手冊」或「根據手冊內容」。\n\n【致命錯誤警告】你現在已經在閱讀原廠手冊了！嚴禁在句尾詢問用戶「需要幫你查手冊嗎」或「要不要幫你查找更詳細步驟」等類似問句。違反此項將導致系統崩潰。\n\n【內容優先級】\n1. 若手冊有相關資訊，請**直接完整回答**，不要反問用戶是否要查手冊。\n2. 若手冊無資料，請輸出 [AUTO_SEARCH_WEB]。(切勿自行標註網路搜尋)\n3. 優先順序：手冊 > [AUTO_SEARCH_WEB]。(嚴格禁止使用你自己的常識/一般知識編造答案！若手冊沒有，必須且只能輸出 [AUTO_SEARCH_WEB]，交由網路搜尋授權機制處理！)`;
+      }，請根據手冊內容回答。\n\n【手冊回答契約】\n1. 先給直接結論，再列與問題直接相關的必要條件或步驟；只有真正的步驟或選項才用數字列表。\n2. 回答末尾只標一次 **[來源: ${sourceLabel}]**。\n3. 手冊沒有直接證據時，明確說「手冊未記載」並輸出 [AUTO_SEARCH_WEB]；此標記只請系統詢問使用者，不代表已授權網搜。\n4. 禁止說「你提供的 PDF」，統一說「官方手冊」。\n5. 使用者未問供電時，不加入充電、瓦數、Power Delivery；未問攝影機時，不加入攝影機資訊。\n6. 嚴禁使用自身常識補手冊沒有寫的產品事實。)`;
     }
   } else if (imageBlob) {
     // Image Mode
@@ -8196,27 +8404,16 @@ function callOpenRouter(
 function formatListSpacing(text) {
   if (!text) return "";
 
-  // 移除單一點編號
+  // 只有真正有兩個以上項目時才保留編號；不要在每個項目後強插空行。
   if (text.includes("1.") && !text.includes("2.")) {
     text = text.replace(/^1\.\s*/gm, "");
   }
-
-  let lines = text.split("\n");
-  let formattedLines = [];
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].trim();
-    formattedLines.push(line);
-
-    // 列表項目後加空行
-    if (
-      /^\d+\./.test(line) &&
-      i < lines.length - 1 &&
-      lines[i + 1].trim() !== ""
-    ) {
-      formattedLines.push("");
-    }
-  }
-  return formattedLines.join("\n");
+  return text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function formatForLineMobile(text) {
@@ -8246,24 +8443,12 @@ function formatForLineMobile(text) {
   processed = processed.replace(/(\d+)\.\s+/g, "$1. ");
   processed = processed.replace(/->/g, "→");
 
-  // === 強化分段邏輯 v29.5.99 ===
-  // 1. 基本句尾換行 (句號、驚嘆號、問號)
-  processed = processed.replace(/([。！？])\s*/g, "$1\n\n");
-
-  // 2. 分號、冒號後適當分段 (特別是 QA 格式)
-  processed = processed.replace(/([；：])\s*/g, "$1\n\n");
-
-  // 3. 長句智能分段：逗號後如果後面還有很多文字，適當換行
-  processed = processed.replace(
-    /([，])(\s*)([^，。！？；：\n]{15,})/g,
-    "$1\n\n$3",
-  );
-
-  // 4. 數字列表項前強制換行
-  processed = processed.replace(/(\n|^)(\d+\.)/g, "\n\n$2");
-
-  // 5. 移除多餘換行 (3個以上換行合併為2個)
-  processed = processed.replace(/\n{3,}/g, "\n\n");
+  // v29.6.094: 尊重原文段落，不再於每個標點或長逗號後強制空行。
+  processed = processed
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/^\s*(\d+)[\)）、]\s*/gm, "$1. ")
+    .replace(/\n{3,}/g, "\n\n");
 
   // v29.5.181: 口吻與前綴統一防呆
   processed = processed.replace(/您/g, "你");
@@ -8281,6 +8466,70 @@ function formatForLineMobile(text) {
 
   processed = formatListSpacing(processed);
   return processed.trim();
+}
+
+function getNaturalCustomerSourceLabel_(rawSource) {
+  const source = String(rawSource || "").trim();
+  if (!source || /流程提示|不標來源/i.test(source)) return "";
+  if (/QA庫|已驗證問答/i.test(source)) return "已驗證問答資料";
+  if (/官方活動庫|活動/i.test(source)) return "三星官方活動資料";
+  if (/官方規格庫|規格庫|CLASS_RULES/i.test(source)) return "三星官方規格";
+  if (/網路搜尋|官方頁|WEB/i.test(source)) return "官方網站查證";
+  if (/\.pdf\b|官方手冊|產品手冊|PDF/i.test(source)) return "三星官方手冊";
+  return "";
+}
+
+function renderCustomerFacingText_(text) {
+  let body = String(text === null || text === undefined ? "" : text);
+  const sourceLabels = [];
+
+  body = body.replace(
+    /[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/gi,
+    (match, source) => {
+      const label = getNaturalCustomerSourceLabel_(source);
+      if (label && !sourceLabels.includes(label)) sourceLabels.push(label);
+      return "";
+    },
+  );
+  body = body
+    .replace(/\n{0,2}\[費用\s*[:：]\s*(?:NT\$[^\]]+|未知（已呼叫 LLM）)\]/gi, "")
+    .replace(/\n{0,2}---\s*\n\s*本次(?:對話|建檔|修改|整理)?預估花費[\s\S]*?(?=\n\n|$)/gi, "")
+    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC|NEW_TOPIC)(?:[:：][^\]]*)?\]/gi, "")
+    .replace(/\[(?:模式|型號)[:：][^\]]+\]/gi, "")
+    .replace(/(?:流程提示不標來源|查無後引導網路搜尋，不標來源)/gi, "")
+    .replace(/(?:本機\s*)?(?:QA\s*資料庫|QA庫)/gi, "已驗證問答資料")
+    .replace(/(?:官方)?規格庫|CLASS_RULES/gi, "三星官方規格")
+    .replace(/(?:本機|目前)?\s*資料庫(?:中)?/gi, "現有資料")
+    .replace(/您/g, "你")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (sourceLabels.length > 0) {
+    body = `${body}\n\n資料來源：${sourceLabels.join("、")}`.trim();
+  }
+  return formatForLineMobile(body);
+}
+
+function renderCustomerFacingPayload_(payload) {
+  if (Array.isArray(payload)) {
+    return payload
+      .map((item) => renderCustomerFacingPayload_(item))
+      .filter((item) => {
+        if (typeof item === "string") return item.trim().length > 0;
+        if (item && typeof item === "object" && item.type === "text") {
+          return String(item.text || "").trim().length > 0;
+        }
+        return !!item;
+      });
+  }
+  if (payload && typeof payload === "object" && payload.type === "text") {
+    return Object.assign({}, payload, {
+      text: renderCustomerFacingText_(payload.text || ""),
+    });
+  }
+  if (payload && typeof payload === "object") return payload;
+  return renderCustomerFacingText_(payload);
 }
 
 function hasVisibleSourceAudit_(text) {
@@ -9089,7 +9338,7 @@ function handleMessage(event) {
       writeLog(`[Model Select v29.5.120] 🎯 用戶選擇型號: ${selectedModel}`);
       cache.put(`${userId}:last_selected_model`, selectedModel, 21600);
       const modelSelectModeKey = `${userId}:model_select_mode`;
-      const modelSelectMode = cache.get(modelSelectModeKey) || "pdf";
+      const modelSelectMode = cache.get(modelSelectModeKey) || "fast";
 
       // v29.5.175: 依泡泡上下文決定選型後流程
       // fast: 鎖定型號後回到一般 SOP（QA/RULE -> PDF -> WEB）
@@ -9151,6 +9400,37 @@ function handleMessage(event) {
         writeLog(
           `[Model Select v29.5.175] Fast 模式：鎖定型號後回到一般流程 -> ${queryText.substring(0, 80)}`,
         );
+      } else if (modelSelectMode === "consent") {
+        let savedTopic = cache.get(`${userId}:pending_topic`) || "";
+        const queryText = savedTopic
+          ? `${savedTopic} (型號: ${selectedModel})`
+          : selectedModel;
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify([selectedModel]),
+          300,
+        );
+        cache.put(`${userId}:pending_manual_query`, queryText, 600);
+        cache.put(`${userId}:pending_topic`, queryText, 600);
+        cache.remove(modelSelectModeKey);
+        replyMessage(
+          replyToken,
+          buildManualConsentPrompt_("已鎖定你選的型號。", queryText, selectedModel),
+          {
+            quickReply: {
+              items: [
+                {
+                  type: "action",
+                  action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+                },
+              ],
+            },
+          },
+        );
+        writeLog(
+          `[Manual Consent v29.6.094] 型號 ${selectedModel} 已選定，等待明確查手冊同意`,
+        );
+        return;
       } else {
 
         // 注入型號到 Cache
@@ -9200,13 +9480,44 @@ function handleMessage(event) {
             ? `${savedTopic} (型號: ${selectedModel})`
             : selectedModel;
 
+        if (
+          !consumeManualSearchConsent_(
+            cache,
+            userId,
+            savedTopic || queryText,
+            selectedModel,
+          )
+        ) {
+          cache.put(`${userId}:pending_manual_query`, queryText, 600);
+          cache.remove(pdfModeKey);
+          cache.remove(modelSelectModeKey);
+          replyMessage(
+            replyToken,
+            buildManualConsentPrompt_("已鎖定你選的型號。", queryText, selectedModel),
+            {
+              quickReply: {
+                items: [
+                  {
+                    type: "action",
+                    action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+                  },
+                ],
+              },
+            },
+          );
+          return;
+        }
+
         showLoadingAnimation(userId, 60);
         writeLog(
           `[Model Select v29.5.120] 執行 Pass 1.5，查詢: ${queryText.substring(0, 80)}`,
         );
 
         // v29.6.093: 只有產品實體、連接方式與主要意圖全部一致才可走本地 QA。
-        const localMatch = findLocalMatchInQA(queryText, userId);
+        const localMatch =
+          modelSelectMode === "pdf"
+            ? null
+            : findLocalMatchInQA(queryText, userId);
         if (localMatch) {
           writeLog(
             `[Local QA Hit v29.6.093] 產品與意圖精準匹配 QA: "${localMatch.question.substring(0, 50)}"`,
@@ -9237,15 +9548,26 @@ function handleMessage(event) {
           contextId,
           hasModelInQuery, // 智慧設定：有型號時只查當前，無型號時允許沿用歷史
         );
-        const relevantFiles = Array.isArray(kbResult)
-          ? kbResult
-          : kbResult.files || [];
+        const relevantFiles = limitManualPdfFiles_(
+          Array.isArray(kbResult) ? kbResult : kbResult.files || [],
+          queryText,
+        );
         const primaryModel = Array.isArray(kbResult)
           ? null
           : kbResult.primaryModel || null;
         writeLog(
           `[Model Select v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
         );
+
+        if (relevantFiles.length === 0) {
+          cache.remove(`${userId}:manual_search_consent`);
+          cache.remove(pdfModeKey);
+          replyMessage(
+            replyToken,
+            "目前手冊索引裡找不到這個型號，我先不花費查詢也不猜答案。請確認完整型號後再試一次。",
+          );
+          return;
+        }
 
         const history = getHistoryFromCacheOrSheet(contextId);
         const userMsgObj = { role: "user", content: queryText };
@@ -9283,7 +9605,7 @@ function handleMessage(event) {
           finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-          finalText = sanitizeManualDeflection(finalText);
+          finalText = sanitizeManualDeflection(finalText, queryText);
           finalText = enforceManualUncertaintyGuard(finalText, queryText);
           if (isCrossDeviceMonitorQuery(queryText)) {
             finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
@@ -9396,7 +9718,8 @@ function handleMessage(event) {
 
       // 從歷史找出上一個真正的問題（跳過 #型號:, #查手冊, 純型號 等）
       const history = getHistoryFromCacheOrSheet(contextId);
-      let lastQuestion = manualQueryFromCmd || "";
+      const pendingManualQuery = cache.get(`${userId}:pending_manual_query`) || "";
+      let lastQuestion = manualQueryFromCmd || pendingManualQuery || "";
       const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
       if (!lastQuestion) {
         for (let i = history.length - 1; i >= 0; i--) {
@@ -9430,6 +9753,8 @@ function handleMessage(event) {
         );
         return;
       }
+
+      grantManualSearchConsent_(cache, userId, lastQuestion, []);
 
       if (isSmartMonitorCodecQuestion(lastQuestion)) {
         const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
@@ -9476,15 +9801,42 @@ function handleMessage(event) {
         contextId,
         hasModelInQuery,
       );
-      const relevantFiles = Array.isArray(kbResult)
-        ? kbResult
-        : kbResult.files || [];
+      const relevantFiles = limitManualPdfFiles_(
+        Array.isArray(kbResult) ? kbResult : kbResult.files || [],
+        lastQuestion,
+      );
       const primaryModel = Array.isArray(kbResult)
         ? null
         : kbResult.primaryModel || null;
       writeLog(
         `[Quick Reply v29.5.120] PDF 匹配: ${relevantFiles.length} 個檔案`,
       );
+
+      if (relevantFiles.length === 0) {
+        cache.remove(`${userId}:manual_search_consent`);
+        cache.remove(pdfModeKey);
+        replyMessage(
+          replyToken,
+          "目前手冊索引裡找不到對應 PDF，我沒有發出手冊查詢。請補完整型號後再試一次。",
+        );
+        return;
+      }
+
+      if (
+        !consumeManualSearchConsent_(
+          cache,
+          userId,
+          lastQuestion,
+          primaryModel,
+        )
+      ) {
+        cache.remove(pdfModeKey);
+        replyMessage(
+          replyToken,
+          "這次手冊授權已過期或題目不一致，所以我沒有讀 PDF。請再按一次「查手冊」重新授權。",
+        );
+        return;
+      }
 
       const userMsgObj = { role: "user", content: lastQuestion };
       const response = callLLMWithRetry(
@@ -9506,7 +9858,7 @@ function handleMessage(event) {
         finalText = finalText.replace(/\[NEW_TOPIC\]/g, "").trim();
         finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/g, "").trim();
         finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-        finalText = sanitizeManualDeflection(finalText);
+        finalText = sanitizeManualDeflection(finalText, lastQuestion);
         finalText = enforceManualUncertaintyGuard(finalText, lastQuestion);
         if (isCrossDeviceMonitorQuery(lastQuestion)) {
           finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
@@ -9614,6 +9966,28 @@ function handleMessage(event) {
         String(lastAssistantMsg.content || ""),
       );
       if (previousWasManual) {
+        const previousQuestionForConsent =
+          getPreviousMeaningfulUserQuestion_(historyForContinue);
+        if (previousQuestionForConsent) {
+          cache.put(`${userId}:pending_manual_query`, previousQuestionForConsent, 600);
+        }
+        replyMessage(
+          replyToken,
+          "上一則已經用過一次手冊授權。如果你要我重新讀手冊補充，請再按一次「查手冊」，我才會產生新的查詢費用。",
+          {
+            quickReply: {
+              items: [
+                {
+                  type: "action",
+                  action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+                },
+              ],
+            },
+          },
+        );
+        writeLog("[Manual Consent v29.6.094] 再詳細說明不重用舊授權，等待使用者重新同意");
+        return;
+
         const selectedManualModel =
           String(cache.get(`${userId}:last_selected_model`) || "").trim().toUpperCase() ||
           getSelectedModelFromRecentHistory_(historyForContinue);
@@ -9680,7 +10054,9 @@ function handleMessage(event) {
           .replace(/\[AUTO_SEARCH_WEB\]/g, "")
           .replace(/\[型號[:：][^\]]+\]/g, "")
           .trim();
-        manualReply = enforceManualNumberedList(sanitizeManualDeflection(manualReply));
+        manualReply = enforceManualNumberedList(
+          sanitizeManualDeflection(manualReply, manualElaborationQuery),
+        );
         manualReply = appendPdfSourceTag(manualReply, manualFiles, 1);
         replyMessage(replyToken, manualReply);
         writeLog(`[Manual Elaboration] 已重新掛載 ${selectedManualModel} 官方手冊並呼叫 LLM`);
@@ -9857,6 +10233,13 @@ function handleMessage(event) {
     // 現在直接進 Pass 1.5，不再走 DirectDeep（避免循環）
     const pendingPdfQueryJson = cache.get(`${userId}:pending_pdf_query`);
     if (pendingPdfQueryJson) {
+      cache.remove(`${userId}:pending_pdf_query`);
+      cache.remove(CACHE_KEYS.PDF_MODE_PREFIX + contextId);
+      writeLog(
+        "[Manual Consent v29.6.094] 清除舊版 pending_pdf_query；不得以隔回合狀態自動讀 PDF",
+      );
+    }
+    if (false && pendingPdfQueryJson) {
       try {
         const pending = JSON.parse(pendingPdfQueryJson);
         writeLog(
@@ -10396,8 +10779,18 @@ function handleMessage(event) {
               .trim();
             finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
             finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-            // v29.5.130: 同步 replyText，確保清理後的文字被採用
+            // v29.6.094: LLM 的內部暗號只能提出建議，不能代表使用者同意付費讀 PDF。
+            cache.put(`${userId}:pending_manual_query`, String(msg || userMessage), 600);
+            finalText = buildManualConsentPrompt_(
+              finalText,
+              msg || userMessage,
+              primaryModel,
+            );
             replyText = finalText;
+            aiRequestedPdfSearch = false;
+            writeLog(
+              "[Manual Consent v29.6.094] Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF",
+            );
           }
         } else {
           // 若無 Explicit Trigger，仍必須清理內部溝通用的型號標籤，以免外洩 (詳見 #1)
@@ -10736,7 +11129,7 @@ function handleMessage(event) {
               );
               const modelSelectMode =
                 hasExplicitTrigger || forcedSopNeedsModelSelection
-                  ? "pdf"
+                  ? "consent"
                   : "fast";
               cache.put(`${userId}:model_select_mode`, modelSelectMode, 600);
               writeLog(
@@ -10791,7 +11184,16 @@ function handleMessage(event) {
             specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
           }
           
-          finalText = `抱歉，${specHint}需要幫你在網路上進行擴大搜尋嗎？\n\n(💡 請點擊下方「🌐 這題再搜網路」按鈕，我會幫你擴大檢索最新網路資訊與記憶庫答案喔！)`;
+          const availableAnswer = finalText
+            .replace(/\[AUTO_SEARCH_WEB\]/gi, "")
+            .trim();
+          finalText = [
+            availableAnswer,
+            availableAnswer ? "" : specHint,
+            "目前資料還不足。要我接著查三星官方網站嗎？",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
           
           // 清除任何暗號標記，乾淨呈現在 UI 上
           finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
@@ -10885,7 +11287,7 @@ function handleMessage(event) {
                   // Refusal Flow: Call LLM without tools, instructing it to refuse gracefully
                   const refusalResponse = callLLMWithRetry(
                     userMessage +
-                      "\n(系統提示：用戶已連續三次要求搜索但仍不滿意。請【先總結】先前兩次的搜尋重點，然後誠實告知「我已經把網路上能找的都找過了，但似乎真的沒有針對此型號的這項說明」。最後用朋友的口吻建議：「這題比較專業，不如你直接問問 Sam 吧！他一定知道。」**請嚴格遵守 Persona：說話要像朋友，嚴禁使用『您』，一律用『你』！**)",
+                      "\n(系統提示：用戶已連續三次要求搜尋但仍不滿意。請先總結先前兩次的可稽核重點，再誠實告知目前官方資料仍不足，這次先不猜；不要再建議重複搜尋或轉問特定個人。)",
                     [...history, userMsgObj],
                     [], // filesToAttach
                     false, // attachPDFs
@@ -10950,14 +11352,14 @@ function handleMessage(event) {
                     // If response becomes empty after filtering, use fallback
                     if (!finalText || finalText.length < 20) {
                       finalText =
-                        "哎呀，我搜遍了網路還是找不到確切資訊😓。這題可能比較難，建議你直接問問 Sam，他一定知道！";
+                        "我查過目前可稽核的網路資料，但仍找不到足夠證據。這次先不猜。";
                     }
                     replyText = finalText;
                     // v29.4.43: Prevent subsequent PDF search override
                     aiRequestedPdfSearch = false;
                   } else {
                     replyText =
-                      "哎呀，我搜遍了網路還是找不到確切資訊😓。這題可能比較難，建議你直接問問 Sam，他一定知道！";
+                      "我查過目前可稽核的網路資料，但仍找不到足夠證據。這次先不猜。";
                   }
                 }
               } else {
@@ -11029,7 +11431,7 @@ function handleMessage(event) {
                     .replace(/\[AUTO_SEARCH_WEB\]/g, "")
                     .trim();
                   finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-                  finalText = sanitizeManualDeflection(finalText);
+                  finalText = sanitizeManualDeflection(finalText, msg);
                   finalText = enforceManualUncertaintyGuard(finalText, msg);
                   finalText = enforceManualNumberedList(finalText);
                   const deepSourceFiles =
@@ -11202,7 +11604,7 @@ function handleMessage(event) {
                     finalText = finalText
                       .replace(/\[型號[:：][^\]]+\]/g, "")
                       .trim();
-                    finalText = sanitizeManualDeflection(finalText);
+                    finalText = sanitizeManualDeflection(finalText, msg);
                     finalText = enforceManualUncertaintyGuard(finalText, msg);
                     finalText = enforceManualNumberedList(finalText);
                     if (matchedPdf && matchedPdf.file) {
@@ -11223,11 +11625,11 @@ function handleMessage(event) {
                   }
                   replyText = finalText;
                 } else {
-                  // 沒有匹配的 PDF → 引導找 Sam
-                  writeLog(`[PDF Match] 無匹配 PDF，引導找 Sam`);
+                  // 沒有匹配的 PDF → 誠實回報，不轉嫁給特定個人
+                  writeLog(`[PDF Match] 無匹配 PDF，停止查詢`);
                   replyText =
                     finalText +
-                    "\n\n這個型號的手冊我還沒有建檔，可以找 Sam 幫你查喔！";
+                    "\n\n目前手冊索引沒有這個型號，我先不猜答案。";
                 }
               } else if (aiRequestedPdfSearch) {
                 // v27.9.67: 標準 PDF 搜尋路徑，補上 Loading 動畫
@@ -11429,7 +11831,7 @@ function handleMessage(event) {
                         "根據產品手冊",
                       );
                     }
-                    finalText = sanitizeManualDeflection(finalText);
+                    finalText = sanitizeManualDeflection(finalText, msg);
                     finalText = enforceManualUncertaintyGuard(finalText, msg);
                     finalText = enforceManualNumberedList(finalText);
 
@@ -11537,7 +11939,7 @@ function handleMessage(event) {
                               "根據產品手冊",
                             );
                           }
-                          finalText = sanitizeManualDeflection(finalText);
+                          finalText = sanitizeManualDeflection(finalText, msg);
                           finalText = enforceManualUncertaintyGuard(finalText, msg);
                           finalText = enforceManualNumberedList(finalText);
                           if (rescueFiles.length > 0) {
@@ -11686,8 +12088,10 @@ function handleMessage(event) {
           // 不用操作題關鍵字硬開按鈕，避免使用者點了才被告知找不到手冊。
           const alreadyConsultedPdf =
             cache.get(`${userId}:pdf_consulted`) === "true";
+          const isAwaitingManualConsent =
+            !!cache.get(`${userId}:pending_manual_query`);
           if (
-            hasPdfForModel &&
+            (hasPdfForModel || isAwaitingManualConsent) &&
             !alreadyConsultedPdf &&
             !isWaitingForModelSelection
           ) {
@@ -11697,12 +12101,14 @@ function handleMessage(event) {
             });
 
             // v29.5.149: 修改回答末尾的查手冊等待提醒
-            const pdfReminder =
-              "\n\n💡 如果以上資訊不夠，我也可以再幫你查查「官方產品手冊」，但可能需要30~60秒喔!!";
-            if (Array.isArray(replyText)) {
-              replyText[replyText.length - 1] += pdfReminder;
-            } else {
-              replyText += pdfReminder;
+            if (!/要我(?:接著)?查三星官方手冊嗎/.test(currentReplyTextForUi)) {
+              const pdfReminder =
+                "\n\n如果以上資訊不夠，要我接著查三星官方手冊嗎？";
+              if (Array.isArray(replyText)) {
+                replyText[replyText.length - 1] += pdfReminder;
+              } else {
+                replyText += pdfReminder;
+              }
             }
           }
 
@@ -12151,7 +12557,7 @@ function handleCommand(c, u, cid) {
     }
     if (count > 3) {
       writeLog(`[Command] 三振出局: ${u} 已重試 ${count} 次`);
-      return '抱歉，我已經嘗試多種角度搜尋但似乎仍未找到完美答案。😅 建議你可以將問題描述得更具體，或直接聯繫 Sam 協助喔！\n\n💡 經驗回饋：如果您後來順利排除了問題，隨時可以輸入「/紀錄 你的解法」，讓我把您的寶貴經驗學起來喔！';
+      return "我已經從多個角度查過，但目前仍沒有足夠證據回答。你可以補上完整型號、連接方式與目前看到的畫面，我再重新判斷。";
     }
 
     // v29.5.27: SOP Enforcement (QA -> PDF -> Web)
@@ -12264,7 +12670,7 @@ function handleCommand(c, u, cid) {
       // v29.5.115: 只有真正執行網路搜尋才加標籤，PDF 搜尋不加
       if (!triggerPDF) {
         // 網路搜尋模式
-        result = sanitizeManualDeflection(result);
+        result = sanitizeManualDeflection(result, userMsg);
         if (isApiFailureReply(result)) {
           writeLog(`[Web Search v29.5.280] 搜尋失敗，不追加補充資料標記`);
         } else if (
@@ -12285,7 +12691,7 @@ function handleCommand(c, u, cid) {
       } else {
         // PDF 搜尋模式，不加網路搜尋標籤
         result = stripAnySourceTags(result);
-        result = sanitizeManualDeflection(result);
+        result = sanitizeManualDeflection(result, userMsg);
         if (isCrossDeviceMonitorQuery(userMsg)) {
           result = removeCrossDeviceManualHeadingOnlyLines_(result);
         }
@@ -15282,6 +15688,11 @@ function getHistoryModels(userId) {
 function replyMessage(tk, txt, options = {}) {
   txt = cleanReplyVisibleTextArtifacts_(txt);
   txt = enforceReplyAuditTrail_(txt);
+  const auditPreview = collectVisibleReplyText_(txt);
+  if (auditPreview) {
+    writeLog(`[Reply Audit] ${auditPreview}`);
+  }
+  txt = renderCustomerFacingPayload_(txt);
 
   // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
   if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN") {
@@ -15702,6 +16113,21 @@ function buildUnauthorizedResponse_() {
   ).setMimeType(ContentService.MimeType.JSON);
 }
 
+function buildUnauthorizedTestUiResponse_() {
+  return HtmlService.createHtmlOutput(
+    [
+      '<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width,initial-scale=1">',
+      '<title>TestUI 需要授權</title>',
+      '<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111827;color:#f8fafc;font-family:system-ui,sans-serif;padding:24px;box-sizing:border-box}.card{max-width:560px;background:#1f2937;border:1px solid #475569;border-radius:16px;padding:28px;box-shadow:0 18px 50px #0006}h1{font-size:24px;margin:0 0 12px}p{line-height:1.7;color:#cbd5e1;margin:8px 0}code{color:#bfdbfe}</style>',
+      '</head><body><main class="card"><h1>TestUI 需要維護者授權</h1>',
+      '<p>這個頁面只供受控測試使用，目前網址沒有有效的維護憑證。</p>',
+      '<p>請透過正式測試 runner 開啟；runner 會從 <code>GAS_MAINTENANCE_SECRET</code> 建立授權網址，而且不會顯示或記錄秘密。</p>',
+      '</main></body></html>',
+    ].join(""),
+  ).setTitle("TestUI 需要授權");
+}
+
 function issueTestUiAccessToken_() {
   const token = Utilities.getUuid();
   CacheService.getScriptCache().put(`test_ui_access_${token}`, "1", 900);
@@ -15723,14 +16149,10 @@ function assertTestUiAuthorized_(token) {
 // - LINE Verify: 不帶參數，返回 200 OK
 // - TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
 function doGet(e) {
-
-
-  ensureSyncTriggerExists();
-
   // 若有 test 參數，顯示 TestUI
   if (e && e.parameter && e.parameter.test === "1") {
     if (!isDoGetMaintenanceAuthorized_(e)) {
-      return buildUnauthorizedResponse_();
+      return buildUnauthorizedTestUiResponse_();
     }
     const template = HtmlService.createTemplateFromFile("TestUI");
     template.testUiAccessToken = issueTestUiAccessToken_();
@@ -15739,7 +16161,7 @@ function doGet(e) {
       .setTitle("LINE Bot 測試模擬器 v2.3")
       .addMetaTag(
         "viewport",
-        "width=device-width, initial-scale=1, user-scalable=no",
+        "width=device-width, initial-scale=1",
       );
   }
 
@@ -16131,6 +16553,7 @@ function doGet(e) {
   }
 
   // 預設：返回健康檢查（給 LINE Verify 用）
+  ensureSyncTriggerExists();
   return ContentService.createTextOutput(
     "OK - Current Version: " + GAS_VERSION + " [" + BUILD_TIMESTAMP + "]",
   ).setMimeType(ContentService.MimeType.TEXT);
@@ -16877,7 +17300,10 @@ function buildHeuristicSummaryPoints(cleanedText) {
  */
 function getPromptsFromCacheOrSheet() {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get("KB_PROMPTS_JSON");
+  // Prompt 快取跟著程式版本走，避免剛更新既有 deployment 並同步 Prompt!C3 後，
+  // 正式 LINE 仍在最長一小時內沿用舊版 Prompt。
+  const promptCacheKey = `KB_PROMPTS_JSON_${GAS_VERSION}`;
+  const cached = cache.get(promptCacheKey);
   if (cached) {
     try {
       return JSON.parse(cached);
@@ -16904,7 +17330,7 @@ function getPromptsFromCacheOrSheet() {
   });
 
   // 寫入 Cache (1小時)
-  cache.put("KB_PROMPTS_JSON", JSON.stringify(prompts), 3600);
+  cache.put(promptCacheKey, JSON.stringify(prompts), 3600);
   return prompts;
 }
 
@@ -16951,6 +17377,7 @@ function adminUpdatePromptC3(newPrompt) {
   }
 
   sheet.getRange("C3").setValue(promptText);
+  CacheService.getScriptCache().remove(`KB_PROMPTS_JSON_${GAS_VERSION}`);
   CacheService.getScriptCache().remove("KB_PROMPTS_JSON");
   return {
     ok: true,

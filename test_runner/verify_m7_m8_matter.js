@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const TEST_URL = getAuthorizedTestUiUrl();
 
 function hasAny(lines, pattern) {
   return (lines || []).some((x) => pattern.test(String(x)));
@@ -46,7 +46,7 @@ async function main() {
             google.script.run
               .withSuccessHandler(resolve)
               .withFailureHandler(reject)
-              .clearTestSession(uid);
+              .clearTestSession(uid, TEST_UI_ACCESS_TOKEN);
           }),
         userId,
       );
@@ -58,7 +58,7 @@ async function main() {
             google.script.run
               .withSuccessHandler(resolve)
               .withFailureHandler(reject)
-              .testMessage(m, uid);
+              .testMessage(m, uid, TEST_UI_ACCESS_TOKEN);
           }),
         msg,
         userId,

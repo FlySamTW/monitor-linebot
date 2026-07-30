@@ -1,5 +1,18 @@
 # 開發對話紀錄
 
+## 2026-07-30 (v29.6.094 / 人味回覆、PDF 單次授權與 TestUI 授權修正)
+
+- Fast Mode 的 `[AUTO_SEARCH_PDF]` 改為詢問使用者；未收到 `#查手冊` 或自然明確同意前，禁止掛載 PDF。授權綁定原題與型號、10 分鐘有效且只能使用一次。
+- `replyMessage()` 保留內部費用／來源稽核後，再以客戶版 renderer 隱藏 token、NT$、控制標記與內部標籤，來源改成自然頁尾；同時取消標點後強制雙換行。
+- 服務範圍收斂為三星電腦螢幕、Smart Monitor 與外部裝置連接螢幕；純手機、家電、電視與無關問題在 LLM 前攔截。
+- 顯示問題新增內容相關性守門，未問供電或攝影機時移除 65W、充電、Power Delivery 與攝影機段落。
+- Prompt.csv 升級為 v29.6.094，統一人味、範圍、來源與漸進式授權路由；正式來源仍為 Prompt!C3，發布後才由明確工具同步。
+- TestUI 使用 sessionStorage 唯一測試 ID，Mock 補 token／成本預檢，手機可向下捲動查看 Logs，1280×720 取消整頁 0.76 倍縮放，送出按鈕補可存取名稱。
+- 所有正式 TestUI runner 改讀 `GAS_MAINTENANCE_SECRET` 共用 helper；缺憑證立即 `[BLOCKED]`，不得輸出含秘密網址。
+- 正式 Webhook 已以固定 Deployment ID 更新至 Apps Script `@1291`；health、Remote HEAD 與本機均為 `v29.6.094 [2026-07-31 04:35]`，deployment 清單仍為原本 2 筆，沒有新建正式 deployment。
+- Google Sheet `202511-Display的Linebot` 的 `Prompt!C3` 已由舊版 `v29.5.240` 更新為 `v29.6.094`；與本地 `Prompt.csv` 逐字一致（2,386 字）。Prompt 快取鍵改綁 `GAS_VERSION`，避免發布後最長一小時仍讀舊 Prompt。
+- `npm run test:static`、`npm run test:contract`、GAS／runner 語法、`git diff --check`、正式 readiness 與 Webhook version guard 均通過；本機 TestUI 的 1440×900、1280×720、390×844 功能與 Logs 捲動驗收通過。
+
 ## 2026-07-21 (v29.6.093 / 跨裝置 QA/RULE 優先路由修復)
 
 - 最新正式 LOG 顯示 `Cross Device Router v29.6.074` 對「iPhone + M8 短別稱」明文跳過 Fast Mode，直接進型號選擇與 PDF；選型後的 PDF context 為 `Selected 0/30 QA`，實際順序違反 QA/RULE First。

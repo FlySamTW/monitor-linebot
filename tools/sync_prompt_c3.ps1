@@ -18,9 +18,9 @@ if (-not (Test-Path -LiteralPath $PromptPath)) {
   throw "Prompt file not found: $PromptPath"
 }
 
-$secret = $env:GAS_ADMIN_SECRET
+$secret = $env:GAS_MAINTENANCE_SECRET
 if ([string]::IsNullOrWhiteSpace($secret)) {
-  throw "Missing GAS_ADMIN_SECRET env var. It must match the GAS Script Properties GEMINI_API_KEY."
+  throw "Missing GAS_MAINTENANCE_SECRET env var. It must match the GAS Script Properties MAINTENANCE_SECRET or OPENCODE_WRITE_SECRET; Gemini API keys are never accepted."
 }
 
 $promptText = Get-Content -LiteralPath $PromptPath -Raw -Encoding UTF8

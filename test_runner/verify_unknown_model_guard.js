@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const TEST_URL = getAuthorizedTestUiUrl();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,7 +33,7 @@ async function call(frame, fnName, ...args) {
         google.script.run
           .withSuccessHandler(resolve)
           .withFailureHandler(reject)
-          [name](...params);
+          [name](...params, TEST_UI_ACCESS_TOKEN);
       }),
     fnName,
     args,

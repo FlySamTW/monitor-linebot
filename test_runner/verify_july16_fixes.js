@@ -1,13 +1,7 @@
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const maintenanceSecret = process.env.LINEBOT_TEST_SECRET;
-if (!maintenanceSecret) {
-  throw new Error("LINEBOT_TEST_SECRET is required for formal TestUI access");
-}
-const TEST_URL =
-  process.env.LINEBOT_TEST_URL ||
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1&secret=" +
-    encodeURIComponent(maintenanceSecret);
+const TEST_URL = getAuthorizedTestUiUrl();
 
 function assertStep(condition, message, details = "") {
   if (!condition) {

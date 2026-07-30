@@ -1,14 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl, getRedactedTestUiTarget } = require("./testui_auth");
 
-const testSecret = process.env.LINEBOT_TEST_SECRET;
-if (!testSecret) {
-  throw new Error("LINEBOT_TEST_SECRET is required for formal TestUI access");
-}
-const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1&secret=" +
-  encodeURIComponent(testSecret);
+const TEST_URL = getAuthorizedTestUiUrl();
 let testUiAccessToken = "";
 
 function sleep(ms) {
@@ -35,7 +30,7 @@ async function call(frame, fnName, ...args) {
           google.script.run
             .withSuccessHandler(resolve)
             .withFailureHandler(reject)
-            [f](...a);
+            [f](...a, TEST_UI_ACCESS_TOKEN);
         } catch (error) {
           reject(error);
         }
@@ -349,7 +344,7 @@ async function run() {
   );
   fs.writeFileSync(
     outPath,
-    JSON.stringify({ runId, testUrl: TEST_URL, cases: records }, null, 2),
+    JSON.stringify({ runId, testTarget: getRedactedTestUiTarget(), cases: records }, null, 2),
     "utf8",
   );
 

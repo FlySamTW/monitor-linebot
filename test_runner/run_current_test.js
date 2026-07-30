@@ -1,5 +1,6 @@
 const { spawnSync } = require("child_process");
 const path = require("path");
+const { getMaintenanceSecret } = require("./testui_auth");
 
 const testScript = process.argv[2];
 const extraArgs = process.argv.slice(3);
@@ -12,6 +13,13 @@ if (!testScript) {
 if (path.isAbsolute(testScript) || testScript.includes("..")) {
   console.error("Refusing to run a test outside test_runner.");
   process.exit(1);
+}
+
+try {
+  getMaintenanceSecret();
+} catch (error) {
+  console.error(error.message);
+  process.exit(2);
 }
 
 const guardPath = path.join(__dirname, "ensure_formal_version_current.js");

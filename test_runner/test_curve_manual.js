@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const TEST_URL = "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const TEST_URL = getAuthorizedTestUiUrl();
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -51,7 +52,7 @@ async function run() {
           google.script.run
             .withSuccessHandler((res) => resolve(res))
             .withFailureHandler((err) => reject(err))
-            .testMessage("/重啟", uid);
+            .testMessage("/重啟", uid, TEST_UI_ACCESS_TOKEN);
         }),
       userId,
     );
@@ -66,7 +67,7 @@ async function run() {
           google.script.run
             .withSuccessHandler((res) => resolve(res))
             .withFailureHandler((err) => reject(err))
-            .testMessage(m, uid);
+            .testMessage(m, uid, TEST_UI_ACCESS_TOKEN);
         }),
       q1,
       userId,
@@ -88,7 +89,7 @@ async function run() {
           google.script.run
             .withSuccessHandler((res) => resolve(res))
             .withFailureHandler((err) => reject(err))
-            .testMessage(m, uid);
+            .testMessage(m, uid, TEST_UI_ACCESS_TOKEN);
         }),
       q2,
       userId,

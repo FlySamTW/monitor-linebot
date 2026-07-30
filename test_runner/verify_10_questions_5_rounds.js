@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const TEST_URL = getAuthorizedTestUiUrl();
 
 const SCENARIOS = [
   { id: "smart_series_hevc", question: "Smart系列播放檔案有沒有支援hevc格式", model: "S32FM703" },
@@ -41,7 +41,7 @@ async function call(frame, fnName, ...args) {
         google.script.run
           .withSuccessHandler(resolve)
           .withFailureHandler(reject)
-          [f](...a);
+          [f](...a, TEST_UI_ACCESS_TOKEN);
       }),
     fnName,
     args,

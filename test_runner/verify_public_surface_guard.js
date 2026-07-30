@@ -55,8 +55,9 @@ assertStep(
 
 assertStep(
   /TEST_UI_ACCESS_TOKEN/.test(testUi) &&
-    /testMessage\(text, "TEST_DEV_001", TEST_UI_ACCESS_TOKEN\)/.test(testUi) &&
-    /clearTestSession\("TEST_DEV_001", TEST_UI_ACCESS_TOKEN\)/.test(testUi),
+    /TEST_USER_ID_KEY/.test(testUi) &&
+    /testMessage\(text, TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(testUi) &&
+    /clearTestSession\(TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(testUi),
   "TestUI forwards its authorized session token to the backend",
 );
 

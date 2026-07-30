@@ -1,4 +1,4 @@
-# KIOSK 專案 AI 協作指南 (Project Context for AI Agents)
+# Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
 **專案名稱**: GAS 客服 LineBot (Samsung Monitor Customer Service)
 **核心架構**: Google Apps Script (GAS)
@@ -30,8 +30,8 @@
 
 | 功能 ID  | 檔案位置        | 類型   | 說明                                                            |
 | -------- | --------------- | ------ | --------------------------------------------------------------- |
-| CORE-001 | linebot.gs      | Core   | 雙階段搜尋 (Two-Pass Search): Fast Mode -> Pass 2 Web Search    |
-| CORE-002 | linebot.gs      | Core   | PDF 深度模式 (PDF Deep Mode) & 智慧型號匹配 (Smart Model Match) |
+| CORE-001 | linebot.gs      | Core   | 漸進式路由：QA／RULE → 詢問 PDF → 同意後 PDF → 詢問 Web        |
+| CORE-002 | linebot.gs      | Core   | PDF 單次授權與智慧型號匹配                                     |
 | CORE-003 | linebot.gs      | Core   | LLM 模型切換 Logic (Gemini / OpenRouter)                        |
 | CORE-004 | linebot.gs      | Core   | Quick Reply 按鈕系統 (#再詳細說明 / #查手冊 / #搜尋網路)        |
 | CONF-001 | Prompt!C3       | Config | 正式提示詞來源，位於 Google Sheet `Prompt` 工作表 C3            |

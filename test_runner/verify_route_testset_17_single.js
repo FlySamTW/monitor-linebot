@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
-const TEST_URL =
-  "https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec?test=1";
+const TEST_URL = getAuthorizedTestUiUrl();
 const DATASET_PATH = path.join(
   __dirname,
   "datasets",
@@ -117,7 +117,7 @@ async function main() {
             const runner = google.script.run
               .withSuccessHandler(resolve)
               .withFailureHandler(reject);
-            runner[name](...argv);
+            runner[name](...argv, TEST_UI_ACCESS_TOKEN);
           }),
         fn,
         args,

@@ -188,9 +188,9 @@ assertStep(
 );
 
 assertStep(
-  /需要幫你在網路上進行擴大搜尋嗎/.test(handleMessageSection) &&
+  /要我接著查三星官方網站嗎/.test(handleMessageSection) &&
     !/\[來源:缺失\]/.test(handleMessageSection),
-  "web-search confirmation rewrite must not invent a missing-data source tag",
+  "web-search confirmation rewrite must use a natural opt-in question without inventing a missing-data source tag",
 );
 
 assertStep(
@@ -857,6 +857,7 @@ assertStep(
 );
 
 const manualDeflectionCode = [
+  extractFunction(linebot, "sanitizeManualAnswerForQuestion_"),
   extractFunction(linebot, "sanitizeManualDeflection"),
   `
   globalThis.__manualDeflectionResult = [
@@ -868,7 +869,9 @@ const manualDeflectionCode = [
   ].join("\\n");
   `,
 ].join("\n\n");
-const manualDeflectionContext = {};
+const manualDeflectionContext = {
+  isCrossDeviceMonitorQuery: () => false,
+};
 vm.createContext(manualDeflectionContext);
 vm.runInContext(manualDeflectionCode, manualDeflectionContext);
 
@@ -886,7 +889,7 @@ assertStep(
 );
 
 assertStep(
-  /網路搜尋模式[\s\S]{0,120}result = sanitizeManualDeflection\(result\)/.test(linebot),
+  /網路搜尋模式[\s\S]{0,160}result = sanitizeManualDeflection\(result, userMsg\)/.test(linebot),
   "manual-to-web integrated replies must remove instructions that send the user back to the manual",
 );
 
@@ -953,7 +956,7 @@ assertStep(
 );
 
 assertStep(
-  /hasPdfForModel\s*&&\s*!\s*alreadyConsultedPdf\s*&&\s*!\s*isWaitingForModelSelection/.test(
+  /\(hasPdfForModel \|\| isAwaitingManualConsent\)\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
     linebot,
   ),
   "manual quick reply/reminder must be hidden after PDF consult or during model selection",
@@ -988,8 +991,9 @@ assertStep(
     /run_current_test\.js\s+verify_july16_fixes\.js/.test(
       packageJson.scripts["test:iphone-air"] || "",
     ) &&
-    /LINEBOT_TEST_SECRET/.test(iphoneAirRegression) &&
-    /encodeURIComponent\(maintenanceSecret\)/.test(iphoneAirRegression) &&
+    /getAuthorizedTestUiUrl/.test(iphoneAirRegression) &&
+    /testui_auth/.test(iphoneAirRegression) &&
+    !/LINEBOT_TEST_SECRET|encodeURIComponent\(maintenanceSecret\)/.test(iphoneAirRegression) &&
     /TEST_UI_ACCESS_TOKEN/.test(iphoneAirRegression) &&
     /clearTestSession",\s*userId,\s*accessToken/.test(iphoneAirRegression) &&
     /testMessage",\s*message,\s*userId,\s*accessToken/.test(
@@ -1006,8 +1010,8 @@ assertStep(
   /@media\s*\(min-width:\s*901px\)\s*and\s*\(max-height:\s*760px\)/.test(
     testUi,
   ) &&
-    /transform:\s*scale\(0\.76\)/.test(testUi) &&
-    /transform-origin:\s*top center/.test(testUi),
+    /height:\s*calc\(100vh - 16px\)/.test(testUi) &&
+    !/transform:\s*scale\(0\.76\)/.test(testUi),
   "TestUI must keep the full phone and control panel visible at 1280x720",
 );
 
