@@ -1,5 +1,13 @@
 # 開發對話紀錄
 
+## 2026-08-05 (v29.6.096 / 排除未完成新機型佔位 RULE)
+
+- 補上 v29.6.095 發布後殘留檢查：既有 `CLASS_RULES` 內「型號：尚無資訊」列雖不再新增，仍可能被讀入 Fast Mode prompt/index。
+- 同步流程現在會排除這類未完成列；Product Finder 比對也不再把它視為已完成型號，使其能進入 `PENDING_MODEL_REVIEW` 待審核清單。
+- 採非破壞式相容策略：不自動刪除正式 Sheet 舊列，但 runtime 不再把它當產品規格。
+- 正式既有 Webhook 已更新至 Apps Script `@1293`；health、Remote HEAD、本機與正式 TestUI version guard 均為 `v29.6.096 [2026-08-05 22:29]`，部署清單維持 2 筆，`Prompt!C3` 未修改。
+- `npm run test:static`、`npm run test:contract`、GAS 語法、`git diff --check`、release dry-run、readiness 與 Webhook version guard 全數通過。
+
 ## 2026-08-05 (v29.6.095 / RAG token fuse、費用與付費測試守門)
 
 - 修正旧 token fuse 「裁減 `effectiveMessages` 卻仍送出舊 `geminiContents`」的漏洞；現在 Fast/Web 歷史先裁減，再建立唯一 payload。

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.095"; // 2026-08-05 RAG token fuse、費用與付費測試守門
-const BUILD_TIMESTAMP = "2026-08-05 22:00";
+const GAS_VERSION = "v29.6.096"; // 2026-08-05 排除未完成新機型佔位 RULE
+const BUILD_TIMESTAMP = "2026-08-05 22:29";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -5358,6 +5358,12 @@ function getKbHealthSummary() {
   };
 }
 
+function isIncompleteModelRuleLine_(value) {
+  return /(?:^|,)\s*型號[：:]\s*尚無資訊(?:\s*,|\s*$)/i.test(
+    String(value || ""),
+  );
+}
+
 function syncGeminiKnowledgeBase(forceRebuild = false) {
   const lock = LockService.getScriptLock();
   let hasLock = false;
@@ -5506,7 +5512,17 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     if (ruleSheet && ruleSheet.getLastRow() > 1) {
       const allRows = ruleSheet
         .getRange(2, 1, ruleSheet.getLastRow() - 1, 1)
-        .getValues();
+        .getValues()
+        .filter(function (row) {
+          return row[0] && !isIncompleteModelRuleLine_(row[0]);
+        });
+      const skippedIncompleteCount =
+        ruleSheet.getLastRow() - 1 - allRows.length;
+      if (skippedIncompleteCount > 0) {
+        writeLog(
+          `[Sync RULE Guard v29.6.096] 排除 ${skippedIncompleteCount} 筆「尚無資訊」未完成列，不注入正式 prompt/index`,
+        );
+      }
 
       // v27.9.85: 第 0 遍 - 全域收集所有實體型號 (更加強健的搜尋)
       allRows.forEach((row) => {
@@ -6248,7 +6264,9 @@ function scanOfficialWebsiteForNewMonitors() {
       const rows = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
       rows.forEach(r => {
         if (!r[0]) return;
-        existingLines.push(r[0].toString().trim().toUpperCase());
+        if (!isIncompleteModelRuleLine_(r[0])) {
+          existingLines.push(r[0].toString().trim().toUpperCase());
+        }
       });
     }
     

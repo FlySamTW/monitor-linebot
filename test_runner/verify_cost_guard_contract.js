@@ -71,8 +71,10 @@ assert(
 assert(
   /setProperty\("PENDING_MODEL_REVIEW"/.test(linebot) &&
     /未寫入 CLASS_RULES/.test(linebot) &&
+    /function isIncompleteModelRuleLine_/.test(linebot) &&
+    /Sync RULE Guard v29\.6\.096/.test(linebot) &&
     !/const placeholderLine = `\$\{model\},型號：尚無資訊`/.test(linebot),
-  "新機型未完成規格驗證前只進待審核，不污染正式 RULE",
+  "新舊未完成型號只進待審核且不注入正式 RULE prompt/index",
 );
 assert(
   /Fast\/Web 歷史先裁減/.test(linebot) &&
