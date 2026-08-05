@@ -1,5 +1,69 @@
 # 開發對話紀錄
 
+## 2026-08-06 (v29.6.105 / 可稽核手冊片段 RAG)
+
+### 20K fuse 後的正確修法
+
+- v29.6.104 正式 TEST UI 已選到正確完整手冊，但 `countTokens` 為 69,570，20K 舊式整本 PDF 保險絲依設計阻止付費生成；沒有放寬成本上限，也沒有拔掉 PDF 後用模型常識猜。
+- 新增 `getVerifiedManualChunks_()`／`findVerifiedManualChunk_()`：把人工逐頁核對過的官方手冊事實保存成最小片段，必須「完整型號＋意圖」同時命中才可零成本回答，未命中仍走原手冊授權與 fuse。
+- 首筆片段來自 `S32FM702,S32FM703,S32FM803.pdf`：第 180 頁列出 M70F 的 HEVC（H.265 Main／Main10），第 187 頁明載 HEVC 僅適用 MKV／MP4／TS。回覆會顯示手冊頁碼與官方手冊來源。
+- 契約測試同時驗證正向命中、非 HEVC 題不得誤用、未知型號不得跨型號套用，避免以個案修補造成新降智。
+- 正式 TEST UI 最終實問 `S32FM703UC 是否支援 HEVC？` 已正確回答 Main／Main10、MKV／MP4／TS 與第 180、187 頁；`Request Audit` 為 `model=none`、`paidCalls=0`、`estimatedCostTwd=0`，沒有殘留 `Reading...`。
+- 同一正式 TEST UI 再問 `請問 M8 和 M9 有陀螺儀和 HAS 嗎？`，由精準 QA 零成本回答；再問未知型號 `S99ZZ999 有 KVM 嗎？`，由未知型號守門拒絕猜測，兩題均無 LLM／PDF／WEB 呼叫。
+- 以 1440×900、768×1024、390×844 實際渲染驗收：桌面雙欄、平板／手機單欄皆可讀，手機版頁碼、來源與底部輸入列完整，無可見文字裁切、重疊或控制列遮擋。
+- 正式既有 Webhook 更新至 Apps Script `@1303`；health、Remote HEAD、本機與正式 TestUI 皆為 `v29.6.105 [2026-08-06 00:31]`，部署清單仍維持 2 筆，`Prompt!C3` 未修改。
+
+## 2026-08-06 (v29.6.104 / 詳細手冊意圖優先完整手冊)
+
+### 正式 TEST UI 實問發現的降智根因
+
+- v29.6.103 已把 HEVC 問法改成精準手冊查詢，但正式 TEST UI 實問仍錯答「手冊未記載」。
+- 稽核實際掛載檔案後確認，路由先選到涵蓋 16 個型號、僅 41 頁的快速指南；該檔確實沒有 HEVC 文字。同一型號另有涵蓋 3 個型號的完整使用手冊，手冊明載 HEVC（H.265 Main / Main10）與 MKV、MP4、TS 限制。
+- `prioritizeDetailedManualCandidates_()` 現在只在編解碼器、協定等必須查詳細表格的題目啟用：維持精準型號優先，再以涵蓋型號較少的 PDF 作為完整手冊優先線索；不硬寫 S32FM703，也不硬寫 HEVC 答案。
+- 新增執行式契約測試，鎖定「詳細題改選完整手冊、一般題維持原排序」兩個方向，避免修一題卻擴大其他路由回歸。
+
+## 2026-08-05 (v29.6.103 / HEVC 精準手冊查詢修復)
+
+- v29.6.102 正式 TestUI 已完成單次 PDF 查詢（14,626 input、151 output、NT$0.0487、無網搜），但回答誤稱手冊沒有 HEVC。
+- 直接抽取本機同名官方 PDF 證明手冊編解碼器表格明列 `HEVC（H.265 - Main、Main10）`，限制頁也明列 HEVC 僅適用 `MKV / MP4 / TS`；因此該回答判定為降智回歸，不因來源標籤或成本合格而放行。
+- 根因是完整型號快速路徑只沿用原始短問句，沒有沿用型號選單舊路徑的精準編解碼器表格查詢。現已抽成共用 query builder，兩條路徑都要求查表格、Main/Main10、MKV/MP4/TS 與頁碼，不得以規格／連接埠頁面代替。
+
+## 2026-08-05 (v29.6.102 / TestUI Reading 泡泡殘留修復)
+
+- v29.6.101 正式 TestUI 自癒回覆已完成，但畫面仍殘留一顆 `Reading...` 泡泡。
+- 根因是使用者泡泡與 loading 泡泡都以單純毫秒時間建立 DOM id；同一毫秒連續插入時會撞號，成功回呼的 `removeMsg` 可能刪到前一顆同 id 泡泡。
+- 兩種訊息建立器都改為「毫秒＋單調序號」id，並加入靜態守門，確保 loading placeholder 能精確移除。
+
+## 2026-08-05 (v29.6.101 / PDF token 預檢過期檔自癒修復)
+
+- v29.6.100 正式 TestUI 已完整走到「完整型號 → 詢問同意 → `#查手冊` → 成本確認 → 單一 PDF」，但 `countTokens` 對舊 Gemini File URI 回傳 403 `PERMISSION_DENIED`。
+- 成本 fuse 正確阻止 `generateContent`，本次 `paidCalls=0`、`pdfCalls=0`、NT$0；然而 token 預檢分支未沿用 generateContent 既有的 403/404 自癒，手冊會一直停在相同錯誤。
+- 現在 PDF `countTokens` 遇到已過期／無權限／不存在的 File 時，仍 fail closed、不重試付費生成，並以既有 `scheduleImmediateRebuild()` 排程 1 分鐘後背景重建；同一排程 10 分鐘內去重，不在 Webhook 主線程同步重建。
+
+## 2026-08-05 (v29.6.100 / Smart Codec 完整型號手冊授權修復)
+
+- 正式 TestUI 實問 `S32FM703UC 是否支援 HEVC`，即使已提供完整型號，舊 Smart Codec 守門仍一律顯示十個型號選單；再次明確要求查手冊也回到同一選單，形成無法進入 PDF 的循環。
+- 現在會把完整型號及其純英文字母地區尾碼精確對應到 PDF 索引型號；初問只詢問是否查手冊，使用者下一輪按 `#查手冊` 後才沿用該型號進入單次 PDF。沒有完整型號時仍維持零 LLM 型號選單，不猜測。
+- TestUI 本輪多分頁併發曾使一筆 `testMessage` 在 Apps Script 佇列等待後顯示 309.781 秒；Cloud logs 顯示實際路由、LLM 與組裝回覆約 3 秒完成。後續正式驗收改為單分頁串行，避免把測試端併發壅塞誤判成模型推論時間。
+
+## 2026-08-05 (v29.6.099 / 系列別稱精準 QA 零 LLM 修復)
+
+- v29.6.098 正式 TestUI 重問後，路由已先檢查 QA，但 `M8`／`M9` 被舊實體擷取規則排除，且 matcher 只接受帶連接方式的題型，仍落入一次 Fast LLM。
+- 將 Smart Monitor `M5`／`M7`／`M8`／`M9` 保留為產品系列實體；產品實體完全一致且較短題句至少 12 個正規化字元時，允許與完整 QA 題句互為包含。
+- 守門同時驗證「M8／M9 陀螺儀＋HAS」可精準命中，以及過短的「M8 有嗎」不得誤命中；未恢復 LCS 或模糊相似度。
+
+## 2026-08-05 (v29.6.098 / 正式 TestUI 精準 QA 與成本守門修復)
+
+- 正式 TestUI 實問「M8 和 M9 有陀螺儀和 HAS 嗎」後，稽核發現仍進 Fast LLM；精準 QA 捷徑原本只套用跨裝置題，未符合「精準 QA 零 LLM」契約。現在所有一般產品問題都會先跑同一個嚴格 QA matcher，命中後直接回覆。
+- 正式 TestUI 實問「iPhone 17 接 M8 沒畫面」時，舊 `checkPdfCost` 因短字串含型號而誤報「讀取 PDF 約 NT$1.5」並跳過。現在一般型號、設定與故障題一律先進 QA/RULE Fast Mode，只有 `#查手冊` 或自然語句中明確要求查讀官方手冊／PDF 才顯示 PDF 成本確認。
+- 新增 contract 守門，防止精準 QA 再度只涵蓋特定題型，或 TestUI 再以型號外觀、設定／故障字樣誤判為 PDF 操作。
+
+## 2026-08-05 (v29.6.097 / 正式 TestUI template 編譯修復)
+
+- 親自開啟正式 TestUI 後發現 `SyntaxError: Invalid or unexpected token`；先前 health/version guard 只能證明 Webhook 對版，不能取代 TestUI 實際渲染。
+- 根因是 `TestUI.html` 的客戶端 fallback 判斷含第二個 HtmlService scriptlet 起始字面值，`createTemplateFromFile().evaluate()` 會在正式渲染時誤解析。
+- 改以 `startsWith("<")` 辨識未 evaluate 的本機 placeholder，並新增靜態守門，保證整份 TestUI 只留下真正用來注入 access token 的一組 scriptlet。
+
 ## 2026-08-05 (v29.6.096 / 排除未完成新機型佔位 RULE)
 
 - 補上 v29.6.095 發布後殘留檢查：既有 `CLASS_RULES` 內「型號：尚無資訊」列雖不再新增，仍可能被讀入 Fast Mode prompt/index。

@@ -107,6 +107,75 @@ const pdfs = [1, 2, 3].map((id) => ({ id, mimeType: "application/pdf" }));
 assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M8 沒畫面").length, 1);
 assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
 
+const detailedManualContext = {
+  isManualVerificationRequiredQuery: (query) => /HEVC|編解碼/i.test(query),
+  pdfFileNameMatchesModelToken_: (name, model) =>
+    String(name).toUpperCase().split(/[,\.]/).includes(String(model).toUpperCase()),
+};
+vm.createContext(detailedManualContext);
+vm.runInContext(
+  extractFunction(linebot, "prioritizeDetailedManualCandidates_"),
+  detailedManualContext,
+);
+const broadQuickGuide = {
+  name: "S27DM502,S27FM500,S27FM501,S32DM702,S32DM703,S32DM803,S32FM500,S32FM501,S32FM702,S32FM703,S32FM803,S32FM902,S43DM702,S43DM703,S43FM702,S43FM703.pdf",
+};
+const focusedFullManual = { name: "S32FM702,S32FM703,S32FM803.pdf" };
+const detailedOrder = detailedManualContext.prioritizeDetailedManualCandidates_(
+  [broadQuickGuide, focusedFullManual],
+  "S32FM703 是否支援 HEVC",
+  "S32FM703",
+);
+assert.strictEqual(
+  detailedOrder[0].name,
+  focusedFullManual.name,
+  "編解碼器題沒有在同型號 PDF 中優先完整手冊",
+);
+const normalOrder = detailedManualContext.prioritizeDetailedManualCandidates_(
+  [broadQuickGuide, focusedFullManual],
+  "S32FM703 如何接上腳架",
+  "S32FM703",
+);
+assert.strictEqual(normalOrder[0].name, broadQuickGuide.name, "一般題不應被詳細手冊排序改寫");
+
+const manualChunkContext = {};
+vm.createContext(manualChunkContext);
+vm.runInContext(
+  [
+    extractFunction(linebot, "isMediaCodecSupportQuery"),
+    extractFunction(linebot, "getVerifiedManualChunks_"),
+    extractFunction(linebot, "findVerifiedManualChunk_"),
+    extractFunction(linebot, "buildVerifiedManualChunkReply_"),
+  ].join("\n\n"),
+  manualChunkContext,
+);
+const hevcChunk = manualChunkContext.findVerifiedManualChunk_(
+  "S32FM703UC 是否支援 HEVC？",
+  "S32FM703",
+);
+assert(hevcChunk, "已驗證的 S32FM703 HEVC 手冊片段沒有被精準取回");
+const hevcChunkReply = manualChunkContext.buildVerifiedManualChunkReply_(
+  "S32FM703",
+  hevcChunk,
+);
+assert(
+  /Main10/.test(hevcChunkReply) &&
+    /MKV、MP4、TS/.test(hevcChunkReply) &&
+    /第 180、187 頁/.test(hevcChunkReply) &&
+    /\[來源:官方手冊\]/.test(hevcChunkReply),
+  "可稽核手冊片段缺少 HEVC 結論、容器限制、頁碼或來源",
+);
+assert.strictEqual(
+  manualChunkContext.findVerifiedManualChunk_("S32FM703 如何恢復原廠設定？", "S32FM703"),
+  null,
+  "非 HEVC 題不應誤用編解碼器片段",
+);
+assert.strictEqual(
+  manualChunkContext.findVerifiedManualChunk_("S32FM799 是否支援 HEVC？", "S32FM799"),
+  null,
+  "未驗證型號不應套用其他型號的手冊片段",
+);
+
 assert(
   /Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF/.test(linebot) &&
     /aiRequestedPdfSearch = false;/.test(linebot) &&
@@ -118,11 +187,31 @@ assert(
   "明確查手冊路徑沒有在 LLM 前消耗單次授權",
 );
 assert(
-  /QA First Router v29\.6\.093/.test(linebot) &&
+  /const directLocalQa = findLocalMatchInQA\(msg, userId\)/.test(linebot) &&
+    /QA First Router v29\.6\.098/.test(linebot) &&
     !/callLLMWithRetry|UrlFetchApp/.test(
       extractFunction(linebot, "replyWithLocalQaMatch_"),
     ),
-  "精準 QA 零成本捷徑遺失",
+  "所有產品問題的精準 QA 零成本捷徑遺失",
+);
+assert(
+  /function checkPdfCost[\s\S]{0,900}isExplicitPdfConsent/.test(linebot) &&
+    !/Potential Model Number \(Loads PDF\)/.test(linebot) &&
+    !/"設定"|"故障"|"無法"|"不能"/.test(
+      extractFunction(linebot, "checkPdfCost"),
+    ),
+  "TestUI 仍會把一般型號、設定或故障題誤判為 PDF 高成本操作",
+);
+assert(
+  /function getExactSmartMonitorCodecModelFromQuery_/.test(linebot) &&
+    /function buildSmartMonitorCodecManualQuery_/.test(linebot) &&
+    /function findVerifiedManualChunk_/.test(linebot) &&
+    /Manual Chunk RAG v29\.6\.105/.test(linebot) &&
+    /Smart Codec Guard v29\.6\.100.*等待明確查手冊同意/.test(linebot) &&
+    /Smart Codec Guard v29\.6\.100.*直接進單次 PDF 查證/.test(linebot) &&
+    /manualExecutionQuery = buildSmartMonitorCodecManualQuery_/.test(linebot) &&
+    /callLLMWithRetry\(\s*manualExecutionQuery/.test(linebot),
+  "Smart Codec 完整型號仍可能反覆要求選型號，無法進入單次手冊查證",
 );
 assert(
   /#這題再搜網路/.test(linebot) && /AUTO_SEARCH_WEB/.test(linebot),

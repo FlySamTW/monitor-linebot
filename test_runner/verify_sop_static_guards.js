@@ -1146,7 +1146,13 @@ assertStep(
 );
 
 assertStep(
-  /isSmartMonitorCodecQuestion\(savedTopic\)[\s\S]{0,520}支援的視訊編解碼器[\s\S]{0,360}HEVC 編解碼器僅適用於 MKV \/ MP4 \/ TS[\s\S]{0,180}禁止使用/.test(linebot),
+  /支援的視訊編解碼器[\s\S]{0,420}HEVC 編解碼器僅適用於 MKV \/ MP4 \/ TS[\s\S]{0,220}禁止使用/.test(
+    extractFunction(linebot, "buildSmartMonitorCodecManualQuery_"),
+  ) &&
+    /isSmartMonitorCodecQuestion\(savedTopic\)[\s\S]{0,180}buildSmartMonitorCodecManualQuery_\(selectedModel\)/.test(
+      linebot,
+    ) &&
+    /manualExecutionQuery = buildSmartMonitorCodecManualQuery_/.test(linebot),
   "selected Smart Monitor codec model must use a cleaned exact-model PDF query with no speculative file-format claims",
 );
 
@@ -1524,6 +1530,14 @@ const qaMatchCode = [
       "iPhone Air 用 Type-C 接 S32FM803UC 沒畫面",
       airQa
     ),
+    exactSmartAlias: isQaQuestionDirectMatch_(
+      "請問 M8 和 M9 有陀螺儀和 HAS 嗎？",
+      "請問 M8 和 M9 有陀螺儀和 HAS 嗎？畫面會隨著螢幕而直式或橫式顯示嗎？"
+    ),
+    rejectShortSmartAlias: isQaQuestionDirectMatch_(
+      "M8 有嗎？",
+      "請問 M8 和 M9 有陀螺儀和 HAS 嗎？畫面會隨著螢幕而直式或橫式顯示嗎？"
+    ),
     pdfContextAir: isQaContextRelevant_(
       "iPhone Air 用 Type-C 接 S32FM803UC 沒畫面",
       airQa,
@@ -1549,11 +1563,37 @@ assertStep(
     qaMatchContext.__qaMatchResult.rejectAirPlay === false &&
     qaMatchContext.__qaMatchResult.rejectMixedConnection === false &&
     qaMatchContext.__qaMatchResult.rejectExactMonitorBypass === false &&
+    qaMatchContext.__qaMatchResult.exactSmartAlias === true &&
+    qaMatchContext.__qaMatchResult.rejectShortSmartAlias === false &&
     qaMatchContext.__qaMatchResult.pdfContextAir === true &&
     qaMatchContext.__qaMatchResult.pdfContextReject17e === false &&
     !/getLongestCommonSubstringLength_/.test(linebot) &&
     !/LCS\s*>=|via LCS|lcsLen/.test(linebot),
   "QA direct replies and PDF context must require matching product entities and intent without LCS",
+);
+
+const smartCodecModelContext = {};
+vm.createContext(smartCodecModelContext);
+vm.runInContext(
+  [
+    extractFunction(linebot, "isShortAliasModelToken"),
+    extractFunction(linebot, "extractFullModelLikeTokens"),
+    extractFunction(linebot, "getExactSmartMonitorCodecModelFromQuery_"),
+    `globalThis.__codecModels = {
+      exactBase: getExactSmartMonitorCodecModelFromQuery_("S32FM703 支援 HEVC 嗎", ["S32FM703", "S32FM702"]),
+      exactRegion: getExactSmartMonitorCodecModelFromQuery_("S32FM703UC 是否支援 HEVC", ["S32FM703", "S32FM702"]),
+      rejectNumericNearMatch: getExactSmartMonitorCodecModelFromQuery_("S32FM7030 支援 HEVC 嗎", ["S32FM703"]),
+      rejectUnknown: getExactSmartMonitorCodecModelFromQuery_("S32FM799UC 支援 HEVC 嗎", ["S32FM703"])
+    };`,
+  ].join("\n\n"),
+  smartCodecModelContext,
+);
+assertStep(
+  smartCodecModelContext.__codecModels.exactBase === "S32FM703" &&
+    smartCodecModelContext.__codecModels.exactRegion === "S32FM703" &&
+    smartCodecModelContext.__codecModels.rejectNumericNearMatch === "" &&
+    smartCodecModelContext.__codecModels.rejectUnknown === "",
+  "Smart codec exact model routing must accept region suffixes without fuzzy numeric matches",
 );
 
 assertStep(
@@ -1646,8 +1686,8 @@ assertStep(
 );
 
 assertStep(
-  /QA First Router v29\.6\.093/.test(linebot) &&
-    /isCrossDeviceMonitorQuery\(msg\)[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,900}RULE Fast Mode/.test(
+  /QA First Router v29\.6\.098/.test(linebot) &&
+    /findLocalMatchInQA\(msg, userId\)[\s\S]{0,900}isCrossDeviceMonitorQuery\(msg\)[\s\S]{0,500}RULE Fast Mode/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(
@@ -1656,7 +1696,7 @@ assertStep(
     !/跨裝置短別稱直接走官方手冊型號選擇，不先呼叫 Fast LLM/.test(
       linebot,
     ),
-  "cross-device alias questions must evaluate exact QA and RULE Fast Mode before PDF selection",
+  "all product questions, including cross-device aliases, must evaluate exact QA and RULE Fast Mode before PDF selection",
 );
 
 assertStep(

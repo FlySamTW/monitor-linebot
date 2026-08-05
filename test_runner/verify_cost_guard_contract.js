@@ -64,6 +64,13 @@ assert(
   "PDF fuse 以含 file URI 的 countTokens 預檢且失敗時 fail closed",
 );
 assert(
+  /staleFile:\s*staleFile/.test(linebot) &&
+    /tokenPreflight\.staleFile[\s\S]{0,260}scheduleImmediateRebuild\(\)[\s\S]{0,260}return "\[KB_EXPIRED\]"/.test(
+      linebot,
+    ),
+  "PDF countTokens 的 403/404 過期檔必須 fail closed 並非同步排程重建",
+);
+assert(
   /slice\(0, CONFIG\.MAX_RELEVANT_RULE_LINES\)/.test(linebot) &&
     /MAX_RELEVANT_RULE_LINES:\s*8/.test(linebot),
   "Fast Mode 最多注入 8 筆相關 RULE",

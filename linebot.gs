@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.096"; // 2026-08-05 排除未完成新機型佔位 RULE
-const BUILD_TIMESTAMP = "2026-08-05 22:29";
+const GAS_VERSION = "v29.6.105"; // 2026-08-06 可稽核手冊片段 RAG
+const BUILD_TIMESTAMP = "2026-08-06 00:31";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2724,7 +2724,9 @@ function getQaEntityTokens_(text) {
       /\b(?:LS|LC|LF|S|C|F|M|G|WA|WD|VR)\d{1,3}[A-Z0-9-]{0,18}\b/g,
     ) || [];
   modelTokens.forEach((token) => {
-    if (!/^M?\d+$/.test(token)) {
+    // Smart Monitor 的 M5/M7/M8/M9 是正式產品系列別稱，必須保留為 QA 實體；
+    // 其餘純 M+數字仍不當成完整型號，避免一般文字誤命中。
+    if (!/^M?\d+$/.test(token) || /^M[5789]$/.test(token)) {
       tokens.push(`MODEL:${token.replace(/-/g, "")}`);
     }
   });
@@ -2808,15 +2810,30 @@ function isQaQuestionDirectMatch_(query, question) {
   const queryModelEntities = queryEntities.filter(
     (token) => token.indexOf("MODEL:") === 0,
   );
+  const questionExactModelEntities = questionModelEntities.filter(
+    (token) => !/^MODEL:M[5789]$/.test(token),
+  );
+  const queryExactModelEntities = queryModelEntities.filter(
+    (token) => !/^MODEL:M[5789]$/.test(token),
+  );
   if (
-    queryModelEntities.length > 0 &&
-    (questionModelEntities.length !== queryModelEntities.length ||
-      queryModelEntities.some(
-        (token) => questionModelEntities.indexOf(token) < 0,
+    queryExactModelEntities.length > 0 &&
+    (questionExactModelEntities.length !== queryExactModelEntities.length ||
+      queryExactModelEntities.some(
+        (token) => questionExactModelEntities.indexOf(token) < 0,
       ))
   ) {
     return false;
   }
+
+  // 允許「完整 QA 題句」和使用者較短問法互為包含，但至少要有 12 個
+  // 正規化字元且產品實體已在上方嚴格對齊。這可涵蓋省略第二子句的精準題，
+  // 不恢復曾造成跨型號誤答的 LCS／模糊相似度。
+  const hasMeaningfulExactContainment =
+    Math.min(normalizedQuery.length, normalizedQuestion.length) >= 12 &&
+    (normalizedQuestion.indexOf(normalizedQuery) >= 0 ||
+      normalizedQuery.indexOf(normalizedQuestion) >= 0);
+  if (hasMeaningfulExactContainment) return true;
 
   const queryConnections = getQaConnectionTokens_(query);
   const questionConnections = getQaConnectionTokens_(question);
@@ -3556,6 +3573,80 @@ function getSmartMonitorCodecSelectionModels(limit = 10) {
   return dedupDisplayModels(models, limit);
 }
 
+function getExactSmartMonitorCodecModelFromQuery_(query, availableModels) {
+  const models = Array.isArray(availableModels)
+    ? availableModels.map((model) => String(model || "").toUpperCase())
+    : getSmartMonitorCodecSelectionModels(50);
+  const tokens = extractFullModelLikeTokens(query).map((token) =>
+    String(token || "").toUpperCase().replace(/^LS/, "S"),
+  );
+  const matches = models.filter((model) =>
+    tokens.some((token) => {
+      if (token === model) return true;
+      if (!token.startsWith(model)) return false;
+      // 只接受 Samsung 地區／通路尾碼，不允許多一段數字的近似型號誤命中。
+      return /^[A-Z]{1,6}$/.test(token.slice(model.length));
+    }),
+  );
+  return matches.length === 1 ? matches[0] : "";
+}
+
+function buildSmartMonitorCodecManualQuery_(model) {
+  const selectedModel = String(model || "").trim().toUpperCase();
+  return `請查官方手冊「支援的視訊編解碼器」表格與 HEVC/H.265 相關注意事項：${selectedModel} 播放檔案是否支援 HEVC/H.265 格式？如果表格列有 HEVC（H.265 - Main、Main10）就回答支援，並標出手冊頁碼。請同時搜尋手冊是否有「HEVC 編解碼器僅適用於 MKV / MP4 / TS 檔案類型」這類限制；若有就列出 MKV/MP4/TS，若沒有就明確說手冊未列出檔案類型限制。禁止使用「通常」「常見」「應該」等推測語。只有找不到 HEVC/H.265 記載時才回答手冊未記載。 (型號: ${selectedModel})`;
+}
+
+/**
+ * 經人工對照官方 PDF 後保存的最小手冊片段索引。
+ * 這裡只存可稽核的頁面事實與 metadata，不存推測；查詢必須同時精準命中
+ * 型號與意圖才可使用。未命中時仍回到完整手冊授權／20K token fuse。
+ */
+function getVerifiedManualChunks_() {
+  return [
+    {
+      models: ["S32FM703"],
+      intent: "HEVC",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "180、187",
+      facts: [
+        "支援 HEVC（H.265 - Main、Main10）",
+        "HEVC 編解碼器僅適用於 MKV、MP4、TS 檔案類型",
+      ],
+    },
+  ];
+}
+
+function findVerifiedManualChunk_(query, model) {
+  const normalizedModel = String(model || "").trim().toUpperCase();
+  const text = String(query || "");
+  if (!normalizedModel || !isMediaCodecSupportQuery(text)) return null;
+
+  const chunks = getVerifiedManualChunks_();
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const modelHit = (chunk.models || []).some(function (item) {
+      return String(item || "").toUpperCase() === normalizedModel;
+    });
+    const intentHit =
+      chunk.intent === "HEVC" && /HEVC|H\.?\s*265|H265/i.test(text);
+    if (modelHit && intentHit) return chunk;
+  }
+  return null;
+}
+
+function buildVerifiedManualChunkReply_(model, chunk) {
+  if (!chunk || !Array.isArray(chunk.facts) || chunk.facts.length === 0) {
+    return "";
+  }
+  return [
+    `${model} ${chunk.facts[0]}。`,
+    chunk.facts.slice(1).join("；") + "。",
+    "",
+    `手冊頁碼：第 ${chunk.pages} 頁`,
+    "[來源:官方手冊]",
+  ].join("\n");
+}
+
 function buildSmartMonitorCodecSelectionPayload(query, userId) {
   const models = getSmartMonitorCodecSelectionModels(10);
   const hasModels = models.length > 0;
@@ -3718,6 +3809,50 @@ function limitManualPdfFiles_(files, query) {
     String(query || ""),
   );
   return candidates.slice(0, isComparison ? 2 : 1);
+}
+
+/**
+ * 同一型號可能同時有快速指南與完整使用手冊。對編解碼器、協定等必須查
+ * 詳細表格的題目，先保留精準型號命中，再優先選「涵蓋型號較少」的 PDF；
+ * 這是通用的文件粒度排序，不綁死任何型號或答案。
+ */
+function prioritizeDetailedManualCandidates_(files, query, primaryModel) {
+  const candidates = Array.isArray(files) ? files.slice() : [];
+  if (
+    candidates.length < 2 ||
+    !isManualVerificationRequiredQuery(query) ||
+    !primaryModel
+  ) {
+    return candidates;
+  }
+
+  return candidates
+    .map(function (file, index) {
+      const name = String((file && file.name) || "");
+      const modelCount = name
+        .replace(/\.pdf$/i, "")
+        .split(",")
+        .map(function (part) {
+          return part.trim();
+        })
+        .filter(function (part) {
+          return part.length > 0;
+        }).length;
+      return {
+        file: file,
+        index: index,
+        primary: pdfFileNameMatchesModelToken_(name, primaryModel) ? 1 : 0,
+        modelCount: modelCount,
+      };
+    })
+    .sort(function (a, b) {
+      if (a.primary !== b.primary) return b.primary - a.primary;
+      if (a.modelCount !== b.modelCount) return a.modelCount - b.modelCount;
+      return a.index - b.index;
+    })
+    .map(function (item) {
+      return item.file;
+    });
 }
 
 function buildManualConsentPrompt_(answerText, query, model) {
@@ -6921,6 +7056,23 @@ function getRelevantKBFiles(
     );
   }
 
+  const detailedManualOrder = prioritizeDetailedManualCandidates_(
+    tier1,
+    combinedQuery,
+    primaryModel,
+  );
+  if (
+    detailedManualOrder.length > 1 &&
+    detailedManualOrder[0] !== tier1[0]
+  ) {
+    writeLog(
+      `[KB Select v29.6.104] 詳細手冊題優先較精準 PDF: ${detailedManualOrder
+        .map((f) => f.name)
+        .join(", ")}`,
+    );
+  }
+  tier1 = detailedManualOrder;
+
   // 5. 純精準匹配策略：不啟用模糊匹配
   //    沒有精準匹配的 PDF？那就不載 PDF，避免載到不相關的手冊
   //    （例如問 G90XF 不應該載到 G80SD 的手冊）
@@ -7214,7 +7366,7 @@ function constructDynamicPrompt(
   return dynamicPrompt;
 }
 
-function countGeminiPayloadTokens_(apiKey, modelName, payload) {
+function countGeminiPayloadTokens_(apiKey, modelName, payload, attachPDFs) {
   try {
     const generateContentRequest = {
       model: modelName,
@@ -7242,7 +7394,18 @@ function countGeminiPayloadTokens_(apiKey, modelName, payload) {
     const body = response.getContentText();
     if (code !== 200) {
       writeLog(`[Token Preflight] countTokens 失敗 ${code}: ${body.substring(0, 300)}`);
-      return { ok: false, totalTokens: null, error: `HTTP ${code}` };
+      const staleFile =
+        !!attachPDFs &&
+        (code === 403 || code === 404) &&
+        /(?:permission to access the File|may not exist|PERMISSION_DENIED|NOT_FOUND)/i.test(
+          body,
+        );
+      return {
+        ok: false,
+        totalTokens: null,
+        error: `HTTP ${code}`,
+        staleFile: staleFile,
+      };
     }
     const parsed = JSON.parse(body);
     const totalTokens = Number(parsed.totalTokens);
@@ -7589,12 +7752,25 @@ ${directOfficialPageEvidence
   //   payload.cachedContent = specCachedName;
   // }
 
-  const tokenPreflight = countGeminiPayloadTokens_(apiKey, modelName, payload);
+  const tokenPreflight = countGeminiPayloadTokens_(
+    apiKey,
+    modelName,
+    payload,
+    attachPDFs,
+  );
   const inputLimit = attachPDFs
     ? CONFIG.MAX_LEGACY_PDF_INPUT_TOKENS
     : CONFIG.MAX_FAST_INPUT_TOKENS;
   if (!tokenPreflight.ok) {
     if (attachPDFs) {
+      if (tokenPreflight.staleFile) {
+        CacheService.getScriptCache().put("kb_need_rebuild", "true", 3600);
+        scheduleImmediateRebuild();
+        writeLog(
+          "[Token Fuse v29.6.101] PDF token 預檢偵測過期／無權限檔案，已排程背景重建並停止本次生成",
+        );
+        return "[KB_EXPIRED]";
+      }
       writeLog(
         `[Token Fuse v29.6.095] PDF countTokens 失敗，fail closed，未送出 generateContent`,
       );
@@ -8838,6 +9014,79 @@ function handleMessage(event) {
     }
 
     if (!msg.startsWith("#") && isSmartMonitorCodecQuestion(msg)) {
+      const smartCodecModels = getSmartMonitorCodecSelectionModels(10);
+      const exactSmartCodecModel = getExactSmartMonitorCodecModelFromQuery_(
+        msg,
+        smartCodecModels,
+      );
+      if (exactSmartCodecModel) {
+        const verifiedManualChunk = findVerifiedManualChunk_(
+          msg,
+          exactSmartCodecModel,
+        );
+        if (verifiedManualChunk) {
+          const verifiedManualReply = buildVerifiedManualChunkReply_(
+            exactSmartCodecModel,
+            verifiedManualChunk,
+          );
+          writeLog(
+            `[Manual Chunk RAG v29.6.105] 精準命中 ${exactSmartCodecModel} / ${verifiedManualChunk.intent}: ${verifiedManualChunk.sourceFile} 第 ${verifiedManualChunk.pages} 頁`,
+          );
+          replyMessage(replyToken, verifiedManualReply);
+          writeRecordDirectly(userId, msg, contextId, "user", "");
+          writeRecordDirectly(
+            userId,
+            verifiedManualReply,
+            contextId,
+            "assistant",
+            "",
+          );
+          const verifiedManualHistory = getHistoryFromCacheOrSheet(contextId);
+          updateHistorySheetAndCache(
+            contextId,
+            verifiedManualHistory,
+            { role: "user", content: msg },
+            { role: "assistant", content: verifiedManualReply },
+          );
+          return;
+        }
+        const smartCodecConsentReply = buildManualConsentPrompt_(
+          "這題需要依官方手冊的編解碼器表格確認，我不先用共通說法猜。",
+          msg,
+          exactSmartCodecModel,
+        );
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify([exactSmartCodecModel]),
+          300,
+        );
+        cache.put(`${userId}:pending_manual_query`, msg, 600);
+        cache.put(`${userId}:pending_topic`, msg, 600);
+        writeLog(
+          `[Smart Codec Guard v29.6.100] 已鎖定完整型號 ${exactSmartCodecModel}，等待明確查手冊同意`,
+        );
+        replyMessage(replyToken, smartCodecConsentReply, {
+          quickReply: {
+            items: [
+              {
+                type: "action",
+                action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
+              },
+            ],
+          },
+        });
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, smartCodecConsentReply, contextId, "assistant", "");
+        const exactCodecHistory = getHistoryFromCacheOrSheet(contextId);
+        updateHistorySheetAndCache(
+          contextId,
+          exactCodecHistory,
+          { role: "user", content: msg },
+          { role: "assistant", content: smartCodecConsentReply },
+        );
+        return;
+      }
+
       const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(msg, userId);
       writeLog(
         `[Smart Codec Guard v29.6.067] 題目需先選型號再查 PDF，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
@@ -9462,7 +9711,7 @@ function handleMessage(event) {
         }
 
         const queryText = isSmartMonitorCodecQuestion(savedTopic)
-          ? `請查官方手冊「支援的視訊編解碼器」表格與 HEVC/H.265 相關注意事項：${selectedModel} 播放檔案是否支援 HEVC/H.265 格式？如果表格列有 HEVC（H.265 - Main、Main10）就回答支援。請同時搜尋手冊是否有「HEVC 編解碼器僅適用於 MKV / MP4 / TS 檔案類型」這類限制；若有就列出 MKV/MP4/TS，若沒有就明確說手冊未列出檔案類型限制。禁止使用「通常」「常見」「應該」等推測語。只有找不到 HEVC/H.265 記載時才回答手冊未記載。 (型號: ${selectedModel})`
+          ? buildSmartMonitorCodecManualQuery_(selectedModel)
           : savedTopic
             ? `${savedTopic} (型號: ${selectedModel})`
             : selectedModel;
@@ -9742,22 +9991,41 @@ function handleMessage(event) {
       }
 
       grantManualSearchConsent_(cache, userId, lastQuestion, []);
+      let manualExecutionQuery = lastQuestion;
 
       if (isSmartMonitorCodecQuestion(lastQuestion)) {
-        const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
-        writeLog(
-        `[Smart Codec Guard v29.6.067] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+        const exactSmartCodecModel = getExactSmartMonitorCodecModelFromQuery_(
+          lastQuestion,
+          getSmartMonitorCodecSelectionModels(50),
         );
-        replyMessage(replyToken, smartCodecPayload.messages);
-        updateHistorySheetAndCache(
-          contextId,
-          history,
-          { role: "user", content: lastQuestion },
-          { role: "assistant", content: smartCodecPayload.assistantRecord },
-        );
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, smartCodecPayload.assistantRecord, contextId, "assistant", "");
-        return;
+        if (exactSmartCodecModel) {
+          manualExecutionQuery = buildSmartMonitorCodecManualQuery_(
+            exactSmartCodecModel,
+          );
+          cache.put(
+            `${userId}:direct_search_models`,
+            JSON.stringify([exactSmartCodecModel]),
+            300,
+          );
+          writeLog(
+            `[Smart Codec Guard v29.6.100] #查手冊沿用完整型號 ${exactSmartCodecModel}，直接進單次 PDF 查證`,
+          );
+        } else {
+          const smartCodecPayload = buildSmartMonitorCodecSelectionPayload(lastQuestion, userId);
+          writeLog(
+            `[Smart Codec Guard v29.6.067] #查手冊 顯示 Smart Monitor PDF 型號選擇，不輸出固定手冊答案: ${smartCodecPayload.models.join(", ")}`,
+          );
+          replyMessage(replyToken, smartCodecPayload.messages);
+          updateHistorySheetAndCache(
+            contextId,
+            history,
+            { role: "user", content: lastQuestion },
+            { role: "assistant", content: smartCodecPayload.assistantRecord },
+          );
+          writeRecordDirectly(userId, msg, contextId, "user", "");
+          writeRecordDirectly(userId, smartCodecPayload.assistantRecord, contextId, "assistant", "");
+          return;
+        }
       }
 
       if (promptAliasOnlyModelSelection(lastQuestion, userId, replyToken, contextId, "pdf")) {
@@ -9766,7 +10034,7 @@ function handleMessage(event) {
 
       showLoadingAnimation(userId, 60);
       writeLog(
-        `[Quick Reply v29.5.120] 查手冊，問題: ${lastQuestion.substring(0, 60)}`,
+        `[Quick Reply v29.5.120] 查手冊，問題: ${manualExecutionQuery.substring(0, 60)}`,
       );
 
       // ── 關鍵修復 v29.5.120: 實際呼叫 getRelevantKBFiles 取得 PDF ──
@@ -9775,9 +10043,9 @@ function handleMessage(event) {
           CACHE_KEYS.KB_URI_LIST,
         ) || "[]",
       );
-      const searchMsg = { role: "user", content: lastQuestion };
+      const searchMsg = { role: "user", content: manualExecutionQuery };
       const checkModelRegex = /\b(G\d{1,2}[A-Z]{0,2}|M\d{1,2}[A-Z]?|(?:L?S)\d{1,2}[A-Z]{0,2}\d{0,4}[A-Z0-9]{0,5}|(L?[CF])\d{2}[A-Z]+\d{2,4}[A-Z0-9]*|WA\d+[A-Z\d]*|WD\d+[A-Z\d]*|VR\d+[A-Z\d]*)\b/i;
-      const hasModelInQuery = checkModelRegex.test(lastQuestion);
+      const hasModelInQuery = checkModelRegex.test(manualExecutionQuery);
       writeLog(
         `[Quick Reply v29.5.242] #查手冊 forceCurrentOnly=${hasModelInQuery}（有型號時跳過歷史/Cache 型號注入）`,
       );
@@ -9790,7 +10058,7 @@ function handleMessage(event) {
       );
       const relevantFiles = limitManualPdfFiles_(
         Array.isArray(kbResult) ? kbResult : kbResult.files || [],
-        lastQuestion,
+        manualExecutionQuery,
       );
       const primaryModel = Array.isArray(kbResult)
         ? null
@@ -9827,8 +10095,8 @@ function handleMessage(event) {
 
       const userMsgObj = { role: "user", content: lastQuestion };
       const response = callLLMWithRetry(
-        lastQuestion,
-        [userMsgObj],
+        manualExecutionQuery,
+        [{ role: "user", content: manualExecutionQuery }],
         relevantFiles, // ← 實際掛載 PDF
         true, // attachPDFs
         null,
@@ -10265,24 +10533,26 @@ function handleMessage(event) {
     }
 
     // D. 一般對話
-    // v29.6.093: 跨裝置題也必須遵守 QA -> RULE -> PDF；精準 QA 可直接零成本回覆。
-    if (isCrossDeviceMonitorQuery(msg)) {
-      const crossDeviceLocalQa = findLocalMatchInQA(msg, userId);
-      if (crossDeviceLocalQa) {
-        writeLog(
-          `[QA First Router v29.6.093] 精準 QA 命中，先於 RULE/PDF 回覆: "${crossDeviceLocalQa.question.substring(0, 50)}"`,
-        );
-        replyWithLocalQaMatch_(
-          crossDeviceLocalQa,
-          msg,
-          userId,
-          replyToken,
-          contextId,
-        );
-        return;
-      }
+    // v29.6.098: 精準 QA 是所有產品問題的第一層，不限跨裝置題。
+    // 嚴格 matcher 同時比對產品實體、連接方式與主要意圖；命中時零 LLM 直接回覆。
+    const directLocalQa = findLocalMatchInQA(msg, userId);
+    if (directLocalQa) {
       writeLog(
-        "[QA First Router v29.6.093] 精準 QA 未命中，繼續 RULE Fast Mode；不足才升級 PDF",
+        `[QA First Router v29.6.098] 精準 QA 命中，先於 RULE/PDF 回覆: "${directLocalQa.question.substring(0, 50)}"`,
+      );
+      replyWithLocalQaMatch_(
+        directLocalQa,
+        msg,
+        userId,
+        replyToken,
+        contextId,
+      );
+      return;
+    }
+
+    if (isCrossDeviceMonitorQuery(msg)) {
+      writeLog(
+        "[QA First Router v29.6.098] 精準 QA 未命中，繼續 RULE Fast Mode；不足才詢問是否查 PDF",
       );
     }
 
@@ -17752,47 +18022,31 @@ function toHalfWidth(str) {
 }
 
 /**
- * [Cost Guard] 檢查是否為高成本 PDF 操作 (v29.5.96)
+ * [Cost Guard] 只攔截使用者已明確授權的 PDF 操作 (v29.6.098)
  * @param {string} userMsg
  */
 function checkPdfCost(userMsg, testUiAccessToken) {
   assertTestUiAuthorized_(testUiAccessToken);
   if (!userMsg) return { isHighCost: false, reason: "Empty message" };
 
-  // 1. Check for PDF Keywords
+  // 一般產品問題（含型號、設定、故障）必須先走 QA/RULE Fast Mode，
+  // 不得僅因字詞或型號外觀就在 TestUI 前端誤報成 PDF 費用。
+  // 只有下一輪的明確查手冊授權才顯示高成本確認。
   const m = userMsg.toLowerCase();
-  const pdfKeywords = [
-    "手冊",
-    "設定",
-    "說明書",
-    "故障",
-    "error",
-    "安裝",
-    "reset",
-    "重置",
-    "亮燈",
-    "閃爍",
-    "無法",
-    "不能",
-  ];
-  const isPdfIntent = pdfKeywords.some((k) => m.includes(k));
+  const isExplicitPdfConsent =
+    /#\s*查手冊/i.test(m) ||
+    /(?:同意|請|要|幫我|直接)?\s*(?:查|讀|搜尋|檢查)(?:一下|看看)?\s*(?:官方)?(?:pdf|手冊|說明書)/i.test(
+      m,
+    );
 
-  // 2. Check strict model format (S27... G5...)
-  // Simple regex for Samsung model-like strings
-  const isModelLike = /[a-z0-9]{5,}/.test(m);
-
-  if (isPdfIntent) {
+  if (isExplicitPdfConsent) {
     return {
       isHighCost: true,
-      reason: "Detected PDF Keywords (e.g. 手冊/設定)",
+      reason: "Explicit manual-search consent",
     };
   }
 
-  if (isModelLike && m.length < 20) {
-    return { isHighCost: true, reason: "Potential Model Number (Loads PDF)" };
-  }
-
-  return { isHighCost: false, reason: "General Conversation" };
+  return { isHighCost: false, reason: "Fast Mode before manual consent" };
 }
 
 

@@ -62,6 +62,20 @@ assertStep(
 );
 
 assertStep(
+  (testUi.match(/<\?/g) || []).length === 1 &&
+    /<\?!=\s*testUiAccessToken\s*\?>/.test(testUi) &&
+    !/includes\(["']<\?["']\)/.test(testUi),
+  "TestUI HtmlService template only contains the intended token scriptlet",
+);
+
+assertStep(
+  /var messageIdSequence = 0;/.test(testUi) &&
+    (testUi.match(/\+ \+\+messageIdSequence/g) || []).length >= 2 &&
+    !/var id = "msg-" \+ new Date\(\)\.getTime\(\);/.test(testUi),
+  "TestUI message bubbles use collision-free ids so Reading placeholders are removed",
+);
+
+assertStep(
   !/function restoreClassRulesToSheet/.test(linebot) &&
     !/clearContents\(\)[\s\S]{0,180}CLASS_RULES/.test(linebot) &&
     !/restoreClassRulesToSheet/.test(

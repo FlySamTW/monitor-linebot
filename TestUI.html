@@ -14,7 +14,9 @@
     <script>
       const rawTestUiToken =
         document.querySelector('meta[name="test-ui-token"]')?.content || "";
-      const TEST_UI_ACCESS_TOKEN = rawTestUiToken.includes("<?")
+      // HtmlService template 會把原始字面值「< + ?」誤當第二個 scriptlet 起點。
+      // 未經 Apps Script evaluate 的本機頁，其 placeholder 一定以「<」開頭。
+      const TEST_UI_ACCESS_TOKEN = rawTestUiToken.startsWith("<")
         ? "MOCK_TOKEN"
         : rawTestUiToken;
       const TEST_USER_ID_KEY = "samsung_linebot_test_user_id";
@@ -73,7 +75,7 @@
                 // Mock save, do nothing
               },
               checkPdfCost: function (msg) {
-                const isHighCost = /#查手冊|查手冊|說明書|PDF/i.test(
+                const isHighCost = /#\s*查手冊|(?:同意|請|要|幫我|直接)?\s*(?:查|讀|搜尋|檢查)(?:一下|看看)?\s*(?:官方)?(?:PDF|手冊|說明書)/i.test(
                   String(msg || ""),
                 );
                 setTimeout(() => {
@@ -564,6 +566,7 @@
       ];
       var historyData = [];
       var currentQuickReplies = []; // 存儲當前快速回覆選項
+      var messageIdSequence = 0;
 
       // 🔥 223 題壓力測試題庫
       const PRESET_QUESTIONS = [
@@ -1086,7 +1089,7 @@
       // --- UI ---
       function addMsg(role, text) {
         var chatBox = document.getElementById("chat-box");
-        var id = "msg-" + new Date().getTime();
+        var id = "msg-" + new Date().getTime() + "-" + ++messageIdSequence;
         var html = `<div class="msg-row ${role}" id="${id}">
       ${role === "bot" ? '<div class="avatar"></div>' : ""}
       <div class="msg-bubble">${text}</div>
@@ -1098,7 +1101,7 @@
 
       function addMsgWithQuickReplies(role, text, quickReplies) {
         var chatBox = document.getElementById("chat-box");
-        var id = "msg-" + new Date().getTime();
+        var id = "msg-" + new Date().getTime() + "-" + ++messageIdSequence;
         var html = `<div class="msg-row ${role}" id="${id}">
       ${role === "bot" ? '<div class="avatar"></div>' : ""}
       <div>
