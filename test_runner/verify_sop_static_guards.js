@@ -1452,20 +1452,18 @@ assertStep(
 
 assertStep(
   /buildCrossDeviceMonitorPromptRule\(query\)/.test(linebot) &&
-    /Cross Device Evidence Guard v29\.6\.073/.test(linebot) &&
-    /correctedText\s*=\s*callLLMWithRetry/.test(linebot) &&
-    /evidenceCorrectionAttempted\s*=\s*false/.test(linebot) &&
-    /!evidenceCorrectionAttempted/.test(linebot) &&
-    /targetModelName,\s*true,\s*webGroundingRetryAttempted,\s*\)/.test(linebot) &&
-    /兩次 LLM 合計費用/.test(linebot) &&
-    /第二次仍違反來源邊界/.test(linebot) &&
+    /Cross Device Evidence Guard v29\.6\.095/.test(linebot) &&
+    /不為修飾答案同步再呼叫一次 LLM/.test(linebot) &&
+    !/correctedText\s*=\s*callLLMWithRetry/.test(linebot) &&
+    /hasWrongScopeRefusal/.test(linebot) &&
+    /return "\[AUTO_SEARCH_PDF\]"/.test(linebot) &&
     /sanitizeUnsupportedCrossDeviceExternalAdvice/.test(linebot) &&
     /hasUnsupportedCrossDeviceManualExternalClaim_/.test(linebot) &&
     /sanitizeUnsupportedCrossDeviceManualClaims_/.test(linebot) &&
     !/若詢問手機\/平板，回覆「我只負責電腦螢幕與智慧家電喔/.test(
       fs.readFileSync(path.join(root, "Prompt.csv"), "utf8"),
     ),
-  "cross-device monitor scope guard must override bad refusals without hiding retry cost",
+  "cross-device monitor scope guard must override bad refusals without an automatic second paid generation",
 );
 
 assertStep(
@@ -1629,9 +1627,9 @@ assertStep(
 assertStep(
   /let lastWebEvidenceValid = false;/.test(linebot) &&
     /grounding\.groundingChunks[\s\S]{0,180}grounding\.groundingSupports/.test(linebot) &&
-    /webGroundingRetryAttempted\s*=\s*false/.test(linebot) &&
-    /Grounding Audit v29\.6\.075/.test(linebot) &&
-    /第二次仍無可稽核來源，拒絕輸出假網搜答案/.test(linebot) &&
+    /Grounding Audit v29\.6\.095/.test(linebot) &&
+    /不為補引用自動再生成/.test(linebot) &&
+    !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
     /lastWebEvidenceValid\s*&&[\s\S]{0,160}lastSearchSources/.test(linebot) &&
     /tools\.unshift\(\{ url_context: \{\} \}\)/.test(linebot) &&
     /URL_RETRIEVAL_STATUS_SUCCESS/.test(linebot) &&

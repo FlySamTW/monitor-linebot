@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.094"; // 2026-07-30 人味回覆、PDF 單次授權與 TestUI 守門
-const BUILD_TIMESTAMP = "2026-07-31 04:35";
+const GAS_VERSION = "v29.6.095"; // 2026-08-05 RAG token fuse、費用與付費測試守門
+const BUILD_TIMESTAMP = "2026-08-05 22:00";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -33,8 +33,8 @@ const LLM_PROVIDER = "Gemini";
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
 const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite)
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite)
+const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
+const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -46,8 +46,8 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
 const GEMINI_MODEL_THINK = "models/gemini-2.5-flash-lite";
-const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite)
-const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite)
+const PRICE_THINK_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite Standard)
+const PRICE_THINK_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite Standard)
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA/RULE 生成 (Polish Mode) (固定 Gemini 2.5 Flash-Lite)
@@ -2056,7 +2056,7 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
  * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
  */
 function isApiFailureReply(text) {
-  return /目前請求過於頻繁|已達配額限制|系統(?:暫時)?忙碌中?|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
+  return /目前請求過於頻繁|已達配額限制|系統(?:暫時)?忙碌中?|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|手冊內容超過成本上限|無法完成手冊\s*token\s*計數|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
     String(text || ""),
   );
 }
@@ -4581,21 +4581,15 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
       // writeLog(`[DynamicContext v29.4] QA 全文注入: ${fullQA.length} 字元`);
     }
 
-    // 2️⃣ 直接注入輕量層全文 (不篩選)
-    if (lightRules) {
-      relevantContext += "=== 📚 通用定義與術語 (含所有型號別稱) ===\n";
-      relevantContext += lightRules + "\n\n";
-      // v29.5.0: Log Optimization
-      // writeLog(
-      //   `[DynamicContext v29.4] 輕量層全文注入: ${lightRules.length} 字元`
-      // );
-    }
-
-    // 3️⃣ 規格層智慧檢索 (Spec Layer Smart Retrieval) v29.4.6
+    // 2️⃣ RULE 智慧檢索：輕量層與規格層合併排序，不再把前 50 列全數傾倒給模型。
+    // 單題最多注入 8 筆相關 RULE，避免 Fast Mode 因無關規格接近 token 上限。
+    // 3️⃣ 規格層智慧檢索 (Spec Layer Smart Retrieval) v29.6.095
     // 核心目標：針對 "40吋", "144Hz" 等屬性查詢，進行加權關鍵字檢索，避免簡單篩選的雜訊
     let specContext = "";
     // v29.5.181: 先用前段載入到的 specRules（含 Sheet fallback），避免 Cache Miss 時規格層直接失效
-    let fullSpecRules = specRules || "";
+    let fullSpecRules = [lightRules || "", specRules || ""]
+      .filter((part) => part)
+      .join("\n");
     if (!fullSpecRules) {
       let chunkIndex = 0;
       while (true) {
@@ -4701,12 +4695,11 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
           return { line, score };
         });
 
-        // 3. Injector: 擇優錄取 Top 50 (v29.6.012: 從 20 提升到 50, 確保 CLASS_RULES 144 列後的規格也能進入 Prompt)
-        // 過濾掉 0 分的，並按分數排序，取前 50 筆
+        // 3. Injector: 過濾 0 分後擇優錄取最多 8 筆。
         const topLines = scoredLines
           .filter((item) => item.score > 0)
           .sort((a, b) => b.score - a.score)
-          .slice(0, 50)
+          .slice(0, CONFIG.MAX_RELEVANT_RULE_LINES)
           .map((item) => item.line);
 
         if (topLines.length > 0) {
@@ -4816,7 +4809,11 @@ const CONFIG = {
   // v24.2.3: 雙模型策略
   MODEL_NAME_FAST: GEMINI_MODEL_FAST, // 快速對話用
   MODEL_NAME_THINK: GEMINI_MODEL_THINK, // PDF 深度閱讀 & /紀錄 用 (使用最前面的常數)
-  MAX_OUTPUT_TOKENS: 8192,
+  MAX_OUTPUT_TOKENS: 800,
+  MAX_PDF_OUTPUT_TOKENS: 1200,
+  MAX_FAST_INPUT_TOKENS: 12000,
+  MAX_LEGACY_PDF_INPUT_TOKENS: 20000,
+  MAX_RELEVANT_RULE_LINES: 8,
   HISTORY_PAIR_LIMIT: 10, // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
   PDF_HISTORY_LIMIT: 6, // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
   SUMMARY_THRESHOLD: 12, // v24.0.0: 超過 12 對才觸發摘要 (避免過度摘要)
@@ -4870,6 +4867,62 @@ let lastSearchSources = null;
 let lastWebEvidenceValid = false;
 let lastWebEvidenceConflict = false;
 let lastWebSearchAttempted = false;
+let currentRequestAudit = null;
+
+function resetRequestAudit_() {
+  currentRequestAudit = {
+    stages: [],
+    model: "",
+    paidCalls: 0,
+    pdfCalls: 0,
+    webCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    estimatedCostTwd: 0,
+    sources: [],
+    logged: false,
+  };
+}
+
+function markGenerationAttempt_(stage, modelName) {
+  if (!currentRequestAudit) resetRequestAudit_();
+  if (!currentRequestAudit.stages.includes(stage)) {
+    currentRequestAudit.stages.push(stage);
+  }
+  currentRequestAudit.model = modelName || currentRequestAudit.model;
+  currentRequestAudit.paidCalls++;
+  if (stage === "pdf") currentRequestAudit.pdfCalls++;
+  if (stage === "web") currentRequestAudit.webCalls++;
+}
+
+function addGenerationUsageToAudit_(usage, costTWD) {
+  if (!currentRequestAudit || !usage) return;
+  currentRequestAudit.inputTokens += Number(usage.promptTokenCount) || 0;
+  currentRequestAudit.outputTokens += Number(usage.candidatesTokenCount) || 0;
+  currentRequestAudit.estimatedCostTwd += Number(costTWD) || 0;
+}
+
+function writeRequestAuditOnce_(visibleText) {
+  if (!currentRequestAudit || currentRequestAudit.logged) return;
+  const sourceTags = String(visibleText || "").match(/\[來源[:：]([^\]]+)\]/g) || [];
+  const sources = sourceTags
+    .map((tag) => tag.replace(/^\[來源[:：]|\]$/g, "").trim())
+    .concat(Array.isArray(lastSearchSources) ? lastSearchSources : []);
+  currentRequestAudit.sources = [...new Set(sources.filter(Boolean))];
+  const payload = {
+    stage: currentRequestAudit.stages.join("+") || "deterministic",
+    model: currentRequestAudit.model || "none",
+    paidCalls: currentRequestAudit.paidCalls,
+    pdfCalls: currentRequestAudit.pdfCalls,
+    webCalls: currentRequestAudit.webCalls,
+    inputTokens: currentRequestAudit.inputTokens,
+    outputTokens: currentRequestAudit.outputTokens,
+    estimatedCostTwd: Number(currentRequestAudit.estimatedCostTwd.toFixed(4)),
+    sources: currentRequestAudit.sources,
+  };
+  writeLog(`[Request Audit v29.6.095] ${JSON.stringify(payload)}`);
+  currentRequestAudit.logged = true;
+}
 
 /**
  * 從型號或關鍵字提取 LS 編號，產生三星官網搜尋連結
@@ -6214,17 +6267,47 @@ function scanOfficialWebsiteForNewMonitors() {
       return;
     }
     
-    // 3. 處理每款新機型 - v29.5.223: 簡化為僅寫入佔位行，不呼叫 AI 且不下載手冊，杜絕幻覺
-    newProducts.forEach(product => {
-      const model = product.model;
-      try {
-        const placeholderLine = `${model},型號：尚無資訊`;
-        sheet.appendRow([placeholderLine]);
-        writeLog(`[Auto Crawler Sheet] ✅ 成功寫入佔位行: ${placeholderLine}`);
-      } catch (err) {
-        writeLog(`[Auto Crawler Product Error] 處理產品 ${model} 失敗: ${err.message}`);
+    // v29.6.095: Product Finder 只負責發現候選型號。
+    // 未完成 PDP 規格擷取與欄位驗證前，禁止把「尚無資訊」寫入正式 RULE。
+    const pendingReviewItems = newProducts.map(function (product) {
+      return {
+        model: product.model,
+        displayName: product.displayName,
+        officialUrl: product.detailUrl,
+        detectedAt: new Date().toISOString(),
+        status: "PENDING_SPEC_REVIEW",
+      };
+    });
+    const props = PropertiesService.getScriptProperties();
+    let existingPending = [];
+    try {
+      existingPending = JSON.parse(
+        props.getProperty("PENDING_MODEL_REVIEW") || "[]",
+      );
+      if (!Array.isArray(existingPending)) {
+        existingPending = [];
+      }
+    } catch (parseErr) {
+      existingPending = [];
+      writeLog(`[Auto Crawler Review] 舊待審核清單解析失敗: ${parseErr.message}`);
+    }
+
+    const pendingByModel = {};
+    existingPending.concat(pendingReviewItems).forEach(function (item) {
+      if (item && item.model) {
+        pendingByModel[String(item.model).toUpperCase()] = item;
       }
     });
+    const mergedPending = Object.keys(pendingByModel)
+      .sort()
+      .map(function (model) {
+        return pendingByModel[model];
+      })
+      .slice(-30);
+    props.setProperty("PENDING_MODEL_REVIEW", JSON.stringify(mergedPending));
+    writeLog(
+      `[Auto Crawler Review] 發現 ${newProducts.length} 款候選型號，已進待審核清單；未寫入 CLASS_RULES`,
+    );
     
   } catch (e) {
     writeLog(`[Auto Crawler Error] 掃描全過程出錯: ${e.message}`);
@@ -7113,6 +7196,58 @@ function constructDynamicPrompt(
   return dynamicPrompt;
 }
 
+function countGeminiPayloadTokens_(apiKey, modelName, payload) {
+  try {
+    const generateContentRequest = {
+      model: modelName,
+      contents: JSON.parse(JSON.stringify(payload.contents || [])),
+    };
+    if (payload.systemInstruction) {
+      generateContentRequest.systemInstruction = JSON.parse(
+        JSON.stringify(payload.systemInstruction),
+      );
+    }
+    if (payload.tools) {
+      generateContentRequest.tools = JSON.parse(JSON.stringify(payload.tools));
+    }
+
+    // 官方 countTokens 的 generateContentRequest 可精確包含 systemInstruction、tools
+    // 與 file_data/file_uri；這裡使用生成請求的同一份輸入，不另做字元推估。
+    const countUrl = `${CONFIG.API_ENDPOINT}/${modelName}:countTokens?key=${apiKey}`;
+    const response = UrlFetchApp.fetch(countUrl, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify({ generateContentRequest: generateContentRequest }),
+      muteHttpExceptions: true,
+    });
+    const code = response.getResponseCode();
+    const body = response.getContentText();
+    if (code !== 200) {
+      writeLog(`[Token Preflight] countTokens 失敗 ${code}: ${body.substring(0, 300)}`);
+      return { ok: false, totalTokens: null, error: `HTTP ${code}` };
+    }
+    const parsed = JSON.parse(body);
+    const totalTokens = Number(parsed.totalTokens);
+    if (!Number.isFinite(totalTokens)) {
+      return { ok: false, totalTokens: null, error: "missing totalTokens" };
+    }
+    return { ok: true, totalTokens: totalTokens, details: parsed.promptTokensDetails || [] };
+  } catch (error) {
+    writeLog(`[Token Preflight] countTokens 例外: ${error.message}`);
+    return { ok: false, totalTokens: null, error: error.message };
+  }
+}
+
+function buildTokenFuseReply_(attachPDFs, reason) {
+  if (attachPDFs) {
+    if (reason === "count_failed") {
+      return "這次無法完成手冊 token 計數，為了避免在不知成本時整本送出，我先停在這裡。\n\n要改查三星官方網站嗎？\n\n[AUTO_SEARCH_WEB]";
+    }
+    return "這份手冊內容超過成本上限，我沒有把整本 PDF 送給模型，也不會用一般知識補猜。\n\n要改查三星官方網站嗎？\n\n[AUTO_SEARCH_WEB]";
+  }
+  return "這題的參考內容超過單次查詢上限。請縮小到一個完整型號和一個明確問題，我再重新查證。";
+}
+
 // v27.8.15: 新增 data-drive keyword detection, forceWebSearch 參數
 // v27.9.51: Refactor Name (ChatGPT -> LLM)
 // v29.4.18: Standardized Signature to fix ReferenceError
@@ -7129,7 +7264,6 @@ function callLLMWithRetry(
   evidenceCorrectionAttempted = false,
   webGroundingRetryAttempted = false,
 ) {
-  lastLlmCallAttempted = true;
   if (forceWebSearch) {
     lastWebSearchAttempted = true;
   }
@@ -7178,6 +7312,13 @@ function callLLMWithRetry(
         `[Token Control v29.4.33] PDF Mode: 歷史截斷 ${messages.length} -> ${effectiveMessages.length} (省 Token)`,
       );
     }
+  } else if (!attachPDFs && messages.length > 6) {
+    // v29.6.095: 先裁減、後建 prompt/payload，避免舊版只改 effectiveMessages
+    // 卻仍把未裁減 geminiContents 送出的成本漏洞。
+    effectiveMessages = messages.slice(-6);
+    writeLog(
+      `[Token Control v29.6.095] Fast/Web 歷史先裁減 ${messages.length} -> ${effectiveMessages.length} 則，再建立唯一 payload`,
+    );
   }
 
   const recentOfficialManualAnswer = forceWebSearch
@@ -7333,7 +7474,9 @@ ${directOfficialPageEvidence
     : CONFIG.MODEL_NAME_FAST;
 
   const genConfig = {
-    maxOutputTokens: attachPDFs ? 4096 : CONFIG.MAX_OUTPUT_TOKENS, // PDF 模式放寬至 4096
+    maxOutputTokens: attachPDFs
+      ? CONFIG.MAX_PDF_OUTPUT_TOKENS
+      : CONFIG.MAX_OUTPUT_TOKENS,
     temperature: tempSetting,
   };
 
@@ -7404,43 +7547,6 @@ ${directOfficialPageEvidence
     tools = undefined;
   }
 
-  // v27.9.6: Token 熔斷機制 - 防止 10 萬 Token 爆炸
-  // 策略：保留 System Prompt 和最新對話，裁切中間的歷史記錄
-  const MAX_SAFE_TOKENS = 40000;
-
-  // 粗略估算 Token（1 Token ≈ 1.5 字元）
-  function estimateTokens(text) {
-    return Math.ceil((text || "").length / 1.5);
-  }
-
-  // 估算總 Token
-  let totalTokens = estimateTokens(dynamicPrompt); // System Prompt
-  effectiveMessages.forEach((msg) => {
-    totalTokens += estimateTokens(msg.content);
-  });
-
-  // 如果超過上限，裁切中間的歷史記錄
-  if (totalTokens > MAX_SAFE_TOKENS) {
-    writeLog(
-      `[Token Fuse] ⚠️ 預估 Token 超過上限 (${totalTokens} > ${MAX_SAFE_TOKENS})，啟動熔斷機制`,
-    );
-
-    // 保留最新 2 對對話（4 則訊息）
-    const recentCount = Math.min(4, effectiveMessages.length);
-    const recentMessages = effectiveMessages.slice(-recentCount);
-
-    // 重新估算
-    let newTotal = estimateTokens(dynamicPrompt);
-    recentMessages.forEach((msg) => {
-      newTotal += estimateTokens(msg.content);
-    });
-
-    effectiveMessages = recentMessages;
-    writeLog(
-      `[Token Fuse] 裁切後: ${effectiveMessages.length} 則訊息，預估 ${newTotal} Tokens`,
-    );
-  }
-
   const payload = {
     contents: geminiContents,
     systemInstruction: imageBlob
@@ -7465,6 +7571,39 @@ ${directOfficialPageEvidence
   //   payload.cachedContent = specCachedName;
   // }
 
+  const tokenPreflight = countGeminiPayloadTokens_(apiKey, modelName, payload);
+  const inputLimit = attachPDFs
+    ? CONFIG.MAX_LEGACY_PDF_INPUT_TOKENS
+    : CONFIG.MAX_FAST_INPUT_TOKENS;
+  if (!tokenPreflight.ok) {
+    if (attachPDFs) {
+      writeLog(
+        `[Token Fuse v29.6.095] PDF countTokens 失敗，fail closed，未送出 generateContent`,
+      );
+      return buildTokenFuseReply_(true, "count_failed");
+    }
+    const conservativeEstimate = Math.ceil(JSON.stringify(payload).length / 1.2);
+    if (conservativeEstimate > inputLimit) {
+      writeLog(
+        `[Token Fuse v29.6.095] Fast/Web countTokens 失敗且保守估算 ${conservativeEstimate} > ${inputLimit}，未送出`,
+      );
+      return buildTokenFuseReply_(false, "estimated_limit");
+    }
+    writeLog(
+      `[Token Preflight v29.6.095] countTokens 失敗，保守估算 ${conservativeEstimate} <= ${inputLimit}，允許純文字請求`,
+    );
+  } else {
+    writeLog(
+      `[Token Preflight v29.6.095] stage=${attachPDFs ? "pdf" : forceWebSearch ? "web" : "fast"} input=${tokenPreflight.totalTokens}/${inputLimit} files=${filesToAttach.length}`,
+    );
+    if (tokenPreflight.totalTokens > inputLimit) {
+      writeLog(
+        `[Token Fuse v29.6.095] 已擋下 ${tokenPreflight.totalTokens} tokens 請求，未送出 generateContent`,
+      );
+      return buildTokenFuseReply_(attachPDFs, "token_limit");
+    }
+  }
+
   const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
   // v29.5.0: Optimize API Log - Remove Start Log
   // writeLog(
@@ -7485,77 +7624,9 @@ ${directOfficialPageEvidence
 
   let retryCount = 0;
   let lastError = "";
-  while (retryCount < 3) {
+  while (retryCount < 2) {
     // 每 18 秒補發一次 Loading 動畫（20秒會消失，提前 2 秒補發）
     const now = new Date().getTime();
-
-    // v29.5.44: Token Overload Fallback Strategy (Level 1: Drop 2nd PDF)
-    // 如果是第一次重試 (retryCount=1) 且有 2 本 PDF，嘗試移除第 2 本以減少 Token
-    if (retryCount === 1 && attachPDFs && filesToAttach.length > 1) {
-      writeLog(
-        `[Retry Strategy L1] Token Overload Suspected? Dropping 2nd PDF to save space.`,
-      );
-      try {
-        const userContent = payload.contents.find((c) => c.role === "user");
-        if (userContent && userContent.parts) {
-          // Find all file parts
-          const fileParts = userContent.parts.filter((p) => p.file_data);
-          if (fileParts.length > 1) {
-            // Remove the last one
-            const lastFileURI =
-              fileParts[fileParts.length - 1].file_data.file_uri;
-            const removeIdx = userContent.parts.findIndex(
-              (p) => p.file_data && p.file_data.file_uri === lastFileURI,
-            );
-            if (removeIdx !== -1) {
-              userContent.parts.splice(removeIdx, 1);
-              writeLog(`[Retry Strategy L1] Successfully removed 2nd PDF.`);
-            }
-          }
-        }
-      } catch (e) {
-        writeLog(`[Retry Strategy L1 Error] ${e.message}`);
-      }
-    }
-
-    // v29.5.46: Ultimate Fallback (Level 2: Drop ALL PDFs + System Note)
-    // 如果是最後一次重試 (retryCount=2) 且原本有掛載 PDF，全部移除改為純文字回應
-    if (retryCount === 2 && attachPDFs) {
-      writeLog(
-        `[Fallback Strategy] 🚨 API 重試多次仍失敗 (含 PDF)。啟動終極降級：移除所有檔案，改為純文字模式。`,
-      );
-      try {
-        // 1. Clean Payload: Remove all file_data and inline_data
-        if (payload.contents) {
-          payload.contents.forEach((content) => {
-            if (content.parts) {
-              content.parts = content.parts.filter(
-                (p) => !p.file_data && !p.inline_data,
-              );
-            }
-          });
-        }
-
-        // 2. Append System Note
-        const userContent = payload.contents.find((c) => c.role === "user");
-        if (userContent && userContent.parts) {
-          const systemNote =
-            "\n\n(系統自動降級：因參考文件過大導致讀取失敗，已切換為無文件模式，請依據你的知識庫回答)";
-          const textPart = userContent.parts.find((p) => p.text);
-          if (textPart) {
-            textPart.text += systemNote;
-          } else {
-            userContent.parts.push({ text: systemNote });
-          }
-        }
-
-        // 3. Remove Tools
-        if (payload.tools) delete payload.tools;
-        writeLog(`[Fallback Strategy] Payload Cleaned. System note injected.`);
-      } catch (e) {
-        writeLog(`[Fallback Strategy Error] ${e.message}`);
-      }
-    }
 
     if (userId && now - lastLoadingTime > 18000) {
       try {
@@ -7586,6 +7657,7 @@ ${directOfficialPageEvidence
           // 當 forceWebSearch=true 時，使用 :online 後綴啟用網路插件
           const useOnline = forceWebSearch;
 
+          markGenerationAttempt_(forceWebSearch ? "web" : "fast", OPENROUTER_MODEL);
           const responseText = callOpenRouter(
             openRouterMessages,
             genConfig.temperature,
@@ -7599,6 +7671,9 @@ ${directOfficialPageEvidence
         }
       }
 
+      const requestStage = attachPDFs ? "pdf" : forceWebSearch ? "web" : "fast";
+      lastLlmCallAttempted = true;
+      markGenerationAttempt_(requestStage, modelName);
       const response = UrlFetchApp.fetch(url, {
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -7657,6 +7732,7 @@ ${directOfficialPageEvidence
               total: usage.totalTokenCount,
               costTWD: costTWD,
             };
+            addGenerationUsageToAudit_(usage, costTWD);
           } else {
             // v27.0.0: 如果沒有 usage data，清除舊的 lastTokenUsage
             // 避免 LINE 上顯示上一次查詢的費用
@@ -7978,62 +8054,8 @@ ${directOfficialPageEvidence
             }
 
             if (forceWebSearch && !lastWebEvidenceValid) {
-              const firstUsage = lastTokenUsage
-                ? Object.assign({}, lastTokenUsage)
-                : null;
-              if (!webGroundingRetryAttempted) {
-                const today = Utilities.formatDate(
-                  new Date(),
-                  "Asia/Taipei",
-                  "yyyy年MM月dd日",
-                );
-                const groundedQuery = [
-                  effectiveQuery,
-                  "",
-                  `系統更正：今天是 ${today}。上一輪沒有取得可稽核的網頁來源，不得把 AI 內建知識當成網路搜尋結果。`,
-                  "請重新使用 Google Search，優先查 Apple 台灣官方技術規格與 Samsung 台灣官方支援頁。只有 groundingChunks 實際支援的內容才可回答；先核對產品是否已上市，再提供精簡、可操作的結論。",
-                ].join("\n");
-                const groundedMessages = Array.isArray(effectiveMessages)
-                  ? effectiveMessages.slice()
-                  : [];
-                for (let i = groundedMessages.length - 1; i >= 0; i--) {
-                  if (
-                    groundedMessages[i] &&
-                    groundedMessages[i].role === "user"
-                  ) {
-                    groundedMessages[i] = Object.assign({}, groundedMessages[i], {
-                      content: groundedQuery,
-                    });
-                    break;
-                  }
-                }
-                writeLog(
-                  "[Grounding Audit v29.6.073] 無 groundingChunks/groundingSupports，重試一次官方來源搜尋",
-                );
-                const groundedText = callLLMWithRetry(
-                  groundedQuery,
-                  groundedMessages,
-                  filesToAttach,
-                  attachPDFs,
-                  imageBlob,
-                  true,
-                  userId,
-                  forceWebSearch,
-                  targetModelName,
-                  evidenceCorrectionAttempted,
-                  true,
-                );
-                if (firstUsage && lastTokenUsage) {
-                  lastTokenUsage = combineLlmUsage_(firstUsage, lastTokenUsage);
-                  writeLog(
-                    `[Grounding Audit v29.6.073] 兩次網搜 LLM 合計費用: NT$${lastTokenUsage.costTWD.toFixed(4)}`,
-                  );
-                }
-                return groundedText;
-              }
-
               writeLog(
-                "[Grounding Audit v29.6.073] 第二次仍無可稽核來源，拒絕輸出假網搜答案",
+                "[Grounding Audit v29.6.095] 本次無 groundingChunks/groundingSupports，拒絕輸出假網搜答案，不為補引用自動再生成",
               );
               return "這次網路搜尋沒有取得可核對的網頁來源，所以我先不把 AI 內建資料當成搜尋答案，也不繼續重複搜尋。\n\n請確認完整產品名稱後重新提問，我會從同一款產品的官方資料重新查證。";
             }
@@ -8086,74 +8108,14 @@ ${directOfficialPageEvidence
               }
               return "[AUTO_SEARCH_WEB]";
             }
-            if (
-              (hasWrongScopeRefusal || hasUnsupportedExternalAdvice) &&
-              !evidenceCorrectionAttempted
-            ) {
-              const firstUsage = lastTokenUsage
-                ? Object.assign({}, lastTokenUsage)
-                : null;
-              const correctedQuery = [
-                effectiveQuery,
-                "",
-                "系統更正：這是外部裝置連接三星螢幕的問題，問題主體是螢幕，不得以手機／平板超出服務範圍拒答。",
-                "只可使用目前提供或實際搜尋到的來源。若目前掛載的是螢幕官方手冊，只整理手冊明載的螢幕端連接條件；手冊沒有寫的外部裝置設定、轉接器、上市狀態或測試方式一律不要補，也不可斷言該手機一定能顯示或充電，改為明說裝置端尚待查證。先給一句結論，再以最多 3 點解釋真正影響連接的條件；優先整理螢幕端輸入介面、手冊要求的線材／影像協定，以及手冊明載的供電瓦數。不要逐條照搬手冊警告。請用朋友式、專業且深入淺出的方式重新回答。",
-              ].join("\n");
-              const correctedMessages = Array.isArray(effectiveMessages)
-                ? effectiveMessages.slice()
-                : [];
-              for (let i = correctedMessages.length - 1; i >= 0; i--) {
-                if (
-                  correctedMessages[i] &&
-                  correctedMessages[i].role === "user"
-                ) {
-                  correctedMessages[i] = Object.assign(
-                    {},
-                    correctedMessages[i],
-                    { content: correctedQuery },
-                  );
-                  break;
-                }
-              }
+            if (hasWrongScopeRefusal) {
               writeLog(
-                `[Cross Device Evidence Guard v29.6.073] 攔截${hasWrongScopeRefusal ? "錯誤範圍拒答" : "無來源裝置端建議"}，保留相同來源重新回答`,
+                "[Cross Device Evidence Guard v29.6.095] 攔截錯誤範圍拒答，不為修飾答案同步再呼叫一次 LLM",
               );
-              const correctedText = callLLMWithRetry(
-                correctedQuery,
-                correctedMessages,
-                filesToAttach,
-                attachPDFs,
-                imageBlob,
-                true,
-                userId,
-                forceWebSearch,
-                targetModelName,
-                true,
-                webGroundingRetryAttempted,
-              );
-              if (firstUsage && lastTokenUsage) {
-                lastTokenUsage = combineLlmUsage_(firstUsage, lastTokenUsage);
-                writeLog(
-                  `[Cross Device Evidence Guard v29.6.073] 兩次 LLM 合計費用: NT$${lastTokenUsage.costTWD.toFixed(4)}`,
-                );
+              if (attachPDFs) {
+                return "這是外部裝置連接三星螢幕的問題，不屬於範圍外。但這次手冊回覆沒有產生可靠的螢幕端結論，所以我先不補猜。\n\n[AUTO_SEARCH_WEB]";
               }
-              if (
-                isIncorrectCrossDeviceScopeRefusal(correctedText) ||
-                (attachPDFs &&
-                  hasUnsupportedCrossDeviceManualExternalClaim_(correctedText))
-              ) {
-                writeLog(
-                  `[Cross Device Evidence Guard v29.6.073] 第二次仍違反來源邊界，移除無來源句子後再提供${attachPDFs ? "網路查證" : "官方手冊"}`,
-                );
-                const boundedText = sanitizeUnsupportedCrossDeviceManualClaims_(
-                  correctedText,
-                );
-                if (boundedText) {
-                  return `${boundedText}\n\n${attachPDFs ? "[AUTO_SEARCH_WEB]" : "[AUTO_SEARCH_PDF]"}`;
-                }
-                return attachPDFs ? "[AUTO_SEARCH_WEB]" : "[AUTO_SEARCH_PDF]";
-              }
-              return correctedText;
+              return "[AUTO_SEARCH_PDF]";
             }
 
             if (
@@ -8230,9 +8192,7 @@ ${directOfficialPageEvidence
           return "⚠️ 資料量過大，請提供關鍵字。";
         }
         writeLog(`[API 400] 未知錯誤: ${text.substring(0, 200)}`);
-        lastError = "請求參數有誤";
-        retryCount++; // 其他 400 錯誤嘗試重試
-        continue;
+        return "⚠️ 系統參數錯誤 (Bad Request)，請嘗試換個問法。";
       }
       if (code === 404) {
         writeLog(`[API 404] 檔案不存在: ${text.substring(0, 200)}`);
@@ -8248,6 +8208,12 @@ ${directOfficialPageEvidence
       }
       if (code === 429) {
         writeLog(`[API 429] 配額限制: ${text.substring(0, 200)}`);
+        if (forceWebSearch && retryCount === 0) {
+          retryCount++;
+          writeLog("[Web Retry v29.6.095] 429 退避 1 秒後重試一次");
+          Utilities.sleep(1000);
+          continue;
+        }
         return "系統暫時忙碌，這次查詢暫時無法處理，請稍後再試一次。";
       }
       if (code === 500 || code === 503) {
@@ -8259,26 +8225,21 @@ ${directOfficialPageEvidence
         continue;
       }
 
-      // 其他錯誤
-      lastError = `API 錯誤 ${code}`;
+      // 其他錯誤不重試；只有 429/5xx 符合退避條件。
       writeLog(`[API Error] Code: ${code}, Body: ${text.substring(0, 300)}`);
-      retryCount++;
-      if (retryCount >= 2) { writeLog('[API Fail] 提早退出避免 Webhook 逾時'); break; }
-      Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
+      return `⚠️ 系統暫時無法處理（API ${code}），請稍後再試。`;
     } catch (e) {
       lastError = e.message || "未知錯誤";
 
       writeLog(`[API Exception] ${e.message}`);
       if (e.message.includes("token")) return e.message;
-      retryCount++;
-      if (retryCount >= 2) { writeLog('[API Fail] 提早退出避免 Webhook 逾時'); break; }
-      Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
+      return "⚠️ 系統連線暫時異常，請稍後再試。";
     }
   }
 
   // v29.5.25: Graceful Failure
   if (lastError) {
-    writeLog(`[API Fail] 重試 3 次仍失敗，最後錯誤: ${lastError}`);
+    writeLog(`[API Fail] 允許的一次退避重試仍失敗，最後錯誤: ${lastError}`);
     if (forceWebSearch) {
       return "非常抱歉，網路搜尋服務暫時無法連線。你可以參考上方提供的資料，或稍後再試。";
     }
@@ -8374,6 +8335,13 @@ function callOpenRouter(
           total: json.usage.total_tokens,
           costTWD: costTWD,
         };
+        addGenerationUsageToAudit_(
+          {
+            promptTokenCount: json.usage.prompt_tokens,
+            candidatesTokenCount: json.usage.completion_tokens,
+          },
+          costTWD,
+        );
         writeLog(
           `[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${
             json.usage.completion_tokens
@@ -8762,6 +8730,7 @@ function handleMessage(event) {
     lastWebEvidenceValid = false;
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
+    resetRequestAudit_();
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
     let userMessage = event.message.text;
@@ -15689,6 +15658,7 @@ function replyMessage(tk, txt, options = {}) {
   txt = cleanReplyVisibleTextArtifacts_(txt);
   txt = enforceReplyAuditTrail_(txt);
   const auditPreview = collectVisibleReplyText_(txt);
+  writeRequestAuditOnce_(auditPreview);
   if (auditPreview) {
     writeLog(`[Reply Audit] ${auditPreview}`);
   }

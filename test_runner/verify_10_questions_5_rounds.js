@@ -4,6 +4,26 @@ const puppeteer = require("puppeteer");
 const { getAuthorizedTestUiUrl } = require("./testui_auth");
 
 const TEST_URL = getAuthorizedTestUiUrl();
+const PAID_LIVE = process.argv.includes("--paid-live");
+const maxPdfArg = process.argv.find((arg) => arg.startsWith("--max-pdf="));
+const maxCostArg = process.argv.find((arg) => arg.startsWith("--max-cost-twd="));
+const MAX_PDF_CALLS = maxPdfArg ? Number(maxPdfArg.split("=")[1]) : NaN;
+const MAX_COST_TWD = maxCostArg ? Number(maxCostArg.split("=")[1]) : NaN;
+
+if (
+  !PAID_LIVE ||
+  !Number.isInteger(MAX_PDF_CALLS) ||
+  MAX_PDF_CALLS < 1 ||
+  MAX_PDF_CALLS > 3 ||
+  !Number.isFinite(MAX_COST_TWD) ||
+  MAX_COST_TWD <= 0 ||
+  MAX_COST_TWD > 0.3
+) {
+  console.error(
+    "REFUSED: 10x5 正式 runner 會產生費用。只允許明確使用 --paid-live --max-pdf=1..3 --max-cost-twd=0.01..0.30。",
+  );
+  process.exit(2);
+}
 
 const SCENARIOS = [
   { id: "smart_series_hevc", question: "Smart系列播放檔案有沒有支援hevc格式", model: "S32FM703" },
@@ -64,6 +84,17 @@ function hasCost(text) {
 
 function addCheck(checks, pass, message, details = "") {
   checks.push({ pass: !!pass, message, details: pass ? "" : details.slice(0, 1200) });
+}
+
+function extractRequestAudit(logs) {
+  const matches = String(logs || "").match(/\[Request Audit v29\.6\.095\]\s*(\{[^\n]+\})/g) || [];
+  if (matches.length === 0) return null;
+  const last = matches[matches.length - 1].replace(/^.*?\{/, "{");
+  try {
+    return JSON.parse(last);
+  } catch (error) {
+    return null;
+  }
 }
 
 function validateTurn({
@@ -216,14 +247,17 @@ async function run() {
   });
 
   const records = [];
+  let totalCostTwd = 0;
+  let totalPdfCalls = 0;
+  const liveScenarios = SCENARIOS.slice(0, MAX_PDF_CALLS);
   try {
     const page = await browser.newPage();
     await page.goto(TEST_URL, { waitUntil: "networkidle0", timeout: 60000 });
     const frame = await findFrame(page);
     if (!frame) throw new Error("TestUI frame not found");
 
-    for (let i = 0; i < SCENARIOS.length; i++) {
-      const scenario = { ...SCENARIOS[i], index: i + 1 };
+    for (let i = 0; i < liveScenarios.length; i++) {
+      const scenario = { ...liveScenarios[i], index: i + 1 };
       const userId = `TEST_10Q5R_${Date.now()}_${i + 1}`;
       await call(frame, "clearTestSession", userId);
       const turns = [
@@ -241,6 +275,19 @@ async function run() {
         const res = await call(frame, "testMessage", user, userId);
         const replies = joined(res, "replies");
         const logs = joined(res, "logs");
+        const audit = extractRequestAudit(logs);
+        totalCostTwd += Number(audit && audit.estimatedCostTwd) || 0;
+        totalPdfCalls += Number(audit && audit.pdfCalls) || 0;
+        if (totalPdfCalls > MAX_PDF_CALLS) {
+          throw new Error(
+            `PDF 呼叫守門中止：累計 ${totalPdfCalls} > ${MAX_PDF_CALLS}`,
+          );
+        }
+        if (totalCostTwd > MAX_COST_TWD) {
+          throw new Error(
+            `費用守門中止：累計 NT$${totalCostTwd.toFixed(4)} > NT$${MAX_COST_TWD.toFixed(2)}`,
+          );
+        }
         const checks = validateTurn({
           scenario,
           turnIndex: t + 1,
@@ -293,6 +340,8 @@ async function run() {
   console.log(`\nRecord JSON: ${jsonPath}`);
   console.log(`Record MD  : ${mdPath}`);
   console.log(`Total turns: ${records.length * 5}`);
+  console.log(`PDF calls  : ${totalPdfCalls} / ${MAX_PDF_CALLS}`);
+  console.log(`Total cost : NT$${totalCostTwd.toFixed(4)} / NT$${MAX_COST_TWD.toFixed(2)}`);
   console.log(`Failures   : ${failures.length}`);
   failures.forEach((f) => console.log(`- Q${f.scenario}T${f.turn}: ${f.message}`));
 

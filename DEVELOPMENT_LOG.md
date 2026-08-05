@@ -1,5 +1,19 @@
 # 開發對話紀錄
 
+## 2026-08-05 (v29.6.095 / RAG token fuse、費用與付費測試守門)
+
+- 修正旧 token fuse 「裁減 `effectiveMessages` 卻仍送出舊 `geminiContents`」的漏洞；現在 Fast/Web 歷史先裁減，再建立唯一 payload。
+- Fast Mode 最多注入 8 筆相關 RULE，input/output 上限為 12K/800；PDF output 上限 1200。
+- 舊式整本 PDF 在 `generateContent` 前必須以含 `file_uri` 的 `countTokens` 預檢；超過 20K 或計數失敗即 fail closed，不產生 PDF 費用，也不假標手冊來源。
+- 移除 PDF 失敗後「拔掉文件、要模型依自身知識回答」的降級；網搜缺 `groundingChunks`/`groundingSupports` 時直接停止，不再為補引用自動付費再生成。
+- Gemini 2.5 Flash-Lite Standard 依 2026-08-05 官方定價維持 US$0.10/M input、US$0.40/M output；7/7 歷史 190 calls、6,519,548 input、25,460 output 的 NT$21.1884 費用基線仍成立。Priority 層 US$0.18/M、US$0.72/M 不適用本專案。
+- 官網 Product Finder 新機型若尚未完成 PDP 規格擷取與驗證，只寫入 `PENDING_MODEL_REVIEW` 待審核清單與 LOG，不再把「尚無資訊」佔位列寫入正式 `CLASS_RULES`。
+- LOG/TestUI 新增結構化 `Request Audit`，保存 stage、model、paid/pdf/web calls、input/output tokens、費用與來源；正式 LINE 仍隱藏內部 token/費用。
+- `10x5` 正式 runner 改為必須明確 `--paid-live`，且限制 `--max-pdf<=3 --max-cost-twd<=0.30`；預設 contract 新增歷史費用回歸與守門檢查。
+- Gemini File Search 官方已支援 `gemini-3.5-flash-lite`，但必須改用 Interactions API，且模型與費率不同；本版不直接切換正式 PDF，留待三次隔離試驗通過後再啟用。
+- 正式既有 Webhook 已更新至 Apps Script `@1292`；health、Remote HEAD、本機與正式 TestUI version guard 均為 `v29.6.095 [2026-08-05 22:00]`，部署清單仍維持 2 筆，未新建 Deployment。
+- `Prompt.csv` 本版未修改，因此發布工具依設計未同步 `Prompt!C3`。`npm run test:static`、`npm run test:contract`、GAS／runner 語法、`git diff --check`、release dry-run、正式 readiness 與 Webhook version guard 均通過；付費 File Search／LINE 真人試驗因本機未提供 `GEMINI_API_KEY` 與 `GAS_MAINTENANCE_SECRET`，未冒充已完成。
+
 ## 2026-07-30 (v29.6.094 / 人味回覆、PDF 單次授權與 TestUI 授權修正)
 
 - Fast Mode 的 `[AUTO_SEARCH_PDF]` 改為詢問使用者；未收到 `#查手冊` 或自然明確同意前，禁止掛載 PDF。授權綁定原題與型號、10 分鐘有效且只能使用一次。

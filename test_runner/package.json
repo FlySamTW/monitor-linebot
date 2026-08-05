@@ -11,9 +11,10 @@
     "test:smart-codec": "node run_current_test.js verify_smart_codec_guard.js",
     "test:iphone-air": "node run_current_test.js verify_july16_fixes.js",
     "test:10q5r": "node run_current_test.js verify_10_questions_5_rounds.js",
+    "test:10q5r:paid": "node run_current_test.js verify_10_questions_5_rounds.js --paid-live --max-pdf=3 --max-cost-twd=0.30",
     "test:real10": "node run_current_test.js verify_10_real_conversation.js",
     "test:static": "node verify_api_failure_source_guard.js && node verify_unknown_model_static.js && node verify_sop_static_guards.js && node verify_public_surface_guard.js",
-    "test:contract": "node verify_human_route_contract.js",
+    "test:contract": "node verify_human_route_contract.js && node verify_cost_guard_contract.js",
     "test:human-live": "node run_current_test.js verify_v296094_human_live.js"
   },
   "keywords": [],
