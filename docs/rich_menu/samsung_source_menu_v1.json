@@ -4,15 +4,15 @@
     "height": 843
   },
   "selected": true,
-  "name": "Samsung 三來源選單 v2 常駐",
-  "chatBarText": "回答來源",
+  "name": "Samsung 提問與查證選單 v3",
+  "chatBarText": "先提問・再查證",
   "areas": [
     {
       "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 },
       "action": {
         "type": "postback",
         "data": "rm_action=select_source&source=spec&v=1",
-        "inputOption": "openRichMenu"
+        "inputOption": "openKeyboard"
       }
     },
     {

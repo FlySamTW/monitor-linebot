@@ -182,8 +182,19 @@ assert.strictEqual(menu.areas.reduce((sum, area) => sum + area.bounds.width, 0),
 assert(menu.areas.every((area) => area.action.type === "postback" && !area.action.displayText));
 assert(menu.selected === true, "Rich Menu 必須在進入聊天室時預設展開");
 assert(
-  menu.areas.every((area) => area.action.inputOption === "openRichMenu"),
-  "按下三來源不得以 openKeyboard 主動收起 Rich Menu",
+  menu.chatBarText === "先提問・再查證",
+  "聊天列必須直接告訴新使用者先提問、需要時再查證",
+);
+assert(
+  menu.areas[0].action.inputOption === "openKeyboard" &&
+    menu.areas.slice(1).every((area) => area.action.inputOption === "openRichMenu"),
+  "直接提問需開鍵盤；兩個重查入口需保持 Rich Menu 展開",
+);
+assert(
+  /① 直接問問題/.test(testUi) &&
+    /② 官方手冊重查/.test(testUi) &&
+    /③ 網路解答重查/.test(testUi),
+  "TestUI 必須呈現先提問、再依需要重查的資訊層級",
 );
 assert(
   /function provisionRichMenuDefault_/.test(linebot) &&

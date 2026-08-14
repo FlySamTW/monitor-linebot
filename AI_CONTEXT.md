@@ -1,6 +1,6 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.110 三來源路由不可破壞契約
+## v29.6.111 三來源路由不可破壞契約
 
 - 正式 TestUI 真人提問驗收新增守門：完整型號操作題不得誤判為缺型號，必須只推薦「官方手冊」，且按鍵前不得讀 PDF 或扣次。
 - 只有點「查上一題」才可沿用上一題；使用者直接輸入文字一律視為新題，手冊新題本身沒有完整型號時必須追問且零扣次。
@@ -11,7 +11,8 @@
 - `[AUTO_SEARCH_PDF]`／`[AUTO_SEARCH_WEB]` 只能轉成來源建議，禁止自動執行或同一訊息跨來源。
 - 手冊模式不得開 `google_search`，網路模式不得掛 PDF。任何新增的 PDF／Web 呼叫都必須通過 `assertAdvancedSourceGrant_()`。
 - 正式 Rich Menu 資產在 `docs/rich_menu/`；業主於 2026-08-14 明確改為直接設定全體 default，不再使用 `ADMIN_USER_ID` pilot。發布必須保存舊 default ID、讀回新 ID，並保留 rollback 工具。
-- Rich Menu 必須 `selected: true`，三個 postback 一律用 `inputOption: openRichMenu`；禁止 `openKeyboard` 在按鍵後主動收起選單。LINE 鍵盤開啟時仍會依平台限制暫時取代選單。
+- Rich Menu 必須 `selected: true`；資訊層級是「①直接問問題 → 回答不足才②手冊重查／需要現況才③網路重查」，不得再呈現成三個平行來源。
+- 左鍵明確用 `inputOption: openKeyboard` 讓新客直接輸入；中、右鍵用 `openRichMenu` 保持查證選單展開。LINE 鍵盤出現時會依平台限制暫時取代選單，收起鍵盤即可回到已綁定的 Rich Menu。
 
 **專案名稱**: GAS 客服 LineBot (Samsung Monitor Customer Service)
 **核心架構**: Google Apps Script (GAS)

@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.110"; // 2026-08-14 Rich Menu 按鍵後保持展開
-const BUILD_TIMESTAMP = "2026-08-14 17:27";
+const GAS_VERSION = "v29.6.111"; // 2026-08-14 Rich Menu 初次提問引導
+const BUILD_TIMESTAMP = "2026-08-14 18:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時

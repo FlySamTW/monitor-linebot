@@ -2,7 +2,7 @@
 
 > 建立日期：2026-08-14
 > 目的：讓後續 AI 在 `D:\00_程式\20251125_GAS客服LineBot` 採用已驗證的三區 Rich Menu 視覺語言與互動原則。
-> v29.6.110 已依本文件落地三來源狀態機、TestUI 與正式資產。業主要求選單常駐，因此三鍵使用 `openRichMenu`，不可再用會主動開鍵盤並收起選單的 `openKeyboard`。
+> v29.6.111 已依業界做法把三個平行來源改成「先提問、再查證」。選單仍是全體預設且 `selected: true`；左鍵為明確輸入入口所以使用 `openKeyboard`，中、右兩個重查入口使用 `openRichMenu`。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
@@ -58,7 +58,7 @@
 
 1. 每區只放一個大圖示、一個 4～6 字主標與一個極短副標。
 2. 圖示採粗線條、留白大、不可依賴小字或細線。
-3. 三區視覺權重一致；不要把其中一區做得像廣告。
+3. 左區是新客主 CTA，可用描邊或淡底提高辨識；中、右是回答後查證工具，不得與主入口爭奪同等語意。
 4. 文字必須直接畫進 SVG／PNG，不使用 AI 生圖產生中文，避免錯字與字形漂移。
 5. PNG 必須小於 LINE 官方上限 `1 MB`；參考 PNG 約 `81 KB`。
 6. 更新圖片時不能覆蓋既有 Rich Menu 圖片，必須建立新的 Rich Menu ID。
@@ -69,9 +69,9 @@
 
 | 位置 | 建議主標 | 建議副標 | Postback data | 點擊後只做什麼 |
 |---|---|---|---|---|
-| 左 | `規格＆FAQ` | `快速・不限次` | `rm_action=select_source&source=spec&v=1` | 清除 pending，切回預設來源 |
-| 中 | `官方手冊` | `完整查證・每日5次` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
-| 右 | `網路解答` | `公開網頁・每日10次` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
+| 左 | `① 直接問問題` | `規格＆FAQ・不限次` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
+| 中 | `② 官方手冊重查` | `回答不夠時・每日5次` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
+| 右 | `③ 網路解答重查` | `需要現況時・每日10次` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
 
 重要限制：
 
@@ -82,9 +82,10 @@
 ## 四、Rich Menu JSON 要點
 
 - `selected: true`：聊天室開啟時顯示選單。
-- `chatBarText` 最多 14 字；建議使用 `客服功能`。
+- `chatBarText` 最多 14 字；本版使用 `先提問・再查證`。
 - 三個區域使用 `postback`，並**省略 `displayText`**，避免聊天室出現「使用者自己說了一句指令」的雜訊。
 - `data` 使用穩定、可版本化的英文 action；不要把顯示文字當路由條件。
+- `spec` 使用 `inputOption: openKeyboard`；`manual`、`web` 使用 `inputOption: openRichMenu`。鍵盤與 Rich Menu 不能同時顯示是 LINE 平台限制，不得宣稱真正永不消失。
 - 建立前先呼叫 `POST /v2/bot/richmenu/validate`。
 
 參考：`docs/reference_rich_menu/REFERENCE_ONLY_three_panel_template.json`。
