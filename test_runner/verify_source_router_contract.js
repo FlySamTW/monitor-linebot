@@ -180,7 +180,11 @@ assert.strictEqual(menu.size.height, 843);
 assert.strictEqual(menu.areas.length, 3);
 assert.strictEqual(menu.areas.reduce((sum, area) => sum + area.bounds.width, 0), 2500);
 assert(menu.areas.every((area) => area.action.type === "postback" && !area.action.displayText));
-assert(menu.areas.every((area) => area.action.inputOption === "openKeyboard"));
+assert(menu.selected === true, "Rich Menu 必須在進入聊天室時預設展開");
+assert(
+  menu.areas.every((area) => area.action.inputOption === "openRichMenu"),
+  "按下三來源不得以 openKeyboard 主動收起 Rich Menu",
+);
 assert(
   /function provisionRichMenuDefault_/.test(linebot) &&
     /user\/all\/richmenu\/\$\{encodeURIComponent\(richMenuId\)\}/.test(linebot) &&

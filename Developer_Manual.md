@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.109)
+# Samsung LINE Bot 完整流程解析 (v29.6.110)
 
 ## 📋 核心哲學
 
@@ -13,6 +13,7 @@
 - `callLLMWithRetry()` 是強制邊界：PDF／Web 沒有 `ACTIVE_ADVANCED_SOURCE_GRANT` 立即拒絕；預檢通過後才由 `LockService` 原子扣次。
 - 每則使用者訊息最多一個進階來源；PDF 與 Web 不得互相救援。所有舊 `#` 指令只進入這套狀態機。
 - Rich Menu 依業主 2026-08-14 最新決定，使用 `tools/publish_rich_menu_default.ps1` 設為全體預設；回復用 `tools/rollback_rich_menu_default.ps1`。工具會保存舊 default ID 並讀回確認。
+- 常駐顯示契約：`selected: true` 且三鍵使用 `inputOption: openRichMenu`。不得改成 `openKeyboard`；使用者主動開鍵盤時，LINE App 仍會依平台行為暫時收起 Rich Menu。
 
 - 固定順序：範圍／型號 → 精準 QA → QA＋CLASS_RULES Fast Mode → 推薦下一個來源 → 使用者按鍵授權 → 單次 PDF 或單次 Web → 回到 Fast Mode。
 - `[AUTO_SEARCH_PDF]` 只是內部「等待詢問」信號，不能代表使用者同意，也不能直接觸發 PDF。
@@ -70,7 +71,7 @@
 - 網搜雖有官方證據，也只能回答證據直接支援的外部裝置能力；以「可能／通常／常見／依賴」延伸出的手機設定、鏡像選項、系統功能或相容性推測必須移除。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.109）
+## ✅ 現行鐵律 SOP（v29.6.110）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。
 2. **再官方手冊**：Fast Mode 不足只負責詢問；只有使用者明確 `#查手冊` 或自然同意，並完成必要型號選擇後，才掛載 PDF RAG。單純點選型號不代表同意付費查手冊。

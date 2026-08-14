@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.109"; // 2026-08-14 三來源 Rich Menu 全體預設發布
-const BUILD_TIMESTAMP = "2026-08-14 17:15";
+const GAS_VERSION = "v29.6.110"; // 2026-08-14 Rich Menu 按鍵後保持展開
+const BUILD_TIMESTAMP = "2026-08-14 17:27";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -16653,9 +16653,22 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
   }
   if (!imageBase64) throw new Error("Rich menu image is missing");
 
+  const definitionSignature = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify(menuDefinition),
+    Utilities.Charset.UTF_8,
+  ).map(function (value) {
+    return ((value + 256) % 256).toString(16).padStart(2, "0");
+  }).join("");
   const recordedMenuId = props.getProperty("RICH_MENU_GLOBAL_ID") || "";
+  const recordedSignature =
+    props.getProperty("RICH_MENU_GLOBAL_SIGNATURE") || "";
   const currentDefault = getDefaultRichMenuId_(token);
-  if (recordedMenuId && currentDefault === recordedMenuId) {
+  if (
+    recordedMenuId &&
+    currentDefault === recordedMenuId &&
+    recordedSignature === definitionSignature
+  ) {
     return {
       richMenuId: recordedMenuId,
       defaultMenuId: currentDefault,
@@ -16709,6 +16722,7 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
 
   props.setProperty("RICH_MENU_GLOBAL_ID", richMenuId);
   props.setProperty("RICH_MENU_GLOBAL_PREVIOUS_ID", currentDefault || "");
+  props.setProperty("RICH_MENU_GLOBAL_SIGNATURE", definitionSignature);
   return {
     richMenuId: richMenuId,
     defaultMenuId: defaultAfter,

@@ -4,7 +4,7 @@
     "height": 843
   },
   "selected": true,
-  "name": "Samsung 三來源選單 v1",
+  "name": "Samsung 三來源選單 v2 常駐",
   "chatBarText": "回答來源",
   "areas": [
     {
@@ -12,7 +12,7 @@
       "action": {
         "type": "postback",
         "data": "rm_action=select_source&source=spec&v=1",
-        "inputOption": "openKeyboard"
+        "inputOption": "openRichMenu"
       }
     },
     {
@@ -20,7 +20,7 @@
       "action": {
         "type": "postback",
         "data": "rm_action=select_source&source=manual&v=1",
-        "inputOption": "openKeyboard"
+        "inputOption": "openRichMenu"
       }
     },
     {
@@ -28,7 +28,7 @@
       "action": {
         "type": "postback",
         "data": "rm_action=select_source&source=web&v=1",
-        "inputOption": "openKeyboard"
+        "inputOption": "openRichMenu"
       }
     }
   ]

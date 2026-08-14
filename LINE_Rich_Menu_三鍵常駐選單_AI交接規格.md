@@ -2,7 +2,7 @@
 
 > 建立日期：2026-08-14
 > 目的：讓後續 AI 在 `D:\00_程式\20251125_GAS客服LineBot` 採用已驗證的三區 Rich Menu 視覺語言與互動原則。
-> v29.6.109 已依本文件落地三來源狀態機、TestUI 與正式資產。業主於 2026-08-14 明確決定不做 `ADMIN_USER_ID` pilot，改為直接讓所有使用者看到；全體發布必須保存舊 default ID、讀回新 ID 並保留 rollback。
+> v29.6.110 已依本文件落地三來源狀態機、TestUI 與正式資產。業主要求選單常駐，因此三鍵使用 `openRichMenu`，不可再用會主動開鍵盤並收起選單的 `openKeyboard`。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
