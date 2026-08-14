@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.114"; // 2026-08-15 提問額度鎖隔離與忙碌防崩潰
-const BUILD_TIMESTAMP = "2026-08-15 00:50";
+const GAS_VERSION = "v29.6.118"; // 2026-08-15 Rich Menu 雙排超大字版
+const BUILD_TIMESTAMP = "2026-08-15 02:31";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -4491,8 +4491,16 @@ function tryManualFreeLocalAnswer_(
   model,
   allowRule,
 ) {
+  const aliasCandidates = getAliasOnlySelectionModelsFromQuery(query, 10, false);
   const directLocalQa = findLocalMatchInQA(query, userId);
-  if (directLocalQa) {
+  const directQaCoversAliases =
+    directLocalQa &&
+    doesQaMatchCoverQueryAliases_(query, directLocalQa.question);
+  if (
+    directLocalQa &&
+    (!shouldPromptAliasModelSelection_(query, aliasCandidates) ||
+      directQaCoversAliases)
+  ) {
     const remaining = getSourceRemaining_(contextId, "manual");
     clearPendingSourceState_(contextId);
     LAST_SOURCE_TEST_STATE = {
@@ -5266,7 +5274,11 @@ function isClassRuleLineMatchedAlias(line, alias) {
   const standalone = new RegExp(`(^|[^A-Z0-9])${escaped}([^A-Z0-9]|$)`);
   if (key.length > 2 && standalone.test(hay)) return true;
   if (/^G\d{1,2}/.test(key)) {
-    return new RegExp(`ODYSSEY\\s*${escaped}([^A-Z0-9]|$)`).test(hay);
+    // Odyssey 產品名稱常在系列與代號間插入 OLED／Neo／IPS 等描述詞；
+    // 仍要求 G8 等代號是完整邊界，避免把 G80SD 誤當成 G8。
+    return new RegExp(
+      `ODYSSEY(?:\\s+[A-Z0-9-]+){0,3}\\s*${escaped}([^A-Z0-9]|$)`,
+    ).test(hay);
   }
   if (/^M\d{1,2}/.test(key)) {
     return (
@@ -5330,16 +5342,41 @@ function getAliasCandidatesFromExistingPdfs(aliasToken, limit = 10) {
   ).filter((m) => !isShortAliasModelToken(m));
 }
 
-function getAliasOnlySelectionModelsFromQuery(text, limit = 10) {
+function getAliasOnlySelectionModelsFromQuery(
+  text,
+  limit = 10,
+  requirePdfCoverage = true,
+) {
   const aliases = extractShortAliasModelTokens(text);
   if (aliases.length === 0 || extractFullModelLikeTokens(text).length > 0) {
     return [];
   }
   const bucket = [];
   aliases.forEach((alias) => {
-    bucket.push(...getAliasCandidatesFromExistingPdfs(alias, limit));
+    bucket.push(
+      ...(requirePdfCoverage
+        ? getAliasCandidatesFromExistingPdfs(alias, limit)
+        : getAliasCandidatesFromClassRules(alias, limit * 3)),
+    );
   });
   return dedupDisplayModels(bucket, limit).filter((m) => !isShortAliasModelToken(m));
+}
+
+function doesQaMatchCoverQueryAliases_(query, qaQuestion) {
+  const queryAliases = extractShortAliasModelTokens(query);
+  if (queryAliases.length === 0) return true;
+  const qaAliases = extractShortAliasModelTokens(qaQuestion);
+  return queryAliases.every((alias) => qaAliases.indexOf(alias) >= 0);
+}
+
+function shouldPromptAliasModelSelection_(query, candidates) {
+  return (
+    Array.isArray(candidates) &&
+    candidates.length > 1 &&
+    (isFeatureBinaryQuestion(query) ||
+      isOperationOrTroubleshootQuery(query) ||
+      isManualVerificationRequiredQuery(query))
+  );
 }
 
 function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mode) {
@@ -5348,7 +5385,12 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
     return false;
   }
   const aliasToken = aliases.join("/");
-  const models = getAliasOnlySelectionModelsFromQuery(query, 10);
+  // Fast Mode 必須列 CLASS_RULES 的完整系列候選；只有手冊模式才依 PDF 覆蓋範圍收斂。
+  const models = getAliasOnlySelectionModelsFromQuery(
+    query,
+    10,
+    (mode || "pdf") === "pdf",
+  );
   if (models.length <= 1) {
     return false;
   }
@@ -6152,7 +6194,10 @@ const CONFIG = {
   MAX_OUTPUT_TOKENS: 800,
   MAX_PDF_OUTPUT_TOKENS: 1200,
   MAX_FAST_INPUT_TOKENS: 12000,
-  MAX_LEGACY_PDF_INPUT_TOKENS: 20000,
+  // 20K 改為軟警戒；手冊已受「單題一份 + 每日 5 次 + 明確授權」三層限制。
+  // 100K 依 Standard 官方費率的最壞單次輸入約 NT$0.32，可涵蓋已知 69,570-token 合併手冊。
+  PDF_INPUT_SOFT_WARNING_TOKENS: 20000,
+  MAX_LEGACY_PDF_INPUT_TOKENS: 100000,
   MAX_RELEVANT_RULE_LINES: 8,
   HISTORY_PAIR_LIMIT: 10, // v24.0.0: 恢復記憶長度，Fast Mode 用 (約 2K Tokens)
   PDF_HISTORY_LIMIT: 6, // v24.0.0: PDF Mode 專用，縮減歷史以容納 PDF (約 1K Tokens)
@@ -6650,6 +6695,95 @@ function recoverRelevantPdfUrisFromDrive(exactModels, primaryModel, limit) {
   }
 
   return recovered;
+}
+
+/**
+ * 只修復本題實際選中的過期 PDF，不再因單一 URI 過期而重建整個資料夾。
+ * File API 仍無法產生 URI 時，僅對小檔使用既有 inline fallback。
+ */
+function refreshStalePdfAttachmentsFromDrive_(filesToAttach) {
+  const selectedFiles = (Array.isArray(filesToAttach) ? filesToAttach : [])
+    .filter(function (item) {
+      return isPdfKbFile(item) && item.name;
+    })
+    .slice(0, 2);
+  if (!CONFIG.DRIVE_FOLDER_ID || selectedFiles.length === 0) {
+    return [];
+  }
+
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    writeLog("[PDF Targeted Refresh] 缺少 GEMINI_API_KEY");
+    return [];
+  }
+
+  const wantedNames = {};
+  selectedFiles.forEach(function (item) {
+    wantedNames[String(item.name).toUpperCase()] = true;
+  });
+  const refreshedByName = {};
+
+  try {
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const driveFiles = folder.getFilesByType(MimeType.PDF);
+    while (driveFiles.hasNext()) {
+      const file = driveFiles.next();
+      const upperName = String(file.getName()).toUpperCase();
+      if (!wantedNames[upperName]) {
+        continue;
+      }
+      const fileSize = file.getSize();
+      if (fileSize > 48 * 1024 * 1024) {
+        writeLog(`[PDF Targeted Refresh] 跳過過大檔案: ${file.getName()}`);
+        continue;
+      }
+
+      const blob = file.getBlob();
+      const uri = uploadFileToGemini(
+        apiKey,
+        blob,
+        fileSize,
+        "application/pdf",
+      );
+      if (uri) {
+        const refreshedItem = {
+          name: file.getName(),
+          uri: uri,
+          mimeType: "application/pdf",
+          source: "file_api_targeted_refresh",
+        };
+        refreshedByName[upperName] = refreshedItem;
+        persistManualPdfKbItem_(refreshedItem);
+      } else if (fileSize <= INLINE_PDF_FALLBACK_MAX_BYTES) {
+        refreshedByName[upperName] = {
+          name: file.getName(),
+          inlineDataBase64: Utilities.base64Encode(blob.getBytes()),
+          mimeType: "application/pdf",
+          source: "inline_targeted_refresh",
+        };
+      }
+    }
+  } catch (error) {
+    writeLog(`[PDF Targeted Refresh] 失敗: ${error.message}`);
+    return [];
+  }
+
+  const refreshed = selectedFiles
+    .map(function (item) {
+      return refreshedByName[String(item.name).toUpperCase()] || null;
+    })
+    .filter(Boolean);
+  if (refreshed.length > 0) {
+    writeLog(
+      `[PDF Targeted Refresh v29.6.115] 已更新: ${refreshed
+        .map(function (item) {
+          return item.name;
+        })
+        .join(", ")}`,
+    );
+  }
+  return refreshed;
 }
 
 function getKbHealthSummary() {
@@ -8682,31 +8816,19 @@ function callLLMWithRetry(
 
   // v24.0.0: 根據模式動態調整歷史長度，控制 Token 成本
   // - Fast Mode: 保留 10 對 (20 則)
-  // - PDF Mode: v29.4.33 縮減至 2 對 (4 則)，大幅節省 Token 給 PDF
+  // - PDF Mode: 問題已由一次性授權狀態補成完整題，只保留最後一則使用者問題。
   let effectiveMessages = messages;
-  if (attachPDFs && messages.length > 4) {
-    // PDF 模式：只保留最近 2 對 (4 則) - v29.4.33 優化
-    // 更激進的截斷，因為 PDF 本身已經提供足夠上下文
-    const hasSummary =
-      messages.length > 0 && messages[0].content.includes("【系統自動摘要】");
-
-    if (hasSummary && messages.length > 2) {
-      const summaryMsgs = messages.slice(0, 2); // 保留摘要對
-      const recentMsgs = messages.slice(-4); // 最近 2 對
-      if (recentMsgs[0] === summaryMsgs[0]) {
-        effectiveMessages = recentMsgs;
-      } else {
-        effectiveMessages = [...summaryMsgs, ...recentMsgs];
-      }
-      writeLog(
-        `[Token Control v29.4.33] PDF Mode: 保留摘要 + 最近 2 對 (${effectiveMessages.length} 則)`,
-      );
-    } else {
-      effectiveMessages = messages.slice(-4); // 只保最近 2 對
-      writeLog(
-        `[Token Control v29.4.33] PDF Mode: 歷史截斷 ${messages.length} -> ${effectiveMessages.length} (省 Token)`,
-      );
-    }
+  if (attachPDFs) {
+    const lastUserMessage = messages
+      .slice()
+      .reverse()
+      .find((item) => item && item.role === "user");
+    effectiveMessages = lastUserMessage
+      ? [lastUserMessage]
+      : [{ role: "user", content: String(query || "") }];
+    writeLog(
+      `[Token Control v29.6.116] PDF Mode 只保留本輪完整問題: ${messages.length} -> ${effectiveMessages.length} 則`,
+    );
   } else if (!attachPDFs && messages.length > 6) {
     // v29.6.095: 先裁減、後建 prompt/payload，避免舊版只改 effectiveMessages
     // 卻仍把未裁減 geminiContents 送出的成本漏洞。
@@ -8978,6 +9100,28 @@ ${directOfficialPageEvidence
   if (!tokenPreflight.ok) {
     if (attachPDFs) {
       if (tokenPreflight.staleFile) {
+        if (!evidenceCorrectionAttempted) {
+          const refreshedFiles =
+            refreshStalePdfAttachmentsFromDrive_(filesToAttach);
+          if (refreshedFiles.length > 0) {
+            writeLog(
+              "[Token Fuse v29.6.115] 過期手冊已單檔更新，重新執行 token 預檢",
+            );
+            return callLLMWithRetry(
+              query,
+              messages,
+              refreshedFiles,
+              attachPDFs,
+              imageBlob,
+              isRetry,
+              userId,
+              forceWebSearch,
+              targetModelName,
+              true,
+              webGroundingRetryAttempted,
+            );
+          }
+        }
         CacheService.getScriptCache().put("kb_need_rebuild", "true", 3600);
         scheduleImmediateRebuild();
         writeLog(
@@ -9009,6 +9153,14 @@ ${directOfficialPageEvidence
         `[Token Fuse v29.6.095] 已擋下 ${tokenPreflight.totalTokens} tokens 請求，未送出 generateContent`,
       );
       return buildTokenFuseReply_(attachPDFs, "token_limit");
+    }
+    if (
+      attachPDFs &&
+      tokenPreflight.totalTokens > CONFIG.PDF_INPUT_SOFT_WARNING_TOKENS
+    ) {
+      writeLog(
+        `[PDF Token Budget v29.6.116] ${tokenPreflight.totalTokens} tokens 超過 20K 軟警戒，但在 100K（輸入成本約 NT$0.32）手冊硬上限內，依使用者授權繼續`,
+      );
     }
   }
 
@@ -11845,12 +11997,24 @@ function handleMessage(event) {
     }
 
     // D. 一般對話
-    // v29.6.098: 精準 QA 是所有產品問題的第一層，不限跨裝置題。
-    // 嚴格 matcher 同時比對產品實體、連接方式與主要意圖；命中時零 LLM 直接回覆。
+    // v29.6.116: 系列別稱的型號相關題先解析 CLASS_RULES 候選；精準 QA 只有在
+    // 題目本身也涵蓋同一別稱時才可零成本直答，避免 Smart/其他型號 QA 污染 G8。
+    const aliasSelectionBeforeQa = getAliasOnlySelectionModelsFromQuery(
+      msg,
+      10,
+      false,
+    );
     const directLocalQa = findLocalMatchInQA(msg, userId);
-    if (directLocalQa) {
+    const directQaCoversAliases =
+      directLocalQa &&
+      doesQaMatchCoverQueryAliases_(msg, directLocalQa.question);
+    if (
+      directLocalQa &&
+      (!shouldPromptAliasModelSelection_(msg, aliasSelectionBeforeQa) ||
+        directQaCoversAliases)
+    ) {
       writeLog(
-        `[QA First Router v29.6.098] 精準 QA 命中，先於 RULE/PDF 回覆: "${directLocalQa.question.substring(0, 50)}"`,
+        `[QA First Router v29.6.116] 精準 QA 命中且別稱實體一致，先於 RULE/PDF 回覆: "${directLocalQa.question.substring(0, 50)}"`,
       );
       replyWithLocalQaMatch_(
         directLocalQa,
@@ -11862,9 +12026,26 @@ function handleMessage(event) {
       return;
     }
 
+    if (shouldPromptAliasModelSelection_(msg, aliasSelectionBeforeQa)) {
+      writeLog(
+        `[Alias Selection Gate v29.6.116] 系列別稱型號題先選完整型號，禁止泛用 QA/RULE 搶答: ${aliasSelectionBeforeQa.join(", ")}`,
+      );
+      if (
+        promptAliasOnlyModelSelection(
+          msg,
+          userId,
+          replyToken,
+          contextId,
+          "fast",
+        )
+      ) {
+        return;
+      }
+    }
+
     if (isCrossDeviceMonitorQuery(msg)) {
       writeLog(
-        "[QA First Router v29.6.098] 精準 QA 未命中，繼續 RULE Fast Mode；不足才詢問是否查 PDF",
+        "[QA First Router v29.6.116] 精準 QA 未命中，繼續 RULE Fast Mode；不足才詢問是否查 PDF",
       );
     }
 

@@ -2,7 +2,7 @@
 
 > 建立日期：2026-08-14
 > 目的：讓後續 AI 在 `D:\00_程式\20251125_GAS客服LineBot` 採用已驗證的三區 Rich Menu 視覺語言與互動原則。
-> v29.6.114 已依業界做法把三個平行來源改成「先提問、再查證」，並重畫成大尺寸、同風格的實心圓圖示。選單仍是全體預設且 `selected: true`；左鍵為明確輸入入口所以使用 `openKeyboard`，中、右兩個重查入口使用 `openRichMenu`。實驗期每位使用者每日 20 題；選手冊後高信心 QA／RULE 可直接回答且不扣手冊次數。
+> v29.6.118 已將三格改成雙排超大字版：第一排 `直接問`／`查手冊`／`搜網路`，第二排 `20題/日`／`5次/日`／`10次/日`。選單仍是全體預設且 `selected: true`；左鍵使用 `openKeyboard`，中、右鍵使用 `openRichMenu`。系列選型、額度與來源隔離契約不變。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
@@ -69,9 +69,9 @@
 
 | 位置 | 建議主標 | 建議副標 | Postback data | 點擊後只做什麼 |
 |---|---|---|---|---|
-| 左 | `① 直接問問題` | `規格＆FAQ・每日20題` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
-| 中 | `② 官方手冊重查` | `回答不夠時・每日5次` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
-| 右 | `③ 網路解答重查` | `需要現況時・每日10次` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
+| 左 | `直接問` | `20題/日` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
+| 中 | `查手冊` | `5次/日` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
+| 右 | `搜網路` | `10次/日` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
 
 重要限制：
 

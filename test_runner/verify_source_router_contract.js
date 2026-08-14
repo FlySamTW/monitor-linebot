@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
 const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
 const prompt = fs.readFileSync(path.join(root, "Prompt.csv"), "utf8");
+const classRules = fs.readFileSync(path.join(root, "CLASS_RULES.csv"), "utf8");
 const menu = JSON.parse(
   fs.readFileSync(
     path.join(root, "docs", "rich_menu", "samsung_source_menu_v1.json"),
@@ -21,6 +22,23 @@ const publishDefaultScript = fs.readFileSync(
 const rollbackDefaultScript = fs.readFileSync(
   path.join(root, "tools", "rollback_rich_menu_default.ps1"),
   "utf8",
+);
+
+const g8AliasLine = classRules
+  .split(/\r?\n/)
+  .find((line) => /^別稱_G8,/i.test(line));
+const g8ModelLines = classRules
+  .split(/\r?\n/)
+  .filter((line) => /Odyssey\s+(?:OLED\s+|Neo\s+|IPS\s+)?G8(?:\s|,)/i.test(line));
+const g8RuleModels = g8ModelLines
+  .map((line) => {
+    const match = line.match(/型號[：:]\s*([A-Z0-9]+)/i) || line.match(/^(?:L)?(S[A-Z0-9]+),/i);
+    return match ? match[1].toUpperCase() : "";
+  })
+  .filter(Boolean);
+assert(
+  g8AliasLine && /Odyssey G8/i.test(g8AliasLine) && g8ModelLines.length >= 2,
+  "G8 必須由 CLASS_RULES 定義為 Odyssey 系列，且保留多個完整型號候選",
 );
 
 function extractFunction(source, name) {
@@ -51,6 +69,53 @@ function extractFunction(source, name) {
   throw new Error(`${name} 大括號不完整`);
 }
 
+const aliasVmSource = [
+  extractFunction(linebot, "toHalfWidth"),
+  extractFunction(linebot, "isShortAliasModelToken"),
+  extractFunction(linebot, "extractShortAliasModelTokens"),
+  extractFunction(linebot, "extractFullModelLikeTokens"),
+  extractFunction(linebot, "normalizeModelForDisplay"),
+  extractFunction(linebot, "dedupDisplayModels"),
+  extractFunction(linebot, "isClassRuleLineMatchedAlias"),
+  extractFunction(linebot, "getAliasCandidatesFromClassRules"),
+  extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  `globalThis.__g8Candidates = getAliasOnlySelectionModelsFromQuery("G8 有耳機孔嗎？", 10, false);`,
+  `globalThis.__g8SelectedAgain = getAliasOnlySelectionModelsFromQuery("S27FG812SC G8 有耳機孔嗎？", 10, false);`,
+].join("\n\n");
+const aliasVmContext = {
+  SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
+  ss: {
+    getSheetByName() {
+      return {
+        getDataRange() {
+          return {
+            getValues() {
+              return classRules.split(/\r?\n/).filter(Boolean).map((line) => [line]);
+            },
+          };
+        },
+      };
+    },
+  },
+  writeLog() {},
+};
+vm.runInNewContext(aliasVmSource, aliasVmContext);
+assert(
+  aliasVmContext.__g8Candidates.includes("S27FG812SC") &&
+    aliasVmContext.__g8Candidates.includes("S32DG802SC") &&
+    aliasVmContext.__g8Candidates.length === Math.min(g8RuleModels.length, 10) &&
+    g8RuleModels
+      .slice(0, 10)
+      .every((model) => aliasVmContext.__g8Candidates.includes(model)) &&
+    !aliasVmContext.__g8Candidates.some((model) => /^M[5789]$/i.test(model)),
+  "G8 功能題必須從 Odyssey CLASS_RULES 解析出全部完整型號候選",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__g8SelectedAgain),
+  [],
+  "選完完整型號後不得再次進入 G8 選型迴圈",
+);
+
 const doPostText = extractFunction(linebot, "doPost");
 assert(
   doPostText.indexOf("handleRichMenuPostback_(event)") <
@@ -62,7 +127,62 @@ assert(
   "純提示 postback 不得在 finally 觸碰 Sheet log flush",
 );
 
+const generalRouterStart = linebot.indexOf("// D. 一般對話");
+assert(generalRouterStart >= 0, "找不到一般對話路由");
+const aliasLookupBeforeQaIndex = linebot.indexOf(
+  "const aliasSelectionBeforeQa",
+  generalRouterStart,
+);
+const directQaIndex = linebot.indexOf(
+  "const directLocalQa = findLocalMatchInQA(msg, userId)",
+  generalRouterStart,
+);
+const aliasGateIndex = linebot.indexOf(
+  "shouldPromptAliasModelSelection_(msg, aliasSelectionBeforeQa)",
+  directQaIndex,
+);
+const historyIndex = linebot.indexOf(
+  "const history = getHistoryFromCacheOrSheet(contextId)",
+  directQaIndex,
+);
+const generalRouterText = linebot.slice(generalRouterStart, historyIndex + 200);
+assert(
+  aliasLookupBeforeQaIndex >= 0 &&
+    aliasLookupBeforeQaIndex < directQaIndex &&
+    aliasGateIndex > directQaIndex &&
+    aliasGateIndex < historyIndex &&
+    /doesQaMatchCoverQueryAliases_\(msg, directLocalQa\.question\)/.test(
+      generalRouterText,
+    ) &&
+    /promptAliasOnlyModelSelection\([\s\S]{0,180}"fast"/.test(generalRouterText),
+  "系列別稱型號題必須在泛用 QA／RULE 前先完成實體一致檢查並顯示完整型號選單",
+);
+const aliasCandidateText = extractFunction(
+  linebot,
+  "getAliasOnlySelectionModelsFromQuery",
+);
+assert(
+  /requirePdfCoverage\s*=\s*true/.test(aliasCandidateText) &&
+    /getAliasCandidatesFromExistingPdfs/.test(aliasCandidateText) &&
+    /getAliasCandidatesFromClassRules/.test(aliasCandidateText) &&
+    /extractFullModelLikeTokens\(text\)\.length\s*>\s*0/.test(
+      aliasCandidateText,
+    ),
+  "Fast Mode 必須從 CLASS_RULES 列系列候選；選完完整型號後不得再次進入選型迴圈",
+);
+const postbackText = extractFunction(linebot, "handleRichMenuPostback_");
+assert(
+  /action === "select_manual_model"/.test(postbackText) &&
+    /`\$\{selectedModel\} \$\{state\.draftQuery\}`/.test(postbackText) &&
+    /executeAdvancedSourceQuery_/.test(postbackText),
+  "手冊型號選定後必須把完整型號鎖回原題並直接續跑同一手冊流程",
+);
+
 const llmText = extractFunction(linebot, "callLLMWithRetry");
+const targetedPdfRefreshText = extractFunction(
+  linebot,
+  "refreshStalePdfAttachmentsFromDrive_",
+);
 const manualModelResolverText = extractFunction(
   linebot,
   "resolveManualSourceModel_",
@@ -99,8 +219,29 @@ assert(
   "配額必須在 generateContent 前原子保留",
 );
 assert(
+  /refreshStalePdfAttachmentsFromDrive_\(filesToAttach\)/.test(llmText) &&
+    llmText.indexOf("refreshStalePdfAttachmentsFromDrive_(filesToAttach)") <
+      llmText.indexOf("reserveAdvancedSourceUsage_(advancedGrant)") &&
+    /persistManualPdfKbItem_\(refreshedItem\)/.test(targetedPdfRefreshText) &&
+    /wantedNames\[upperName\]/.test(targetedPdfRefreshText),
+  "過期手冊必須只按本題檔名更新，重跑預檢成功後才扣額度",
+);
+assert(
+  /if \(!evidenceCorrectionAttempted\)/.test(llmText) &&
+    /targetModelName,[\s\S]*?true,[\s\S]*?webGroundingRetryAttempted/.test(
+      llmText,
+    ),
+  "單檔修復只允許嘗試一次，避免過期 URI 無限重送",
+);
+assert(
   /SOURCE_DAILY_LIMITS\s*=\s*\{\s*manual:\s*5,\s*web:\s*10\s*\}/.test(linebot),
   "手冊 5 次、網路 10 次額度不可漂移",
+);
+assert(
+  /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
+    /MAX_LEGACY_PDF_INPUT_TOKENS:\s*100000/.test(linebot) &&
+    /PDF Mode 只保留本輪完整問題/.test(linebot),
+  "官方手冊不得再被舊 20K 任意上限終止；仍須保留可解釋的 100K 單次成本硬上限",
 );
 assert(
   /USER_DAILY_QUESTION_LIMIT\s*=\s*20/.test(linebot) &&
@@ -258,10 +399,20 @@ assert(
   "直接提問需開鍵盤；兩個重查入口需保持 Rich Menu 展開",
 );
 assert(
-  /① 直接問問題/.test(testUi) &&
-    /② 官方手冊重查/.test(testUi) &&
-    /③ 網路解答重查/.test(testUi),
-  "TestUI 必須呈現先提問、再依需要重查的資訊層級",
+  /source-menu-title">直接問</.test(testUi) &&
+    /source-menu-quota">20題\/日</.test(testUi) &&
+    /source-menu-title">查手冊</.test(testUi) &&
+    /source-menu-quota">5次\/日</.test(testUi) &&
+    /source-menu-title">搜網路</.test(testUi) &&
+    /source-menu-quota">10次\/日</.test(testUi),
+  "TestUI 必須用雙排大字呈現功能與每日額度",
+);
+assert(
+  /min-height:\s*124px/.test(testUi) &&
+    /\.source-menu-title[\s\S]{0,180}font-size:\s*19px/.test(testUi) &&
+    /\.source-menu-quota[\s\S]{0,180}font-size:\s*16px/.test(testUi) &&
+    !/source-menu-subtitle/.test(testUi),
+  "TestUI 下方三格必須保留雙排大字與足夠觸控高度",
 );
 assert(
   /function provisionRichMenuDefault_/.test(linebot) &&

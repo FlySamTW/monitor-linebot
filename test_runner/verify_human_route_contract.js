@@ -188,11 +188,12 @@ assert(
 );
 assert(
   /const directLocalQa = findLocalMatchInQA\(msg, userId\)/.test(linebot) &&
-    /QA First Router v29\.6\.098/.test(linebot) &&
+    /QA First Router v29\.6\.116/.test(linebot) &&
+    /Alias Selection Gate v29\.6\.116/.test(linebot) &&
     !/callLLMWithRetry|UrlFetchApp/.test(
       extractFunction(linebot, "replyWithLocalQaMatch_"),
     ),
-  "所有產品問題的精準 QA 零成本捷徑遺失",
+  "精準 QA 零成本捷徑或系列別稱實體守門遺失",
 );
 assert(
   /function checkPdfCost[\s\S]{0,900}isExplicitPdfConsent/.test(linebot) &&

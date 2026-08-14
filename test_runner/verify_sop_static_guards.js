@@ -1686,8 +1686,8 @@ assertStep(
 );
 
 assertStep(
-  /QA First Router v29\.6\.098/.test(linebot) &&
-    /findLocalMatchInQA\(msg, userId\)[\s\S]{0,900}isCrossDeviceMonitorQuery\(msg\)[\s\S]{0,500}RULE Fast Mode/.test(
+  /QA First Router v29\.6\.116/.test(linebot) &&
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,900}isCrossDeviceMonitorQuery\(msg\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(
@@ -1696,7 +1696,7 @@ assertStep(
     !/跨裝置短別稱直接走官方手冊型號選擇，不先呼叫 Fast LLM/.test(
       linebot,
     ),
-  "all product questions, including cross-device aliases, must evaluate exact QA and RULE Fast Mode before PDF selection",
+  "exact QA must remain first when entities align, while ambiguous series questions must select a full model before generic RULE/PDF",
 );
 
 assertStep(

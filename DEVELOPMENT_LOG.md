@@ -1,5 +1,28 @@
 # 開發對話紀錄
 
+## 2026-08-15 (v29.6.118 / Rich Menu 雙排超大字版)
+
+- 依使用者實機閱讀回饋，三格改為雙排超大字：第一排只放功能，第二排只放每日額度。
+- 正式 SVG 標題 112px、額度 82px；TestUI 標題 19px、額度 16px、觸控高度 124px。三個 postback 與切圖座標完全不變。
+- 正式既有 Webhook 已更新至 Apps Script `@1315`，health、remote HEAD、TestUI 均回讀 `v29.6.118 [2026-08-15 02:31]`。
+- 全體預設 Rich Menu 已發布並讀回一致：新 ID `richmenu-3eda4246d33ad95b4cf2958cd968f662`；回復用舊 ID `richmenu-626ba60287e7f686d845e1479d58f7b4`。
+
+## 2026-08-15 (v29.6.117 / Rich Menu 大字精簡版)
+
+- 手機實際觀感回饋指出三格同時塞入編號、動作、使用情境與每日額度，第二行被迫縮小。
+- Rich Menu 與 TestUI 同步改為使用者指定的單行大字：`直接問｜20題/日`、`查手冊｜5次/日`、`搜網路｜10次/日`；移除所有副標。
+- Rich Menu SVG 主標由 78px 放大為 94px、副標由 40px 放大為 52px；TestUI 三格由 90px 增至 108px，圖示 38px 增至 46px，主／副標分別為 14px／11px。
+- PNG 維持 LINE compact Rich Menu 官方尺寸 2500×843，沒有為放大文字改用佔據更多聊天畫面的 2500×1686；點擊區與 postback data 不變。
+
+## 2026-08-15 (v29.6.116 / G8 系列選型與完整手冊成本上限修正)
+
+- 維修紀錄確認 v29.5.173～175 已處理過 `S9/G8/M7` 短別稱跨型號誤答，但後來「QA First」入口位於別稱選型守門之前，使 `G8 有耳機孔嗎` 又可能被泛用 Smart／其他型號資料搶答。
+- `G8` 依 `CLASS_RULES` 明確為 Odyssey G8；功能二元、操作與手冊題若只有系列別稱，先列 RULE 內完整型號。精準 QA 只有題目也包含相同別稱才可直答；選定完整型號後把型號鎖回原題，禁止再次進入選型迴圈。
+- 既有 20K PDF fuse 是 v29.6.095 自訂成本上限，不是 Gemini 官方限制；v29.6.104 已有 69,570-token 正式手冊被擋，後續僅做 HEVC 人工片段特例，沒有解決一般手冊查詢。
+- 手冊模式改成只保留本輪完整使用者問題，20K 僅記錄軟警戒，100K 才是硬上限。依 Gemini 2.5 Flash-Lite Standard 官方 input US$0.10/M、匯率 32，100K input 約 NT$0.32；加上最多 1,200 output 的理論上限約 NT$0.3354。每題最多一份 PDF、每聊天室每日 5 次與真正送出前才扣次的守門不變。
+- 正式 TestUI 手機版改用 iframe 相對的 `100dvh`，避免 Google Apps Script 安全提示壓縮 iframe 後，輸入列與送出鍵落到畫面外。
+- 本節需等正式 G8 選型、選型後 PDF 實際生成與 390×844 觸控旅程全部通過後，再補部署與真人驗收證據；未完成前不得宣稱已修復。
+
 ## 2026-08-15 (v29.6.114 / 提問額度鎖隔離與忙碌防崩潰)
 
 - 正式 TestUI 真人路徑發現 PDF 索引背景自癒持有 ScriptLock 時，每人 20 題計數也會等待同一把鎖並拋出 `DAILY_QUESTION_QUOTA_LOCK_TIMEOUT`。
@@ -2114,3 +2137,8 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - `/重啟` 改為只清個人對話狀態；移除可清空並覆寫 `CLASS_RULES` 的正式流程與兩個會重新注入此危險函式的本機工具。
 - TestUI 改為需維運授權換取短效 token；測試模式不可寫入 QA/RULE。公開的 LOG、RULE、PDF、同步與 metadata 維運端點改為強制授權，維運密碼不再回退使用 Gemini API 金鑰。
 - 靜態測試改為禁止固定手冊答案、驗證手冊追問必須有 LLM/PDF、驗證公開維運面與知識庫覆寫防線。
+# 2026-08-15 (v29.6.115 / 過期手冊單檔即時修復)
+
+- 根因：過去任一 Gemini Files URI 過期都排程 `syncGeminiKnowledgeBase(true)`，會重新上傳整個 Drive PDF 資料夾；單一手冊故障因此可能撞到 GAS 執行時間，正式 TestUI 長時間停在 `[KB_EXPIRED]`。
+- 改為 `refreshStalePdfAttachmentsFromDrive_()`：只按本題已選中的 PDF 檔名由 Drive 重新上傳 1～2 份，覆寫同名 URI，並以新 URI 重跑一次 `countTokens`。預檢成功後才扣手冊額度與送出 `generateContent`；單檔更新仍失敗才保留既有背景整庫重建。
+- `verify_source_router_contract.js` 新增單檔精準更新、先預檢後扣額度及最多重試一次契約。

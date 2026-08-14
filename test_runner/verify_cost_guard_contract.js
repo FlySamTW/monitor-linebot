@@ -51,9 +51,18 @@ assert(
 );
 assert(
   /MAX_FAST_INPUT_TOKENS:\s*12000/.test(linebot) &&
-    /MAX_LEGACY_PDF_INPUT_TOKENS:\s*20000/.test(linebot) &&
+    /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
+    /MAX_LEGACY_PDF_INPUT_TOKENS:\s*100000/.test(linebot) &&
     /MAX_PDF_OUTPUT_TOKENS:\s*1200/.test(linebot),
-  "Fast/PDF input 與 PDF output 硬上限已寫入程式",
+  "Fast/PDF input 與 PDF output 成本上限已寫入程式",
+);
+assert(
+  /PDF Mode 只保留本輪完整問題/.test(linebot) &&
+    /const lastUserMessage = messages[\s\S]{0,220}effectiveMessages = lastUserMessage/.test(
+      linebot,
+    ) &&
+    /PDF Token Budget v29\.6\.116/.test(linebot),
+  "大型手冊必須先移除無關歷史，20K 只警告，100K 才依單次成本硬擋",
 );
 assert(
   /:countTokens\?key=/.test(linebot) &&
@@ -65,10 +74,11 @@ assert(
 );
 assert(
   /staleFile:\s*staleFile/.test(linebot) &&
-    /tokenPreflight\.staleFile[\s\S]{0,260}scheduleImmediateRebuild\(\)[\s\S]{0,260}return "\[KB_EXPIRED\]"/.test(
+    /tokenPreflight\.staleFile[\s\S]*?refreshStalePdfAttachmentsFromDrive_\(filesToAttach\)[\s\S]*?scheduleImmediateRebuild\(\)[\s\S]*?return "\[KB_EXPIRED\]"/.test(
       linebot,
-    ),
-  "PDF countTokens 的 403/404 過期檔必須 fail closed 並非同步排程重建",
+    ) &&
+    /if \(!evidenceCorrectionAttempted\)/.test(linebot),
+  "PDF countTokens 的 403/404 過期檔必須只修復本題一次，仍失敗才 fail closed 並排程整庫重建",
 );
 assert(
   /slice\(0, CONFIG\.MAX_RELEVANT_RULE_LINES\)/.test(linebot) &&

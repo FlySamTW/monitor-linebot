@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.114)
+# Samsung LINE Bot 完整流程解析 (v29.6.118)
 
 ## 📋 核心哲學
 
@@ -23,7 +23,7 @@
 - 正式 LINE 與 TestUI 對話泡泡不顯示 token、NT$、`[AUTO_*]` 或內部來源標籤；LOG／所有紀錄保留完整稽核，客戶只看到自然來源頁尾。
 - 服務範圍只含三星電腦螢幕、Smart Monitor 與外部裝置連接螢幕；純手機、純家電、電視與其他領域轉為範圍外。
 - 顯示／沒畫面題只保留影像協定、輸入來源與必要線材；未問供電或攝影機時不混入 65W、充電、Power Delivery 或攝影機資訊。
-- Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens；舊式整本 PDF 必須先用含 `file_uri` 的 `countTokens` 預檢，超過 20K 或計數失敗一律不送出。
+- Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens。完整 PDF 先移除無關歷史並以含 `file_uri` 的 `countTokens` 預檢；20K 僅記錄成本警戒，100K 才拒絕送出，計數失敗仍 fail closed。100K input 依現行 Flash-Lite Standard 費率與匯率 32 約 NT$0.32，另加實際 output。
 - PDF output 最多 1200 tokens；PDF 失敗不得拔掉手冊後改用 AI 內建知識回答。
 - `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；客戶版隱藏 token，只保留簡版 `本次約 NT$...｜今日提問剩餘 N/20`。
 - `CLASS_RULES` 既有「型號：尚無資訊」未完成列會在同步時排除，不注入正式 prompt/index；Product Finder 會把對應型號轉進待審核清單，不直接刪除商用 Sheet 資料。
@@ -73,7 +73,7 @@
 - 網搜雖有官方證據，也只能回答證據直接支援的外部裝置能力；以「可能／通常／常見／依賴」延伸出的手機設定、鏡像選項、系統功能或相容性推測必須移除。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.114）
+## ✅ 現行鐵律 SOP（v29.6.118）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。
 2. **再官方手冊**：Fast Mode 不足只負責詢問；只有使用者明確 `#查手冊` 或自然同意，並完成必要型號選擇後，才掛載 PDF RAG。單純點選型號不代表同意付費查手冊。
