@@ -956,7 +956,7 @@ assertStep(
 );
 
 assertStep(
-  /\(hasPdfForModel \|\| isAwaitingManualConsent\)\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
+  /\(hasPdfForModel \|\| manualSourceRecommended\)\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
     linebot,
   ),
   "manual quick reply/reminder must be hidden after PDF consult or during model selection",

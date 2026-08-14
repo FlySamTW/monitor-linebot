@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="843" viewBox="0 0 2500 843">
+  <defs>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="136%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#15314A" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="2500" height="843" fill="#F2F6FA"/>
+
+  <g font-family="Microsoft JhengHei, Noto Sans TC, sans-serif">
+    <g filter="url(#shadow)">
+      <rect x="42" y="42" width="778" height="759" rx="44" fill="#FFFFFF"/>
+      <rect x="861" y="42" width="778" height="759" rx="44" fill="#FFFFFF"/>
+      <rect x="1680" y="42" width="778" height="759" rx="44" fill="#FFFFFF"/>
+    </g>
+
+    <rect x="42" y="42" width="778" height="20" rx="10" fill="#008F83"/>
+    <rect x="861" y="42" width="778" height="20" rx="10" fill="#2767B2"/>
+    <rect x="1680" y="42" width="778" height="20" rx="10" fill="#C96A0A"/>
+
+    <!-- 辨識發票 -->
+    <circle cx="431" cy="306" r="150" fill="#E2F6F2"/>
+    <g fill="none" stroke="#008F83" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M308 247h65l24-39h68l24 39h65c24 0 43 19 43 43v139c0 24-19 43-43 43H308c-24 0-43-19-43-43V290c0-24 19-43 43-43z" fill="#FFFFFF"/>
+      <circle cx="431" cy="355" r="72"/>
+      <path d="M431 320v70M396 355h70"/>
+    </g>
+    <text x="431" y="625" text-anchor="middle" font-size="116" font-weight="700" fill="#142A3A">辨識發票</text>
+    <rect x="275" y="686" width="312" height="68" rx="34" fill="#E2F6F2"/>
+    <text x="431" y="733" text-anchor="middle" font-size="44" font-weight="700" fill="#00766C">拍照或多選</text>
+
+    <!-- 查詢單張 -->
+    <circle cx="1250" cy="306" r="150" fill="#E8F1FD"/>
+    <g fill="none" stroke="#2767B2" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1124" y="188" width="190" height="246" rx="22" fill="#FFFFFF"/>
+      <path d="M1163 252h112M1163 311h78M1163 370h62"/>
+      <circle cx="1340" cy="401" r="72" fill="#FFFFFF"/>
+      <path d="M1393 454l66 66"/>
+    </g>
+    <text x="1250" y="625" text-anchor="middle" font-size="116" font-weight="700" fill="#142A3A">查詢單張</text>
+    <rect x="1094" y="686" width="312" height="68" rx="34" fill="#E8F1FD"/>
+    <text x="1250" y="733" text-anchor="middle" font-size="44" font-weight="700" fill="#245A9A">最近發票</text>
+
+    <!-- 所有列表 -->
+    <circle cx="2069" cy="306" r="150" fill="#FFF0DE"/>
+    <g fill="none" stroke="#C96A0A" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1943" y="186" width="236" height="248" rx="24" fill="#FFFFFF"/>
+      <path d="M1943 266h236M2022 266v168M2101 266v168M1943 350h236"/>
+      <path d="M2125 461h106M2189 420l42 41-42 42"/>
+    </g>
+    <text x="2069" y="625" text-anchor="middle" font-size="116" font-weight="700" fill="#142A3A">所有列表</text>
+    <rect x="1913" y="686" width="312" height="68" rx="34" fill="#FFF0DE"/>
+    <text x="2069" y="733" text-anchor="middle" font-size="44" font-weight="700" fill="#A85708">Google Sheet</text>
+  </g>
+</svg>

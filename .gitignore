@@ -7,6 +7,8 @@
 node_modules/
 test_runner/node_modules/
 .playwright-mcp/
+.playwright-cli/
+output/playwright/
 
 # Backups & temp files
 *.bak

@@ -61,6 +61,35 @@
                     });
                 }, 500);
               },
+              testSourcePostback: function (action, source) {
+                setTimeout(() => {
+                  if (!this.success) return;
+                  if (action === "cancel_source" || source === "spec") {
+                    this.success({
+                      success: true,
+                      replies: ["已切回「規格＆FAQ」快速模式，沒有扣除次數。"],
+                      logs: [`[Mock Postback] ${action}/${source}`],
+                      sourceState: { source: "spec", pending: false },
+                    });
+                    return;
+                  }
+                  const manual = source === "manual";
+                  this.success({
+                    success: true,
+                    replies: [
+                      manual
+                        ? "📖 官方手冊｜今日剩餘 5/5 次\n\n會完整搜尋對應型號的官方使用手冊，回覆時間較長。\n\n請直接輸入「完整型號＋問題」；輸入「取消」離開。"
+                        : "🌐 網路解答｜今日剩餘 10/10 次\n\n會先搜尋三星官方網頁，再補充可信的外部做法；非官方內容會清楚標示。",
+                    ],
+                    logs: [`[Mock Postback] ${action}/${source}`],
+                    sourceState: {
+                      source: source,
+                      pending: true,
+                      hasPrevious: action === "select_source",
+                    },
+                  });
+                }, 250);
+              },
               clearTestSession: function () {
                 setTimeout(() => {
                   if (this.success) this.success({ success: true });
@@ -258,6 +287,58 @@
       }
       .msg-row.bot .quick-reply-group {
         margin-left: 48px;
+      }
+
+      .source-action-bar {
+        display: none;
+        gap: 8px;
+        padding: 8px 12px 0;
+        background: #fff;
+      }
+      .source-action-bar.visible { display: flex; }
+      .source-action-btn {
+        flex: 1;
+        min-height: 38px;
+        border: 1px solid #d6dbe4;
+        border-radius: 18px;
+        background: #fff;
+        color: #174ea6;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .source-menu {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1px;
+        padding: 7px 7px 8px;
+        background: #e7eaf0;
+        border-top: 1px solid #d6dbe4;
+      }
+      .source-menu-btn {
+        min-width: 0;
+        min-height: 66px;
+        padding: 7px 3px;
+        border: 0;
+        background: #fff;
+        color: #111827;
+        cursor: pointer;
+      }
+      .source-menu-btn:first-child { border-radius: 10px 0 0 10px; }
+      .source-menu-btn:last-child { border-radius: 0 10px 10px 0; }
+      .source-menu-icon { display: block; font-size: 20px; line-height: 1; }
+      .source-menu-title {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+      .source-menu-subtitle {
+        display: block;
+        margin-top: 2px;
+        font-size: 9px;
+        color: #687386;
+        white-space: nowrap;
       }
 
       #queue-bar {
@@ -480,6 +561,27 @@
             <i class="fas fa-hourglass-half"></i>
             <div id="queue-list"></div>
           </div>
+          <div id="source-action-bar" class="source-action-bar">
+            <button id="use-previous-source" class="source-action-btn" onclick="usePreviousSource()">查上一題</button>
+            <button class="source-action-btn" onclick="cancelSourceMode()">取消</button>
+          </div>
+          <div class="source-menu" aria-label="回答來源選單">
+            <button class="source-menu-btn" onclick="selectSource('spec')">
+              <span class="source-menu-icon">💬</span>
+              <span class="source-menu-title">規格＆FAQ</span>
+              <span class="source-menu-subtitle">快速・不限次</span>
+            </button>
+            <button class="source-menu-btn" onclick="selectSource('manual')">
+              <span class="source-menu-icon">📖</span>
+              <span class="source-menu-title">官方手冊</span>
+              <span class="source-menu-subtitle">完整查證・每日5次</span>
+            </button>
+            <button class="source-menu-btn" onclick="selectSource('web')">
+              <span class="source-menu-icon">🌐</span>
+              <span class="source-menu-title">網路解答</span>
+              <span class="source-menu-subtitle">公開網頁・每日10次</span>
+            </button>
+          </div>
           <div class="input-area">
             <input
               type="text"
@@ -567,6 +669,7 @@
       var historyData = [];
       var currentQuickReplies = []; // 存儲當前快速回覆選項
       var messageIdSequence = 0;
+      var activeSource = "spec";
 
       // 🔥 223 題壓力測試題庫
       const PRESET_QUESTIONS = [
@@ -911,6 +1014,61 @@
       }
 
       // --- 訊息發送 ---
+      function renderSourceActions(state) {
+        var bar = document.getElementById("source-action-bar");
+        var previousButton = document.getElementById("use-previous-source");
+        if (!state || !state.pending) {
+          bar.classList.remove("visible");
+          activeSource = "spec";
+          return;
+        }
+        activeSource = state.source || "spec";
+        previousButton.style.display = state.hasPrevious ? "block" : "none";
+        bar.classList.add("visible");
+      }
+
+      function runSourcePostback(action, source) {
+        if (isBotProcessing) return;
+        isBotProcessing = true;
+        updateLogs([
+          `[${new Date().toLocaleTimeString()}] [HTML] Postback: ${action}/${source || ""}`,
+        ]);
+        var loadingId = addMsg("bot", "Reading...");
+        google.script.run
+          .withSuccessHandler(function (res) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+            if (res.replies && res.replies.length > 0) {
+              res.replies.forEach(function (reply) { addMsg("bot", reply); });
+            } else {
+              addMsg("bot", "(無回覆)");
+            }
+            renderSourceActions(res.sourceState);
+            document.getElementById("msg-input").focus();
+          })
+          .withFailureHandler(function (err) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            addMsg("bot", "❌ Error: " + err);
+          })
+          .testSourcePostback(action, source || "", TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
+      }
+
+      function selectSource(source) {
+        runSourcePostback("select_source", source);
+      }
+
+      function usePreviousSource() {
+        if (activeSource === "manual" || activeSource === "web") {
+          runSourcePostback("use_previous", activeSource);
+        }
+      }
+
+      function cancelSourceMode() {
+        runSourcePostback("cancel_source", activeSource);
+      }
+
       function sendMessage() {
         var input = document.getElementById("msg-input");
         var text = input.value.trim();
@@ -1031,6 +1189,7 @@
               isBotProcessing = false;
               removeMsg(loadingId);
               if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+              renderSourceActions(res.sourceState);
 
               if (res.replies && res.replies.length > 0) {
                 res.replies.forEach((reply, idx) => {
@@ -1144,6 +1303,7 @@
             isBotProcessing = false;
             removeMsg(loadingId);
             if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+            renderSourceActions(res.sourceState);
 
             if (res.replies && res.replies.length > 0) {
               res.replies.forEach((reply, idx) => {
@@ -1215,6 +1375,8 @@
         document.getElementById("log-box").innerHTML = "";
         messageQueue = [];
         currentQuickReplies = [];
+        activeSource = "spec";
+        renderSourceActions(null);
         renderQueue();
         isBotProcessing = false;
         google.script.run.clearTestSession(TEST_USER_ID, TEST_UI_ACCESS_TOKEN);

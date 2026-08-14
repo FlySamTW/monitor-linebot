@@ -1,0 +1,35 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 843
+  },
+  "selected": true,
+  "name": "Samsung客服三鍵選單 v1 - PILOT",
+  "chatBarText": "客服功能",
+  "areas": [
+    {
+      "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "postback",
+        "label": "詢問客服",
+        "data": "rm_action=start_question"
+      }
+    },
+    {
+      "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 },
+      "action": {
+        "type": "postback",
+        "label": "查詢手冊",
+        "data": "rm_action=manual_search"
+      }
+    },
+    {
+      "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
+      "action": {
+        "type": "postback",
+        "label": "更多功能",
+        "data": "rm_action=more"
+      }
+    }
+  ]
+}
