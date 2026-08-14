@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.111"; // 2026-08-14 Rich Menu 初次提問引導
-const BUILD_TIMESTAMP = "2026-08-14 18:15";
+const GAS_VERSION = "v29.6.114"; // 2026-08-15 提問額度鎖隔離與忙碌防崩潰
+const BUILD_TIMESTAMP = "2026-08-15 00:50";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -22,6 +22,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_DAILY_LIMITS = { manual: 5, web: 10 };
+const USER_DAILY_QUESTION_LIMIT = 20;
 
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -88,6 +89,8 @@ const PRICE_POLISH_OUTPUT = 0.4; // $0.40 per 1M Output
 var IS_TEST_MODE = false;
 var TEST_LOGS = [];
 var ACTIVE_ADVANCED_SOURCE_GRANT = null;
+var CURRENT_DAILY_QUESTION_REMAINING = null;
+var CURRENT_REPLY_FOOTER_APPENDED = false;
 var LAST_SOURCE_TEST_STATE = null;
 var FAST_POSTBACK_HANDLED = false;
 // v27.8.5: Log 緩衝區 (Batch Logging)
@@ -3759,6 +3762,121 @@ function getSourceQuotaKey_(contextId, dateKey) {
   return `SRC_QUOTA_${getSourceContextHash_(contextId)}_${dateKey || getSourceDateKey_()}`;
 }
 
+function getDailyQuestionQuotaKey_(userId, dateKey) {
+  return `USR_QDAY_${getSourceContextHash_(userId)}_${dateKey || getSourceDateKey_()}`;
+}
+
+function readDailyQuestionUsage_(userId) {
+  const dateKey = getSourceDateKey_();
+  const key = getDailyQuestionQuotaKey_(userId, dateKey);
+  let state = parseSourceStateJson_(CacheService.getScriptCache().get(key));
+  if (!state) {
+    state = parseSourceStateJson_(
+      PropertiesService.getScriptProperties().getProperty(key),
+    );
+  }
+  if (!state || state.date !== dateKey) {
+    state = { date: dateKey, used: 0 };
+  }
+  state.used = Math.max(0, Number(state.used || 0));
+  CacheService.getScriptCache().put(key, JSON.stringify(state), 21600);
+  return state;
+}
+
+function getDailyQuestionRemaining_(userId) {
+  const state = readDailyQuestionUsage_(userId);
+  return Math.max(0, USER_DAILY_QUESTION_LIMIT - Number(state.used || 0));
+}
+
+function reserveDailyQuestionUsage_(userId) {
+  // 每人提問額度不得和 PDF 索引同步共用 ScriptLock，否則背景重建期間
+  // 會把一般問題誤判成配額鎖逾時。UserLock 只保護短小的計數寫入。
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(5000)) {
+    throw new Error("DAILY_QUESTION_QUOTA_LOCK_TIMEOUT");
+  }
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const dateKey = getSourceDateKey_();
+    const key = getDailyQuestionQuotaKey_(userId, dateKey);
+    let state = parseSourceStateJson_(props.getProperty(key));
+    if (!state || state.date !== dateKey) {
+      state = { date: dateKey, used: 0 };
+    }
+    state.used = Math.max(0, Number(state.used || 0));
+    if (state.used >= USER_DAILY_QUESTION_LIMIT) {
+      return {
+        allowed: false,
+        used: state.used,
+        remaining: 0,
+      };
+    }
+    state.used += 1;
+    props.setProperty(key, JSON.stringify(state));
+    CacheService.getScriptCache().put(key, JSON.stringify(state), 21600);
+    writeLog(
+      `[Daily Question Guard v29.6.113] used=${state.used}/${USER_DAILY_QUESTION_LIMIT}`,
+    );
+    return {
+      allowed: true,
+      used: state.used,
+      remaining: Math.max(0, USER_DAILY_QUESTION_LIMIT - state.used),
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function shouldCountDailyQuestionText_(message, contextId) {
+  const text = String(message || "").trim();
+  if (!text || isSourceCancelText_(text) || /^\//.test(text)) return false;
+
+  const explicitSource = parseExplicitSourceCommand_(text);
+  if (explicitSource && !explicitSource.query) return false;
+
+  const pending = readPendingSourceState_(contextId, true);
+  if (
+    pending &&
+    !pending.expired &&
+    pending.source === "manual" &&
+    pending.draftQuery &&
+    isManualModelHintOnly_(text)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function reserveDailyQuestionOrReply_(userId, replyToken) {
+  let result;
+  try {
+    result = reserveDailyQuestionUsage_(userId);
+  } catch (error) {
+    if (String(error && error.message ? error.message : error) !== "DAILY_QUESTION_QUOTA_LOCK_TIMEOUT") {
+      throw error;
+    }
+    CURRENT_DAILY_QUESTION_REMAINING = null;
+    writeLog(
+      "[Daily Question Guard v29.6.114] 額度鎖忙碌，fail closed：不計次、不送供應商",
+    );
+    replyMessage(
+      replyToken,
+      "系統正在整理資料，這次沒有計入提問次數，也沒有送出付費查詢。請稍後再送一次。",
+    );
+    return { allowed: false, busy: true, remaining: null };
+  }
+  if (result.allowed) {
+    CURRENT_DAILY_QUESTION_REMAINING = result.remaining;
+    return result;
+  }
+  CURRENT_DAILY_QUESTION_REMAINING = null;
+  replyMessage(
+    replyToken,
+    `今天的 ${USER_DAILY_QUESTION_LIMIT} 次提問已用完。明天 00:00（台北時間）會自動恢復；按來源、取消或選型號都不會另外計次。`,
+  );
+  return result;
+}
+
 function parseSourceStateJson_(raw) {
   if (!raw) return null;
   try {
@@ -3980,13 +4098,13 @@ function buildSourceSelectionPrompt_(source, remaining, previousQuestion) {
     lines.push(`要用${source === "manual" ? "手冊" : "網路"}重查剛才這題嗎：「${String(previousQuestion).substring(0, 160)}」？`);
     lines.push(
       source === "manual"
-        ? "可點「查上一題」，或直接輸入「完整型號＋問題」；輸入「取消」離開。"
+        ? "可點「查上一題」，或直接輸入「系列／型號＋問題」；有多個版本時我會列出按鈕讓你選。輸入「取消」離開。"
         : "可點「查上一題」，或直接輸入新問題；輸入「取消」離開。",
     );
   } else {
     lines.push(
       source === "manual"
-        ? "請直接輸入「完整型號＋問題」；輸入「取消」離開。"
+        ? "請直接輸入「系列／型號＋問題」；有多個版本時我會列出按鈕讓你選。輸入「取消」離開。"
         : "請直接輸入問題；輸入「取消」離開。",
     );
   }
@@ -4004,7 +4122,7 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
     };
     replyMessage(
       replyToken,
-      "已切回「規格＆FAQ」快速模式，這個來源不限次。請直接輸入型號與問題。",
+      `已切回「規格＆FAQ」快速模式。實驗期間每位使用者每天可提問 ${USER_DAILY_QUESTION_LIMIT} 次，請直接輸入型號與問題。`,
     );
     return true;
   }
@@ -4021,7 +4139,7 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
     };
     replyMessage(
       replyToken,
-      `今天的${source === "manual" ? "官方手冊 5 次" : "網路解答 10 次"}已用完。你仍可不限次使用「規格＆FAQ」，明天 00:00 會自動恢復。`,
+      `今天的${source === "manual" ? "官方手冊 5 次" : "網路解答 10 次"}已用完。你仍可使用「規格＆FAQ」的每日提問額度，明天 00:00 會自動恢復。`,
     );
     return true;
   }
@@ -4063,6 +4181,10 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
 
 function handleRichMenuPostback_(event) {
   if (!event || event.type !== "postback") return false;
+  CURRENT_DAILY_QUESTION_REMAINING = null;
+  lastTokenUsage = null;
+  lastLlmCallAttempted = false;
+  resetRequestAudit_();
   const params = parsePostbackData_(event.postback && event.postback.data);
   const action = String(params.rm_action || "");
   if (!action) return false;
@@ -4112,9 +4234,48 @@ function handleRichMenuPostback_(event) {
       );
       return true;
     }
+    const dailyQuota = reserveDailyQuestionOrReply_(userId, replyToken);
+    if (!dailyQuota.allowed) return true;
+    state.dailyQuestionRemaining = dailyQuota.remaining;
     executeAdvancedSourceQuery_(
       requestedSource,
       state.previousQuestion,
+      contextId,
+      userId,
+      replyToken,
+      state,
+    );
+    return true;
+  }
+
+  if (action === "select_manual_model") {
+    const state = readPendingSourceState_(contextId, true);
+    const selectedModel = normalizeModelForDisplay(params.model || "");
+    const candidates = state && Array.isArray(state.manualModelCandidates)
+      ? state.manualModelCandidates.map(normalizeModelForDisplay)
+      : [];
+    if (
+      !state ||
+      state.expired ||
+      state.source !== "manual" ||
+      !selectedModel ||
+      candidates.indexOf(selectedModel) < 0 ||
+      !state.draftQuery
+    ) {
+      clearPendingSourceState_(contextId);
+      replyMessage(
+        replyToken,
+        "剛才的型號選擇已逾時，沒有扣除次數。請重新按「官方手冊」再試一次。",
+      );
+      return true;
+    }
+    CURRENT_DAILY_QUESTION_REMAINING =
+      typeof state.dailyQuestionRemaining === "number"
+        ? state.dailyQuestionRemaining
+        : null;
+    executeAdvancedSourceQuery_(
+      "manual",
+      `${selectedModel} ${state.draftQuery}`.trim(),
       contextId,
       userId,
       replyToken,
@@ -4185,6 +4346,112 @@ function resolveManualSourceModel_(query, state, cache, userId) {
   return "";
 }
 
+function isManualModelHintOnly_(text) {
+  const source = toHalfWidth(String(text || "")).trim().toUpperCase();
+  if (!source) return false;
+  const hints = source.match(
+    /\b(?:LS|S|C|F|G|M)\d{1,3}[A-Z0-9-]{0,12}\b/g,
+  ) || [];
+  if (hints.length === 0) return false;
+  let remainder = source;
+  hints.forEach(function (hint) {
+    remainder = remainder.replace(hint, " ");
+  });
+  return remainder.replace(/[\s,，。；;：:、.!！?？()（）\-]/g, "").length === 0;
+}
+
+function getManualSourceCandidateModels_(query, limit) {
+  const max = Math.max(1, Number(limit) || 10);
+  const aliasCandidates = getAliasOnlySelectionModelsFromQuery(query, max);
+  if (aliasCandidates.length > 0) return aliasCandidates;
+
+  const upper = toHalfWidth(String(query || "")).trim().toUpperCase();
+  const hints = upper.match(/\b(?:LS|S|C|F)\d{2}[A-Z0-9]{1,10}\b/g) || [];
+  if (hints.length === 0) return [];
+
+  const knownModels = getKnownModelSearchText().match(
+    /\b(?:LS|S|C|F)\d{2}[A-Z][A-Z0-9]{4,15}\b/g,
+  ) || [];
+  const normalizedHints = hints.map(normalizeModelForDisplay);
+  const candidates = knownModels.filter(function (model) {
+    const display = normalizeModelForDisplay(model);
+    return normalizedHints.some(function (hint) {
+      return display.indexOf(hint) === 0 || display.indexOf(hint) >= 0;
+    });
+  });
+  return dedupDisplayModels(candidates, max);
+}
+
+function createManualSourceModelSelectionFlex_(models) {
+  const displayModels = dedupDisplayModels(models, 10);
+  const buttons = displayModels.map(function (model) {
+    return {
+      type: "button",
+      action: {
+        type: "postback",
+        label: model.substring(0, 20),
+        data: `rm_action=select_manual_model&model=${encodeURIComponent(model)}&v=1`,
+      },
+      style: "primary",
+      color: "#2767B2",
+      margin: "md",
+      height: "sm",
+    };
+  });
+  return {
+    type: "flex",
+    altText: "請選擇要查手冊的型號",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "📖 選擇要查的型號",
+            weight: "bold",
+            size: "lg",
+            color: "#173A67",
+            align: "center",
+          },
+          {
+            type: "text",
+            text: `找到 ${displayModels.length} 個相近型號`,
+            size: "xs",
+            color: "#687386",
+            align: "center",
+            margin: "sm",
+          },
+        ],
+        paddingAll: "16px",
+        backgroundColor: "#E8F1FD",
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: buttons,
+        spacing: "sm",
+        paddingAll: "14px",
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "選型號前不讀手冊、不扣次",
+            size: "xxs",
+            color: "#687386",
+            align: "center",
+          },
+        ],
+        paddingAll: "10px",
+      },
+    },
+  };
+}
+
 function buildAdvancedSourceQuickReplies_(source) {
   const items = [];
   items.push(
@@ -4200,6 +4467,122 @@ function buildAdvancedSourceQuickReplies_(source) {
     ),
   );
   return { quickReply: { items: items } };
+}
+
+function isLikelyLocalSpecRuleQuestion_(query) {
+  const text = String(query || "");
+  if (
+    /(故障|異常|無法|不能用|沒反應|黑屏|閃爍|重置|恢復原廠|設定路徑|選單|怎麼操作|如何設定|更新韌體|驅動程式)/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別)/i.test(
+    text,
+  );
+}
+
+function tryManualFreeLocalAnswer_(
+  query,
+  contextId,
+  userId,
+  replyToken,
+  model,
+  allowRule,
+) {
+  const directLocalQa = findLocalMatchInQA(query, userId);
+  if (directLocalQa) {
+    const remaining = getSourceRemaining_(contextId, "manual");
+    clearPendingSourceState_(contextId);
+    LAST_SOURCE_TEST_STATE = {
+      source: "spec",
+      pending: false,
+      executed: "local_qa",
+      reserved: false,
+      remaining: remaining,
+    };
+    const localMatch = Object.assign({}, directLocalQa, {
+      answer: `${directLocalQa.answer}\n\n這題已由規格／FAQ回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`,
+    });
+    writeLog(
+      `[Manual Free Precheck v29.6.113] 精準 QA 命中，不讀 PDF、不扣手冊次數: ${directLocalQa.question.substring(0, 60)}`,
+    );
+    replyWithLocalQaMatch_(
+      localMatch,
+      query,
+      userId,
+      replyToken,
+      contextId,
+    );
+    rememberRecentSourceQuestion_(contextId, query, model || "");
+    return true;
+  }
+
+  if (!allowRule || !isLikelyLocalSpecRuleQuestion_(query)) return false;
+
+  const history = getHistoryFromCacheOrSheet(contextId);
+  let rawResponse = "";
+  try {
+    rawResponse = callLLMWithRetry(
+      query,
+      history.concat([{ role: "user", content: query }]),
+      [],
+      false,
+      null,
+      false,
+      userId,
+      false,
+      model || null,
+    );
+  } catch (error) {
+    writeLog(
+      `[Manual Free Precheck v29.6.113] RULE Fast Mode 失敗，改走已授權手冊: ${error}`,
+    );
+    return false;
+  }
+
+  const localSourceTag = normalizeSourceTagFromRaw(rawResponse);
+  const asksAdvancedSource =
+    /\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC)\]/i.test(rawResponse) ||
+    isKnowledgeMissingReply_(stripAnySourceTags(rawResponse));
+  if (
+    asksAdvancedSource ||
+    !/\[來源:(?:QA庫|官方規格庫|官方活動庫)\]/.test(localSourceTag)
+  ) {
+    writeLog(
+      "[Manual Free Precheck v29.6.113] RULE 無高信心本機答案，繼續已授權手冊路徑",
+    );
+    return false;
+  }
+
+  const remaining = getSourceRemaining_(contextId, "manual");
+  let finalText = stripAnySourceTags(formatForLineMobile(rawResponse));
+  finalText = sanitizeLeadDatabasePhrase(finalText);
+  finalText = `${finalText}\n\n這題已由規格／FAQ回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。\n${localSourceTag}`;
+  finalText = enforceNiTone(finalText);
+  clearPendingSourceState_(contextId);
+  LAST_SOURCE_TEST_STATE = {
+    source: "spec",
+    pending: false,
+    executed: "local_rule",
+    reserved: false,
+    remaining: remaining,
+  };
+  writeLog(
+    "[Manual Free Precheck v29.6.113] 高信心 QA/RULE 回覆，不讀 PDF、不扣手冊次數",
+  );
+  replyMessage(replyToken, finalText);
+  writeRecordDirectly(userId, query, contextId, "user", "");
+  writeRecordDirectly(userId, finalText, contextId, "assistant", "");
+  updateHistorySheetAndCache(
+    contextId,
+    history,
+    { role: "user", content: query },
+    { role: "assistant", content: finalText },
+  );
+  rememberRecentSourceQuestion_(contextId, query, model || "");
+  return true;
 }
 
 function executeAdvancedSourceQuery_(
@@ -4227,18 +4610,39 @@ function executeAdvancedSourceQuery_(
     return false;
   }
 
+  if (
+    normalizedSource === "manual" &&
+    tryManualFreeLocalAnswer_(
+      normalizedQuery,
+      contextId,
+      userId,
+      replyToken,
+      "",
+      false,
+    )
+  ) {
+    return true;
+  }
+
   const remainingBefore = getSourceRemaining_(contextId, normalizedSource);
-  if (remainingBefore <= 0) {
+  if (remainingBefore <= 0 && normalizedSource === "web") {
     clearPendingSourceState_(contextId);
     replyMessage(
       replyToken,
-      `今天的${normalizedSource === "manual" ? "官方手冊 5 次" : "網路解答 10 次"}已用完。這次沒有送出查詢；你仍可不限次使用「規格＆FAQ」。`,
+      `今天的${normalizedSource === "manual" ? "官方手冊 5 次" : "網路解答 10 次"}已用完。這次沒有送出查詢；你仍可使用「規格＆FAQ」的每日提問額度。`,
     );
     return true;
   }
 
   let selectedModel = "";
   if (normalizedSource === "manual") {
+    if (
+      pendingState &&
+      pendingState.draftQuery &&
+      isManualModelHintOnly_(normalizedQuery)
+    ) {
+      normalizedQuery = `${normalizedQuery} ${pendingState.draftQuery}`.trim();
+    }
     selectedModel = resolveManualSourceModel_(
       normalizedQuery,
       pendingState,
@@ -4256,12 +4660,53 @@ function executeAdvancedSourceQuery_(
       selectedModel = modelOnly[0];
     }
     if (!selectedModel) {
+      const modelCandidates = getManualSourceCandidateModels_(
+        normalizedQuery,
+        10,
+      );
+      if (modelCandidates.length === 1) {
+        selectedModel = modelCandidates[0];
+        normalizedQuery = `${selectedModel} ${normalizedQuery}`.trim();
+      } else if (modelCandidates.length > 1) {
+        writePendingSourceState_(contextId, {
+          source: "manual",
+          userIdHash: getSourceContextHash_(userId),
+          previousQuestion: pendingState ? pendingState.previousQuestion || "" : "",
+          previousModel: "",
+          draftQuery: normalizedQuery,
+          manualModelCandidates: modelCandidates,
+          dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
+        });
+        cache.put(
+          `${userId}:suggested_models`,
+          JSON.stringify(modelCandidates),
+          600,
+        );
+        LAST_SOURCE_TEST_STATE = {
+          source: "manual",
+          pending: true,
+          needsModel: true,
+          modelCandidates: modelCandidates,
+          remaining: remainingBefore,
+        };
+        replyMessage(replyToken, [
+          {
+            type: "text",
+            text: "這個系列有多個版本。請直接點選你要查的型號；選型號前不會讀手冊，也不會扣次。",
+          },
+          createManualSourceModelSelectionFlex_(modelCandidates),
+        ]);
+        return true;
+      }
+    }
+    if (!selectedModel) {
       writePendingSourceState_(contextId, {
         source: "manual",
         userIdHash: getSourceContextHash_(userId),
         previousQuestion: pendingState ? pendingState.previousQuestion || "" : "",
         previousModel: "",
         draftQuery: normalizedQuery,
+        dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
       });
       LAST_SOURCE_TEST_STATE = {
         source: "manual",
@@ -4271,7 +4716,7 @@ function executeAdvancedSourceQuery_(
       };
       replyMessage(
         replyToken,
-        `我還缺完整型號，所以尚未讀取手冊，也沒有扣次。\n\n請補上完整型號（例如 S32FM703UC），我會接著查這題：「${normalizedQuery.substring(0, 160)}」；輸入「取消」可離開。`,
+        `我還缺可辨識的系列或型號線索，所以尚未讀取手冊，也沒有扣次。\n\n你不用輸入完整型號：請回覆系列別稱或機身型號前段（例如 M8、G8、S27DG5），若有多個版本我會直接列出按鈕讓你選。\n\n我會接著查這題：「${normalizedQuery.substring(0, 160)}」；輸入「取消」可離開。`,
         {
           quickReply: {
             items: [
@@ -4282,6 +4727,27 @@ function executeAdvancedSourceQuery_(
             ],
           },
         },
+      );
+      return true;
+    }
+
+    if (
+      tryManualFreeLocalAnswer_(
+        normalizedQuery,
+        contextId,
+        userId,
+        replyToken,
+        selectedModel,
+        true,
+      )
+    ) {
+      return true;
+    }
+    if (remainingBefore <= 0) {
+      clearPendingSourceState_(contextId);
+      replyMessage(
+        replyToken,
+        "今天的官方手冊 5 次已用完。這題在規格／FAQ 沒有高信心答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。",
       );
       return true;
     }
@@ -4354,7 +4820,7 @@ function executeAdvancedSourceQuery_(
     if (code.indexOf("SOURCE_QUOTA_EXHAUSTED_") === 0) {
       replyMessage(
         replyToken,
-        `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可不限次使用「規格＆FAQ」。`,
+        `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可使用「規格＆FAQ」的每日提問額度。`,
       );
       return true;
     }
@@ -4445,7 +4911,10 @@ function cleanupExpiredSourceRoutingProperties_() {
   const today = getSourceDateKey_();
   const now = Date.now();
   Object.keys(all).forEach(function (key) {
-    if (key.indexOf("SRC_QUOTA_") === 0 && !key.endsWith(`_${today}`)) {
+    if (
+      (key.indexOf("SRC_QUOTA_") === 0 || key.indexOf("USR_QDAY_") === 0) &&
+      !key.endsWith(`_${today}`)
+    ) {
       props.deleteProperty(key);
       return;
     }
@@ -9395,6 +9864,10 @@ function getNaturalCustomerSourceLabel_(rawSource) {
 function renderCustomerFacingText_(text) {
   let body = String(text === null || text === undefined ? "" : text);
   const sourceLabels = [];
+  const costMatch = body.match(
+    /\[費用\s*[:：]\s*(NT\$[0-9]+(?:\.[0-9]+)?|未知（已呼叫 LLM）)[^\]]*\]/i,
+  );
+  const customerCost = costMatch ? costMatch[1] : "NT$0.0000";
 
   body = body.replace(
     /[\[（\(]來源[：:]\s*([^\]）\)]+)[\]）\)]/gi,
@@ -9420,6 +9893,16 @@ function renderCustomerFacingText_(text) {
 
   if (sourceLabels.length > 0) {
     body = `${body}\n\n資料來源：${sourceLabels.join("、")}`.trim();
+  }
+  if (
+    typeof CURRENT_DAILY_QUESTION_REMAINING === "number" &&
+    !CURRENT_REPLY_FOOTER_APPENDED
+  ) {
+    const costLabel = customerCost.indexOf("未知") >= 0
+      ? "本次費用待確認"
+      : `本次約 ${customerCost}`;
+    body = `${body}\n\n${costLabel}｜今日提問剩餘 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
+    CURRENT_REPLY_FOOTER_APPENDED = true;
   }
   return formatForLineMobile(body);
 }
@@ -9458,6 +9941,14 @@ function hasVisibleCostAudit_(text) {
 }
 
 function buildReplyCostAuditText_() {
+  if (
+    currentRequestAudit &&
+    Number(currentRequestAudit.paidCalls || 0) > 0 &&
+    typeof currentRequestAudit.estimatedCostTwd === "number" &&
+    isFinite(currentRequestAudit.estimatedCostTwd)
+  ) {
+    return `[費用:NT$${currentRequestAudit.estimatedCostTwd.toFixed(4)}（合計 ${currentRequestAudit.paidCalls} 次生成請求）]`;
+  }
   if (
     lastTokenUsage &&
     typeof lastTokenUsage.costTWD === "number" &&
@@ -9676,6 +10167,7 @@ function handleMessage(event) {
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
     LAST_SOURCE_TEST_STATE = null;
+    CURRENT_DAILY_QUESTION_REMAINING = null;
     resetRequestAudit_();
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
@@ -9733,6 +10225,22 @@ function handleMessage(event) {
     let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
     let aiSearchQuery = null; // v29.4.22: AI-driven search query
     let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
+
+    const pendingBeforeQuota = readPendingSourceState_(contextId, true);
+    if (shouldCountDailyQuestionText_(msg, contextId)) {
+      const dailyQuota = reserveDailyQuestionOrReply_(userId, replyToken);
+      if (!dailyQuota.allowed) return;
+      if (pendingBeforeQuota && !pendingBeforeQuota.expired) {
+        pendingBeforeQuota.dailyQuestionRemaining = dailyQuota.remaining;
+        writePendingSourceState_(contextId, pendingBeforeQuota);
+      }
+    } else if (
+      pendingBeforeQuota &&
+      typeof pendingBeforeQuota.dailyQuestionRemaining === "number"
+    ) {
+      CURRENT_DAILY_QUESTION_REMAINING =
+        pendingBeforeQuota.dailyQuestionRemaining;
+    }
 
     // v29.6.106：所有相容舊指令也只建立同一個一次性來源狀態；
     // 不得再由 # 指令或舊 PDF mode 直接取得付費來源授權。
@@ -13314,7 +13822,7 @@ function handleMessage(event) {
           "這題需要查公開網頁才能補足現況。請按下方「網路解答」；系統不會自行聯網，也不會暗中扣次。";
       } else if (errMsg.includes("SOURCE_QUOTA_EXHAUSTED_")) {
         userFriendlyError =
-          "今天這個進階來源的額度已用完。你仍可不限次使用「規格＆FAQ」，明天 00:00 會自動恢復。";
+          "今天這個進階來源的額度已用完。你仍可使用「規格＆FAQ」的每日提問額度，明天 00:00 會自動恢復。";
       } else if (errMsg.includes("429") || errMsg.includes("spending cap") || errMsg.includes("RESOURCE_EXHAUSTED")) {
         userFriendlyError =
           "⚠️ 本月 API 配額已達上限，請通知管理員到 Google AI Studio 調整 (https://ai.studio/spend)。\n\n本服務將在配額重置後自動恢復。";
@@ -17160,6 +17668,7 @@ function replyMessage(tk, txt, options = {}) {
   if (auditPreview) {
     writeLog(`[Reply Audit] ${auditPreview}`);
   }
+  CURRENT_REPLY_FOOTER_APPENDED = false;
   txt = renderCustomerFacingPayload_(txt);
 
   // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
@@ -18259,7 +18768,7 @@ function testMessage(msg, userId, testUiAccessToken) {
   };
 }
 
-function testSourcePostback(action, source, userId, testUiAccessToken) {
+function testSourcePostback(action, source, userId, testUiAccessToken, model) {
   assertTestUiAuthorized_(testUiAccessToken);
   IS_TEST_MODE = true;
   TEST_LOGS = [];
@@ -18270,6 +18779,9 @@ function testSourcePostback(action, source, userId, testUiAccessToken) {
   const dataParts = [`rm_action=${encodeURIComponent(normalizedAction)}`, "v=1"];
   if (normalizedSource) {
     dataParts.splice(1, 0, `source=${encodeURIComponent(normalizedSource)}`);
+  }
+  if (model) {
+    dataParts.splice(1, 0, `model=${encodeURIComponent(String(model))}`);
   }
   const fakeEvent = {
     replyToken: "TEST_POSTBACK_REPLY_TOKEN",
@@ -18340,11 +18852,13 @@ function clearTestSession(userId, testUiAccessToken) {
     getSourcePendingKey_(userId),
     getSourceRecentKey_(userId),
     getSourceQuotaKey_(userId, getSourceDateKey_()),
+    getDailyQuestionQuotaKey_(userId, getSourceDateKey_()),
   ].forEach(function (key) {
     cache.remove(key);
     props.deleteProperty(key);
   });
   LAST_SOURCE_TEST_STATE = null;
+  CURRENT_DAILY_QUESTION_REMAINING = null;
   return { success: true, msg: "✅ 髒資料已清除" };
 }
 

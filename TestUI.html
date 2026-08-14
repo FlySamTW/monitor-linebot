@@ -61,9 +61,18 @@
                     });
                 }, 500);
               },
-              testSourcePostback: function (action, source) {
+              testSourcePostback: function (action, source, userId, token, model) {
                 setTimeout(() => {
                   if (!this.success) return;
+                  if (action === "select_manual_model") {
+                    this.success({
+                      success: true,
+                      replies: [`已選擇 ${model}，開始查詢原問題。`],
+                      logs: [`[Mock Postback] ${action}/${model}`],
+                      sourceState: { source: "spec", pending: false },
+                    });
+                    return;
+                  }
                   if (action === "cancel_source" || source === "spec") {
                     this.success({
                       success: true,
@@ -78,7 +87,7 @@
                     success: true,
                     replies: [
                       manual
-                        ? "📖 官方手冊｜今日剩餘 5/5 次\n\n會完整搜尋對應型號的官方使用手冊，回覆時間較長。\n\n請直接輸入「完整型號＋問題」；輸入「取消」離開。"
+                        ? "📖 官方手冊｜今日剩餘 5/5 次\n\n會完整搜尋對應型號的官方使用手冊，回覆時間較長。\n\n請直接輸入「系列／型號＋問題」；有多個版本時我會列出按鈕讓你選。輸入「取消」離開。"
                         : "🌐 網路解答｜今日剩餘 10/10 次\n\n會先搜尋三星官方網頁，再補充可信的外部做法；非官方內容會清楚標示。",
                     ],
                     logs: [`[Mock Postback] ${action}/${source}`],
@@ -306,6 +315,29 @@
         font-weight: 700;
         cursor: pointer;
       }
+      .source-model-bar {
+        display: none;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        max-height: 154px;
+        overflow-y: auto;
+        padding: 9px 12px;
+        background: #eef5ff;
+        border-top: 1px solid #cbdcf4;
+      }
+      .source-model-bar.visible { display: grid; }
+      .source-model-btn {
+        min-width: 0;
+        min-height: 38px;
+        padding: 7px 8px;
+        border: 1px solid #2767b2;
+        border-radius: 10px;
+        background: #fff;
+        color: #173a67;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
       .source-menu {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -316,7 +348,7 @@
       }
       .source-menu-btn {
         min-width: 0;
-        min-height: 66px;
+        min-height: 90px;
         padding: 7px 3px;
         border: 0;
         background: #fff;
@@ -330,7 +362,15 @@
         box-shadow: inset 0 0 0 2px #008f83;
         color: #075f58;
       }
-      .source-menu-icon { display: block; font-size: 20px; line-height: 1; }
+      .source-menu-icon {
+        display: flex;
+        width: 38px;
+        height: 38px;
+        margin: 0 auto;
+        align-items: center;
+        justify-content: center;
+      }
+      .source-menu-icon svg { display: block; width: 100%; height: 100%; }
       .source-menu-title {
         display: block;
         margin-top: 5px;
@@ -566,23 +606,24 @@
             <i class="fas fa-hourglass-half"></i>
             <div id="queue-list"></div>
           </div>
+          <div id="source-model-bar" class="source-model-bar" aria-label="相近型號選擇"></div>
           <div id="source-action-bar" class="source-action-bar">
             <button id="use-previous-source" class="source-action-btn" onclick="usePreviousSource()">查上一題</button>
             <button class="source-action-btn" onclick="cancelSourceMode()">取消</button>
           </div>
           <div class="source-menu" aria-label="先提問、需要時再查證">
             <button class="source-menu-btn source-menu-btn-primary" onclick="selectSource('spec')">
-              <span class="source-menu-icon">💬</span>
+              <span class="source-menu-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#008F83"/><path d="M17 18h30a7 7 0 0 1 7 7v15a7 7 0 0 1-7 7H33l-11 8 2-8h-7a7 7 0 0 1-7-7V25a7 7 0 0 1 7-7Z" fill="#fff"/><circle cx="24" cy="33" r="2.6" fill="#008F83"/><circle cx="32" cy="33" r="2.6" fill="#008F83"/><circle cx="40" cy="33" r="2.6" fill="#008F83"/></svg></span>
               <span class="source-menu-title">① 直接問問題</span>
-              <span class="source-menu-subtitle">規格＆FAQ・不限次</span>
+              <span class="source-menu-subtitle">規格＆FAQ・每日20題</span>
             </button>
             <button class="source-menu-btn" onclick="selectSource('manual')">
-              <span class="source-menu-icon">📖</span>
+              <span class="source-menu-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#2767B2"/><path d="M13 18c8-2 14 0 19 4v27c-5-4-11-6-19-4V18Zm38 0c-8-2-14 0-19 4v27c5-4 11-6 19-4V18Z" fill="#fff"/><path d="M18 25c4-.5 7 .2 10 2M18 32c4-.5 7 .2 10 2M46 25c-4-.5-7 .2-10 2M46 32c-4-.5-7 .2-10 2" fill="none" stroke="#2767B2" stroke-width="2.4" stroke-linecap="round"/></svg></span>
               <span class="source-menu-title">② 官方手冊重查</span>
               <span class="source-menu-subtitle">回答不夠時・每日5次</span>
             </button>
             <button class="source-menu-btn" onclick="selectSource('web')">
-              <span class="source-menu-icon">🌐</span>
+              <span class="source-menu-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#C96A0A"/><circle cx="32" cy="32" r="18" fill="none" stroke="#fff" stroke-width="4"/><path d="M14 32h36M32 14c7 7 10 13 10 18s-3 11-10 18c-7-7-10-13-10-18s3-11 10-18Z" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="source-menu-title">③ 網路解答重查</span>
               <span class="source-menu-subtitle">需要現況時・每日10次</span>
             </button>
@@ -1022,6 +1063,22 @@
       function renderSourceActions(state) {
         var bar = document.getElementById("source-action-bar");
         var previousButton = document.getElementById("use-previous-source");
+        var modelBar = document.getElementById("source-model-bar");
+        modelBar.innerHTML = "";
+        modelBar.classList.remove("visible");
+        if (state && Array.isArray(state.modelCandidates) && state.modelCandidates.length > 0) {
+          state.modelCandidates.forEach(function (model) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "source-model-btn";
+            button.textContent = model;
+            button.addEventListener("click", function () {
+              runSourcePostback("select_manual_model", "manual", model);
+            });
+            modelBar.appendChild(button);
+          });
+          modelBar.classList.add("visible");
+        }
         if (!state || !state.pending) {
           bar.classList.remove("visible");
           activeSource = "spec";
@@ -1032,7 +1089,7 @@
         bar.classList.add("visible");
       }
 
-      function runSourcePostback(action, source) {
+      function runSourcePostback(action, source, model) {
         if (isBotProcessing) return;
         isBotProcessing = true;
         updateLogs([
@@ -1057,7 +1114,13 @@
             removeMsg(loadingId);
             addMsg("bot", "❌ Error: " + err);
           })
-          .testSourcePostback(action, source || "", TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
+          .testSourcePostback(
+            action,
+            source || "",
+            TEST_USER_ID,
+            TEST_UI_ACCESS_TOKEN,
+            model || "",
+          );
       }
 
       function selectSource(source) {

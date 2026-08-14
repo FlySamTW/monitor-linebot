@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.111)
+# Samsung LINE Bot 完整流程解析 (v29.6.114)
 
 ## 📋 核心哲學
 
@@ -15,6 +15,7 @@
 - Rich Menu 依業主 2026-08-14 最新決定，使用 `tools/publish_rich_menu_default.ps1` 設為全體預設；回復用 `tools/rollback_rich_menu_default.ps1`。工具會保存舊 default ID 並讀回確認。
 - 新客資訊層級：`① 直接問問題` 是主入口，回答不足才用 `② 官方手冊重查`，需要現況或外部做法才用 `③ 網路解答重查`。
 - 顯示契約：`selected: true`；主入口用 `openKeyboard` 直接進入輸入，兩個重查入口用 `openRichMenu` 保持選單展開。鍵盤與 Rich Menu 無法同時顯示，這是 LINE App 平台行為。
+- 手冊選型契約：新題不得借用上一題型號，但可用系列別稱或型號前段查找候選；多個候選以 `select_manual_model` postback 選擇。型號選定前不得讀 PDF、取得供應商授權或扣額度。
 
 - 固定順序：範圍／型號 → 精準 QA → QA＋CLASS_RULES Fast Mode → 推薦下一個來源 → 使用者按鍵授權 → 單次 PDF 或單次 Web → 回到 Fast Mode。
 - `[AUTO_SEARCH_PDF]` 只是內部「等待詢問」信號，不能代表使用者同意，也不能直接觸發 PDF。
@@ -24,7 +25,7 @@
 - 顯示／沒畫面題只保留影像協定、輸入來源與必要線材；未問供電或攝影機時不混入 65W、充電、Power Delivery 或攝影機資訊。
 - Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens；舊式整本 PDF 必須先用含 `file_uri` 的 `countTokens` 預檢，超過 20K 或計數失敗一律不送出。
 - PDF output 最多 1200 tokens；PDF 失敗不得拔掉手冊後改用 AI 內建知識回答。
-- `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；客戶版繼續隱藏 token 與費用。
+- `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；客戶版隱藏 token，只保留簡版 `本次約 NT$...｜今日提問剩餘 N/20`。
 - `CLASS_RULES` 既有「型號：尚無資訊」未完成列會在同步時排除，不注入正式 prompt/index；Product Finder 會把對應型號轉進待審核清單，不直接刪除商用 Sheet 資料。
 
 - Fast Mode 只能使用 QA 與 CLASS_RULES，不可用 LLM 自身知識補規格、步驟、價格、據點或官方資訊。
@@ -52,7 +53,7 @@
 - `/紀錄` 內容是 Samsung 活動網址時，必須先抓官方頁內容產生 RULE 草稿；即使 Gemini 429，也不可退化成只把網址存進 `CLASS_RULES`。
 - 正式 Gemini 模型必須固定為 `models/gemini-2.5-flash-lite`；不可用 `gemini-flash-lite-latest` 這類會漂移的 alias，以免成本估算失真。
 - Smart Monitor／M 系列的 HEVC、H.265、影片格式、播放檔案支援題，不可先做固定手冊摘要或直接定論支援；必須先提供現有手冊庫內的 Smart Monitor 型號選擇泡泡，點選型號後才掛載該型號官方 PDF 由 LLM 回答。
-- 只要本輪牽涉 LLM 呼叫，內部 LOG／所有紀錄必須保留真實 token 與費用；客戶版回覆一律隱藏。
+- 只要本輪牽涉 LLM 呼叫，內部 LOG／所有紀錄必須保留真實 token 與費用；客戶版只顯示合計費用估值，不顯示 token。
 - `#再詳細說明` 不得重用上一輪 PDF 授權；若上一則來自手冊，必須再次詢問並取得新的 `#查手冊` 同意。
 - `/重啟` 只可清除該使用者的對話與快取，絕不可清空、覆寫或還原全域 `CLASS_RULES`；`/紀錄` 建立的 QA/RULE 是 append-only 知識庫。
 - TestUI、LOG、RULE、PDF 索引、同步與維運端點均為管理功能，必須以 `MAINTENANCE_SECRET` 或既有 `OPENCODE_WRITE_SECRET` 授權；絕不可拿 Gemini API 金鑰當維運密碼。
@@ -72,7 +73,7 @@
 - 網搜雖有官方證據，也只能回答證據直接支援的外部裝置能力；以「可能／通常／常見／依賴」延伸出的手機設定、鏡像選項、系統功能或相容性推測必須移除。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.111）
+## ✅ 現行鐵律 SOP（v29.6.114）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。
 2. **再官方手冊**：Fast Mode 不足只負責詢問；只有使用者明確 `#查手冊` 或自然同意，並完成必要型號選擇後，才掛載 PDF RAG。單純點選型號不代表同意付費查手冊。

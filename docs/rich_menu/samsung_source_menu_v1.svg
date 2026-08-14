@@ -6,7 +6,7 @@
     <style>
       .title{font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;font-size:78px;font-weight:700;fill:#142A3A;text-anchor:middle}
       .sub{font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;font-size:40px;font-weight:700;text-anchor:middle}
-      .icon{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:28}
+      .icon{fill:none;stroke-linecap:round;stroke-linejoin:round}
     </style>
   </defs>
   <rect width="2500" height="843" fill="#F2F6FA"/>
@@ -17,21 +17,21 @@
     <rect x="1709" y="42" width="749" height="759" rx="44" fill="#FFFFFF"/>
   </g>
 
-  <circle cx="416" cy="262" r="142" fill="#E2F6F2"/>
-  <path class="icon" stroke="#008F83" d="M328 210h176a42 42 0 0 1 42 42v61a42 42 0 0 1-42 42h-76l-58 45 11-45h-53a42 42 0 0 1-42-42v-61a42 42 0 0 1 42-42z"/>
-  <circle cx="364" cy="282" r="11" fill="#008F83"/><circle cx="416" cy="282" r="11" fill="#008F83"/><circle cx="468" cy="282" r="11" fill="#008F83"/>
+  <circle cx="416" cy="252" r="168" fill="#008F83"/>
+  <path fill="#FFFFFF" d="M310 168h212a48 48 0 0 1 48 48v93a48 48 0 0 1-48 48h-83l-80 58 15-58h-64a48 48 0 0 1-48-48v-93a48 48 0 0 1 48-48z"/>
+  <circle cx="365" cy="267" r="14" fill="#008F83"/><circle cx="416" cy="267" r="14" fill="#008F83"/><circle cx="467" cy="267" r="14" fill="#008F83"/>
   <text class="title" x="416" y="545">① 直接問問題</text>
-  <text class="sub" x="416" y="650" fill="#008F83">規格＆FAQ・不限次</text>
+  <text class="sub" x="416" y="650" fill="#008F83">規格＆FAQ・每日20題</text>
 
-  <circle cx="1250" cy="262" r="142" fill="#E8F1FD"/>
-  <path class="icon" stroke="#2767B2" d="M1164 187h73c36 0 64 17 64 45v157c0-28-28-45-64-45h-73zM1336 187h-73c-36 0-64 17-64 45v157c0-28 28-45 64-45h73z"/>
-  <path class="icon" stroke="#2767B2" d="M1199 389h102"/>
+  <circle cx="1250" cy="252" r="168" fill="#2767B2"/>
+  <path fill="#FFFFFF" d="M1098 157c60-13 110 2 152 41v196c-42-34-92-48-152-35V157zm304 0c-60-13-110 2-152 41v196c42-34 92-48 152-35V157z"/>
+  <path class="icon" stroke="#2767B2" stroke-width="15" d="M1133 220h78M1133 272h78M1133 324h78M1289 220h78M1289 272h78M1289 324h78"/>
   <text class="title" x="1250" y="545">② 官方手冊重查</text>
   <text class="sub" x="1250" y="650" fill="#2767B2">回答不夠時・每日5次</text>
 
-  <circle cx="2084" cy="262" r="142" fill="#FFF0DE"/>
-  <circle class="icon" stroke="#C96A0A" cx="2084" cy="262" r="91"/>
-  <path class="icon" stroke="#C96A0A" d="M1993 262h182M2084 171c35 37 53 67 53 91s-18 54-53 91c-35-37-53-67-53-91s18-54 53-91z"/>
+  <circle cx="2084" cy="252" r="168" fill="#C96A0A"/>
+  <circle class="icon" stroke="#FFFFFF" stroke-width="24" cx="2084" cy="252" r="101"/>
+  <path class="icon" stroke="#FFFFFF" stroke-width="22" d="M1983 252h202M2084 151c39 41 58 75 58 101s-19 60-58 101c-39-41-58-75-58-101s19-60 58-101z"/>
   <text class="title" x="2084" y="545">③ 網路解答重查</text>
   <text class="sub" x="2084" y="650" fill="#C96A0A">需要現況時・每日10次</text>
 </svg>

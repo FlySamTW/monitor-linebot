@@ -1,5 +1,28 @@
 # 開發對話紀錄
 
+## 2026-08-15 (v29.6.114 / 提問額度鎖隔離與忙碌防崩潰)
+
+- 正式 TestUI 真人路徑發現 PDF 索引背景自癒持有 ScriptLock 時，每人 20 題計數也會等待同一把鎖並拋出 `DAILY_QUESTION_QUOTA_LOCK_TIMEOUT`。
+- 每人計數改用短 UserLock，與 PDF／來源配額的全域 ScriptLock 隔離；仍保留 Properties 持久化與 Cache 加速。
+- 額度鎖極短暫忙碌時改為 fail closed：不計次、不送供應商、回覆友善重試訊息，不再讓使用者看到 Fatal。
+- 正式既有 Webhook 已更新至 Apps Script `@1311`；local、Remote HEAD、health 與正式 TestUI 讀回均為 `v29.6.114 [2026-08-15 00:50]`。
+- 正式 TestUI 親自操作：手冊 pending 問 M8/M9 陀螺儀題命中精準 QA，回答正確、`pdfCalls=0`、手冊 5/5 不扣、一般提問顯示 19/20；`M8 如何恢復原廠設定？` 顯示 `S32FM803UC / S32DM803UC / S32BM801UC` 三個候選，選型前零 PDF、手冊 5/5 不扣。
+- 正式網路題送出 1 次 Gemini Search，稽核為 `paidCalls=1 / pdfCalls=0 / webCalls=1 / NT$0.0144`，網路額度由 10/10 變 9/10，一般提問顯示 17/20；缺可核對來源時維持拒答，不用內建知識冒充網搜。
+- 新全體預設 Rich Menu 已建立並讀回 `richmenu-626ba60287e7f686d845e1479d58f7b4`；上一版 `richmenu-7513bf940870a45f9797c152f6e28ed4` 保留回復。新 PNG 為大圖示版，左格已改 `規格＆FAQ・每日20題`。
+- 手冊 Files 預檢仍偵測到既有 Gemini 檔案過期，正式回答安全 fail closed、零供應商與零手冊扣點；已觸發既有背景重建並另外呼叫一次受保護同步端點，但 Chrome 控制連線在等待同步回覆時中斷，尚無成功完成的當次讀回證據，不把手冊生成旅程記為通過。
+
+## 2026-08-15 (v29.6.113 / 實驗額度、手冊免費預檢與簡版費用)
+
+- 每位 LINE 使用者新增 Asia/Taipei 每日 20 題持久額度，ScriptProperties + ScriptCache + LockService 原子守門；群組仍按 userId 分開。來源 postback、取消、補型號與型號選擇不重複計次。
+- 官方手冊 pending 先做精準 QA 與高信心 CLASS_RULES 預檢；命中時直接回覆、零 PDF、零手冊扣點，只有本機不足才進已授權手冊。
+- 正式 LINE 恢復簡版成本列：`本次約 NT$...｜今日提問剩餘 N/20`；詳細 token 與 paidCalls 繼續只放 Request Audit／TestUI Logs。費率維持 Gemini 2.5 Flash-Lite Standard 官方 US$0.10/M input、US$0.40/M output。
+
+## 2026-08-14 (v29.6.112 / 清晰圖示與手冊候選選型)
+
+- 依使用者實際手機觀感，Rich Menu 三個圖示重畫為大尺寸實心圓底、白色主題符號：對話框、開書、地球；TestUI 同步改用相同 SVG，不再使用平台 emoji。
+- 修正手冊 pending 過度要求完整型號：新題仍不得借用上一題型號，但可輸入系列別稱或型號前段；多個相近版本改以 postback 型號按鈕選擇，選型前零 PDF、零供應商呼叫、零扣次。
+- 完全沒有型號線索時改教使用者輸入 M8、G8、S27DG5 等線索，不再要求自行找到完整型號；TestUI 新增可點選的候選型號區並共用正式 postback router。
+
 ## 2026-08-14 (v29.6.111 / 新客先提問、回答後再查證)
 
 - 依 LINE 官方 Rich Menu 服務導覽／互動起點原則及台灣官方案例的資訊分層、清楚 CTA 建議，將三個平行來源改成明確順序：`①直接問問題`、`②官方手冊重查`、`③網路解答重查`。

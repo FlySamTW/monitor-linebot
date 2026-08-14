@@ -72,7 +72,21 @@ assert(
     !manualModelResolverText.includes("previousModel") &&
     !manualModelResolverText.includes("last_selected_model") &&
     !manualModelResolverText.includes("direct_search_models"),
-  "手冊新題只能使用本輪完整型號，不得沿用上一題或舊路由快取",
+  "手冊新題不得沿用上一題或舊路由快取",
+);
+assert(
+  /function getManualSourceCandidateModels_/.test(linebot) &&
+    /getAliasOnlySelectionModelsFromQuery/.test(
+      extractFunction(linebot, "getManualSourceCandidateModels_"),
+    ) &&
+    /manualModelCandidates/.test(linebot) &&
+    /rm_action=select_manual_model/.test(linebot),
+  "手冊新題必須支援系列／前段型號候選與同源 postback 選型",
+);
+assert(
+  /選型號前不讀手冊、不扣次/.test(linebot) &&
+    /你不用輸入完整型號/.test(linebot),
+  "候選選型前必須零扣次，且不得強迫使用者自行找完整型號",
 );
 assert(
   llmText.indexOf("assertAdvancedSourceGrant_") <
@@ -87,6 +101,33 @@ assert(
 assert(
   /SOURCE_DAILY_LIMITS\s*=\s*\{\s*manual:\s*5,\s*web:\s*10\s*\}/.test(linebot),
   "手冊 5 次、網路 10 次額度不可漂移",
+);
+assert(
+  /USER_DAILY_QUESTION_LIMIT\s*=\s*20/.test(linebot) &&
+    /function reserveDailyQuestionUsage_/.test(linebot) &&
+    /getUserLock\(\)/.test(extractFunction(linebot, "reserveDailyQuestionUsage_")) &&
+    /USR_QDAY_/.test(linebot),
+  "每位使用者每日 20 次提問必須持久化並以鎖原子保留",
+);
+assert(
+  /額度鎖忙碌，fail closed/.test(linebot) &&
+    /這次沒有計入提問次數，也沒有送出付費查詢/.test(linebot),
+  "提問額度鎖忙碌不得 Fatal，必須零計次、零供應商並友善回覆",
+);
+assert(
+  /function tryManualFreeLocalAnswer_/.test(linebot) &&
+    /findLocalMatchInQA/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")) &&
+    /未讀取手冊/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")) &&
+    /reserved:\s*false/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")),
+  "手冊模式必須先做高信心 QA/RULE 預檢，命中時零 PDF、零手冊扣點",
+);
+assert(
+  /本次約 \$\{customerCost\}/.test(linebot) &&
+    /今日提問剩餘 \$\{CURRENT_DAILY_QUESTION_REMAINING\}/.test(linebot) &&
+    /currentRequestAudit\.estimatedCostTwd/.test(
+      extractFunction(linebot, "buildReplyCostAuditText_"),
+    ),
+  "正式 LINE 必須顯示簡版合計費用與今日剩餘，詳細 token 僅留稽核",
 );
 assert(
   /SOURCE_PENDING_TTL_SECONDS\s*=\s*600/.test(linebot) &&
@@ -118,6 +159,7 @@ const context = {
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
+  USER_DAILY_QUESTION_LIMIT: 20,
   Utilities: {
     DigestAlgorithm: { SHA_256: "sha256" },
     computeDigest: (_algorithm, value) => [...crypto.createHash("sha256").update(value).digest()],
@@ -127,6 +169,7 @@ const context = {
   PropertiesService: { getScriptProperties: () => props },
   LockService: {
     getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }),
+    getUserLock: () => ({ tryLock: () => true, releaseLock: () => {} }),
   },
   writeLog: () => {},
 };
@@ -138,6 +181,7 @@ vm.runInContext(
     extractFunction(linebot, "getSourcePendingKey_"),
     extractFunction(linebot, "getSourceRecentKey_"),
     extractFunction(linebot, "getSourceQuotaKey_"),
+    extractFunction(linebot, "getDailyQuestionQuotaKey_"),
     extractFunction(linebot, "parseSourceStateJson_"),
     extractFunction(linebot, "writePendingSourceState_"),
     extractFunction(linebot, "readPendingSourceState_"),
@@ -145,6 +189,9 @@ vm.runInContext(
     extractFunction(linebot, "readSourceQuota_"),
     extractFunction(linebot, "getSourceRemaining_"),
     extractFunction(linebot, "reserveAdvancedSourceUsage_"),
+    extractFunction(linebot, "readDailyQuestionUsage_"),
+    extractFunction(linebot, "getDailyQuestionRemaining_"),
+    extractFunction(linebot, "reserveDailyQuestionUsage_"),
   ].join("\n\n"),
   context,
 );
@@ -166,6 +213,20 @@ taipeiDate = "20260815";
 assert.strictEqual(context.getSourceRemaining_("C1", "manual"), 5);
 assert.strictEqual(context.getSourceRemaining_("C1", "web"), 10);
 
+for (let index = 0; index < 20; index += 1) {
+  const result = context.reserveDailyQuestionUsage_("U1");
+  assert.strictEqual(result.allowed, true);
+}
+assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 0);
+assert.strictEqual(context.reserveDailyQuestionUsage_("U1").allowed, false);
+assert.strictEqual(
+  context.getDailyQuestionRemaining_("U2"),
+  20,
+  "提問額度必須按使用者分開，不得由群組共用",
+);
+taipeiDate = "20260816";
+assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 20);
+
 const pending = context.writePendingSourceState_("C2", { source: "manual" });
 pending.expiresAt = Date.now() - 1;
 const pendingKey = context.getSourcePendingKey_("C2");
@@ -175,6 +236,12 @@ assert.strictEqual(context.readPendingSourceState_("C2", false), null);
 
 assert(/function testSourcePostback\(/.test(linebot), "TestUI 有正式 postback 模擬入口");
 assert(/selectSource\('manual'\)/.test(testUi) && /usePreviousSource\(\)/.test(testUi), "TestUI 可按三來源與查上一題");
+assert(
+  /source-model-bar/.test(testUi) &&
+    /select_manual_model/.test(testUi) &&
+    /modelCandidates/.test(testUi),
+  "TestUI 必須能顯示並點選手冊候選型號",
+);
 assert.strictEqual(menu.size.width, 2500);
 assert.strictEqual(menu.size.height, 843);
 assert.strictEqual(menu.areas.length, 3);

@@ -2,7 +2,7 @@
 
 > 建立日期：2026-08-14
 > 目的：讓後續 AI 在 `D:\00_程式\20251125_GAS客服LineBot` 採用已驗證的三區 Rich Menu 視覺語言與互動原則。
-> v29.6.111 已依業界做法把三個平行來源改成「先提問、再查證」。選單仍是全體預設且 `selected: true`；左鍵為明確輸入入口所以使用 `openKeyboard`，中、右兩個重查入口使用 `openRichMenu`。
+> v29.6.114 已依業界做法把三個平行來源改成「先提問、再查證」，並重畫成大尺寸、同風格的實心圓圖示。選單仍是全體預設且 `selected: true`；左鍵為明確輸入入口所以使用 `openKeyboard`，中、右兩個重查入口使用 `openRichMenu`。實驗期每位使用者每日 20 題；選手冊後高信心 QA／RULE 可直接回答且不扣手冊次數。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
@@ -57,7 +57,7 @@
 設計原則：
 
 1. 每區只放一個大圖示、一個 4～6 字主標與一個極短副標。
-2. 圖示採粗線條、留白大、不可依賴小字或細線。
+2. 圖示採約 `336 px` 實心主色圓底與白色主題符號；聊天、開書、地球必須一眼可辨，禁止 emoji、細線或抽象圖形。
 3. 左區是新客主 CTA，可用描邊或淡底提高辨識；中、右是回答後查證工具，不得與主入口爭奪同等語意。
 4. 文字必須直接畫進 SVG／PNG，不使用 AI 生圖產生中文，避免錯字與字形漂移。
 5. PNG 必須小於 LINE 官方上限 `1 MB`；參考 PNG 約 `81 KB`。
@@ -69,13 +69,15 @@
 
 | 位置 | 建議主標 | 建議副標 | Postback data | 點擊後只做什麼 |
 |---|---|---|---|---|
-| 左 | `① 直接問問題` | `規格＆FAQ・不限次` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
+| 左 | `① 直接問問題` | `規格＆FAQ・每日20題` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
 | 中 | `② 官方手冊重查` | `回答不夠時・每日5次` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
 | 右 | `③ 網路解答重查` | `需要現況時・每日10次` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
 
 重要限制：
 
 - 點三個主來源時**不呼叫 Gemini、不掃 PDF、不網搜、不同步 Drive**；只建立或清除狀態並立即 Reply。
+- 每位 userId 每日 20 次只在有效問題送出時原子保留；群組不共用。來源 postback、取消、型號提示與型號按鈕不得重複計次。
+- 手冊 pending 先做精準 QA 與高信心 CLASS_RULES 預檢；命中即回到規格／FAQ，PDF 配額維持不變。
 - 「查上一題」使用 `rm_action=use_previous&source=manual|web`；取消使用 `rm_action=cancel_source`。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
 
