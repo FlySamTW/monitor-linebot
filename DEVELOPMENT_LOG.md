@@ -1,5 +1,12 @@
 # 開發對話紀錄
 
+## 2026-08-15 (v29.6.138 / 編輯者專用真實 TestUI)
+
+- 保留正式 `/exec?test=1` 的維護密碼守門；新增 Google 原生編輯者限定 `/dev?test=1` 路徑，只有 `ScriptApp.getService().getUrl()` 確認目前為 `/dev` 才簽發 15 分鐘 TestUI token。
+- `/dev` 由 Google 限制只有專案編輯者可存取，而且執行最新 Apps Script HEAD；TestUI 仍呼叫同一個 `testMessage`／正式事件 router，不新增公開後門、Mock router 或 Gemini 付費測試。
+- 正式 Webhook 已更新至 Apps Script `@1335`；local、HEAD、health 與正式版本守門皆為 `v29.6.138 [2026-08-15 21:54]`。公開 `/exec?test=1` 實測仍顯示「TestUI 需要維護者授權」，已登入 Chrome 的 `/dev?test=1` 可直接進入。
+- `/dev` 真實 TestUI 以 390×844、1280×720、1440×900 檢查，三格大字、輸入列、回答泡泡與 SYSTEM LOG 無裁切／重疊，console 無 error／warning。實問 `S32FM803UC 零售模式怎麼用` 命中第 170 頁人工核對片段：`paidCalls=0`、`pdfCalls=0`、`webCalls=0`、NT$0.0000，並明確跳過 LINE API 與正式 Sheet 寫入。
+
 ## 2026-08-15 (v29.6.137 / 非官方網搜網域證據守門)
 
 - 網搜 canonical query 加入 `-site:samsung.com`，不主動搜尋 Samsung 官網。

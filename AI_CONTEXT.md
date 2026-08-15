@@ -1,6 +1,6 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.137 回答鏈、非官方網搜與成本守門
+## v29.6.138 回答鏈、非官方網搜與成本守門
 
 - 完整型號是跨日產品狀態：沒有新完整型號前，數天後自然追問、手冊、網路都沿用。短系列名列候選，不覆蓋；只有換型號、新完整型號或管理員 `/重啟` 清除／取代。
 - 手冊有上一題時顯示「確認要查／換型號／取消」，確認後才讀 PDF；網路按鍵本身就是授權，有上一題直接搜尋，不做二次確認。
@@ -10,6 +10,7 @@
 - `S32FM702／703／803` 的零售模式與 USB 媒體播放已加入人工逐頁核對片段：第 170 頁使用模式、第 97／176 頁 USB 路徑與限制。精準命中時零 PDF 呼叫、零手冊扣次；其他型號／意圖不得套用。
 
 - `到這款官網` 是回答不足時的情境 Quick Reply，不是第四個 Rich Menu。只有已鎖定 CLASS_RULES 完整型號，且回覆查無資料、手冊未記載、來源失敗或證據衝突時才顯示；成功的 QA／RULE 答案、G8/M8 等短別稱與選型中一律不顯示。RULE 內 PDP 優先，否則用同列 XZW 料號的 Samsung Taiwan support URL；只允許 `https://www.samsung.com/tw/`。
+- 正式 `/exec?test=1` 仍需維護密碼；Google Apps Script 的 `/dev?test=1` 僅專案編輯者能進入，程式以 `ScriptApp.getService().getUrl()` 確認 `/dev` 後才簽發 15 分鐘 TestUI token。兩者都共用 `testMessage` 與正式事件 router，禁止 Mock 冒充真人驗收。
 - 每日 04:00 PDF 重傳後必跑 `auditManualCoverageGaps_()`；新 RULE 缺 PDF 或 H／2026 型號缺 PDF 時，保存報表、待審狀態與警示 LOG。`?manualCoverage=1` 必須維護授權，TestUI 顯示簡短覆蓋徽章。
 - 官網掃描可自動發現產品與手冊下載網址，但沒有第一頁完整型號、PDF magic/MIME、SHA-256 與檔名驗證就不得自動進正式 RAG。2026-08-15 正式索引回讀顯示 H／2026 的 6 款 RULE 型號全部覆蓋，缺口 0。
 

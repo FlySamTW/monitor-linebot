@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.137"; // 2026-08-15 非官方網搜網域證據守門
-const BUILD_TIMESTAMP = "2026-08-15 20:36";
+const GAS_VERSION = "v29.6.138"; // 2026-08-15 編輯者專用真實 TestUI
+const BUILD_TIMESTAMP = "2026-08-15 21:54";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -20153,6 +20153,16 @@ function isDoGetMaintenanceAuthorized_(e) {
   return !!expectedSecret && providedSecret === expectedSecret;
 }
 
+function isEditorOnlyDevelopmentWebApp_() {
+  try {
+    const serviceUrl = String(ScriptApp.getService().getUrl() || "");
+    return /\/dev(?:[?#].*)?$/.test(serviceUrl);
+  } catch (error) {
+    writeLog(`[TestUI Dev Auth] 無法判斷開發模式網址: ${error.message}`);
+    return false;
+  }
+}
+
 function buildUnauthorizedResponse_() {
   return ContentService.createTextOutput(
     JSON.stringify({ success: false, error: "Unauthorized" }),
@@ -20193,11 +20203,15 @@ function assertTestUiAuthorized_(token) {
 
 // 1. 網頁入口（健康檢查 + 受保護 TestUI）
 // - LINE Verify: 不帶參數，返回 200 OK
-// - TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
+// - 正式 /exec TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
+// - 編輯者 /dev TestUI: Google 已限制為專案編輯者，可直接取得短效 token
 function doGet(e) {
   // 若有 test 參數，顯示 TestUI
   if (e && e.parameter && e.parameter.test === "1") {
-    if (!isDoGetMaintenanceAuthorized_(e)) {
+    if (
+      !isDoGetMaintenanceAuthorized_(e) &&
+      !isEditorOnlyDevelopmentWebApp_()
+    ) {
       return buildUnauthorizedTestUiResponse_();
     }
     const template = HtmlService.createTemplateFromFile("TestUI");

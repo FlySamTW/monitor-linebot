@@ -54,6 +54,16 @@ assertStep(
 );
 
 assertStep(
+  /function isEditorOnlyDevelopmentWebApp_\(\)/.test(linebot) &&
+    /ScriptApp\.getService\(\)\.getUrl\(\)/.test(linebot) &&
+    /\/\\\/dev\(\?:\[\?#\]\.\*\)\?\$\//.test(linebot) &&
+    /!isDoGetMaintenanceAuthorized_\(e\)[\s\S]{0,120}!isEditorOnlyDevelopmentWebApp_\(\)/.test(
+      linebot,
+    ),
+  "editor-only /dev TestUI may issue a short token while public /exec remains secret-guarded",
+);
+
+assertStep(
   /TEST_UI_ACCESS_TOKEN/.test(testUi) &&
     /TEST_USER_ID_KEY/.test(testUi) &&
     /testMessage\(text, TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(testUi) &&

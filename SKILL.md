@@ -41,7 +41,7 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 1. 更新 `GAS_VERSION` 與必要文件。
 2. 在 `test_runner` 執行 `npm run test:static`、`npm run test:contract`，再跑 `git diff --check`。
-3. TestUI 以正式部署、390×844 觸控旅程實際提問。確認成功答案不顯示官網按鈕；答案不足且完整型號已鎖定時顯示並能開 Samsung Taiwan URL。
+3. 先確認 local／HEAD／正式 Webhook 版本一致，再用已登入且具有專案編輯權的 Chrome 開啟編輯者 TestUI：`https://script.google.com/macros/s/AKfycbxHQZ6VryRNELxhddhI9GiAyjj_H-AjjDYLs_0JZIsn/dev?test=1`。`/dev` 由 Google 限制只有編輯者可進入，程式確認 `/dev` 後才簽發短效 token；正式 `/exec?test=1` 仍必須帶維護密碼。以 390×844 實際輸入並點按，確認成功答案不顯示官網按鈕；答案不足且完整型號已鎖定時顯示並能開 Samsung Taiwan URL。
 4. 執行 `tools\release_existing_webhook.ps1 -DryRun`。
 5. 正式發布只用：
 

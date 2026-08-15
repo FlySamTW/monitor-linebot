@@ -89,7 +89,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -Pr
 ```
 效果：
 - 將指定檔案內容寫入 Google Sheet `Prompt!C3`
-- 必須設定 `GAS_MAINTENANCE_SECRET`，其值需對應 Apps Script 的 `MAINTENANCE_SECRET` 或 `OPENCODE_WRITE_SECRET`
+- 正式 `/exec` runner 必須設定 `GAS_MAINTENANCE_SECRET`，其值需對應 Apps Script 的 `MAINTENANCE_SECRET` 或 `OPENCODE_WRITE_SECRET`。
+- 人工／Codex 瀏覽器驗收可改用已登入且具有專案編輯權的 Chrome 開啟 `https://script.google.com/macros/s/AKfycbxHQZ6VryRNELxhddhI9GiAyjj_H-AjjDYLs_0JZIsn/dev?test=1`；Google 先限制編輯者身分，程式確認 `/dev` 後才下發 15 分鐘 token。正式 `/exec?test=1` 不會因此解鎖。
 - 不接受 Gemini API Key，也不得把維護憑證寫入檔案、LOG 或 Git
 - 必須明確指定 `-PromptPath` 與 `-ConfirmOverwrite`，避免誤覆蓋正式 Prompt
 
