@@ -93,9 +93,11 @@ assert(
   /function applyManualEvidenceGuard_/.test(linebot) &&
     /範圍:型號明確/.test(linebot) &&
     /範圍:依型號而異/.test(linebot) &&
-    /型號規格題缺少直接證據/.test(linebot) &&
+    /手冊回答缺少可核對頁碼／適用範圍/.test(linebot) &&
+    /evidence\.page === "未找到"/.test(linebot) &&
+    /手冊依據：\$\{evidence\.page\}/.test(linebot) &&
     /rawScope === "型號共通" \? "全檔共通"/.test(linebot),
-  "手冊規格回答必須具頁碼與型號適用範圍，泛用段落不得硬下結論",
+  "所有手冊回答都必須具頁碼與型號適用範圍，泛用段落不得硬下結論",
 );
 assert(
   /staleFile:\s*true/.test(linebot) &&

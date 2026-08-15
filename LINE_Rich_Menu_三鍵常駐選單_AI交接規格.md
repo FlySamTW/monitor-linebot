@@ -69,17 +69,18 @@
 
 | 位置 | 建議主標 | 建議副標 | Postback data | 點擊後只做什麼 |
 |---|---|---|---|---|
-| 左 | `直接問` | `20題/日` | `rm_action=select_source&source=spec&v=1` | 清除 pending、切回預設來源並開啟鍵盤 |
-| 中 | `查手冊` | `5次/日` | `rm_action=select_source&source=manual&v=1` | 顯示剩餘次數、上一題與輸入提示 |
-| 右 | `搜網路` | `10次/日` | `rm_action=select_source&source=web&v=1` | 顯示剩餘次數、警語、上一題與輸入提示 |
+| 左 | `直接問` | `20題/日` | `rm_action=select_source&source=spec&v=2` | 清除來源 pending、保留型號、切回預設來源並開啟鍵盤 |
+| 中 | `查手冊` | `5次/日` | `rm_action=select_source&source=manual&v=2` | 顯示剩餘次數、目前問題／型號與「確認要查」 |
+| 右 | `搜網路` | `10次/日` | `rm_action=select_source&source=web&v=2` | 有目前問題就直接搜尋；無問題才要求輸入 |
 
 重要限制：
 
-- 點三個主來源時**不呼叫 Gemini、不掃 PDF、不網搜、不同步 Drive**；只建立或清除狀態並立即 Reply。
+- 左鍵只切回直接問；手冊鍵只準備確認，不讀 PDF。網路鍵本身即授權：有目前問題時直接建立一次 Web 操作，無問題才建立 10 分鐘 pending。
 - 每位 userId 每日 20 次只在有效問題送出時原子保留；群組不共用。來源 postback、取消、型號提示與型號按鈕不得重複計次。
 - 手冊 pending 先做精準 QA 與高信心 CLASS_RULES 預檢；命中即回到規格／FAQ，PDF 配額維持不變。
 - `到這款官網` 只能是答案不足且本題已鎖定完整型號後的情境 Quick Reply，不得增為第四個常駐 Rich Menu。它使用 URI action，優先開 RULE 已記錄的 Samsung Taiwan PDP，否則開同列 XZW 完整料號支援頁；選型中、成功答案或只有上一題型號 Cache 時不顯示。
-- 「查上一題」使用 `rm_action=use_previous&source=manual|web`；取消使用 `rm_action=cancel_source`。
+- 手冊確認使用 `rm_action=confirm_manual&source=manual&v=2`；取消使用 `rm_action=cancel_source&v=2`。不再使用「查上一題」文案。
+- 已確認完整型號跨日保存；短系列名觸發候選。10 分鐘內相同來源＋型號＋問題回傳快取，不重新扣次。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
 
 ## 四、Rich Menu JSON 要點

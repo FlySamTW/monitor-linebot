@@ -7,10 +7,11 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
-- 預設只走 QA／CLASS_RULES；官方手冊與網路各自需要本輪一次性授權，查完回到 SPEC/FAQ。
+- 預設只走 QA／CLASS_RULES。已確認完整型號跨日保存；手冊需「確認要查」，網路按鍵即授權。來源執行完不得黏住下一題，但不可清除產品型號。
+- 手冊／網路 10 分鐘內相同來源＋型號＋問題只回傳操作快取，零供應商、零再次扣次。
 - G8 是 Odyssey 系列。短別稱先列 CLASS_RULES 完整型號；選型前零 PDF、零網路、零扣次。
 - RULE 明載的規格是硬事實。模型不得把 Smart／Tizen 型號的藍牙、喇叭或介面答成相反結論。
-- PDF 只用 `models/gemini-2.5-flash-lite`，送出前以同一 payload `countTokens`；單次最壞 NT$0.35，手冊模式不得聯網。
+- PDF 生產只用 `models/gemini-2.5-flash-lite`，送出前以同一 payload `countTokens`；單次最壞 NT$0.35，手冊模式不得聯網。先以 QA／RULE、頁面收斂與已核對片段達成答案；低成本方法已達標時禁止再為模型比較花費。只有未覆蓋題組的整體成功率仍不足，才另案 A/B MANUAL；不得連 Fast／QA／RULE 一起換。
 - 禁止 LINE Push。Rich Menu 與一般客服一律使用 reply；沒有業主另案明確授權不得新增 Push API。
 
 ## 官網承接

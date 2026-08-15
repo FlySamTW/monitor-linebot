@@ -4,14 +4,14 @@
     "height": 843
   },
   "selected": true,
-  "name": "Samsung 三來源選單 v8 雙排超大字版",
+  "name": "Samsung 三來源選單 v9 持久型號版",
   "chatBarText": "先提問・再查證",
   "areas": [
     {
       "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 },
       "action": {
         "type": "postback",
-        "data": "rm_action=select_source&source=spec&v=1",
+        "data": "rm_action=select_source&source=spec&v=2",
         "inputOption": "openKeyboard"
       }
     },
@@ -19,7 +19,7 @@
       "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 },
       "action": {
         "type": "postback",
-        "data": "rm_action=select_source&source=manual&v=1",
+        "data": "rm_action=select_source&source=manual&v=2",
         "inputOption": "openRichMenu"
       }
     },
@@ -27,7 +27,7 @@
       "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
       "action": {
         "type": "postback",
-        "data": "rm_action=select_source&source=web&v=1",
+        "data": "rm_action=select_source&source=web&v=2",
         "inputOption": "openRichMenu"
       }
     }

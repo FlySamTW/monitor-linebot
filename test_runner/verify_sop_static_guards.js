@@ -47,8 +47,10 @@ assertStep(
   !/syncGeminiKnowledgeBase|scheduleImmediateRebuild|dailyKnowledgeRefresh/.test(
     restartBranchMatch[0],
   ) &&
-    /只清除個人對話狀態/.test(restartBranchMatch[0]) &&
-    /只重置個人對話，不重傳 PDF/.test(linebot) &&
+    /管理員重啟已清除聊天室型號、題目、來源與歷史狀態，不覆寫知識庫/.test(
+      restartBranchMatch[0],
+    ) &&
+    /QA、RULE 與官方手冊索引不會因此被變更/.test(linebot) &&
     !/重置對話\+同步/.test(linebot),
   "/重啟 must only clear personal conversation state and must never sync or rebuild PDF knowledge",
 );

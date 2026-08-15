@@ -197,20 +197,21 @@ assert(
   "每日 04:00 重傳後必須執行 RULE/PDF 缺口稽核",
 );
 assert(
-  /drivePdfCatalog\.push\([\s\S]{0,220}if \(existingFilesMap\.has\(fileName\)\)/.test(
+  /drivePdfCatalog\.push\(\{[\s\S]*?identity:\s*fileIdentity[\s\S]*?if \(existingFilesMap\.has\(fileName\)\)/.test(
     syncFunction,
   ) &&
+    /duplicateDrivePdfNames\.push\(fileName\)/.test(syncFunction) &&
     /hasIncompleteDriveSync && hasPdfInFallback/.test(syncFunction) &&
     /driveScanSucceeded && drivePdfCatalog\.some\(isPdfKbFile\)/.test(
       syncFunction,
     ) &&
-    /const shouldPersistPdfState[\s\S]{0,140}!hasDriveScanFailure/.test(
+    /const shouldPersistPdfState[\s\S]{0,400}!hasDriveScanFailure/.test(
       syncFunction,
     ) &&
-    /const shouldRefreshPdfBackups[\s\S]{0,180}!hasIncompleteDriveSync/.test(
+    /const shouldRefreshPdfBackups[\s\S]{0,400}!hasIncompleteDriveSync/.test(
       syncFunction,
     ) &&
-    /if \(hasDriveScanFailure \|\| failedCount > 0\)[\s\S]{0,260}scheduleImmediateRebuild\(\)/.test(
+    /if \(hasDriveScanFailure \|\| failedCount > 0\)[\s\S]{0,600}scheduleImmediateRebuild\(\)/.test(
       syncFunction,
     ) &&
     /知識庫同步未完整，已保留前次狀態並排程重試/.test(syncFunction),

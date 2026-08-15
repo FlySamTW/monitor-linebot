@@ -225,9 +225,11 @@ assert(
   manualModelResolverText.includes("extractFullModelLikeTokens") &&
     manualModelResolverText.includes("state.usePrevious") &&
     manualModelResolverText.includes("state.previousModel") &&
+    manualModelResolverText.includes("readSourceProductState_") &&
+    manualModelResolverText.includes("extractShortAliasModelTokens") &&
     !manualModelResolverText.includes("last_selected_model") &&
     !manualModelResolverText.includes("direct_search_models"),
-  "只有明確查上一題可沿用已鎖定型號；手冊新題不得借用舊路由快取",
+  "已確認型號必須跨日保留；新完整型號取代、短系列名則重新列候選",
 );
 assert(
   /function getManualSourceCandidateModels_/.test(linebot) &&
@@ -303,12 +305,16 @@ assert(
   "手冊／網路不得重複扣一般 20 題；只引導手冊時必須退回一般額度",
 );
 assert(
-  /網路同題沿用已鎖定型號/.test(linebot) &&
-    /手冊同題沿用已鎖定型號/.test(linebot) &&
-    /model:\s*normalizeModelForDisplay\(model \|\| explicitModels\[0\]/.test(
+  /function getSourceProductKey_/.test(linebot) &&
+    /function rememberSourceProductModel_/.test(linebot) &&
+    /function readSourceProductState_/.test(linebot) &&
+    /explicitModel \|\| \(productState \? productState\.model : ""\)/.test(
       extractFunction(linebot, "rememberRecentSourceQuestion_"),
+    ) &&
+    /buildCanonicalWebQuery_/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
     ),
-  "同題手冊／網路重查都必須保留並帶入完整型號",
+  "手冊／網路追問必須使用同一份跨日產品狀態並把完整型號帶入查詢",
 );
 assert(
   /額度鎖忙碌，fail closed/.test(linebot) &&
@@ -324,7 +330,8 @@ assert(
 );
 assert(
   /本次約 \$\{customerCost\}/.test(linebot) &&
-    /今日提問剩餘 \$\{CURRENT_DAILY_QUESTION_REMAINING\}/.test(linebot) &&
+    /直接問 \$\{CURRENT_DAILY_QUESTION_REMAINING\}\/\$\{USER_DAILY_QUESTION_LIMIT\}/.test(linebot) &&
+    /advancedSource === "manual" \? "手冊" : "網搜"/.test(linebot) &&
     /currentRequestAudit\.estimatedCostTwd/.test(
       extractFunction(linebot, "buildReplyCostAuditText_"),
     ),
@@ -332,8 +339,11 @@ assert(
 );
 assert(
   /SOURCE_PENDING_TTL_SECONDS\s*=\s*600/.test(linebot) &&
-    /SOURCE_RECENT_QUESTION_TTL_SECONDS\s*=\s*1800/.test(linebot),
-  "pending 10 分鐘與上一題 30 分鐘契約存在",
+    /SOURCE_RECENT_QUESTION_TTL_SECONDS\s*=\s*1800/.test(linebot) &&
+    /PropertiesService\.getScriptProperties\(\)\.setProperty/.test(
+      extractFunction(linebot, "rememberSourceProductModel_"),
+    ),
+  "pending 10 分鐘、上一題 30 分鐘，已確認型號另以持久狀態跨日保存",
 );
 assert(
   /if \(manualSourceRecommended\) \{[\s\S]*?forcedModelSelectionTrigger = false;[\s\S]*?forcedSopNeedsModelSelection = false;[\s\S]*?buildManualConsentPrompt_/.test(
@@ -359,6 +369,7 @@ const props = {
 const context = {
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
+  SOURCE_OPERATION_CACHE_TTL_SECONDS: 600,
   SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
   USER_DAILY_QUESTION_LIMIT: 20,
   CURRENT_DAILY_QUESTION_REMAINING: null,
@@ -378,19 +389,33 @@ const context = {
 vm.createContext(context);
 vm.runInContext(
   [
+    extractFunction(linebot, "toHalfWidth"),
+    extractFunction(linebot, "isShortAliasModelToken"),
+    extractFunction(linebot, "normalizeModelForDisplay"),
+    extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
     extractFunction(linebot, "getSourceContextHash_"),
     extractFunction(linebot, "getSourceDateKey_"),
     extractFunction(linebot, "getSourcePendingKey_"),
     extractFunction(linebot, "getSourceRecentKey_"),
     extractFunction(linebot, "getSourceQuotaKey_"),
     extractFunction(linebot, "getDailyQuestionQuotaKey_"),
+    extractFunction(linebot, "getSourceProductKey_"),
     extractFunction(linebot, "parseSourceStateJson_"),
+    extractFunction(linebot, "readSourceProductState_"),
+    extractFunction(linebot, "rememberSourceProductModel_"),
+    extractFunction(linebot, "rememberSourceLastAdvanced_"),
+    extractFunction(linebot, "clearSourceProductState_"),
     extractFunction(linebot, "writePendingSourceState_"),
     extractFunction(linebot, "readPendingSourceState_"),
     extractFunction(linebot, "clearPendingSourceState_"),
     extractFunction(linebot, "readSourceQuota_"),
     extractFunction(linebot, "getSourceRemaining_"),
     extractFunction(linebot, "reserveAdvancedSourceUsage_"),
+    extractFunction(linebot, "refundAdvancedSourceUsage_"),
+    extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+    extractFunction(linebot, "beginAdvancedSourceOperation_"),
+    extractFunction(linebot, "finishAdvancedSourceOperation_"),
+    extractFunction(linebot, "clearAdvancedSourceOperation_"),
     extractFunction(linebot, "readDailyQuestionUsage_"),
     extractFunction(linebot, "getDailyQuestionRemaining_"),
     extractFunction(linebot, "reserveDailyQuestionUsage_"),
@@ -438,6 +463,36 @@ assert.strictEqual(
   "只引導進階來源時必須可原子退回一般提問額度",
 );
 
+context.rememberSourceProductModel_("C3", "S32FM803UC");
+cache.remove(context.getSourceProductKey_("C3"));
+assert.strictEqual(
+  context.readSourceProductState_("C3").model,
+  "S32FM803UC",
+  "已確認完整型號必須由持久屬性跨快取／跨日保存",
+);
+context.rememberSourceLastAdvanced_("C3", "manual");
+assert.strictEqual(context.readSourceProductState_("C3").lastSource, "manual");
+
+const operation = context.beginAdvancedSourceOperation_(
+  "C3",
+  "manual",
+  "如何播放 USB？",
+  "S32FM803UC",
+);
+assert.strictEqual(operation.allowed, true);
+context.finishAdvancedSourceOperation_(operation, "已核對第 97 頁", "S32FM803UC");
+const duplicateOperation = context.beginAdvancedSourceOperation_(
+  "C3",
+  "manual",
+  "如何播放USB",
+  "S32FM803UC",
+);
+assert.strictEqual(duplicateOperation.allowed, false);
+assert.strictEqual(duplicateOperation.status, "done");
+assert.strictEqual(duplicateOperation.finalText, "已核對第 97 頁");
+context.clearSourceProductState_("C3");
+assert.strictEqual(context.readSourceProductState_("C3"), null);
+
 const pending = context.writePendingSourceState_("C2", { source: "manual" });
 pending.expiresAt = Date.now() - 1;
 const pendingKey = context.getSourcePendingKey_("C2");
@@ -446,7 +501,12 @@ props.setProperty(pendingKey, JSON.stringify(pending));
 assert.strictEqual(context.readPendingSourceState_("C2", false), null);
 
 assert(/function testSourcePostback\(/.test(linebot), "TestUI 有正式 postback 模擬入口");
-assert(/selectSource\('manual'\)/.test(testUi) && /usePreviousSource\(\)/.test(testUi), "TestUI 可按三來源與查上一題");
+assert(
+  /selectSource\('manual'\)/.test(testUi) &&
+    /confirmManualSource\(\)/.test(testUi) &&
+    /runSourcePostback\("confirm_manual", "manual"\)/.test(testUi),
+  "TestUI 可按三來源，手冊以確認要查授權且網路不二次確認",
+);
 assert(
   /id="reselect-manual-model"/.test(testUi) &&
     /function reselectManualModel\(\)/.test(testUi) &&
@@ -519,11 +579,11 @@ for (const manualText of [
   fs.readFileSync(path.join(root, "程式編寫開發及功能手冊.md"), "utf8"),
 ]) {
   assert(
-    /三來源使用者旅程與不可回歸矩陣/.test(manualText) &&
+      /三來源使用者旅程與不可回歸矩陣/.test(manualText) &&
       /\| R01 \|/.test(manualText) &&
       /\| R24 \|/.test(manualText) &&
       /手冊 → 網路 → 再手冊/.test(manualText) &&
-      /查上一題／換型號／取消/.test(manualText),
+      /確認要查／換型號／取消/.test(manualText),
     "開發手冊必須保存完整三來源流程矩陣與換型號例外",
   );
 }
@@ -551,7 +611,14 @@ assert(
     /rollback_rich_menu_default/.test(rollbackDefaultScript),
   "全體 Rich Menu 發布與回復腳本必須存在",
 );
-assert(/【Prompt v29\.6\.106】/.test(prompt));
+const gasVersionMatch = linebot.match(
+  /const\s+GAS_VERSION\s*=\s*"(v\d+\.\d+\.\d+)"/,
+);
+assert(gasVersionMatch, "linebot.gs 必須宣告 GAS_VERSION");
+assert(
+  prompt.includes(`【Prompt ${gasVersionMatch[1]}】`),
+  "Prompt.csv 版本必須與 linebot.gs GAS_VERSION 一致",
+);
 assert(/同一訊息不得自動跨來源/.test(prompt));
 
 console.log("三來源狀態、配額、postback 與 TestUI 契約通過。");

@@ -43,6 +43,12 @@ function extractFunction(source, name) {
 
 const renderContext = {
   sanitizePriceNumbers_: (text) => String(text || ""),
+  CURRENT_REPLY_FOOTER_APPENDED: false,
+  CURRENT_DAILY_QUESTION_REMAINING: null,
+  LAST_SOURCE_TEST_STATE: null,
+  SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
+  USER_DAILY_QUESTION_LIMIT: 20,
+  lastLlmCallAttempted: false,
 };
 vm.createContext(renderContext);
 vm.runInContext(
@@ -108,7 +114,8 @@ assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M8 沒畫面").len
 assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
 
 const detailedManualContext = {
-  isManualVerificationRequiredQuery: (query) => /HEVC|編解碼/i.test(query),
+  isManualVerificationRequiredQuery: (query) =>
+    /HEVC|編解碼|零售模式|USB\s*播放|播放\s*USB/i.test(query),
   pdfFileNameMatchesModelToken_: (name, model) =>
     String(name).toUpperCase().split(/[,\.]/).includes(String(model).toUpperCase()),
 };
@@ -138,11 +145,16 @@ const normalOrder = detailedManualContext.prioritizeDetailedManualCandidates_(
 );
 assert.strictEqual(normalOrder[0].name, broadQuickGuide.name, "一般題不應被詳細手冊排序改寫");
 
-const manualChunkContext = {};
+const manualChunkContext = {
+  isPdfModelTokenMatch_: (base, model) =>
+    String(model || "").toUpperCase().startsWith(String(base || "").toUpperCase()),
+};
 vm.createContext(manualChunkContext);
 vm.runInContext(
   [
     extractFunction(linebot, "isMediaCodecSupportQuery"),
+    extractFunction(linebot, "isRetailModeManualQuery_"),
+    extractFunction(linebot, "isUsbMediaPlaybackManualQuery_"),
     extractFunction(linebot, "getVerifiedManualChunks_"),
     extractFunction(linebot, "findVerifiedManualChunk_"),
     extractFunction(linebot, "buildVerifiedManualChunkReply_"),
@@ -174,6 +186,28 @@ assert.strictEqual(
   manualChunkContext.findVerifiedManualChunk_("S32FM799 是否支援 HEVC？", "S32FM799"),
   null,
   "未驗證型號不應套用其他型號的手冊片段",
+);
+const retailChunk = manualChunkContext.findVerifiedManualChunk_(
+  "S32FM803UC 零售模式怎麼用？",
+  "S32FM803UC",
+);
+assert(
+  retailChunk && retailChunk.pages === "170",
+  "S32FM803 零售模式必須命中已核對的手冊第 170 頁",
+);
+const usbChunk = manualChunkContext.findVerifiedManualChunk_(
+  "那你查如何播放 USB",
+  "S32FM803UC",
+);
+assert(
+  usbChunk && usbChunk.pages === "97、176",
+  "S32FM803 USB 播放追問必須命中已核對的手冊頁面",
+);
+assert(
+  /verifiedManualChunk[\s\S]*rememberSourceLastAdvanced_\(contextId, "manual"\)/.test(
+    extractFunction(linebot, "tryManualFreeLocalAnswer_"),
+  ),
+  "零成本手冊片段回答後必須保留 manual 來源，下一句自然追問不可掉回 Fast",
 );
 
 assert(
@@ -236,7 +270,12 @@ assert(
   "線上 runner 授權 helper 不符合 fail-fast／不洩密契約",
 );
 assert(
-  /Prompt v29\.6\.106/.test(prompt) &&
+  (() => {
+    const version = linebot.match(
+      /const\s+GAS_VERSION\s*=\s*"(v\d+\.\d+\.\d+)"/,
+    );
+    return version && prompt.includes(`Prompt ${version[1]}`);
+  })() &&
     /純手機、平板、手錶、耳機、電視、家電、筆電/.test(prompt) &&
     /只表示「建議使用者按常駐選單的官方手冊」/.test(prompt) &&
     /同一訊息不得自動跨來源/.test(prompt) &&
