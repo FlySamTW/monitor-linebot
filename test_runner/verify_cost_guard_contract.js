@@ -3,6 +3,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
 const paidRunner = fs.readFileSync(
   path.join(__dirname, "verify_10_questions_5_rounds.js"),
   "utf8",
@@ -53,32 +54,99 @@ assert(
   /MAX_FAST_INPUT_TOKENS:\s*12000/.test(linebot) &&
     /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
     /MAX_LEGACY_PDF_INPUT_TOKENS:\s*100000/.test(linebot) &&
+    /MAX_PDF_ESTIMATED_TOTAL_COST_TWD:\s*0\.35/.test(linebot) &&
     /MAX_PDF_OUTPUT_TOKENS:\s*1200/.test(linebot),
-  "Fast/PDF input 與 PDF output 成本上限已寫入程式",
+  "Fast/PDF input、PDF output 與單次最壞費用上限已寫入程式",
 );
 assert(
   /PDF Mode 只保留本輪完整問題/.test(linebot) &&
     /const lastUserMessage = messages[\s\S]{0,220}effectiveMessages = lastUserMessage/.test(
       linebot,
     ) &&
-    /PDF Token Budget v29\.6\.116/.test(linebot),
-  "大型手冊必須先移除無關歷史，20K 只警告，100K 才依單次成本硬擋",
+    /PDF Token Budget v29\.6\.119/.test(linebot),
+  "大型手冊必須先移除無關歷史，20K 只警告，100K 與 NT$0.35 雙重硬擋",
 );
 assert(
   /:countTokens\?key=/.test(linebot) &&
     /generateContentRequest: generateContentRequest/.test(linebot) &&
+    /generateContentRequest\.generationConfig/.test(linebot) &&
     /file_data/.test(linebot) &&
     /file_uri/.test(linebot) &&
     /PDF countTokens 失敗，fail closed/.test(linebot),
   "PDF fuse 以含 file URI 的 countTokens 預檢且失敗時 fail closed",
 );
 assert(
-  /staleFile:\s*staleFile/.test(linebot) &&
+  /function tryPdfLowResolutionRescue_/.test(linebot) &&
+    /PDF_RESCUE_MEDIA_RESOLUTION:\s*"MEDIA_RESOLUTION_LOW"/.test(linebot) &&
+    /estimatePdfWorstCaseCostTwd_/.test(linebot) &&
+    /PDF Cost Rescue v29\.6\.119/.test(linebot),
+  "PDF 超過 token 或費用上限時先降解析度重算，不能直接宣告無法讀取",
+);
+assert(
+  /手冊已由使用者明確授權[\s\S]{0,260}不再注入整包 QA、RULE、C3/.test(
+    linebot,
+  ) &&
+    /【唯一資料來源】本輪掛載的官方手冊 PDF/.test(linebot),
+  "PDF 生成階段必須是手冊單一來源，避免 QA/RULE 污染與額外 token",
+);
+assert(
+  /function applyManualEvidenceGuard_/.test(linebot) &&
+    /範圍:型號明確/.test(linebot) &&
+    /範圍:依型號而異/.test(linebot) &&
+    /型號規格題缺少直接證據/.test(linebot) &&
+    /rawScope === "型號共通" \? "全檔共通"/.test(linebot),
+  "手冊規格回答必須具頁碼與型號適用範圍，泛用段落不得硬下結論",
+);
+assert(
+  /staleFile:\s*true/.test(linebot) &&
     /tokenPreflight\.staleFile[\s\S]*?refreshStalePdfAttachmentsFromDrive_\(filesToAttach\)[\s\S]*?scheduleImmediateRebuild\(\)[\s\S]*?return "\[KB_EXPIRED\]"/.test(
       linebot,
     ) &&
     /if \(!evidenceCorrectionAttempted\)/.test(linebot),
   "PDF countTokens 的 403/404 過期檔必須只修復本題一次，仍失敗才 fail closed 並排程整庫重建",
+);
+assert(
+  /const transientCodes = \[429, 500, 502, 503, 504\]/.test(linebot) &&
+    /countTokens[\s\S]*?退避 1 秒後重試一次/.test(linebot) &&
+    /\(attachPDFs \|\| forceWebSearch\) && retryCount === 0/.test(linebot),
+  "countTokens 與進階來源 429/5xx 只做一次受控退避重試",
+);
+assert(
+  /PDF Mode Retry v29\.6\.123/.test(linebot) &&
+    /PDF Generate Refresh v29\.6\.123/.test(linebot) &&
+    /pdfRefreshAttempted = false/.test(linebot),
+  "PDF 空答與生成階段過期 URI 都有單次自癒且禁止無限循環",
+);
+assert(
+  /function buildBluetoothAudioManualSearchQuery_/.test(linebot) &&
+    /藍牙揚聲器清單/.test(linebot) &&
+    /Bluetooth Speaker List/.test(linebot) &&
+    /PDF Query Rewrite v29\.6\.124/.test(linebot),
+  "藍牙音訊操作題會用手冊正式標題與選單同義詞擴查，不得誤判未記載",
+);
+assert(
+  /function findBluetoothAudioRuleEvidence_/.test(linebot) &&
+    /function enforceBluetoothAudioRuleEvidence_/.test(linebot) &&
+    /CLASS_RULES 明載 Tizen \+/.test(linebot) &&
+    /不能回答成沒有內建藍牙/.test(linebot) &&
+    /const bluetoothRuleIntroMatch/.test(linebot) &&
+    /const bluetoothRuleIntro/.test(linebot) &&
+    /三星官方規格已確認搭載 Tizen 作業系統與\$\{versionText\}/.test(
+      linebot,
+    ) &&
+    /\[AUTO_SEARCH_PDF\]/.test(linebot),
+  "CLASS_RULES 明載的 Smart/Tizen 藍牙能力不得被 Fast 模型反向否定，操作題只建議手冊",
+);
+assert(
+  /let failedUploadCount = 0/.test(linebot) &&
+    /failedUploadCount\+\+/.test(linebot) &&
+    /const failedCount = failedUploadCount/.test(linebot),
+  "每日重建能正確偵測 PDF 上傳失敗並排程背景重試",
+);
+assert(
+  /單次上限約 NT\$0\.35/.test(testUi) &&
+    !/即將讀取 PDF \(約 NT\$1\.5\)/.test(testUi),
+  "TestUI PDF 成本提示與正式 NT$0.35 上限一致",
 );
 assert(
   /slice\(0, CONFIG\.MAX_RELEVANT_RULE_LINES\)/.test(linebot) &&

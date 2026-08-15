@@ -79,8 +79,17 @@ const aliasVmSource = [
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
+  extractFunction(linebot, "isSameRecentSourceQuestion_"),
+  extractFunction(linebot, "stripKnownModelFromSourceQuestion_"),
+  extractFunction(linebot, "resolveManualSourceModel_"),
   `globalThis.__g8Candidates = getAliasOnlySelectionModelsFromQuery("G8 有耳機孔嗎？", 10, false);`,
   `globalThis.__g8SelectedAgain = getAliasOnlySelectionModelsFromQuery("S27FG812SC G8 有耳機孔嗎？", 10, false);`,
+  `globalThis.__sameQuestion = isSameRecentSourceQuestion_("G8 如何連接藍牙耳機?", "S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
+  `globalThis.__differentQuestion = isSameRecentSourceQuestion_("G8 如何恢復原廠設定?", "S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
+  `globalThis.__sameQuestionModel = resolveManualSourceModel_("G8 如何連接藍牙耳機?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
+  `globalThis.__differentQuestionModel = resolveManualSourceModel_("G8 如何恢復原廠設定?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
+  `globalThis.__reselectQuestion = stripKnownModelFromSourceQuestion_("S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
 ].join("\n\n");
 const aliasVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -114,6 +123,23 @@ assert.deepStrictEqual(
   Array.from(aliasVmContext.__g8SelectedAgain),
   [],
   "選完完整型號後不得再次進入 G8 選型迴圈",
+);
+assert.strictEqual(
+  aliasVmContext.__sameQuestion,
+  true,
+  "同題重打必須忽略已鎖定完整型號與標點差異",
+);
+assert.strictEqual(aliasVmContext.__differentQuestion, false);
+assert.strictEqual(aliasVmContext.__sameQuestionModel, "S32DG802SC");
+assert.strictEqual(
+  aliasVmContext.__differentQuestionModel,
+  "",
+  "內容不同的新題不得借用 previousModel",
+);
+assert.strictEqual(
+  aliasVmContext.__reselectQuestion,
+  "G8 如何連接藍牙耳機？",
+  "換型號時保留問題但必須移除字串內的舊完整型號",
 );
 
 const doPostText = extractFunction(linebot, "doPost");
@@ -177,6 +203,14 @@ assert(
     /executeAdvancedSourceQuery_/.test(postbackText),
   "手冊型號選定後必須把完整型號鎖回原題並直接續跑同一手冊流程",
 );
+assert(
+  /action === "reselect_manual_model"/.test(postbackText) &&
+    /previousModel:\s*""/.test(postbackText) &&
+    /stripKnownModelFromSourceQuestion_/.test(postbackText) &&
+    /draftQuery:\s*retainedQuestion/.test(postbackText) &&
+    /這一步不讀手冊，也不扣任何次數/.test(postbackText),
+  "換型號必須保留原問題、清除舊型號，且零來源呼叫零扣次",
+);
 
 const llmText = extractFunction(linebot, "callLLMWithRetry");
 const targetedPdfRefreshText = extractFunction(
@@ -189,10 +223,11 @@ const manualModelResolverText = extractFunction(
 );
 assert(
   manualModelResolverText.includes("extractFullModelLikeTokens") &&
-    !manualModelResolverText.includes("previousModel") &&
+    manualModelResolverText.includes("state.usePrevious") &&
+    manualModelResolverText.includes("state.previousModel") &&
     !manualModelResolverText.includes("last_selected_model") &&
     !manualModelResolverText.includes("direct_search_models"),
-  "手冊新題不得沿用上一題或舊路由快取",
+  "只有明確查上一題可沿用已鎖定型號；手冊新題不得借用舊路由快取",
 );
 assert(
   /function getManualSourceCandidateModels_/.test(linebot) &&
@@ -250,6 +285,31 @@ assert(
     /USR_QDAY_/.test(linebot),
   "每位使用者每日 20 次提問必須持久化並以鎖原子保留",
 );
+const dailyQuestionClassifierText = extractFunction(
+  linebot,
+  "shouldCountDailyQuestionText_",
+);
+assert(
+  /if \(explicitSource\) return false/.test(dailyQuestionClassifierText) &&
+    /if \(pending\) return false/.test(
+      dailyQuestionClassifierText,
+    ) &&
+    /\^#型號:/.test(dailyQuestionClassifierText) &&
+    /refundDailyQuestionUsage_/.test(linebot) &&
+    /fast_to_\$\{manualSourceRecommended \? "manual" : "web"\}/.test(linebot) &&
+    !/const dailyQuota = reserveDailyQuestionOrReply_/.test(
+      extractFunction(linebot, "handleRichMenuPostback_"),
+    ),
+  "手冊／網路不得重複扣一般 20 題；只引導手冊時必須退回一般額度",
+);
+assert(
+  /網路同題沿用已鎖定型號/.test(linebot) &&
+    /手冊同題沿用已鎖定型號/.test(linebot) &&
+    /model:\s*normalizeModelForDisplay\(model \|\| explicitModels\[0\]/.test(
+      extractFunction(linebot, "rememberRecentSourceQuestion_"),
+    ),
+  "同題手冊／網路重查都必須保留並帶入完整型號",
+);
 assert(
   /額度鎖忙碌，fail closed/.test(linebot) &&
     /這次沒有計入提問次數，也沒有送出付費查詢/.test(linebot),
@@ -301,6 +361,7 @@ const context = {
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
   USER_DAILY_QUESTION_LIMIT: 20,
+  CURRENT_DAILY_QUESTION_REMAINING: null,
   Utilities: {
     DigestAlgorithm: { SHA_256: "sha256" },
     computeDigest: (_algorithm, value) => [...crypto.createHash("sha256").update(value).digest()],
@@ -333,6 +394,7 @@ vm.runInContext(
     extractFunction(linebot, "readDailyQuestionUsage_"),
     extractFunction(linebot, "getDailyQuestionRemaining_"),
     extractFunction(linebot, "reserveDailyQuestionUsage_"),
+    extractFunction(linebot, "refundDailyQuestionUsage_"),
   ].join("\n\n"),
   context,
 );
@@ -367,6 +429,14 @@ assert.strictEqual(
 );
 taipeiDate = "20260816";
 assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 20);
+context.reserveDailyQuestionUsage_("U3");
+assert.strictEqual(context.getDailyQuestionRemaining_("U3"), 19);
+context.refundDailyQuestionUsage_("U3", "contract_test");
+assert.strictEqual(
+  context.getDailyQuestionRemaining_("U3"),
+  20,
+  "只引導進階來源時必須可原子退回一般提問額度",
+);
 
 const pending = context.writePendingSourceState_("C2", { source: "manual" });
 pending.expiresAt = Date.now() - 1;
@@ -378,10 +448,47 @@ assert.strictEqual(context.readPendingSourceState_("C2", false), null);
 assert(/function testSourcePostback\(/.test(linebot), "TestUI 有正式 postback 模擬入口");
 assert(/selectSource\('manual'\)/.test(testUi) && /usePreviousSource\(\)/.test(testUi), "TestUI 可按三來源與查上一題");
 assert(
+  /id="reselect-manual-model"/.test(testUi) &&
+    /function reselectManualModel\(\)/.test(testUi) &&
+    /runSourcePostback\("reselect_manual_model", "manual"\)/.test(testUi) &&
+    /hasPreviousModel/.test(linebot),
+  "TestUI 必須能走與正式 webhook 相同的情境式換型號 postback",
+);
+assert(
   /source-model-bar/.test(testUi) &&
     /select_manual_model/.test(testUi) &&
     /modelCandidates/.test(testUi),
   "TestUI 必須能顯示並點選手冊候選型號",
+);
+assert(
+  /modelSelectionMode:\s*mode \|\| "pdf"/.test(
+    extractFunction(linebot, "promptAliasOnlyModelSelection"),
+  ) &&
+    /markDailyQuestionModelSelectionHold_\(userId\)/.test(
+      extractFunction(linebot, "promptAliasOnlyModelSelection"),
+    ) &&
+    /modelSelectionMode === "manual"/.test(testUi) &&
+    /addToQueue\("#型號:" \+ model\)/.test(testUi),
+  "一般 G8 選型必須在 TestUI 顯示候選並走同一個 #型號 訊息 router",
+);
+const modelHoldOccurrences = (
+  linebot.match(/markDailyQuestionModelSelectionHold_\(userId\)/g) || []
+).length;
+const consentSelectionStart = linebot.indexOf(
+  '} else if (modelSelectMode === "consent")',
+);
+const consentSelectionText = linebot.slice(
+  consentSelectionStart,
+  consentSelectionStart + 1800,
+);
+assert(
+  modelHoldOccurrences >= 2 &&
+    /consumeDailyQuestionModelSelectionHold_\(userId\)/.test(
+      consentSelectionText,
+    ) &&
+    consentSelectionText.indexOf("refundDailyQuestionUsage_") <
+      consentSelectionText.indexOf("replyMessage("),
+  "後段 Smart Router 選型也必須保留計次；consent 只導向手冊時立即退回一般額度",
 );
 assert.strictEqual(menu.size.width, 2500);
 assert.strictEqual(menu.size.height, 843);
@@ -407,6 +514,19 @@ assert(
     /source-menu-quota">10次\/日</.test(testUi),
   "TestUI 必須用雙排大字呈現功能與每日額度",
 );
+for (const manualText of [
+  fs.readFileSync(path.join(root, "Developer_Manual.md"), "utf8"),
+  fs.readFileSync(path.join(root, "程式編寫開發及功能手冊.md"), "utf8"),
+]) {
+  assert(
+    /三來源使用者旅程與不可回歸矩陣/.test(manualText) &&
+      /\| R01 \|/.test(manualText) &&
+      /\| R24 \|/.test(manualText) &&
+      /手冊 → 網路 → 再手冊/.test(manualText) &&
+      /查上一題／換型號／取消/.test(manualText),
+    "開發手冊必須保存完整三來源流程矩陣與換型號例外",
+  );
+}
 assert(
   /min-height:\s*124px/.test(testUi) &&
     /\.source-menu-title[\s\S]{0,180}font-size:\s*19px/.test(testUi) &&
