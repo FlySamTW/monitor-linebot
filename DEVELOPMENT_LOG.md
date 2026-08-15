@@ -1,5 +1,32 @@
 # 開發對話紀錄
 
+## 2026-08-15 (v29.6.131 / 官網型號隔離與部分 PDF 同步守門)
+
+- 唯讀子代理稽核抓到：部分 PDF 重傳失敗時會以成功子集刷新正式／備份索引，可能製造 H／2026 假缺口；無型號新題也可能借上一題五分鐘型號 Cache 顯示錯款官網。
+- Drive 掃描現在先建立完整合規檔名目錄；部分上傳失敗時保留前次完整 URI 與備份。若 Drive 列舉中途例外，正式 URI、索引與備份都不接受部分清單。兩種失敗都一分鐘後受控重試，維運回覆改為「同步未完整」；索引不可用時 TestUI 只顯示「待檢查」。
+- 官網 resolver 移除 suggested／direct-search Cache，只接受本題完整型號或本題 `primaryModel`；契約測試新增跨題型號污染、部分同步與索引不可用三項回歸案例。
+- 唯一正式發布工具已更新既有 Webhook 至 Apps Script `@1328`；local、Remote HEAD、health 與正式 TestUI 版本皆為 `v29.6.131 [2026-08-15 14:41]`。
+- 390×844 正式 TestUI 顯示 `2026手冊：6/6`；真人輸入 `/重啟` 回覆「只重置對話、不變更 QA／RULE／手冊索引」，稽核為 deterministic、`paidCalls=0`、`pdfCalls=0`、`webCalls=0`、估算 NT$0。
+
+## 2026-08-15 (v29.6.130 / `/重啟` 與 PDF 維運契約收斂)
+
+- 程式實際 `/重啟` 已只清除個人對話與 pending 狀態，但未知指令說明仍殘留「重置對話＋同步」，開發手冊舊章節也誤寫為重啟建立 PDF 索引。
+- 所有使用者與維護文案統一為：`/重啟` 不讀寫 QA、RULE、PDF URI 或索引；Files 過期由本題單檔自癒、每日 04:00 強制重傳與一分鐘背景重建處理。
+
+## 2026-08-15 (v29.6.129 / TestUI 官網連結可操作修補)
+
+- 正式 v29.6.128 手機 TestUI 已正確顯示 `到這款官網` 與 Samsung Taiwan HTTPS URL，但 Apps Script 巢狀 sandbox 會吞掉 `_blank` 新分頁，點擊沒有可觀察結果。
+- TestUI URI Quick Reply 改用使用者觸發的 `_top` 同頁導向；正式 LINE 仍維持 Messaging API 原生 URI Action，不改三來源狀態、配額或 RAG 路由。
+- `S32HG806ES 有耳機孔嗎？` 正式實問由 RULE／官方規格正確回答「有」，模型為 `gemini-2.5-flash-lite`、PDF/Web 皆 0；手冊頁碼題只推薦手冊並退回一般題額度，同時顯示正確官方頁 URL。
+- 唯一正式發布工具已更新既有 Webhook 至 Apps Script `@1326`；local、Remote HEAD、health 與正式 TestUI 皆為 `v29.6.129 [2026-08-15 14:28]`。
+- 390×844 正式 TestUI 重跑手冊頁碼題：Fast 判斷約 NT$0.0242、`pdfCalls=0`、`webCalls=0`，一般額度由 1/20 原子退回 0/20；觸控 `到這款官網` 後同頁開啟 `https://www.samsung.com/tw/support/model/LS32HG806ESXZW/`，頁面標題與 Odyssey G8 G80HS 完整型號一致。
+
+## 2026-08-15 (v29.6.128 / 官網承接與 RULE/PDF 缺口守門)
+
+- 完整型號已鎖定但本機、手冊或網搜仍不足時，新增 `到這款官網` URI Quick Reply；優先使用 RULE 內 Samsung Taiwan PDP，否則用同列 XZW 完整料號支援頁。成功答案、短別稱與等待選型狀態不顯示。
+- 每日 04:00 PDF 重傳後新增 RULE↔PDF 覆蓋稽核；新 RULE 缺手冊或 H／2026 型號缺手冊時寫入報表、待審狀態與警示 LOG。TestUI 顯示簡短覆蓋徽章，受保護端點提供完整報表。
+- 2026-08-15 正式 `PDF_MODEL_INDEX` 當次回讀 176 項；6 款 H／2026 RULE 型號全部有 PDF 基型號覆蓋，缺口為 0。正式 RAG 仍要求第一頁型號、PDF 格式與雜湊驗證，不把未驗證的官網檔案自動上船。
+
 ## 2026-08-15 (v29.6.127 / 手冊證據範圍同義詞正規化)
 
 - 正式手冊實問已取得第 110 頁與正確選單路徑，但模型輸出 `範圍:型號共通`；舊 parser 僅接受 `全檔共通`，因此沒有移除標記並錯加「未取得可核對頁碼」。

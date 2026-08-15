@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.127"; // 2026-08-15 手冊證據範圍同義詞正規化
-const BUILD_TIMESTAMP = "2026-08-15 13:56";
+const GAS_VERSION = "v29.6.131"; // 2026-08-15 官網型號隔離與部分同步守門
+const BUILD_TIMESTAMP = "2026-08-15 14:41";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -92,6 +92,7 @@ var ACTIVE_ADVANCED_SOURCE_GRANT = null;
 var CURRENT_DAILY_QUESTION_REMAINING = null;
 var CURRENT_REPLY_FOOTER_APPENDED = false;
 var LAST_SOURCE_TEST_STATE = null;
+var LAST_TEST_QUICK_REPLY_ITEMS = [];
 var FAST_POSTBACK_HANDLED = false;
 // v27.8.5: Log 緩衝區 (Batch Logging)
 var PENDING_LOGS = [];
@@ -4273,6 +4274,132 @@ function buildSourcePostbackQuickReply_(label, data) {
   };
 }
 
+function isFullSamsungMonitorModelForOfficialPage_(model) {
+  const normalized = normalizeModelForDisplay(model);
+  return /^(?:S|C|F)\d{2,3}[A-Z0-9]{4,}$/i.test(normalized) &&
+    !isShortAliasModelToken(normalized);
+}
+
+function isSafeSamsungTwOfficialUrl_(url) {
+  return /^https:\/\/www\.samsung\.com\/tw\//i.test(String(url || "").trim());
+}
+
+/**
+ * 只從 CLASS_RULES 已確認的完整型號建立三星台灣官網入口。
+ * RULE 有 PDP 網址時優先使用；否則以同列 XZW 完整料號建立官方支援頁。
+ * 不接受 G8／M8 等系列別稱，避免把客戶帶到錯款商品頁。
+ */
+function getSamsungOfficialModelPage_(model) {
+  const normalized = normalizeModelForDisplay(model);
+  if (!isFullSamsungMonitorModelForOfficialPage_(normalized) || !ss) {
+    return null;
+  }
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = `official_model_page_v1_${normalized}`;
+  const cached = cache.get(cacheKey);
+  if (cached === "-") return null;
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (parsed && isSafeSamsungTwOfficialUrl_(parsed.uri)) return parsed;
+    } catch (e) {}
+  }
+
+  try {
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet || sheet.getLastRow() < 1) return null;
+    const rows = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
+    for (let i = 0; i < rows.length; i++) {
+      const ruleText = String(rows[i][0] || "").trim();
+      if (!ruleText || isIncompleteModelRuleLine_(ruleText)) continue;
+      const fullSku = String(ruleText.split(",")[0] || "")
+        .trim()
+        .toUpperCase();
+      const declaredMatch = ruleText.match(/型號[：:]\s*([A-Z0-9]+)/i);
+      const declaredModel = normalizeModelForDisplay(
+        declaredMatch ? declaredMatch[1] : fullSku,
+      );
+      if (
+        !declaredModel ||
+        !isPdfModelTokenMatch_(declaredModel, normalized)
+      ) {
+        continue;
+      }
+
+      const explicitUrlMatch = ruleText.match(
+        /官網網址\s*[：:]\s*(https:\/\/www\.samsung\.com\/tw\/[^\s,]+)/i,
+      );
+      let uri = explicitUrlMatch ? explicitUrlMatch[1].trim() : "";
+      let urlSource = "rule_pdp";
+      if (!isSafeSamsungTwOfficialUrl_(uri)) {
+        const supportSku = /^L[SCF]\d{2,3}[A-Z0-9]{4,}XZW$/i.test(fullSku)
+          ? fullSku
+          : "";
+        if (!supportSku) continue;
+        uri = `https://www.samsung.com/tw/support/model/${encodeURIComponent(supportSku)}/`;
+        urlSource = "rule_support";
+      }
+
+      const result = {
+        model: declaredModel,
+        uri: uri,
+        source: urlSource,
+      };
+      cache.put(cacheKey, JSON.stringify(result), 21600);
+      return result;
+    }
+  } catch (e) {
+    writeLog(`[Official Model Page] ${normalized} 查找失敗: ${e.message}`);
+  }
+
+  cache.put(cacheKey, "-", 1800);
+  return null;
+}
+
+function resolveSamsungOfficialModelPage_(
+  query,
+  primaryModel,
+) {
+  // 官網連結只能綁本題文字中的完整型號，或本題路由明確解析出的 primaryModel。
+  // 禁止讀 suggested/direct-search Cache，避免無型號的新題借到上一款官網。
+  const candidates = dedupDisplayModels(
+    extractFullModelLikeTokens(query)
+      .concat(primaryModel ? [primaryModel] : [])
+      .filter(function (model) {
+        return isFullSamsungMonitorModelForOfficialPage_(model);
+      }),
+    6,
+  );
+  for (let i = 0; i < candidates.length; i++) {
+    const page = getSamsungOfficialModelPage_(candidates[i]);
+    if (page) return page;
+  }
+  return null;
+}
+
+function shouldOfferSamsungOfficialPage_(replyText) {
+  const text = String(replyText || "");
+  return (
+    isKnowledgeMissingReply_(text) ||
+    /手冊(?:目前)?(?:未記載|未涵蓋|沒有直接證據)|無法(?:直接|可靠)?(?:確認|證明)|找不到.{0,30}(?:PDF|手冊|對應檔案)|手冊索引.{0,20}(?:找不到|需要背景更新)|手冊查詢.{0,20}(?:沒有完成|暫時無法)|網路搜尋.{0,20}(?:沒有完成|暫時無法)|資料.{0,12}(?:衝突|不足)|要改查三星官方網站|建議.{0,12}(?:三星)?官方(?:網站|產品頁|支援頁)/i.test(
+      text,
+    )
+  );
+}
+
+function buildSamsungOfficialPageQuickReply_(page) {
+  if (!page || !isSafeSamsungTwOfficialUrl_(page.uri)) return null;
+  return {
+    type: "action",
+    action: {
+      type: "uri",
+      label: "🔗 到這款官網",
+      uri: page.uri,
+    },
+  };
+}
+
 function buildSourceSelectionPrompt_(
   source,
   remaining,
@@ -4722,20 +4849,33 @@ function createManualSourceModelSelectionFlex_(models) {
   };
 }
 
-function buildAdvancedSourceQuickReplies_(source) {
+function buildAdvancedSourceQuickReplies_(
+  source,
+  model,
+  replyText,
+  routeOptions,
+) {
+  const options = routeOptions || {};
   const items = [];
-  items.push(
-    buildSourcePostbackQuickReply_(
-      source === "manual" ? "📖 再查手冊" : "🌐 再搜網路",
-      `rm_action=select_source&source=${source}&v=1`,
-    ),
-  );
+  if (!options.skipSameSource) {
+    items.push(
+      buildSourcePostbackQuickReply_(
+        source === "manual" ? "📖 再查手冊" : "🌐 再搜網路",
+        `rm_action=select_source&source=${source}&v=1`,
+      ),
+    );
+  }
   items.push(
     buildSourcePostbackQuickReply_(
       source === "manual" ? "🌐 網路解答" : "📖 官方手冊",
       `rm_action=select_source&source=${source === "manual" ? "web" : "manual"}&v=1`,
     ),
   );
+  if (options.forceOfficial || shouldOfferSamsungOfficialPage_(replyText)) {
+    const page = getSamsungOfficialModelPage_(model);
+    const officialItem = buildSamsungOfficialPageQuickReply_(page);
+    if (officialItem) items.push(officialItem);
+  }
   return { quickReply: { items: items } };
 }
 
@@ -5052,9 +5192,17 @@ function executeAdvancedSourceQuery_(
     }
     if (remainingBefore <= 0) {
       clearPendingSourceState_(contextId);
+      const exhaustedManualReply =
+        "今天的官方手冊 5 次已用完。這題在規格／FAQ 沒有高信心答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。";
       replyMessage(
         replyToken,
-        "今天的官方手冊 5 次已用完。這題在規格／FAQ 沒有高信心答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。",
+        exhaustedManualReply,
+        buildAdvancedSourceQuickReplies_(
+          "manual",
+          selectedModel,
+          exhaustedManualReply,
+          { forceOfficial: true, skipSameSource: true },
+        ),
       );
       return true;
     }
@@ -5091,10 +5239,19 @@ function executeAdvancedSourceQuery_(
         noManual: true,
         remaining: remainingBefore,
       };
+      const noManualOfficialPage = getSamsungOfficialModelPage_(selectedModel);
+      const noManualReply = noManualOfficialPage
+        ? `目前手冊索引找不到「${selectedModel}」的對應檔案，所以沒有扣次，也不會猜答案。請核對完整型號；若型號正確，可直接到這款三星官網，或再按「網路解答」查公開資料。`
+        : `目前手冊索引找不到「${selectedModel}」的對應檔案，所以沒有扣次，也不會猜答案。請核對完整型號；若要查公開資料，可再按「網路解答」。`;
       replyMessage(
         replyToken,
-        `目前手冊索引找不到「${selectedModel}」的對應檔案，所以沒有扣次，也不會猜答案。請核對完整型號；若要查公開資料，可再按「網路解答」。`,
-        buildAdvancedSourceQuickReplies_("manual"),
+        noManualReply,
+        buildAdvancedSourceQuickReplies_(
+          "manual",
+          selectedModel,
+          noManualReply,
+          { forceOfficial: true, skipSameSource: true },
+        ),
       );
       return true;
     }
@@ -5125,9 +5282,17 @@ function executeAdvancedSourceQuery_(
   } catch (error) {
     const code = String(error && error.message ? error.message : error);
     if (code.indexOf("SOURCE_QUOTA_EXHAUSTED_") === 0) {
+      const exhaustedSourceReply =
+        `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可使用「規格＆FAQ」的每日提問額度。`;
       replyMessage(
         replyToken,
-        `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可使用「規格＆FAQ」的每日提問額度。`,
+        exhaustedSourceReply,
+        buildAdvancedSourceQuickReplies_(
+          normalizedSource,
+          primaryModel || selectedModel,
+          exhaustedSourceReply,
+          { forceOfficial: true, skipSameSource: true },
+        ),
       );
       return true;
     }
@@ -5135,9 +5300,20 @@ function executeAdvancedSourceQuery_(
     const suffix = grant.reserved
       ? `本次請求已送出，今日剩餘 ${grant.remaining}/${SOURCE_DAILY_LIMITS[normalizedSource]} 次。`
       : "本次尚未送出供應商請求，因此沒有扣次。";
+    const failedSourceModel = primaryModel || selectedModel;
+    const failedSourcePage = getSamsungOfficialModelPage_(failedSourceModel);
+    const failedSourceReply = failedSourcePage
+      ? `這次${normalizedSource === "manual" ? "手冊查詢" : "網路搜尋"}沒有完成。${suffix}你可以先到這款三星官網查看，或稍後重新按來源再試一次。`
+      : `這次${normalizedSource === "manual" ? "手冊查詢" : "網路搜尋"}沒有完成。${suffix}請稍後重新按來源再試一次。`;
     replyMessage(
       replyToken,
-      `這次${normalizedSource === "manual" ? "手冊查詢" : "網路搜尋"}沒有完成。${suffix}請稍後重新按來源再試一次。`,
+      failedSourceReply,
+      buildAdvancedSourceQuickReplies_(
+        normalizedSource,
+        failedSourceModel,
+        failedSourceReply,
+        { forceOfficial: true },
+      ),
     );
     return true;
   } finally {
@@ -5208,7 +5384,12 @@ function executeAdvancedSourceQuery_(
   replyMessage(
     replyToken,
     finalText,
-    buildAdvancedSourceQuickReplies_(normalizedSource),
+    buildAdvancedSourceQuickReplies_(
+      normalizedSource,
+      primaryModel || selectedModel,
+      finalText,
+      { forceOfficial: recommendedWeb },
+    ),
   );
   writeRecordDirectly(userId, normalizedQuery, contextId, "user", "");
   writeRecordDirectly(userId, finalText, contextId, "assistant", "");
@@ -7645,14 +7826,17 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             continue;
           }
 
+          // PDF_MODEL_INDEX 的語義是「Drive 中已有可用大小的官方手冊」，
+          // 不得因本次 Gemini Files 上傳暫時失敗就把型號從索引抹掉。
+          drivePdfCatalog.push({
+            name: fileName,
+            mimeType: "application/pdf",
+          });
+
           if (existingFilesMap.has(fileName)) {
             newKbList.push({
               name: fileName,
               uri: existingFilesMap.get(fileName),
-              mimeType: "application/pdf",
-            });
-            drivePdfCatalog.push({
-              name: fileName,
               mimeType: "application/pdf",
             });
             skipCount++;
@@ -7668,11 +7852,6 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               newKbList.push({
                 name: fileName,
                 uri: pdfUri,
-                mimeType: "application/pdf",
-              });
-              // v29.6.015: 只有上傳成功的 PDF 才計入型號索引, 避免 [KB_EXPIRED] 永久殘缺
-              drivePdfCatalog.push({
-                name: fileName,
                 mimeType: "application/pdf",
               });
               uploadedFiles.push(fileName);
@@ -7725,7 +7904,29 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     let kbListToPersist = newKbList;
     let pdfListSource = "new";
-    if (!hasPdfInNewKbList && hasPdfInFallback) {
+    const hasPartialDriveUploadFailure =
+      driveScanSucceeded && failedUploadCount > 0;
+    const hasDriveScanFailure = Boolean(
+      CONFIG.DRIVE_FOLDER_ID && !driveScanSucceeded,
+    );
+    const hasIncompleteDriveSync =
+      hasDriveScanFailure || hasPartialDriveUploadFailure;
+    const incompleteDriveReason = hasDriveScanFailure
+      ? "Drive 掃描未完整"
+      : `${failedUploadCount} 本上傳失敗`;
+    if (hasIncompleteDriveSync && hasPdfInFallback) {
+      kbListToPersist = fallbackKbList;
+      pdfListSource = "current_incomplete_drive_sync";
+      writeLog(
+        `[Sync Guard v29.6.131] ${incompleteDriveReason}，保留既有完整 KB_URI_LIST，禁止部分清單覆蓋正式與備份`,
+      );
+    } else if (hasIncompleteDriveSync && hasPdfInBackup) {
+      kbListToPersist = backupKbList;
+      pdfListSource = "backup_incomplete_drive_sync";
+      writeLog(
+        `[Sync Guard v29.6.131] ${incompleteDriveReason}且正式 URI 不可用，保留完整備份，禁止部分清單覆蓋`,
+      );
+    } else if (!hasPdfInNewKbList && hasPdfInFallback) {
       kbListToPersist = fallbackKbList;
       pdfListSource = "current";
       writeLog(
@@ -7743,17 +7944,20 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       );
     }
 
-    const pdfIndexSourceList = drivePdfCatalog.some(isPdfKbFile)
+    const pdfIndexSourceList =
+      driveScanSucceeded && drivePdfCatalog.some(isPdfKbFile)
       ? drivePdfCatalog
       : kbListToPersist;
     const uniquePdfModels = extractPdfModelIndexFromKbList(pdfIndexSourceList);
     const props = PropertiesService.getScriptProperties();
     const shouldPersistPdfState =
-      kbListToPersist.some(isPdfKbFile) || !CONFIG.DRIVE_FOLDER_ID;
+      (!hasDriveScanFailure && kbListToPersist.some(isPdfKbFile)) ||
+      !CONFIG.DRIVE_FOLDER_ID;
     const shouldPersistPdfIndex =
-      uniquePdfModels.length > 0 ||
-      !CONFIG.DRIVE_FOLDER_ID ||
-      driveScanSucceeded;
+      !hasDriveScanFailure &&
+      (uniquePdfModels.length > 0 ||
+        !CONFIG.DRIVE_FOLDER_ID ||
+        driveScanSucceeded);
     if (shouldPersistPdfIndex) {
       props.setProperty("PDF_MODEL_INDEX", JSON.stringify(uniquePdfModels));
     }
@@ -7761,21 +7965,21 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     syncLogs.push(`PDF來源: ${pdfListSource}`);
     syncLogs.push(`Drive手冊: ${drivePdfCatalog.length}`);
 
-    // 更新 Cache。只有確定有 PDF 清單時才覆蓋正式索引；避免同步異常把可用索引洗成空。
+    // 更新 Cache。部分上傳失敗時可以保留舊正式 URI，但絕不能刷新備份；
+    // 否則成功子集會把最後一份完整回復點洗掉。
+    const shouldRefreshPdfBackups = Boolean(
+      !hasIncompleteDriveSync &&
+        (!CONFIG.DRIVE_FOLDER_ID || driveScanSucceeded) &&
+        kbListToPersist.some(isPdfKbFile),
+    );
     if (shouldPersistPdfState) {
       props.setProperty(CACHE_KEYS.KB_URI_LIST, JSON.stringify(kbListToPersist));
-      if (kbListToPersist.some(isPdfKbFile)) {
-        props.setProperty(
-          CACHE_KEYS.KB_URI_LIST_BACKUP,
-          JSON.stringify(kbListToPersist),
-        );
-        props.setProperty(
-          CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
-          JSON.stringify(uniquePdfModels),
-        );
-      }
     }
-    if (uniquePdfModels.length > 0) {
+    if (shouldRefreshPdfBackups) {
+      props.setProperty(
+        CACHE_KEYS.KB_URI_LIST_BACKUP,
+        JSON.stringify(kbListToPersist),
+      );
       props.setProperty(
         CACHE_KEYS.PDF_MODEL_INDEX_BACKUP,
         JSON.stringify(uniquePdfModels),
@@ -7793,7 +7997,9 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
       : "unknown";
 
     const statusMsg = [
-      "✅ 系統重啟與同步完成",
+      hasIncompleteDriveSync
+        ? "⚠️ 知識庫同步未完整，已保留前次狀態並排程重試"
+        : "✅ 知識庫重建與同步完成",
       "━━━━━━━━",
       `📦 系統版本：${GAS_VERSION}`,
       `📝 指令版本：v${promptVersion}`,
@@ -7811,8 +8017,11 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     // v29.6.015: 若有上傳失敗, 自動 1 分鐘後背景重試 (避免 56 本 PDF 永久殘缺)
     const failedCount = failedUploadCount;
-    if (failedCount > 0) {
-      writeLog(`[Sync] ⚠️ ${failedCount} 本 PDF 上傳失敗, 1 分鐘後自動重試`);
+    if (hasDriveScanFailure || failedCount > 0) {
+      const retryReason = hasDriveScanFailure
+        ? "Drive 掃描未完整"
+        : `${failedCount} 本 PDF 上傳失敗`;
+      writeLog(`[Sync] ⚠️ ${retryReason}, 1 分鐘後自動重試`);
       scheduleImmediateRebuild();
     }
 
@@ -8208,6 +8417,200 @@ function scanOfficialWebsiteForNewMonitors() {
   }
 }
 
+function extractManualCoverageRuleIdentity_(ruleText) {
+  const text = String(ruleText || "").trim();
+  if (!text || isIncompleteModelRuleLine_(text)) return null;
+  const fullSku = String(text.split(",")[0] || "").trim().toUpperCase();
+  if (!/^L?[SCF]\d{2,3}[A-Z0-9]{4,}$/i.test(fullSku)) return null;
+  const declaredMatch = text.match(/型號[：:]\s*([A-Z0-9]+)/i);
+  const model = normalizeModelForDisplay(
+    declaredMatch ? declaredMatch[1] : fullSku,
+  );
+  if (!isFullSamsungMonitorModelForOfficialPage_(model)) return null;
+  const officialUrlMatch = text.match(
+    /官網網址\s*[：:]\s*(https:\/\/www\.samsung\.com\/tw\/[^\s,]+)/i,
+  );
+  const officialUrl = officialUrlMatch &&
+      isSafeSamsungTwOfficialUrl_(officialUrlMatch[1])
+    ? officialUrlMatch[1]
+    : /^L[SCF]\d{2,3}[A-Z0-9]{4,}XZW$/i.test(fullSku)
+      ? `https://www.samsung.com/tw/support/model/${encodeURIComponent(fullSku)}/`
+      : "";
+  return {
+    model: model,
+    fullSku: fullSku,
+    officialUrl: officialUrl,
+  };
+}
+
+function readManualCoverageRuleIdentities_() {
+  if (!ss) return [];
+  const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+  if (!sheet || sheet.getLastRow() < 1) return [];
+  const rows = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
+  const byModel = {};
+  rows.forEach(function (row) {
+    const identity = extractManualCoverageRuleIdentity_(row[0]);
+    if (identity) byModel[identity.model] = identity;
+  });
+  return Object.keys(byModel)
+    .sort()
+    .map(function (model) {
+      return byModel[model];
+    });
+}
+
+function readPdfModelIndexForCoverage_() {
+  const props = PropertiesService.getScriptProperties();
+  const keys = ["PDF_MODEL_INDEX", CACHE_KEYS.PDF_MODEL_INDEX_BACKUP];
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const parsed = JSON.parse(props.getProperty(keys[i]) || "[]");
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (e) {}
+  }
+  return [];
+}
+
+function buildManualCoverageReport_() {
+  const identities = readManualCoverageRuleIdentities_();
+  const pdfIndex = readPdfModelIndexForCoverage_();
+  const indexAvailable = pdfIndex.length > 0;
+  const coveredModels = [];
+  const missingModels = [];
+  identities.forEach(function (identity) {
+    const covered = pdfIndex.some(function (pdfModel) {
+      return isPdfModelTokenMatch_(pdfModel, identity.model);
+    });
+    (covered ? coveredModels : missingModels).push(identity.model);
+  });
+  const currentModels = identities
+    .map(function (identity) {
+      return identity.model;
+    })
+    .filter(function (model) {
+      return /^S\d{2,3}H/i.test(model);
+    });
+  const currentMissingModels = currentModels.filter(function (model) {
+    return missingModels.indexOf(model) >= 0;
+  });
+  return {
+    status: indexAvailable ? "OK" : "INDEX_UNAVAILABLE",
+    coverageKnown: indexAvailable,
+    generatedAt: new Date().toISOString(),
+    gasVersion: GAS_VERSION,
+    pdfIndexCount: pdfIndex.length,
+    ruleModelCount: identities.length,
+    coveredModelCount: indexAvailable ? coveredModels.length : null,
+    missingModelCount: indexAvailable ? missingModels.length : null,
+    missingModels: indexAvailable ? missingModels : [],
+    currentGeneration: "H_2026",
+    currentGenerationModelCount: currentModels.length,
+    currentGenerationModels: currentModels,
+    currentGenerationMissingCount: indexAvailable
+      ? currentMissingModels.length
+      : null,
+    currentGenerationMissingModels: indexAvailable
+      ? currentMissingModels
+      : [],
+    acquisitionMode: "OFFICIAL_DISCOVERY_WITH_MANUAL_VALIDATION",
+  };
+}
+
+/**
+ * 每日同步完成後比對 RULE 與 PDF 型號索引。
+ * 新增 RULE 卻缺 PDF，或當代 H/2026 型號缺 PDF，會進 PENDING_MODEL_REVIEW
+ * 並寫入明確警示；不自動把未驗證的官網檔案送進正式 RAG。
+ */
+function auditManualCoverageGaps_() {
+  const props = PropertiesService.getScriptProperties();
+  const report = buildManualCoverageReport_();
+  if (report.status !== "OK") {
+    writeLog("[Manual Coverage] PDF 索引不可用，保留前次報表且不建立假缺口");
+    return report;
+  }
+
+  let previousModels = [];
+  try {
+    previousModels = JSON.parse(
+      props.getProperty("MANUAL_RULE_MODEL_SNAPSHOT") || "[]",
+    );
+    if (!Array.isArray(previousModels)) previousModels = [];
+  } catch (e) {
+    previousModels = [];
+  }
+  const currentModels = readManualCoverageRuleIdentities_().map(function (item) {
+    return item.model;
+  });
+  const newRuleModels = previousModels.length > 0
+    ? currentModels.filter(function (model) {
+        return previousModels.indexOf(model) < 0;
+      })
+    : [];
+  const newMissingModels = newRuleModels.filter(function (model) {
+    return report.missingModels.indexOf(model) >= 0;
+  });
+  const alertModels = Array.from(
+    new Set(
+      report.currentGenerationMissingModels.concat(newMissingModels),
+    ),
+  ).sort();
+  report.newRuleModels = newRuleModels;
+  report.newMissingModels = newMissingModels;
+  report.alertModels = alertModels;
+
+  if (alertModels.length > 0) {
+    let pending = [];
+    try {
+      pending = JSON.parse(props.getProperty("PENDING_MODEL_REVIEW") || "[]");
+      if (!Array.isArray(pending)) pending = [];
+    } catch (e) {
+      pending = [];
+    }
+    const identityByModel = {};
+    readManualCoverageRuleIdentities_().forEach(function (identity) {
+      identityByModel[identity.model] = identity;
+    });
+    const pendingByModel = {};
+    pending.forEach(function (item) {
+      if (item && item.model) {
+        pendingByModel[String(item.model).toUpperCase()] = item;
+      }
+    });
+    alertModels.forEach(function (model) {
+      const identity = identityByModel[model] || {};
+      const existing = pendingByModel[model] || { model: model };
+      existing.manualStatus = "PENDING_MANUAL_REVIEW";
+      existing.manualDetectedAt = new Date().toISOString();
+      if (identity.officialUrl && !existing.officialUrl) {
+        existing.officialUrl = identity.officialUrl;
+      }
+      pendingByModel[model] = existing;
+    });
+    props.setProperty(
+      "PENDING_MODEL_REVIEW",
+      JSON.stringify(
+        Object.keys(pendingByModel)
+          .sort()
+          .map(function (model) {
+            return pendingByModel[model];
+          })
+          .slice(-50),
+      ),
+    );
+    writeLog(
+      `[Manual Coverage Alert] RULE 有型號但缺官方 PDF：${alertModels.join("、")}`,
+    );
+  }
+
+  props.setProperty("MANUAL_RULE_MODEL_SNAPSHOT", JSON.stringify(currentModels));
+  props.setProperty("MANUAL_COVERAGE_REPORT", JSON.stringify(report));
+  writeLog(
+    `[Manual Coverage] H/2026 ${report.currentGenerationModelCount - report.currentGenerationMissingCount}/${report.currentGenerationModelCount}；全 RULE ${report.coveredModelCount}/${report.ruleModelCount}；新增缺口 ${newMissingModels.length}`,
+  );
+  return report;
+}
+
 /**
  * 每日 04:00 自動重建知識庫
  * 使用 forceRebuild=true 確保所有 PDF 重新上傳
@@ -8219,6 +8622,7 @@ function dailyKnowledgeRefresh() {
   // 🆕 v29.5.211: 重建前先自動掃描官網新機型，確保新產品被收錄
   scanOfficialWebsiteForNewMonitors();
   syncGeminiKnowledgeBase(true); // forceRebuild = true
+  auditManualCoverageGaps_();
   writeLog("[Daily] 每日知識庫重建完成");
 }
 
@@ -14480,6 +14884,20 @@ function handleMessage(event) {
             userId,
             currentReplyAnchor,
           );
+          const shouldConsiderOfficialModelPage = Boolean(
+            !isWaitingForModelSelection &&
+              (terminalQuickReplyState ||
+                manualSourceRecommended ||
+                webSourceRecommended ||
+                shouldOfferSamsungOfficialPage_(currentReplyTextForUi)),
+          );
+          const officialModelPage = shouldConsiderOfficialModelPage
+            ? resolveSamsungOfficialModelPage_(
+                `${msg || ""}\n${userMessage || ""}`,
+                primaryModel,
+              )
+            : null;
+          const offerOfficialModelPage = Boolean(officialModelPage);
 
           const qrItems = [];
 
@@ -14511,8 +14929,15 @@ function handleMessage(event) {
             }
           }
 
+          if (offerOfficialModelPage) {
+            const officialPageItem =
+              buildSamsungOfficialPageQuickReply_(officialModelPage);
+            if (officialPageItem) qrItems.push(officialPageItem);
+          }
+
           if (
             !terminalQuickReplyState &&
+            !offerOfficialModelPage &&
             elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER
           ) {
             // v29.5.149: 第二個按鈕改為「再詳細說明」→ 找 AI 上次回答並請求展開
@@ -15218,7 +15643,7 @@ function handleCommand(c, u, cid) {
     }
   }
 
-  return `❌ 未知指令\n\n【指令列表】\n/重啟 -> 重置對話+同步\n/紀錄 <內容> -> 開始建檔\n/紀錄 -> 存檔/整理QA\n/取消 -> 退出建檔\n不滿意這回答請繼續擴大搜尋 -> 啟動網路搜尋`;
+  return `❌ 未知指令\n\n【指令列表】\n/重啟 -> 只重置個人對話，不重傳 PDF\n/紀錄 <內容> -> 開始建檔\n/紀錄 -> 存檔/整理QA\n/取消 -> 退出建檔\n不滿意這回答請繼續擴大搜尋 -> 啟動網路搜尋`;
 }
 
 
@@ -18559,6 +18984,11 @@ function replyMessage(tk, txt, options = {}) {
         options && options.quickReply && Array.isArray(options.quickReply.items)
           ? options.quickReply.items
           : [];
+      LAST_TEST_QUICK_REPLY_ITEMS = testQuickReplyItems
+        .slice(0, 13)
+        .map(function (item) {
+          return JSON.parse(JSON.stringify(item));
+        });
       if (testQuickReplyItems.length > 0) {
         const testQuickReplyLabels = testQuickReplyItems
           .map((item) =>
@@ -19013,6 +19443,13 @@ function doGet(e) {
     return ContentService.createTextOutput(val).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (e && e.parameter && e.parameter.manualCoverage === "1") {
+    if (!isDoGetMaintenanceAuthorized_(e)) return buildUnauthorizedResponse_();
+    return ContentService.createTextOutput(
+      JSON.stringify(buildManualCoverageReport_()),
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // v29.6.017: 快速同步端點 (forceRebuild = false) 防止超時
   if (e && e.parameter && e.parameter.sync === "1") {
     if (!isDoGetMaintenanceAuthorized_(e)) return buildUnauthorizedResponse_();
@@ -19402,6 +19839,7 @@ function testMessage(msg, userId, testUiAccessToken) {
   assertTestUiAuthorized_(testUiAccessToken);
   IS_TEST_MODE = true;
   TEST_LOGS = [];
+  LAST_TEST_QUICK_REPLY_ITEMS = [];
 
   if (msg === undefined || msg === null) msg = "";
   if (typeof msg === "object") {
@@ -19451,6 +19889,9 @@ function testMessage(msg, userId, testUiAccessToken) {
   for (var i = 0; i < TEST_LOGS.length; i++) {
     var log = TEST_LOGS[i];
     if (log.indexOf("[Reply]") > -1 || log.indexOf("[AI Reply]") > -1) {
+      if (log.indexOf("[Reply] 使用顯式 Quick Reply:") > -1) {
+        continue;
+      }
       if (hasReplyLog && log.indexOf("[AI Reply]") > -1) {
         continue;
       }
@@ -19623,6 +20064,7 @@ function testMessage(msg, userId, testUiAccessToken) {
     replies: botResponses,
     logs: TEST_LOGS,
     sourceState: LAST_SOURCE_TEST_STATE,
+    quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
   };
 }
 
@@ -19631,6 +20073,7 @@ function testSourcePostback(action, source, userId, testUiAccessToken, model) {
   IS_TEST_MODE = true;
   TEST_LOGS = [];
   LAST_SOURCE_TEST_STATE = null;
+  LAST_TEST_QUICK_REPLY_ITEMS = [];
   userId = userId || "TEST_DEV_001";
   const normalizedAction = String(action || "select_source");
   const normalizedSource = String(source || "");
@@ -19657,6 +20100,7 @@ function testSourcePostback(action, source, userId, testUiAccessToken, model) {
   const replies = [];
   TEST_LOGS.forEach(function (line) {
     if (line.indexOf("[Reply]") < 0) return;
+    if (line.indexOf("[Reply] 使用顯式 Quick Reply:") >= 0) return;
     const content = parseLogContent(line, "[Reply]");
     if (content && replies.indexOf(content) < 0) replies.push(content);
   });
@@ -19665,6 +20109,7 @@ function testSourcePostback(action, source, userId, testUiAccessToken, model) {
     replies: replies,
     logs: TEST_LOGS,
     sourceState: LAST_SOURCE_TEST_STATE,
+    quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
   };
   IS_TEST_MODE = false;
   return result;
@@ -19770,6 +20215,11 @@ function getBotVersion() {
     version: GAS_VERSION,
     description: `Back: ${LLM_PROVIDER} | TestUI: authorized | Local knowledge: append-only`,
   };
+}
+
+function getManualCoverageStatus(testUiAccessToken) {
+  assertTestUiAuthorized_(testUiAccessToken);
+  return buildManualCoverageReport_();
 }
 
 /**

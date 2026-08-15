@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.127)
+# Samsung LINE Bot 完整流程解析 (v29.6.131)
 
 ## 📋 核心哲學
 
@@ -17,7 +17,7 @@
 - 顯示契約：`selected: true`；主入口用 `openKeyboard` 直接進入輸入，兩個重查入口用 `openRichMenu` 保持選單展開。鍵盤與 Rich Menu 無法同時顯示，這是 LINE App 平台行為。
 - 手冊選型契約：新題不得借用上一題型號，但可用系列別稱或型號前段查找候選；多個候選以 `select_manual_model` postback 選擇。型號選定前不得讀 PDF、取得供應商授權或扣額度。
 
-## 三來源使用者旅程與不可回歸矩陣（v29.6.127）
+## 三來源使用者旅程與不可回歸矩陣（v29.6.131）
 
 ### 共同判定
 
@@ -53,6 +53,7 @@
 | R23 | 舊文字指令查手冊／再搜網路 | 轉進相同 pending/router | 與 Rich Menu 完全同規則 | 不得走舊 PDF mode、舊自動 PDF→Web 旁路 |
 | R24 | 不明型號（如 S99ZZ999） | deterministic guard | 依一般送出防濫用規則計次；PDF／Web 0 | 拒絕猜測，不顯示不存在的手冊證據 |
 | R25 | 已選完整型號，問藍牙耳機能力／操作 | RULE 事實守門 → 規格回答或 MANUAL 建議 | 能力題只算一般；操作題只建議時退回一般，尚不扣手冊 | 該型號 RULE 若明載 Tizen＋藍牙，絕不可回答「沒有內建藍牙」；操作路徑保留型號後查手冊 |
+| R26 | 已鎖定完整型號，但本機／手冊／網搜仍無足夠答案 | 原來源結束 → 官方頁承接 | 只開 URI；零 Gemini、零 PDF、零 Web、零計次 | 顯示 `到這款官網`；優先用 RULE 的 PDP，否則用同列 XZW 料號支援頁。短別稱、選型中與成功答案不得顯示 |
 
 ### 狀態終止鐵律
 
@@ -69,6 +70,12 @@
 - `countTokens` 的 429／5xx／缺欄位／連線例外只退避重試一次；PDF generate 的 429／5xx、異常空答也只重試一次。403／404 先從 Drive 單獨重傳本題 PDF 後再試一次，不得直接叫使用者 `/重啟`。
 - 每日 04:00（Asia/Taipei）由 `dailyKnowledgeRefresh()` 強制重新上傳 Drive PDF；同步上傳失敗必須以獨立 `failedUploadCount` 計數並排程一分鐘後背景重試。舊清單與備份不可被空清單覆蓋。
 - `/重啟` 只清除該使用者的對話與 pending 狀態，不重建 PDF、不清空 QA／RULE／手冊索引。正常使用不需要人工 `/重啟`；只有對話卡在錯誤舊狀態時才使用。PDF 過期或上傳失敗由單檔更新、每日排程與背景重建自癒。
+- 每日重傳完成後必須執行 `auditManualCoverageGaps_()`，比對 `CLASS_RULES` 完整型號與正式 `PDF_MODEL_INDEX`。新加入 RULE 卻缺 PDF，或當代 H／2026 型號缺 PDF 時，寫入 `MANUAL_COVERAGE_REPORT`、`PENDING_MODEL_REVIEW.manualStatus=PENDING_MANUAL_REVIEW` 與 `[Manual Coverage Alert]` LOG。
+- `?manualCoverage=1` 與 TestUI 的覆蓋徽章提供人工維護入口，兩者都必須驗證維護憑證。索引空白時狀態為 `INDEX_UNAVAILABLE`，不得把所有型號誤報成缺口。
+- 每日重傳若部分 Gemini Files 上傳失敗，`PDF_MODEL_INDEX` 仍以本次完整 Drive 檔名目錄建立；若 Drive 掃描中途例外，正式 URI、索引與備份一律保留前次完整狀態。兩種失敗都排程一分鐘後受控重試，且維運回覆不得假稱同步完成。
+- `到這款官網` 只可採本題完整型號或本題路由產生的 `primaryModel`；不得讀取上一題 `direct_search_models` 或 suggested cache。
+- 官網 Product Finder 只負責發現新機與官方 PDP；正式 RAG 不自動下載並採信新 PDF。三星支援頁可自動找到下載網址，但入庫前仍須驗證 HTTPS、PDF MIME／magic bytes、SHA-256、防重複、第一頁完整型號與既有逗號檔名規則；GAS 無可靠第一頁文字驗證時必須停在人工審核，不可冒險上船。
+- 2026-08-15 正式 `PDF_MODEL_INDEX` 當次回讀 176 項；RULE 的 6 款 H／2026 世代完整型號全部被正式基型號索引覆蓋，當下缺口為 0。H=2026 是本專案年代碼判定，若日後資料來源新增明確年份欄位，應改用欄位而非繼續擴張正則。
 
 - 固定順序：範圍／型號 → 精準 QA → QA＋CLASS_RULES Fast Mode → 推薦下一個來源 → 使用者按鍵授權 → 單次 PDF 或單次 Web → 回到 Fast Mode。
 - `[AUTO_SEARCH_PDF]` 只是內部「等待詢問」信號，不能代表使用者同意，也不能直接觸發 PDF。
@@ -126,7 +133,7 @@
 - 網搜雖有官方證據，也只能回答證據直接支援的外部裝置能力；以「可能／通常／常見／依賴」延伸出的手機設定、鏡像選項、系統功能或相容性推測必須移除。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.127）
+## ✅ 現行鐵律 SOP（v29.6.131）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責詢問；只有使用者明確 `#查手冊` 或自然同意，並完成必要型號選擇後，才掛載 PDF RAG。免費 QA／RULE 預檢未命中後，PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。單純點選型號不代表同意付費查手冊；手冊／網路各用自己的額度，不重複扣一般 20 題。只有點「查上一題」才沿用已鎖定型號。
@@ -385,7 +392,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy_existing_webhoo
 
 - 正式 Prompt 位於 Google Sheet `Prompt` 工作表的 `C3`。
 - `Prompt.csv` 只能視為本地鏡像或人工備份，不是正式執行來源，也不會在部署時自動上傳。
-- 修改 Prompt 後，必須由維護者明確更新 Google Sheet `Prompt!C3`，再 `/重啟` 或重建快取確認重啟訊息中的「指令版本」。
+- 修改 Prompt 後，必須由維護者明確更新 Google Sheet `Prompt!C3`，再由受保護維運流程清除 Prompt 快取並以正式 TestUI 驗證；`/重啟` 不負責 Prompt 或知識庫同步。
 - Prompt 同步入口屬於維護工具，不屬於一般部署流程；除非明確要改 Prompt，否則不得用本地 `Prompt.csv` 覆蓋 `Prompt!C3`。
 - 若必須用本機工具同步 Prompt，必須明確指定來源檔並加上確認旗標，例如：`powershell -NoProfile -ExecutionPolicy Bypass -File tools\sync_prompt_c3.ps1 -PromptPath .\Prompt.csv -ConfirmOverwrite`。
 
@@ -421,7 +428,7 @@ Google Drive ──────► Gemini File API
 
 ## 🗂️ 型號索引系統 (v29.5.53 新增)
 
-`/重啟` 後，系統會建立兩個重要索引，供後續邏輯判斷使用：
+每日 04:00 重建、受保護同步或單檔自癒會維護下列索引；`/重啟` 不參與索引建立：
 
 | 索引名稱            | 來源               | 儲存位置         | 用途                          |
 | ------------------- | ------------------ | ---------------- | ----------------------------- |
@@ -436,7 +443,7 @@ Google Drive ──────► Gemini File API
 - 檔名只保留型號本體，尾端國家碼、銷售碼或顏色碼英文字尾墜必須移除；例如 `S27FG532EC` 命名為 `S27FG532.pdf`，`S49CG954EC S49FG916EC` 命名為 `S49CG954,S49FG916.pdf`，不可命名成 `S27FG532EC.pdf` 或 `S49CG954EC,S49FG916EC.pdf`。
 - 若第一頁沒有可讀型號，或檔案不是標準 PDF 檔頭，不可直接上傳；必須先另外查證來源或重新下載官方 PDF。
 - 代理人可用 `clasp run adminSetManualUploadToken` 設定短效 `MANUAL_UPLOAD_TOKEN`，再透過既有 WebApp `upload_manual_pdf` 批次補傳大型 PDF；完成後必須執行 `adminClearManualUploadToken`。後台與 WebApp 上傳都會拒絕不合規檔名、非標準 PDF，並在 Drive 已有同名檔案時跳過。
-- 若 GAS 執行身分對 Drive 手冊資料夾只有讀取權、沒有新增檔案權限，`upload_manual_pdf` 會改把 PDF 上傳到 Gemini Files API，並把檔名/URI 寫入 `MANUAL_PDF_KB_LIST`、合併回 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`；之後 `/重啟` 或 `?sync=1` 也會合併這批手動補傳 PDF，不會被 Drive 清單洗掉。
+- 若 GAS 執行身分對 Drive 手冊資料夾只有讀取權、沒有新增檔案權限，`upload_manual_pdf` 會改把 PDF 上傳到 Gemini Files API，並把檔名/URI 寫入 `MANUAL_PDF_KB_LIST`、合併回 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`；之後每日 04:00 或受保護 `?sync=1` 也會合併這批手動補傳 PDF，不會被 Drive 清單洗掉。
 - `PDF_MODEL_INDEX` 必須支援 `S32BM80` 這類尾端兩位數的 S 系列型號，不可只吃 `Sxx + 英文 + 三位數`。
 - PDF 選檔不得用 `fileName.includes(model)`；必須以檔名中的型號 token 比對，避免 `S32BM80` 誤中 `S32BM801`，也避免 `M8/G5` 這類別稱靠 substring 直接查 PDF。
 
@@ -458,7 +465,7 @@ Google Drive ──────► Gemini File API
 
 ### 同步防呆（v29.5.245）
 
-- `/重啟` 或同步流程若因 Drive/Gemini/API 狀態導致新 PDF 清單為 0，不得覆蓋既有 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`。
+- 同步流程若因 Drive/Gemini/API 狀態導致新 PDF 清單為 0，不得覆蓋既有 `KB_URI_LIST` 與 `PDF_MODEL_INDEX`；`/重啟` 完全不讀寫這些索引。
 - 強制重建時不先刪除舊 Gemini URI；必須等新清單成功產生後才覆蓋。
 - 每次成功取得 PDF 清單時，會同步寫入 `KB_URI_LIST_BACKUP` 與 `PDF_MODEL_INDEX_BACKUP`。
 - 若新清單與既有清單都為 0，但備份仍有 PDF，會用備份回復正式索引。
@@ -470,6 +477,8 @@ Google Drive ──────► Gemini File API
 ---
 
 ## 📜 版本更新紀錄
+
+> 以下保留各版本當時的歷史行為。舊條目若寫到 `/重啟` 會同步、建立或保護 PDF 索引，均已被 v29.6.130 取代；現行 `/重啟` 只清個人對話與 pending，不讀寫任何全域知識庫。
 
 ### v29.6.061 (2026-07-07)
 

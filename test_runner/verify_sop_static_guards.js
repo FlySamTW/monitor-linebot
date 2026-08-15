@@ -38,6 +38,20 @@ function stripNonExecutableComments(source) {
 }
 
 const linebot = read("linebot.gs");
+
+const restartBranchMatch = linebot.match(
+  /if \(cmd === "\/重啟"[\s\S]*?(?=\n\s*if \(cmd === "\/重設規格庫")/,
+);
+assertStep(restartBranchMatch, "/重啟 command branch must exist");
+assertStep(
+  !/syncGeminiKnowledgeBase|scheduleImmediateRebuild|dailyKnowledgeRefresh/.test(
+    restartBranchMatch[0],
+  ) &&
+    /只清除個人對話狀態/.test(restartBranchMatch[0]) &&
+    /只重置個人對話，不重傳 PDF/.test(linebot) &&
+    !/重置對話\+同步/.test(linebot),
+  "/重啟 must only clear personal conversation state and must never sync or rebuild PDF knowledge",
+);
 const deployBat = read("deploy.bat");
 const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
 const releaseExistingWebhook = read("tools/release_existing_webhook.ps1");

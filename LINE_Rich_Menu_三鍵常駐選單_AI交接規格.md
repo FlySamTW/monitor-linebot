@@ -78,6 +78,7 @@
 - 點三個主來源時**不呼叫 Gemini、不掃 PDF、不網搜、不同步 Drive**；只建立或清除狀態並立即 Reply。
 - 每位 userId 每日 20 次只在有效問題送出時原子保留；群組不共用。來源 postback、取消、型號提示與型號按鈕不得重複計次。
 - 手冊 pending 先做精準 QA 與高信心 CLASS_RULES 預檢；命中即回到規格／FAQ，PDF 配額維持不變。
+- `到這款官網` 只能是答案不足且本題已鎖定完整型號後的情境 Quick Reply，不得增為第四個常駐 Rich Menu。它使用 URI action，優先開 RULE 已記錄的 Samsung Taiwan PDP，否則開同列 XZW 完整料號支援頁；選型中、成功答案或只有上一題型號 Cache 時不顯示。
 - 「查上一題」使用 `rm_action=use_previous&source=manual|web`；取消使用 `rm_action=cancel_source`。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
 
