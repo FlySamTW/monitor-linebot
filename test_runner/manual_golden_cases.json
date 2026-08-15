@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {"id":"M8_RETAIL","model":"S32FM803UC","expectedPages":[170],"anchor":"使用模式","queries":["M8 怎麼開啟零售模式","如何切換商店展示模式","門市展示要設哪個模式","使用模式在哪裡設定","如何從家庭模式改成零售模式"]},
+    {"id":"M8_USB","model":"S32FM803UC","expectedPages":[97,176],"anchor":"已連接裝置","queries":["M8 如何播放 USB","插隨身碟後怎麼播影片","USB 裡的照片要去哪裡開","如何播放隨身碟的媒體","已連接裝置怎麼選 USB"]},
+    {"id":"M8_BT_AUDIO","model":"S32FM803UC","expectedPages":[151],"anchor":"藍牙揚聲器清單","queries":["M8 怎麼連接藍牙喇叭","聲音怎麼用無線喇叭","我要接外接藍芽音響","怎麼讓聲音從 Bluetooth speaker 出去","音訊要切到哪個藍牙裝置"]},
+    {"id":"M8_WIFI","model":"S32FM803UC","expectedPages":[8,9,10],"anchor":"網路設定","queries":["M8 怎麼連 Wi-Fi","無線網路密碼在哪輸入","找不到 SSID 要怎麼新增","如何查看網路連線狀態","可以用 WPS 連網嗎"]},
+    {"id":"M8_MOBILE_SHARE","model":"S32FM803UC","expectedPages":[12,13],"anchor":"Smart View","queries":["M8 手機畫面怎麼投影","Smart View 要怎麼連","iPhone 如何使用 AirPlay","我要做螢幕鏡像","手機畫面分享在哪裡"]},
+    {"id":"M8_BT_INPUT","model":"S32FM803UC","expectedPages":[34],"anchor":"藍牙","queries":["M8 怎麼連藍牙鍵盤","藍牙滑鼠要去哪配對","可以連 Bluetooth keyboard 嗎","遊戲手把怎麼接到螢幕","掃描不到藍牙輸入裝置怎麼辦"]},
+    {"id":"M8_APPS","model":"S32FM803UC","expectedPages":[68,69,70,71,72],"anchor":"應用程式設定","queries":["M8 如何安裝 App","應用程式去哪裡下載","怎麼移除不要的 App","如何重新安裝應用程式","App 要在哪裡更新"]},
+    {"id":"M8_UPDATE","model":"S32FM803UC","expectedPages":[158,159],"anchor":"軟體更新","queries":["M8 韌體怎麼更新","軟體更新的選單在哪","可以用 USB 升級 Firmware 嗎","如何檢查最新版本","更新時可以關機嗎"]},
+    {"id":"M8_RESET","model":"S32FM803UC","expectedPages":[171],"anchor":"出廠資料重設","queries":["M8 如何恢復原廠設定","怎麼做出廠重置","我要把所有設定初始化","原廠資料重設在哪裡","要如何回復剛買來的設定"]},
+    {"id":"M8_HEVC","model":"S32FM703UC","expectedPages":[180,187],"anchor":"HEVC","queries":["M7 能播放 HEVC 嗎","支援 H.265 Main10 嗎","HEVC 可以放在哪些檔案格式","MKV 的 H265 能不能播放","支援的視訊編解碼器有 HEVC 嗎"]},
+    {"id":"G8_DUAL_MODE","model":"S32HG806ES","expectedPages":[27,35,43],"anchor":"Dual Mode","queries":["G8 雙模要怎麼切換","S32HG806ES 如何開 Dual Mode","6K 165Hz 跟 3K 330Hz 怎麼切","可以把雙模設成自訂鍵嗎","最佳解析度使用時要關閉 Dual Mode 嗎"]}
+  ],
+  "negativeCases": [
+    {"id":"UNKNOWN_MODEL","model":"S99ZZ999","query":"怎麼開 Dual Mode"},
+    {"id":"M8_NOT_G8","model":"S32FM803UC","query":"6K 165Hz 跟 3K 330Hz 怎麼切"},
+    {"id":"G8_NOT_M8","model":"S32HG806ES","query":"怎麼開啟零售模式"},
+    {"id":"G8_OTHER_MODEL","model":"S32HG802SC","query":"6K 165Hz 跟 3K 330Hz 怎麼切"}
+  ]
+}

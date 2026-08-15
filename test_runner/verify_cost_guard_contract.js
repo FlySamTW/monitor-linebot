@@ -107,7 +107,7 @@ assert(
     /evidence\.page === "未找到"/.test(linebot) &&
     /!evidence\.excerpt/.test(linebot) &&
     /證據摘錄\\s\*\[:：\]/.test(linebot) &&
-    /手冊依據：\$\{evidence\.page\}/.test(linebot) &&
+      /官方手冊：\$\{evidence\.page\}/.test(linebot) &&
     /rawScope === "型號共通" \? "全檔共通"/.test(linebot),
   "所有手冊回答都必須具頁碼與型號適用範圍，泛用段落不得硬下結論",
 );
@@ -135,8 +135,11 @@ assert(
   /function buildBluetoothAudioManualSearchQuery_/.test(linebot) &&
     /藍牙揚聲器清單/.test(linebot) &&
     /Bluetooth Speaker List/.test(linebot) &&
-    /PDF Query Rewrite v29\.6\.124/.test(linebot),
-  "藍牙音訊操作題會用手冊正式標題與選單同義詞擴查，不得誤判未記載",
+    /PDF Query Rewrite v29\.6\.124/.test(linebot) &&
+    /intent:\s*"BLUETOOTH_AUDIO"/.test(linebot) &&
+    /pages:\s*"151"/.test(linebot) &&
+    /isBluetoothAudioOperationQuery_\(text\)/.test(linebot),
+  "M8 藍牙音訊操作題須優先命中已核對第 151 頁；其他型號才使用正式標題與選單同義詞擴查",
 );
 assert(
   /function findBluetoothAudioRuleEvidence_/.test(linebot) &&

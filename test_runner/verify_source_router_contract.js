@@ -778,14 +778,21 @@ const verifiedManualVm = {
     String(model).toUpperCase().startsWith(String(item).toUpperCase()),
   isRetailModeManualQuery_: () => false,
   isUsbMediaPlaybackManualQuery_: (text) => /USB/i.test(String(text)),
+  isBluetoothAudioOperationQuery_: (text) =>
+    /(?:藍牙|Bluetooth).*(?:喇叭|耳機)|(?:喇叭|耳機).*(?:藍牙|Bluetooth)/i.test(
+      String(text),
+    ) && /(?:如何|怎麼|連接|配對|設定)/i.test(String(text)),
 };
 vm.createContext(verifiedManualVm);
 vm.runInContext(
-  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n` +
+  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n${extractFunction(linebot, "buildVerifiedManualChunkReply_")}\n` +
     `globalThis.hit = findVerifiedManualChunk_("S32HG806ES 如何切換 6K 165Hz 和 3K 330Hz 雙模？", "S32HG806ES");\n` +
     `globalThis.wrongModel = findVerifiedManualChunk_("如何切換 Dual Mode？", "S32HG802SC");\n` +
     `globalThis.usbHowTo = findVerifiedManualChunk_("如何播放 USB？", "S32FM803UC");\n` +
-    `globalThis.usbFailure = findVerifiedManualChunk_("USB 播放時常斷線，網路上有沒有非官方解法？", "S32FM803UC");`,
+    `globalThis.usbFailure = findVerifiedManualChunk_("USB 播放時常斷線，網路上有沒有非官方解法？", "S32FM803UC");\n` +
+    `globalThis.bluetoothHowTo = findVerifiedManualChunk_("怎麼連接藍牙喇叭？", "S32FM803UC");\n` +
+    `globalThis.bluetoothWrongModel = findVerifiedManualChunk_("怎麼連接藍牙喇叭？", "S32DM803UC");\n` +
+    `globalThis.bluetoothReply = buildVerifiedManualChunkReply_("S32FM803UC", globalThis.bluetoothHowTo);`,
   verifiedManualVm,
 );
 assert(
@@ -794,8 +801,15 @@ assert(
     verifiedManualVm.hit.pages === "27、35、43" &&
     verifiedManualVm.wrongModel === null &&
     verifiedManualVm.usbHowTo &&
-    verifiedManualVm.usbFailure === null,
-  "手冊片段須精準匹配型號與意圖：雙模不得污染其他 G8，USB 播放步驟不得攔截斷線／非官方解法",
+    verifiedManualVm.usbFailure === null &&
+    verifiedManualVm.bluetoothHowTo &&
+    verifiedManualVm.bluetoothHowTo.intent === "BLUETOOTH_AUDIO" &&
+    verifiedManualVm.bluetoothHowTo.pages === "151" &&
+    verifiedManualVm.bluetoothWrongModel === null &&
+    /音效輸出 → 藍牙揚聲器清單/.test(verifiedManualVm.bluetoothReply) &&
+    /第 151 頁/.test(verifiedManualVm.bluetoothReply) &&
+    /\[來源:官方手冊\]/.test(verifiedManualVm.bluetoothReply),
+  "手冊片段須精準匹配型號與意圖：M8 藍牙題須回第 151 頁；錯型號與 USB 故障題不得借用",
 );
 assert(
   /systemRescue:\s*true/.test(

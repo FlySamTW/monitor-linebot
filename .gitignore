@@ -9,6 +9,12 @@ test_runner/node_modules/
 .playwright-mcp/
 .playwright-cli/
 output/playwright/
+output/manual_page_index/
+
+# Local OAuth credentials for the manual-index uploader
+.secrets/
+credentials.json
+token.json
 
 # Backups & temp files
 tmp/

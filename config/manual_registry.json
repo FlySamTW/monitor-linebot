@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "docKey": "M8_FM70X_FM803",
+      "sourceFileName": "S32FM702,S32FM703,S32FM803.pdf",
+      "models": ["S32FM702UC", "S32FM703UC", "S32FM803UC"],
+      "canary": true
+    },
+    {
+      "docKey": "G8_H_SERIES_2026",
+      "sourceFileName": "S25HG402,S27HG402,S27HG612,S27HG802,S27HG806,S32HG702,S32HG732,S32HG802,S32HG806.pdf",
+      "models": [
+        "S25HG402EC",
+        "S27HG402SC",
+        "S27HG612SC",
+        "S32HG702WC",
+        "S32HG732SC",
+        "S27HG802SC",
+        "S32HG802SC",
+        "S27HG806EF",
+        "S32HG806ES"
+      ],
+      "canary": true
+    }
+  ]
+}

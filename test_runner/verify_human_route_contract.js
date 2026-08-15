@@ -155,6 +155,8 @@ vm.runInContext(
     extractFunction(linebot, "isMediaCodecSupportQuery"),
     extractFunction(linebot, "isRetailModeManualQuery_"),
     extractFunction(linebot, "isUsbMediaPlaybackManualQuery_"),
+    extractFunction(linebot, "isBluetoothAudioManualQuery_"),
+    extractFunction(linebot, "isBluetoothAudioOperationQuery_"),
     extractFunction(linebot, "getVerifiedManualChunks_"),
     extractFunction(linebot, "findVerifiedManualChunk_"),
     extractFunction(linebot, "buildVerifiedManualChunkReply_"),
@@ -178,9 +180,23 @@ assert(
   "可稽核手冊片段缺少 HEVC 結論、容器限制、頁碼或來源",
 );
 assert.strictEqual(
-  manualChunkContext.findVerifiedManualChunk_("S32FM703 如何恢復原廠設定？", "S32FM703"),
+  manualChunkContext.findVerifiedManualChunk_("S32FM703 如何調整亮度？", "S32FM703"),
   null,
-  "非 HEVC 題不應誤用編解碼器片段",
+  "未建檔意圖不應誤用其他已核對片段",
+);
+const resetChunk = manualChunkContext.findVerifiedManualChunk_(
+  "S32FM703 如何恢復原廠設定？",
+  "S32FM703",
+);
+assert(
+  /Model Select Verified Chunk v29\.6\.157/.test(linebot) &&
+    /findVerifiedManualChunk_\(normalizedTopic, selectedModel\)/.test(linebot) &&
+    /model_selected_verified_manual_chunk/.test(linebot),
+  "系列別稱選型後必須接回同一已核對手冊片段，不能再先花 Fast 費用",
+);
+assert(
+  resetChunk && resetChunk.pages === "171",
+  "恢復原廠必須命中已核對的手冊第 171 頁，而不是誤當 HEVC",
 );
 assert.strictEqual(
   manualChunkContext.findVerifiedManualChunk_("S32FM799 是否支援 HEVC？", "S32FM799"),

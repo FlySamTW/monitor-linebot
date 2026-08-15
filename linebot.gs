@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.154"; // 2026-08-15 USB 網搜固定安全摘要與成本收斂
-const BUILD_TIMESTAMP = "2026-08-15 23:55";
+const GAS_VERSION = "v29.6.157"; // 2026-08-16 選型後直達已核對手冊答案
+const BUILD_TIMESTAMP = "2026-08-16 01:47";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -4059,6 +4059,104 @@ function getVerifiedManualChunks_() {
         "能否播放仍受檔案格式與編碼限制",
       ],
     },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "BLUETOOTH_AUDIO",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "151",
+      queryPatterns: [
+        /(?:藍牙|Bluetooth).{0,24}(?:耳機|喇叭|音訊|音效|聲音|音源)|(?:耳機|喇叭|音訊|音效|聲音|音源).{0,24}(?:藍牙|Bluetooth)/i,
+      ],
+      facts: [
+        "連接路徑是「設定 → 所有設定 → 音效 → 音效輸出 → 藍牙揚聲器清單」",
+        "先將藍牙喇叭設為配對模式，再從清單選取裝置完成配對；找不到裝置時，請把喇叭移近螢幕並選擇重新整理",
+        "手冊提醒藍牙音訊可能受無線網路影響，且功能會依型號或地區而異",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "WIFI_SETUP",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "8–10",
+      queryPatterns: [
+        /(?:Wi-?Fi|無線網路|網路).{0,24}(?:連線|連接|設定|密碼|SSID|WPS)|(?:連線|連接|設定).{0,24}(?:Wi-?Fi|無線網路)/i,
+      ],
+      facts: [
+        "無線網路路徑是「設定 → 所有設定 → 連線 → 網路 → 網路設定 → 無線」",
+        "連線前請準備無線基地台名稱（SSID）與密碼；若清單找不到網路，可選擇新增網路並手動輸入 SSID",
+        "要查看連線狀態，可到「設定 → 所有設定 → 連線 → 網路 → 網路狀態」",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "MOBILE_SCREEN_SHARE",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "12–13",
+      queryPatterns: [
+        /(?:Smart\s*View|AirPlay|螢幕鏡像|畫面分享|手機投影|手機畫面).{0,24}(?:連接|設定|開啟|投影|分享|鏡像|怎麼|如何)?/i,
+      ],
+      facts: [
+        "Samsung／Android 手機可從「已連接裝置 → 連接指南 → 智慧型手機 → 畫面分享（Smart View）」查看連接方式",
+        "iPhone／iPad 使用 AirPlay 前，先到「設定 → 所有設定 → 連線 → Apple AirPlay 設定」啟用，再從 Apple 裝置選擇這台螢幕",
+        "Smart View、AirPlay 與 Tap View 是否可用仍依型號、行動裝置與地區而異",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "BLUETOOTH_INPUT",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "34",
+      queryPatterns: [
+        /(?:藍牙|Bluetooth).{0,24}(?:鍵盤|滑鼠|遊戲控制器|手把)|(?:鍵盤|滑鼠|遊戲控制器|手把).{0,24}(?:藍牙|Bluetooth)/i,
+      ],
+      facts: [
+        "藍牙鍵盤、滑鼠或遊戲控制器的連接路徑是「設定 → 所有設定 → 連線 → 藍牙」",
+        "如果沒有偵測到裝置，請先讓裝置進入配對模式、移近螢幕，再選擇掃描",
+        "部分應用程式、外部裝置、型號或地區可能不支援此功能",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "APP_MANAGEMENT",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "68–72",
+      queryPatterns: [
+        /(?:App|APP|應用程式).{0,24}(?:安裝|下載|新增|刪除|移除|解除安裝|更新|重新安裝)|(?:安裝|下載|刪除|移除|更新).{0,24}(?:App|APP|應用程式)/i,
+      ],
+      facts: [
+        "安裝 App 請到「首頁 → 應用程式」，選擇要安裝的 App，再選擇安裝；完成後可直接開啟",
+        "更新、移除或重新安裝請到應用程式首頁底部的「應用程式設定」管理；預設的標準應用程式無法解除安裝",
+        "使用與更新 App 時螢幕必須連線到網路",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "SOFTWARE_UPDATE",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "158–159",
+      queryPatterns: [
+        /(?:韌體|軟體|Firmware).{0,24}(?:更新|升級|版本)|(?:更新|升級).{0,24}(?:韌體|軟體|Firmware)/i,
+      ],
+      facts: [
+        "線上更新路徑是「設定 → 支援 → 軟體更新 → 立即更新」，並需要有效的網路連線",
+        "也可從 Samsung 官網下載更新套件到 USB 裝置的最上層資料夾，再接到螢幕執行更新",
+        "更新完成前切勿關閉電源；完成後螢幕會自動重新啟動，部分影像與音效設定可能回到預設值",
+      ],
+    },
+    {
+      models: ["S32FM702", "S32FM703", "S32FM803"],
+      intent: "FACTORY_RESET",
+      sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
+      pages: "171",
+      queryPatterns: [
+        /(?:恢復|回復|還原|重設|重置).{0,12}(?:原廠|出廠|初始)|(?:原廠|出廠).{0,12}(?:設定|重設|重置|還原)/i,
+      ],
+      facts: [
+        "恢復原廠路徑是「設定 → 所有設定 → 一般與隱私權 → 出廠資料重設」",
+        "選擇出廠資料重設後輸入安全 PIN，再次確認；所有設定會重設，螢幕會自動重新啟動並顯示初始設定畫面",
+        "執行前請確認重要設定已記錄；若為可充電型號，手冊要求連接電源線後再重設",
+      ],
+    },
   ];
 }
 
@@ -4073,6 +4171,11 @@ function findVerifiedManualChunk_(query, model) {
     const modelHit = (chunk.models || []).some(function (item) {
       return isPdfModelTokenMatch_(String(item || ""), normalizedModel);
     });
+    const declaredPatternHit =
+      Array.isArray(chunk.queryPatterns) &&
+      chunk.queryPatterns.some(function (pattern) {
+        return pattern && pattern.test(text);
+      });
     const intentHit =
       (chunk.intent === "DUAL_MODE" &&
         /(?:Dual\s*Mode|雙模|6\s*K|330\s*Hz)/i.test(text)) ||
@@ -4081,6 +4184,10 @@ function findVerifiedManualChunk_(query, model) {
       (chunk.intent === "USB_MEDIA_PLAYBACK" &&
         isUsbMediaPlaybackManualQuery_(text) &&
         !/(?:斷線|中斷|不穩|異常|當機|失敗|無法|不能|故障|非官方|網路解法)/i.test(
+          text,
+        )) ||
+      (declaredPatternHit &&
+        /(?:如何|怎麼|怎樣|哪裡|在哪|設定|操作|連接|連線|配對|安裝|下載|刪除|移除|更新|升級|恢復|回復|還原|重設|重置|投影|分享|鏡像|開啟|找不到)/i.test(
           text,
         ));
     if (modelHit && intentHit) return chunk;
@@ -4092,13 +4199,23 @@ function buildVerifiedManualChunkReply_(model, chunk) {
   if (!chunk || !Array.isArray(chunk.facts) || chunk.facts.length === 0) {
     return "";
   }
-  return [
-    `${model} ${chunk.facts[0]}。`,
-    chunk.facts.slice(1).join("；") + "。",
-    "",
-    `手冊頁碼：第 ${chunk.pages} 頁`,
-    "[來源:官方手冊]",
-  ].join("\n");
+  const facts = chunk.facts.map(function (fact) {
+    return String(fact || "").replace(/[。；]+$/, "").trim();
+  });
+  const routeMatch = facts[0].match(/^(?:.+?路徑是)(?:螢幕\s*OSD\s*的)?「([^」]+)」(?:[；，](.*))?$/i);
+  const lines = [];
+  if (routeMatch) {
+    lines.push(`${model} 請到：`);
+    lines.push(routeMatch[1]);
+    if (routeMatch[2]) lines.push(routeMatch[2].replace(/^這個功能/, "這項功能") + "。");
+  } else {
+    lines.push(`${model} ${facts[0]}。`);
+  }
+  facts.slice(1).forEach(function (fact) {
+    if (fact) lines.push(`${fact}。`);
+  });
+  lines.push("", `官方手冊：第 ${chunk.pages} 頁`, "[來源:官方手冊]");
+  return lines.join("\n");
 }
 
 function buildSmartMonitorCodecSelectionPayload(query, userId) {
@@ -5649,7 +5766,7 @@ function tryManualFreeLocalAnswer_(
     const verifiedReply = `${buildVerifiedManualChunkReply_(
       normalizeModelForDisplay(model),
       verifiedManualChunk,
-    )}\n\n這題已命中人工逐頁核對的官方手冊片段，未重新送出整本 PDF；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`;
+    )}\n[費用:NT$0.0000（未呼叫 LLM）]`;
     clearPendingSourceState_(contextId);
     LAST_SOURCE_TEST_STATE = {
       source: "manual",
@@ -6351,7 +6468,7 @@ function executeAdvancedSourceQuery_(
         );
         if (manualWebRescue.success) {
           finalText = [
-            "官方手冊這次沒有抓到可核對段落，我已自動補查一次公開網頁；這是系統補救，不扣你的網搜次數。",
+            "官方手冊沒有直接寫到這題，我順手替你找了一次公開網頁；這次不扣你的網搜次數。",
             "",
             manualWebRescue.text,
             "",
@@ -6361,7 +6478,7 @@ function executeAdvancedSourceQuery_(
           ].join("\n");
         } else {
           finalText = [
-            "官方手冊這次沒有抓到可核對段落；系統也已自動補查一次公開網頁，沒有再要求你重按，且不扣你的網搜次數。",
+            "官方手冊和公開網頁都沒有找到能直接核對的說明。我先整理最保守、可逆的排查方式給你；這次補查不扣你的網搜次數。",
             "",
             buildTentativeManualFallback_(
               response,
@@ -7271,6 +7388,7 @@ function parseManualEvidenceMarker_(text) {
         /\[手冊證據\s*[:：]\s*(?:第\s*\d+\s*頁|未找到)\s*\|\s*範圍\s*[:：]\s*(?:型號明確|型號共通|全檔共通|依型號而異|未找到)\s*\]/gi,
         "",
       )
+      .replace(/^\s*證據摘錄\s*[:：]\s*[^\n\[\]]{6,80}\s*$/gim, "")
       .trim(),
   };
 }
@@ -7288,12 +7406,12 @@ function applyManualEvidenceGuard_(text, queryText) {
     writeLog(
       `[Manual Evidence Guard v29.6.136] 手冊回答缺少可核對頁碼／摘錄／適用範圍: found=${evidence.found}, page=${evidence.page || "none"}, scope=${evidence.scope || "none"}, excerpt=${evidence.excerpt ? 1 : 0}`,
     );
-    return "官方手冊已完成搜尋，但這次沒有取得可核對的頁碼、證據摘錄與適用範圍，因此我不把泛用段落當成這個型號的答案。\n\n可按「網路解答」查非官方公開解法，或點「到這款官網」自行查看官方產品頁。\n\n[AUTO_SEARCH_WEB]";
+    return "我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。\n\n我會接著用一次公開網頁幫你找可能的做法；這次補查不扣你的網搜次數。\n\n[AUTO_SEARCH_WEB]";
   }
 
   let guarded = evidence.text;
   if (evidence.found && evidence.page && evidence.page !== "未找到") {
-    guarded += `\n\n手冊依據：${evidence.page}（${evidence.scope}）`;
+    guarded += `\n\n官方手冊：${evidence.page}`;
   }
   return guarded.trim();
 }
@@ -13486,6 +13604,48 @@ function handleMessage(event) {
           .replace(/\s{2,}/g, " ")
           .replace(/^[,，。；;、\s]+|[,，。；;、\s]+$/g, "")
           .trim();
+
+        // 系列別稱選型後，要先接回與「直接輸入完整型號」相同的已核對片段路徑。
+        // 否則會多花一次 Fast 費用，只叫使用者再按手冊，造成選型旅程降智。
+        const selectedVerifiedChunk = normalizedTopic
+          ? findVerifiedManualChunk_(normalizedTopic, selectedModel)
+          : null;
+        if (selectedVerifiedChunk) {
+          const selectedVerifiedReply = `${buildVerifiedManualChunkReply_(
+            selectedModel,
+            selectedVerifiedChunk,
+          )}\n[費用:NT$0.0000（未呼叫 LLM）]`;
+          cache.remove(`${userId}:pending_topic`);
+          cache.remove(modelSelectModeKey);
+          LAST_SOURCE_TEST_STATE = {
+            source: "spec",
+            outcome: "verified_manual_chunk",
+            pending: false,
+            executed: "model_selected_verified_manual_chunk",
+            reserved: false,
+          };
+          CURRENT_DAILY_QUESTION_REMAINING = getDailyQuestionRemaining_(userId);
+          writeLog(
+            `[Model Select Verified Chunk v29.6.157] ${selectedModel}/${selectedVerifiedChunk.intent}，選型後直接回答，零 LLM／PDF 呼叫`,
+          );
+          replyMessage(replyToken, selectedVerifiedReply);
+          writeRecordDirectly(userId, normalizedTopic, contextId, "user", "");
+          writeRecordDirectly(
+            userId,
+            selectedVerifiedReply,
+            contextId,
+            "assistant",
+            "",
+          );
+          updateHistorySheetAndCache(
+            contextId,
+            getHistoryFromCacheOrSheet(contextId),
+            { role: "user", content: normalizedTopic },
+            { role: "assistant", content: selectedVerifiedReply },
+          );
+          rememberRecentSourceQuestion_(contextId, normalizedTopic, selectedModel);
+          return;
+        }
 
         const queryText = normalizedTopic
           ? `${normalizedTopic} (型號: ${selectedModel})`

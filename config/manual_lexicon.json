@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {"id": "retail_mode", "triggers": ["零售", "展示", "商店", "門市", "家庭模式", "使用模式"], "aliases": ["零售模式", "展示模式", "商店模式", "使用模式", "家庭模式", "零售環境"]},
+    {"id": "usb_media", "triggers": ["隨身碟", "usb 播", "播放 usb", "usb 裡", "usb中", "媒體", "照片", "影片"], "excludeAny": ["更新", "升級", "firmware", "韌體"], "aliases": ["USB 播放", "播放 USB", "隨身碟播放", "媒體播放", "已連接裝置", "播放相片視訊音樂", "USB 裝置"]},
+    {"id": "bluetooth_audio", "triggers": ["藍牙喇叭", "藍牙音響", "藍牙耳機", "無線喇叭", "bluetooth speaker", "音效輸出", "音訊輸出"], "aliases": ["藍牙喇叭", "藍牙音響", "藍牙揚聲器", "Bluetooth speaker", "無線喇叭", "音效輸出", "Bluetooth Audio"]},
+    {"id": "wifi", "triggers": ["wi-fi", "wifi", "無線網路", "ssid", "wps", "連網", "網路連線"], "aliases": ["Wi-Fi", "無線網路", "網路設定", "SSID", "WPS", "網路狀態"]},
+    {"id": "mobile_share", "triggers": ["smart view", "airplay", "鏡像", "手機投影", "手機畫面", "畫面分享"], "aliases": ["Smart View", "AirPlay", "螢幕鏡像", "手機投影", "手機畫面", "畫面分享"]},
+    {"id": "bluetooth_input", "triggers": ["藍牙鍵盤", "藍牙滑鼠", "藍牙手把", "遊戲手把", "遊戲控制器", "輸入裝置", "bluetooth keyboard", "bluetooth mouse"], "aliases": ["藍牙鍵盤", "藍牙滑鼠", "藍牙手把", "遊戲控制器", "藍牙輸入裝置", "Bluetooth keyboard", "Bluetooth mouse"]},
+    {"id": "apps", "triggers": ["app", "應用程式", "重新安裝", "解除安裝"], "aliases": ["安裝 App", "下載 App", "移除 App", "應用程式設定", "重新安裝", "解除安裝"]},
+    {"id": "software_update", "triggers": ["更新", "升級", "firmware", "韌體", "最新版本"], "aliases": ["軟體更新", "韌體更新", "Firmware update", "立即更新", "USB 更新", "自動更新"]},
+    {"id": "factory_reset", "triggers": ["出廠", "恢復", "回復", "重置", "初始化", "剛買來"], "aliases": ["出廠資料重設", "恢復原廠", "回復原廠", "原廠設定", "出廠預設值", "初始設定"]},
+    {"id": "hevc", "triggers": ["hevc", "h.265", "h265", "main10", "編解碼器", "mkv"], "aliases": ["HEVC", "H.265", "H265", "Main10", "視訊編解碼器", "MKV MP4 TS"]},
+    {"id": "dual_mode", "triggers": ["dual mode", "雙模", "6k 165", "3k 330", "自訂鍵"], "aliases": ["Dual Mode", "雙模", "6K 165Hz", "3K 330Hz", "Setup Custom Key", "自訂鍵"]}
+  ]
+}
