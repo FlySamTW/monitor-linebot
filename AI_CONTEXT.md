@@ -1,11 +1,12 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.135 持久型號、手冊確認、網路直查與可核對證據
+## v29.6.136 回答鏈、非官方網搜與成本守門
 
 - 完整型號是跨日產品狀態：沒有新完整型號前，數天後自然追問、手冊、網路都沿用。短系列名列候選，不覆蓋；只有換型號、新完整型號或管理員 `/重啟` 清除／取代。
 - 手冊有上一題時顯示「確認要查／換型號／取消」，確認後才讀 PDF；網路按鍵本身就是授權，有上一題直接搜尋，不做二次確認。
 - 手冊與網路都先建立 canonical source operation；10 分鐘內同來源＋型號＋問題回傳快取，不再次呼叫／扣次。手冊索引過期不快取失敗，背景修復後可立即重試。
-- 所有手冊回答都要有頁碼與適用範圍；Fast 的 QA／RULE 來源只能由實際命中決定，模型自帶來源標籤不採信。網路必須有 grounding supports/chunks 或成功的三星官方 URL Context。
+- 所有手冊回答都要有頁碼、適用範圍與證據摘錄；Fast 的 QA／RULE 來源只能由實際命中決定，模型自帶來源標籤不採信。網路只接受 grounding supports/chunks；禁止 Samsung 官網 URL Context／直接抓頁，官網只作可點 URI。
+- provider query 與 originalQuestion 分離：System Hint、模型提示與 canonical 關鍵字不得寫回對話。只有來源成功才更新 lastSource；Web 無證據不得切斷既有 manual 追問鏈。供應商請求送出即計次，不以退款放任改寫重燒；同型號同意圖 10 分鐘 operation cache 去重。
 - `S32FM702／703／803` 的零售模式與 USB 媒體播放已加入人工逐頁核對片段：第 170 頁使用模式、第 97／176 頁 USB 路徑與限制。精準命中時零 PDF 呼叫、零手冊扣次；其他型號／意圖不得套用。
 
 - `到這款官網` 是回答不足時的情境 Quick Reply，不是第四個 Rich Menu。只有已鎖定 CLASS_RULES 完整型號，且回覆查無資料、手冊未記載、來源失敗或證據衝突時才顯示；成功的 QA／RULE 答案、G8/M8 等短別稱與選型中一律不顯示。RULE 內 PDP 優先，否則用同列 XZW 料號的 Samsung Taiwan support URL；只允許 `https://www.samsung.com/tw/`。

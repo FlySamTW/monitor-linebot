@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.135"; // 2026-08-15 2.5 低成本官方片段優先最終版
-const BUILD_TIMESTAMP = "2026-08-15 17:24";
+const GAS_VERSION = "v29.6.136"; // 2026-08-15 回答鏈、非官方網搜與成本守門修復
+const BUILD_TIMESTAMP = "2026-08-15 20:27";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2624,13 +2624,23 @@ function buildUsbMediaPlaybackManualSearchQuery_(query, targetModelName) {
   ].join("\n");
 }
 
+function stripInternalRoutingHints_(text) {
+  return String(text || "")
+    .replace(/\[System Hint:[^\]]*\]/gi, " ")
+    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC|NEW_TOPIC)(?:[:：][^\]]*)?\]/gi, " ")
+    .replace(/\[(?:模式|型號)[:：][^\]]+\]/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function buildCanonicalWebQuery_(query, model) {
   const normalizedModel = normalizeModelForDisplay(model || "");
-  let text = stripKnownModelFromSourceQuestion_(String(query || ""), normalizedModel)
+  const cleanQuery = stripInternalRoutingHints_(query);
+  let text = stripKnownModelFromSourceQuestion_(cleanQuery, normalizedModel)
     .replace(/^(?:那你|那|請你|麻煩你)?\s*(?:再)?(?:幫我)?(?:查|搜尋|搜)(?:一下)?\s*/i, "")
     .trim();
-  if (!text) text = String(query || "").trim();
-  return ["Samsung", normalizedModel, text, "台灣 官方 操作步驟 解決方案"]
+  if (!text) text = cleanQuery;
+  return ["Samsung", normalizedModel, text, "台灣 非官方 公開網頁 實務解法"]
     .filter(Boolean)
     .join(" ")
     .replace(/\s{2,}/g, " ")
@@ -4223,7 +4233,7 @@ function clearPendingSourceState_(contextId) {
 }
 
 function normalizeSourceQuestionIdentity_(question, model) {
-  let text = toHalfWidth(String(question || ""))
+  let text = toHalfWidth(stripInternalRoutingHints_(question))
     .toUpperCase()
     .replace(/\(型號[:：][^)]+\)/gi, " ");
   const normalizedModel = normalizeModelForDisplay(model || "");
@@ -4234,6 +4244,29 @@ function normalizeSourceQuestionIdentity_(question, model) {
     );
   }
   return text.replace(/[\s,，。；;：:、.!！?？()（）\-]/g, "");
+}
+
+function normalizeAdvancedSourceTopicIdentity_(question, model) {
+  const base = normalizeSourceQuestionIdentity_(question, model);
+  if (/USB/.test(base) && /(?:播放|影片|相片|音樂|媒體|隨身碟|儲存裝置)/.test(base)) {
+    return "USB播放";
+  }
+  if (/(?:零售模式|展示模式|商店模式|使用模式)/.test(base)) {
+    return "零售模式";
+  }
+  if (/(?:恢復原廠|回復原廠|原廠重設|重設出廠|重置)/.test(base)) {
+    return "恢復原廠";
+  }
+  if (/(?:藍牙|BLUETOOTH)/.test(base) && /(?:耳機|音訊|音效|聲音|配對)/.test(base)) {
+    return "藍牙音訊";
+  }
+  let text = base
+    .replace(/(?:請|麻煩|幫我|再|一下|查詢|搜尋|搜|查|如何|怎麼|怎樣|那你|那)/g, "")
+    .replace(/(?:零售模式|展示模式|商店模式|使用模式)/g, "零售模式")
+    .replace(/(?:USB隨身碟|USB儲存裝置|USB裝置|USB媒體|播放USB|USB播放)/g, "USB播放")
+    .replace(/(?:恢復原廠設定|回復原廠設定|原廠重設|重設出廠|重置)/g, "恢復原廠")
+    .replace(/(?:藍牙耳機|BLUETOOTH耳機|藍牙音訊|BLUETOOTH音訊)/g, "藍牙音訊");
+  return text.trim();
 }
 
 function isSameRecentSourceQuestion_(question, previousQuestion, model) {
@@ -4408,7 +4441,7 @@ function getAdvancedSourceOperationKey_(contextId, source, query, model) {
   const identity = [
     String(source || ""),
     normalizeModelForDisplay(model || ""),
-    normalizeSourceQuestionIdentity_(query, model),
+    normalizeAdvancedSourceTopicIdentity_(query, model),
   ].join("|");
   const digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
@@ -4445,19 +4478,20 @@ function beginAdvancedSourceOperation_(contextId, source, query, model) {
   }
 }
 
-function finishAdvancedSourceOperation_(operation, finalText, model) {
+function finishAdvancedSourceOperation_(operation, finalText, model, ttlSeconds) {
   if (!operation || !operation.key) return;
+  const ttl = Math.max(30, Number(ttlSeconds || SOURCE_OPERATION_CACHE_TTL_SECONDS));
   const state = {
     status: "done",
     finalText: String(finalText || ""),
     model: normalizeModelForDisplay(model || ""),
     createdAt: Date.now(),
-    expiresAt: Date.now() + SOURCE_OPERATION_CACHE_TTL_SECONDS * 1000,
+    expiresAt: Date.now() + ttl * 1000,
   };
   CacheService.getScriptCache().put(
     operation.key,
     JSON.stringify(state),
-    SOURCE_OPERATION_CACHE_TTL_SECONDS,
+    ttl,
   );
 }
 
@@ -4667,7 +4701,7 @@ function buildSourceSelectionPrompt_(
   const description =
     source === "manual"
       ? "會完整搜尋對應型號的官方使用手冊；送出前會用官方 token 計數，單次費用上限約 NT$0.35。"
-      : "會先搜尋三星官方網頁，再補充可信的外部做法；非官方內容會清楚標示，請斟酌參考。";
+      : "會搜尋公開網頁中的非官方實務解法；三星官方規格仍以規格／FAQ為準，非官方內容會清楚標示，請斟酌參考。";
   const lines = [`${title}｜今日剩餘 ${remaining}/${limit} 次`, description];
   if (previousQuestion) {
     lines.push(`目前問題：「${String(previousQuestion).substring(0, 160)}」`);
@@ -5270,7 +5304,8 @@ function tryManualFreeLocalAnswer_(
     )}\n\n這題已命中人工逐頁核對的官方手冊片段，未重新送出整本 PDF；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`;
     clearPendingSourceState_(contextId);
     LAST_SOURCE_TEST_STATE = {
-      source: "spec",
+      source: "manual",
+      outcome: "verified_chunk",
       pending: false,
       executed: "verified_manual_chunk",
       reserved: false,
@@ -5370,7 +5405,8 @@ function executeAdvancedSourceQuery_(
 ) {
   const normalizedSource = String(source || "");
   const cache = CacheService.getScriptCache();
-  let normalizedQuery = String(query || "").trim();
+  const originalQuestion = stripInternalRoutingHints_(query);
+  let normalizedQuery = originalQuestion;
   if (!normalizedQuery) {
     return startSourceSelection_(
       normalizedSource,
@@ -5666,7 +5702,7 @@ function executeAdvancedSourceQuery_(
   const sourceOperation = beginAdvancedSourceOperation_(
     contextId,
     normalizedSource,
-    normalizedQuery,
+    originalQuestion,
     primaryModel || selectedModel,
   );
   if (!sourceOperation.allowed) {
@@ -5674,7 +5710,8 @@ function executeAdvancedSourceQuery_(
     if (sourceOperation.status === "done" && sourceOperation.finalText) {
       const cachedReply = `${sourceOperation.finalText}\n\n這是 10 分鐘內相同查詢的結果，未重新呼叫，也沒有再次扣次。`;
       LAST_SOURCE_TEST_STATE = {
-        source: "spec",
+        source: normalizedSource,
+        outcome: "cached",
         pending: false,
         executed: normalizedSource,
         cached: true,
@@ -5743,17 +5780,24 @@ function executeAdvancedSourceQuery_(
       return true;
     }
     writeLog(`[Source Route v29.6.106] ${normalizedSource} 失敗: ${code}`);
-    if (grant.reserved) {
-      refundAdvancedSourceUsage_(grant, `system_error_${code.substring(0, 80)}`);
-    }
-    const suffix = grant.refunded
-      ? `這是系統因素，已退回次數；今日仍剩 ${grant.remaining}/${SOURCE_DAILY_LIMITS[normalizedSource]} 次。`
+    const suffix = grant.reserved
+      ? `供應商請求已送出，依實際成本計 1 次；今日剩 ${grant.remaining}/${SOURCE_DAILY_LIMITS[normalizedSource]} 次。`
       : "本次尚未送出供應商請求，因此沒有扣次。";
     const failedSourceModel = primaryModel || selectedModel;
     const failedSourcePage = getSamsungOfficialModelPage_(failedSourceModel);
     const failedSourceReply = failedSourcePage
       ? `這次${normalizedSource === "manual" ? "手冊查詢" : "網路搜尋"}沒有完成。${suffix}你可以先到這款三星官網查看，或稍後重新按來源再試一次。`
       : `這次${normalizedSource === "manual" ? "手冊查詢" : "網路搜尋"}沒有完成。${suffix}請稍後重新按來源再試一次。`;
+    LAST_SOURCE_TEST_STATE = {
+      source: normalizedSource,
+      outcome: "error",
+      pending: false,
+      executed: normalizedSource,
+      reserved: Boolean(grant.reserved),
+      remaining:
+        typeof grant.remaining === "number" ? grant.remaining : remainingBefore,
+      refunded: false,
+    };
     replyMessage(
       replyToken,
       failedSourceReply,
@@ -5768,18 +5812,20 @@ function executeAdvancedSourceQuery_(
       sourceOperation,
       failedSourceReply,
       failedSourceModel,
+      60,
     );
     return true;
   } finally {
     ACTIVE_ADVANCED_SOURCE_GRANT = null;
   }
 
+  const manualPreflightStopped =
+    normalizedSource === "manual" &&
+    /(?:手冊.*token 計數|預估費用仍超過單次)/.test(String(response || ""));
   const evidenceGuardedResponse =
     normalizedSource === "manual" &&
     response !== "[KB_EXPIRED]" &&
-    !/^這(?:次無法完成手冊 token 計數|份手冊已先嘗試低成本讀取)/.test(
-      String(response || ""),
-    )
+    !manualPreflightStopped
       ? applyManualEvidenceGuard_(response || "", normalizedQuery)
       : response || "";
   let finalText = stripAnySourceTags(
@@ -5805,7 +5851,9 @@ function executeAdvancedSourceQuery_(
         finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
       }
       finalText = enforceManualNumberedList(finalText);
-      finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+      if (!manualPreflightStopped && !isManualEvidenceFailureReply_(finalText)) {
+        finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
+      }
       if (recommendedWeb) {
         finalText +=
           "\n\n手冊若未涵蓋裝置端或現況資訊，可再按「網路解答」；系統不會自動跨來源。";
@@ -5820,18 +5868,16 @@ function executeAdvancedSourceQuery_(
       lastSearchSources.length > 0
     ) {
       finalText += `\n\n(📊 已搜尋 ${lastSearchSources.length} 個來源：${lastSearchSources.join("、")})`;
+      finalText += "\n非官方內容，請斟酌參考。";
       finalText += "\n[來源:網路搜尋]";
     }
     if (!lastWebEvidenceValid) {
-      if (grant.reserved) {
-        refundAdvancedSourceUsage_(grant, "web_no_verifiable_evidence");
-      }
       const officialPage = getSamsungOfficialModelPage_(
         primaryModel || selectedModel,
       );
       finalText = officialPage
-        ? "這次網路工具沒有回傳可核對的引用，因此我不拿模型內建資料冒充搜尋答案。這是系統因素，已退回本次網搜額度；你可以先開啟下方這款三星官網查看。"
-        : "這次網路工具沒有回傳可核對的引用，因此我不拿模型內建資料冒充搜尋答案。這是系統因素，已退回本次網搜額度；系統也不會用同一句話重複搜尋與扣次。";
+        ? "這次網路工具沒有回傳可核對的非官方公開網頁，因此我不拿模型內建資料冒充搜尋答案。供應商請求已送出，本次仍計 1 次；下方保留「到這款官網」供你自行查看。"
+        : "這次網路工具沒有回傳可核對的非官方公開網頁，因此我不拿模型內建資料冒充搜尋答案。供應商請求已送出，本次仍計 1 次；相同題目不會再次搜尋或扣次。";
     }
   }
 
@@ -5842,7 +5888,15 @@ function executeAdvancedSourceQuery_(
   }
   finalText = enforceNiTone(finalText);
   LAST_SOURCE_TEST_STATE = {
-    source: "spec",
+    source: normalizedSource,
+    outcome:
+      normalizedSource === "web"
+        ? lastWebEvidenceValid
+          ? "success"
+          : "no_evidence"
+        : manualPreflightStopped || isManualEvidenceFailureReply_(finalText)
+          ? "no_evidence"
+          : "success",
     pending: false,
     executed: normalizedSource,
     reserved: Boolean(grant.reserved),
@@ -5871,21 +5925,38 @@ function executeAdvancedSourceQuery_(
       finalText,
       {
         forceOfficial:
-          recommendedWeb || grant.refunded || response === "[KB_EXPIRED]",
+          recommendedWeb ||
+          grant.refunded ||
+          response === "[KB_EXPIRED]" ||
+          manualPreflightStopped ||
+          (normalizedSource === "web" && !lastWebEvidenceValid) ||
+          isManualEvidenceFailureReply_(finalText),
         skipSameSource: true,
       },
     ),
   );
-  writeRecordDirectly(userId, normalizedQuery, contextId, "user", "");
+  writeRecordDirectly(userId, originalQuestion, contextId, "user", "");
   writeRecordDirectly(userId, finalText, contextId, "assistant", "");
   updateHistorySheetAndCache(
     contextId,
     history,
-    { role: "user", content: normalizedQuery },
+    { role: "user", content: originalQuestion },
     { role: "assistant", content: finalText },
   );
-  rememberSourceLastAdvanced_(contextId, normalizedSource);
-  rememberRecentSourceQuestion_(contextId, normalizedQuery, primaryModel || "");
+  const sourceSucceeded =
+    normalizedSource === "web"
+      ? lastWebEvidenceValid
+      : response !== "[KB_EXPIRED]" &&
+        !manualPreflightStopped &&
+        !isManualEvidenceFailureReply_(finalText);
+  if (sourceSucceeded) {
+    rememberSourceLastAdvanced_(contextId, normalizedSource);
+    rememberRecentSourceQuestion_(
+      contextId,
+      originalQuestion,
+      primaryModel || selectedModel || "",
+    );
+  }
   return true;
 }
 
@@ -5991,9 +6062,44 @@ function consumeManualSearchConsent_(cache, userId, query, selectedModel) {
 }
 
 function limitManualPdfFiles_(files, query) {
-  const candidates = (Array.isArray(files) ? files : []).filter(
+  const rawCandidates = (Array.isArray(files) ? files : []).filter(
     (file) => file && file.mimeType === "application/pdf",
   );
+  const byName = {};
+  rawCandidates.forEach(function (file, fileIndex) {
+    const key =
+      String(file.name || "").trim().toUpperCase() || `__ANON_${fileIndex}`;
+    const existing = byName[key];
+    if (!existing) {
+      byName[key] = file;
+      return;
+    }
+    const fileTime = Date.parse(file.updatedAt || "") || 0;
+    const existingTime = Date.parse(existing.updatedAt || "") || 0;
+    const fileRank = [
+      fileTime,
+      Number(file.sizeBytes || 0),
+      String(file.driveFileId || file.uri || ""),
+    ];
+    const existingRank = [
+      existingTime,
+      Number(existing.sizeBytes || 0),
+      String(existing.driveFileId || existing.uri || ""),
+    ];
+    const shouldReplace =
+      fileRank[0] > existingRank[0] ||
+      (fileRank[0] === existingRank[0] && fileRank[1] > existingRank[1]) ||
+      (fileRank[0] === existingRank[0] &&
+        fileRank[1] === existingRank[1] &&
+        fileRank[2] > existingRank[2]);
+    if (shouldReplace) byName[key] = file;
+    writeLog(
+      `[Manual File Identity Guard v29.6.136] 同名手冊 ${key} 只保留單一 Drive 身分，chosen=${String((shouldReplace ? file : existing).driveFileId || "uri")}`,
+    );
+  });
+  const candidates = Object.keys(byName).map(function (key) {
+    return byName[key];
+  });
   const isComparison = /(比較|差異|差別|VS|VERSUS|哪一台|哪一款)/i.test(
     String(query || ""),
   );
@@ -6049,9 +6155,15 @@ function prioritizeDetailedManualCandidates_(files, query, primaryModel) {
 }
 
 function buildManualConsentPrompt_(answerText, query, model) {
-  const body = String(answerText || "")
+  let body = String(answerText || "")
     .replace(/\[(?:AUTO_SEARCH_PDF|NEED_DOC)(?:[:：][^\]]*)?\]/gi, "")
     .trim();
+  // 這個函式只處理 Fast 階段的「建議查手冊」。Fast 並未掛 PDF，
+  // 若模型自行聲稱頁碼／手冊依據，整段不得帶到客戶畫面冒充已查證。
+  if (/(?:手冊頁碼|手冊依據|證據摘錄|第\s*\d+\s*頁|根據官方手冊)/i.test(body)) {
+    writeLog("[Manual Consent v29.6.136] 移除 Fast 模型未掛 PDF 卻自稱手冊頁碼的內容");
+    body = "";
+  }
   const target = String(model || "").trim();
   const question = target
     ? `若要更精準確認 ${target}，請按下方「官方手冊」再點「確認要查」；確認後才會讀取手冊。`
@@ -6614,10 +6726,12 @@ function parseManualEvidenceMarker_(text) {
     /\[手冊證據\s*[:：]\s*(第\s*\d+\s*頁|未找到)\s*\|\s*範圍\s*[:：]\s*(型號明確|型號共通|全檔共通|依型號而異|未找到)\s*\]/i,
   );
   const rawScope = match ? String(match[2]) : "";
+  const excerptMatch = body.match(/證據摘錄\s*[:：]\s*([^\n\[\]]{6,80})/i);
   return {
     found: !!match,
     page: match ? String(match[1]).replace(/\s+/g, "") : "",
     scope: rawScope === "型號共通" ? "全檔共通" : rawScope,
+    excerpt: excerptMatch ? String(excerptMatch[1]).trim() : "",
     text: body
       .replace(
         /\[手冊證據\s*[:：]\s*(?:第\s*\d+\s*頁|未找到)\s*\|\s*範圍\s*[:：]\s*(?:型號明確|型號共通|全檔共通|依型號而異|未找到)\s*\]/gi,
@@ -6631,15 +6745,16 @@ function applyManualEvidenceGuard_(text, queryText) {
   const evidence = parseManualEvidenceMarker_(text);
   const weakScope =
     !evidence.found ||
+    !evidence.excerpt ||
     evidence.scope === "依型號而異" ||
     evidence.scope === "未找到" ||
     evidence.page === "未找到";
 
   if (weakScope) {
     writeLog(
-      `[Manual Evidence Guard v29.6.132] 手冊回答缺少可核對頁碼／適用範圍: found=${evidence.found}, page=${evidence.page || "none"}, scope=${evidence.scope || "none"}`,
+      `[Manual Evidence Guard v29.6.136] 手冊回答缺少可核對頁碼／摘錄／適用範圍: found=${evidence.found}, page=${evidence.page || "none"}, scope=${evidence.scope || "none"}, excerpt=${evidence.excerpt ? 1 : 0}`,
     );
-    return "官方手冊已完成搜尋，但這次沒有取得可核對的頁碼與適用範圍，因此我不把泛用段落當成這個型號的答案。\n\n可按「網路解答」查三星官方產品頁與公開資料。\n\n[AUTO_SEARCH_WEB]";
+    return "官方手冊已完成搜尋，但這次沒有取得可核對的頁碼、證據摘錄與適用範圍，因此我不把泛用段落當成這個型號的答案。\n\n可按「網路解答」查非官方公開解法，或點「到這款官網」自行查看官方產品頁。\n\n[AUTO_SEARCH_WEB]";
   }
 
   let guarded = evidence.text;
@@ -6647,6 +6762,12 @@ function applyManualEvidenceGuard_(text, queryText) {
     guarded += `\n\n手冊依據：${evidence.page}（${evidence.scope}）`;
   }
   return guarded.trim();
+}
+
+function isManualEvidenceFailureReply_(text) {
+  return /官方手冊已完成搜尋，但這次沒有取得可核對的頁碼/.test(
+    String(text || ""),
+  );
 }
 
 /**
@@ -9846,7 +9967,7 @@ function constructDynamicPrompt(
     }
 
     dynamicPrompt = `【角色設定】
-你現在是一名「網路搜尋專家」。用戶對之前的回答不滿意，希望獲得**不同於上次、更有價值**的資訊。
+你現在是一名「非官方網路解法查證助手」。使用者已明確要求搜尋公開網頁的實務解法。
 
 【🚨 最高優先級：禁止重複！】
 你上一次的回答是：
@@ -9856,7 +9977,7 @@ function constructDynamicPrompt(
 **你必須提供「上次沒說過的」新內容！**
 
 如果搜尋後發現網路上也沒有更多資訊，你必須誠實說：
-「我查過目前可稽核的官方資料，但還是沒有足夠證據回答。這次先不猜。」
+「這次沒有取得可核對的非官方公開網頁，因此我不猜答案。」
 
 【🚨 強制搜尋指令】
 今天是 ${today}。用戶要求查詢最新的網路資訊。
@@ -9867,11 +9988,12 @@ function constructDynamicPrompt(
 用戶剛才選擇了「擴大網路搜尋」功能，希望透過網路搜尋獲得：
 - 更豐富的產品細節和技術規格
 - 更具體的操作步驟或設定方法
-- 最新的官方資訊或使用者經驗分享
+- 非官方公開網頁中的使用者經驗與實務做法
 - 更全面的比較分析或解決方案
 
 【任務目標】
 針對「${searchTarget}」與用戶的問題，**必須**使用 Google Search 查找更詳細、更新或更全面的資訊。
+禁止搜尋或讀取 Samsung 官網；三星官方規格只採用系統既有 RULE／QA，官網僅由介面提供可點連結。外部做法必須明示「非官方，請斟酌參考」。
 
 【🚨 開場格式 (最重要！)】
 你的回答必須以**正面積極**的方式開頭，例如：
@@ -9895,7 +10017,7 @@ function constructDynamicPrompt(
 3. **差異化要求**：回答必須提供豐富且有用的資訊：
    - 提供更詳細的技術規格和特色說明
    - 給出具體的操作步驟或設定指南
-   - 引用最新的官方資訊、產品頁面或用戶討論
+   - 引用可核對的非官方公開網頁或用戶討論
    - 從不同角度分析問題並提供完整解答
 
 【回答要求】
@@ -9903,19 +10025,19 @@ function constructDynamicPrompt(
 2. **強化內容深度**：
    - 提供具體數值、型號對比、技術細節
    - 給出完整的操作流程或故障排除步驟
-   - 引用官方網站、產品頁面或使用者討論
+   - 引用非官方公開網頁或使用者討論；禁止搜尋 Samsung 官網
 3. **格式要求**：
    - 使用數字列表 (1., 2., 3., 4.) 而非圓點
    - 在回答末尾標註「[來源: 網路搜尋]」
 4. **優先搜尋，允許誠實**：
    - ✅ 必須使用 google_search 工具實際搜尋，基於搜尋結果回答
    - ✅ 若搜到資訊不足，可提供該系列的「已搜到的」資訊
-   - ✅ 若搜尋後真的無結果，誠實說「目前可稽核的官方資料仍不足，這次先不猜」
+   - ✅ 若搜尋後真的無結果，誠實說「這次沒有取得可核對的非官方公開網頁，因此我不猜答案」
    - ❌ 嚴禁編造未搜到的內容，嚴禁用 LLM 內建知識填補搜尋空白
 
 【搜尋示例】
-- 規格問題：搜尋官方規格表、產品對比
-- 操作問題：搜尋使用手冊、設定教學
+- 規格問題：官方規格由 RULE／QA 回答，網路模式不重查 Samsung 官網
+- 操作問題：搜尋非官方設定教學與實務經驗
 - 故障問題：搜尋常見問題、解決方案
 
 記住：用正面積極的開場，提供有價值的深度內容！`;
@@ -10185,9 +10307,9 @@ function tryPdfLowResolutionRescue_(apiKey, modelName, payload, originalPrefligh
 function buildTokenFuseReply_(attachPDFs, reason) {
   if (attachPDFs) {
     if (reason === "count_failed") {
-      return "這次無法完成手冊 token 計數，為了避免在不知成本時整本送出，我先停在這裡。\n\n要改查三星官方網站嗎？\n\n[AUTO_SEARCH_WEB]";
+      return "這次已自動重傳手冊並重試，但仍無法完成官方 token 計數；為避免在成本未知時送出，這次沒有扣手冊次數。\n\n可改按「網路解答」查非官方公開做法，或點「到這款官網」。\n\n[AUTO_SEARCH_WEB]";
     }
-    return "這份手冊已先嘗試低成本讀取，但預估費用仍超過單次上限，因此沒有送給模型，也沒有扣除手冊次數。\n\n要改查三星官方網站嗎？\n\n[AUTO_SEARCH_WEB]";
+    return "這份手冊已先嘗試低成本讀取，但預估費用仍超過單次 NT$0.35 上限，因此沒有送給模型，也沒有扣除手冊次數。\n\n可改按「網路解答」查非官方公開做法，或點「到這款官網」。\n\n[AUTO_SEARCH_WEB]";
   }
   return "這題的參考內容超過單次查詢上限。請縮小到一個完整型號和一個明確問題，我再重新查證。";
 }
@@ -10276,27 +10398,8 @@ function callLLMWithRetry(
   const recentOfficialManualAnswer = forceWebSearch
     ? getRecentOfficialManualAnswer_(effectiveMessages)
     : "";
-  const officialProductIdentity = forceWebSearch
-    ? getOfficialProductIdentityFromQuery_(query)
-    : null;
-  const samsungOfficialPage = forceWebSearch
-    ? getSamsungOfficialModelPage_(targetModelName || "")
-    : null;
-  const officialUrlContexts = forceWebSearch
-    ? Array.from(
-        new Set(
-          getOfficialUrlContextCandidates(query).concat(
-            samsungOfficialPage && isSafeSamsungTwOfficialUrl_(samsungOfficialPage.uri)
-              ? [samsungOfficialPage.uri]
-              : [],
-          ),
-        ),
-      )
-    : [];
-  const directOfficialPageEvidence = forceWebSearch
-    ? fetchOfficialUrlEvidence_(officialUrlContexts, query)
-    : [];
-  const requiresProductIdentityEvidence = Boolean(officialProductIdentity);
+  // Web 鍵只查非官方公開解法。三星官網內容已由 RULE／QA 管理，
+  // 不得再透過官網抓頁工具混入網搜；官網只保留成客戶可點的 URI。
 
   let effectiveQuery = query;
   if (attachPDFs && !forceWebSearch && isFactoryResetQueryWithoutPinIssue(query)) {
@@ -10409,18 +10512,10 @@ function callLLMWithRetry(
     dynamicPrompt += `\n\n【已由官方手冊查證的螢幕端錨點】
 ${recentOfficialManualAnswer}
 
-這段只用來固定螢幕端已查證的事實。網路搜尋只補外部裝置端的官方資料，不得把螢幕端的輸入介面、線材條件、供電瓦數或限制改成網路文章中的其他型號資訊。若搜尋結果與錨點衝突，以官方手冊錨點為準。最後請把兩邊資訊整合成朋友式、專業且容易照做的答案。`;
+這段只用來固定螢幕端已查證的事實。網路搜尋只補非官方公開網頁的實務經驗，不得把螢幕端的輸入介面、線材條件、供電瓦數或限制改成網路文章中的其他型號資訊。若搜尋結果與錨點衝突，以官方手冊錨點為準。外部內容必須清楚標示為非官方。`;
     writeLog(
       `[Cross Device Manual Anchor v29.6.076] 網搜沿用官方手冊螢幕端事實 (${recentOfficialManualAnswer.length} 字)`,
     );
-  }
-  if (directOfficialPageEvidence.length > 0) {
-    dynamicPrompt += `\n\n【程式直接擷取的官方技術規格頁證據】
-${directOfficialPageEvidence
-  .map((item) => `來源網址：${item.url}\n${item.text}`)
-  .join("\n\n")}
-
-以上文字由程式直接從官方網址取得。回答外部裝置端能力時必須逐字核對這段證據；證據已明載的能力不得說成「未明確標示」，也不得以「可能、理論上、待確認」弱化。只提供證據支援且與使用者問題直接相關的連接方法，不延伸無來源的設定、轉接器或替代測試。`;
   }
 
   // 刪除舊的註解掉的 imageBlob 邏輯
@@ -10533,12 +10628,6 @@ ${directOfficialPageEvidence
     // 解決：在 user message 中加入「時效性詞彙」讓 AI 認為必須搜尋即時資訊
     writeLog(`[Search Tool] 🌐 啟用 Google 官方搜尋工具 (v29.5.110)`);
     tools = [{ google_search: {} }];
-    if (officialUrlContexts.length > 0) {
-      tools.unshift({ url_context: {} });
-      writeLog(
-        `[URL Context v29.6.075] 加入官方頁: ${officialUrlContexts.join(", ")}`,
-      );
-    }
     writeLog(`[Search Tool Payload] tools=${JSON.stringify(tools)}`);
 
     // v29.5.110: 強化 System Prompt - 加入時效性指令
@@ -10547,11 +10636,7 @@ ${directOfficialPageEvidence
       "Asia/Taipei",
       "yyyy年MM月dd日",
     );
-    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢「最新」的網路資訊。\n你必須立即使用 google_search 工具搜尋網路！\n理由：這是「需要即時資訊」的問題，你的內建知識截止日期已過時，必須搜尋最新網路資料。\n禁止僅用自身知識回答，必須引用網路來源。${
-      officialUrlContexts.length > 0
-        ? `\n請同時讀取這些官方技術規格頁，並優先以其內容作答：${officialUrlContexts.join(" ")}`
-        : ""
-    }`;
+    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢網路上的實務解法。\n你必須立即使用 google_search 工具搜尋最新公開網頁！\n禁止僅用自身知識回答，必須引用可核對的公開網頁來源。\n這個來源模式只查非官方實務解法；禁止搜尋或讀取 Samsung 官網作為答案內容。官方規格只能採用系統已提供的 RULE／QA／手冊錨點，外部做法必須標明「非官方，請斟酌參考」。`;
 
     // v29.5.110: 修改 user message - 加入時效性關鍵詞觸發搜尋
     // Gemini 會判斷「最新」「今天」這類詞彙為需要即時資訊，從而強制搜尋
@@ -10565,11 +10650,7 @@ ${directOfficialPageEvidence
         const textPart = lastContent.parts.find((p) => p.text);
         if (textPart && !textPart.text.includes("最新")) {
           // 在問題前加上時效性詞彙
-          textPart.text = `【請搜尋最新網路資訊】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟。${
-            officialUrlContexts.length > 0
-              ? `請讀取官方頁 ${officialUrlContexts.join(" ")}。`
-              : ""
-          }${textPart.text}`;
+          textPart.text = `【請搜尋最新非官方公開網頁】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟；禁止搜尋 Samsung 官網，且必須標明非官方。${textPart.text}`;
           writeLog(
             `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
           );
@@ -10655,6 +10736,28 @@ ${directOfficialPageEvidence
           "[Token Fuse v29.6.101] PDF token 預檢偵測過期／無權限檔案，已排程背景重建並停止本次生成",
         );
         return "[KB_EXPIRED]";
+      }
+      if (!pdfRefreshAttempted) {
+        const refreshedFiles = refreshStalePdfAttachmentsFromDrive_(filesToAttach);
+        if (refreshedFiles.length > 0) {
+          writeLog(
+            "[Token Fuse v29.6.136] countTokens 無法讀取既有檔案，已單檔重傳／inline fallback 後重試一次",
+          );
+          return callLLMWithRetry(
+            query,
+            messages,
+            refreshedFiles,
+            attachPDFs,
+            imageBlob,
+            isRetry,
+            userId,
+            forceWebSearch,
+            targetModelName,
+            evidenceCorrectionAttempted,
+            webGroundingRetryAttempted,
+            true,
+          );
+        }
       }
       writeLog(
         `[Token Fuse v29.6.095] PDF countTokens 失敗，fail closed，未送出 generateContent`,
@@ -11029,7 +11132,6 @@ ${directOfficialPageEvidence
 
               lastWebEvidenceValid = Boolean(
                 forceWebSearch &&
-                  !requiresProductIdentityEvidence &&
                   grounding.groundingChunks &&
                   grounding.groundingChunks.length > 0 &&
                   grounding.groundingSupports &&
@@ -11053,51 +11155,6 @@ ${directOfficialPageEvidence
             } else if (forceWebSearch) {
               writeLog(
                 `[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`,
-              );
-            }
-
-            const successfulUrlContexts = getSuccessfulUrlContextSources(
-              candidates[0].urlContextMetadata,
-            );
-            if (
-              successfulUrlContexts.length > 0 &&
-              !requiresProductIdentityEvidence
-            ) {
-              const urlDomains = successfulUrlContexts
-                .map((url) => {
-                  const match = url.match(/^https?:\/\/([^/]+)/i);
-                  return match ? match[1].replace(/^www\./i, "") : url;
-                })
-                .filter(Boolean);
-              lastSearchSources = Array.from(
-                new Set([...(lastSearchSources || []), ...urlDomains]),
-              ).slice(0, 5);
-              lastWebEvidenceValid = true;
-              writeLog(
-                `[URL Context v29.6.075] 官方頁讀取成功: ${successfulUrlContexts.join(", ")}`,
-              );
-            } else if (
-              officialUrlContexts.length > 0 &&
-              directOfficialPageEvidence.length === 0
-            ) {
-              writeLog(
-                "[Official Product Guard v29.6.092] 明確產品頁沒有通過身分驗證，不採用 URL Context 當證據",
-              );
-            }
-
-            if (directOfficialPageEvidence.length > 0) {
-              const fetchedDomains = directOfficialPageEvidence
-                .map((item) => {
-                  const match = String(item.url || "").match(/^https?:\/\/([^/]+)/i);
-                  return match ? match[1].replace(/^www\./i, "") : "";
-                })
-                .filter(Boolean);
-              lastSearchSources = Array.from(
-                new Set([...(lastSearchSources || []), ...fetchedDomains]),
-              ).slice(0, 5);
-              lastWebEvidenceValid = true;
-              writeLog(
-                `[Official Page Fetch v29.6.077] 直接官方頁證據有效: ${fetchedDomains.join(", ")}`,
               );
             }
 
@@ -11254,16 +11311,6 @@ ${directOfficialPageEvidence
                 "[Cross Device Web Evidence v29.6.077] 移除網搜回答中沒有來源支援的裝置端推測句",
               );
               text = sanitizeUnsupportedCrossDeviceWebSpeculation_(text);
-            }
-            if (
-              forceWebSearch &&
-              isCrossDeviceQuery &&
-              directOfficialPageEvidence.length > 0
-            ) {
-              text = enforceAppleAirWiredEvidenceBoundary_(
-                effectiveQuery,
-                text,
-              );
             }
             if (
               forceWebSearch &&
@@ -11602,7 +11649,7 @@ function getNaturalCustomerSourceLabel_(rawSource) {
   if (/QA庫|已驗證問答/i.test(source)) return "已驗證問答資料";
   if (/官方活動庫|活動/i.test(source)) return "三星官方活動資料";
   if (/官方規格庫|規格庫|CLASS_RULES/i.test(source)) return "三星官方規格";
-  if (/網路搜尋|官方頁|WEB/i.test(source)) return "官方網站查證";
+  if (/網路搜尋|公開網頁|WEB/i.test(source)) return "非官方公開網頁";
   if (/\.pdf\b|官方手冊|產品手冊|PDF/i.test(source)) return "三星官方手冊";
   return "";
 }
@@ -11644,10 +11691,14 @@ function renderCustomerFacingText_(text) {
     const costLabel = customerCost.indexOf("未知") >= 0
       ? "本次費用待確認"
       : `本次約 ${customerCost}`;
-    const advancedSource =
-      LAST_SOURCE_TEST_STATE && LAST_SOURCE_TEST_STATE.executed
-        ? String(LAST_SOURCE_TEST_STATE.executed)
-        : "";
+    const advancedSource = LAST_SOURCE_TEST_STATE
+      ? String(
+          LAST_SOURCE_TEST_STATE.source ||
+            (LAST_SOURCE_TEST_STATE.executed === "verified_manual_chunk"
+              ? "manual"
+              : LAST_SOURCE_TEST_STATE.executed || ""),
+        )
+      : "";
     const advancedRemaining =
       LAST_SOURCE_TEST_STATE &&
       typeof LAST_SOURCE_TEST_STATE.remaining === "number"
@@ -11657,7 +11708,11 @@ function renderCustomerFacingText_(text) {
       (advancedSource === "manual" || advancedSource === "web") &&
       advancedRemaining !== null
     ) {
-      body = `${body}\n\n${costLabel}｜${advancedSource === "manual" ? "手冊" : "網搜"} ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`.trim();
+      const quotaLabel = advancedSource === "manual" ? "手冊" : "網搜";
+      const quotaStatus = LAST_SOURCE_TEST_STATE.refunded
+        ? `${quotaLabel}未扣，仍 ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`
+        : `${quotaLabel} ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`;
+      body = `${body}\n\n${costLabel}｜${quotaStatus}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     } else if (typeof CURRENT_DAILY_QUESTION_REMAINING === "number") {
       body = `${body}\n\n${costLabel}｜直接問 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
@@ -12095,6 +12150,49 @@ function handleMessage(event) {
     if (msg === "測試二次搜尋") {
       msg += " [AUTO_SEARCH_WEB]";
       writeLog("[Diagnostic] 手動注入 [AUTO_SEARCH_WEB] 標籤進行測試");
+    }
+
+    // 已人工逐頁核對的手冊片段屬規格／FAQ 的零成本答案。
+    // 一般直接問也應先命中，避免再讓 Fast 模型漏頁或要求使用者重按手冊。
+    if (!msg.startsWith("#")) {
+      const directVerifiedModels = dedupDisplayModels(
+        extractFullModelLikeTokens(msg).concat(primaryModel ? [primaryModel] : []),
+        2,
+      );
+      const directVerifiedModel = directVerifiedModels.length === 1
+        ? directVerifiedModels[0]
+        : "";
+      const directVerifiedChunk = directVerifiedModel
+        ? findVerifiedManualChunk_(msg, directVerifiedModel)
+        : null;
+      if (directVerifiedChunk) {
+        const directVerifiedReply = buildVerifiedManualChunkReply_(
+          directVerifiedModel,
+          directVerifiedChunk,
+        );
+        LAST_SOURCE_TEST_STATE = {
+          source: "spec",
+          outcome: "verified_manual_chunk",
+          pending: false,
+          executed: "direct_verified_manual_chunk",
+          reserved: false,
+        };
+        writeLog(
+          `[Direct Verified Chunk v29.6.136] ${directVerifiedModel}/${directVerifiedChunk.intent}，零 PDF 呼叫`,
+        );
+        replyMessage(replyToken, directVerifiedReply);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, directVerifiedReply, contextId, "assistant", "");
+        const directVerifiedHistory = getHistoryFromCacheOrSheet(contextId);
+        updateHistorySheetAndCache(
+          contextId,
+          directVerifiedHistory,
+          { role: "user", content: msg },
+          { role: "assistant", content: directVerifiedReply },
+        );
+        rememberRecentSourceQuestion_(contextId, msg, directVerifiedModel);
+        return;
+      }
     }
 
     if (!msg.startsWith("#") && isServiceHoursQuery(msg)) {

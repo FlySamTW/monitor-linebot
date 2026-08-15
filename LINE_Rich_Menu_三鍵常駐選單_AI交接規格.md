@@ -81,6 +81,7 @@
 - `到這款官網` 只能是答案不足且本題已鎖定完整型號後的情境 Quick Reply，不得增為第四個常駐 Rich Menu。它使用 URI action，優先開 RULE 已記錄的 Samsung Taiwan PDP，否則開同列 XZW 完整料號支援頁；選型中、成功答案或只有上一題型號 Cache 時不顯示。
 - 手冊確認使用 `rm_action=confirm_manual&source=manual&v=2`；取消使用 `rm_action=cancel_source&v=2`。不再使用「查上一題」文案。
 - 已確認完整型號跨日保存；短系列名觸發候選。10 分鐘內相同來源＋型號＋問題回傳快取，不重新扣次。
+- 網路鍵只搜尋有可核對引用的非官方公開網頁，不讀 PDF，也不把 Samsung 官網送入模型；`到這款官網` 僅是回答不足後的 URI Quick Reply。供應商請求已送出即計 1 次，無引用也不退款；同題／同義改寫由 10 分鐘 operation cache 防重燒。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
 
 ## 四、Rich Menu JSON 要點

@@ -79,7 +79,9 @@ const aliasVmSource = [
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  extractFunction(linebot, "stripInternalRoutingHints_"),
   extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
+  extractFunction(linebot, "normalizeAdvancedSourceTopicIdentity_"),
   extractFunction(linebot, "isSameRecentSourceQuestion_"),
   extractFunction(linebot, "stripKnownModelFromSourceQuestion_"),
   extractFunction(linebot, "resolveManualSourceModel_"),
@@ -90,6 +92,7 @@ const aliasVmSource = [
   `globalThis.__sameQuestionModel = resolveManualSourceModel_("G8 如何連接藍牙耳機?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
   `globalThis.__differentQuestionModel = resolveManualSourceModel_("G8 如何恢復原廠設定?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
   `globalThis.__reselectQuestion = stripKnownModelFromSourceQuestion_("S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
+  `globalThis.__sameWebTopic = normalizeAdvancedSourceTopicIdentity_("那你再幫我搜尋一下 S32FM803UC 如何播放 USB？ [System Hint: hidden]", "S32FM803UC") === normalizeAdvancedSourceTopicIdentity_("USB 隨身碟播放怎麼用", "S32FM803UC");`,
 ].join("\n\n");
 const aliasVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -140,6 +143,11 @@ assert.strictEqual(
   aliasVmContext.__reselectQuestion,
   "G8 如何連接藍牙耳機？",
   "換型號時保留問題但必須移除字串內的舊完整型號",
+);
+assert.strictEqual(
+  aliasVmContext.__sameWebTopic,
+  true,
+  "同型號同意圖改寫不得重複送出 Web／PDF 供應商請求",
 );
 
 const doPostText = extractFunction(linebot, "doPost");
@@ -392,7 +400,9 @@ vm.runInContext(
     extractFunction(linebot, "toHalfWidth"),
     extractFunction(linebot, "isShortAliasModelToken"),
     extractFunction(linebot, "normalizeModelForDisplay"),
+    extractFunction(linebot, "stripInternalRoutingHints_"),
     extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
+    extractFunction(linebot, "normalizeAdvancedSourceTopicIdentity_"),
     extractFunction(linebot, "getSourceContextHash_"),
     extractFunction(linebot, "getSourceDateKey_"),
     extractFunction(linebot, "getSourcePendingKey_"),
@@ -620,5 +630,32 @@ assert(
   "Prompt.csv 版本必須與 linebot.gs GAS_VERSION 一致",
 );
 assert(/同一訊息不得自動跨來源/.test(prompt));
+
+const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
+const advancedRouteText = extractFunction(linebot, "executeAdvancedSourceQuery_");
+assert(
+  /stripInternalRoutingHints_\(query\)/.test(webCanonicalText) &&
+    /台灣 非官方 公開網頁 實務解法/.test(webCanonicalText),
+  "Web provider query 必須剝除 System Hint，並明確限定非官方公開網頁",
+);
+assert(
+  /tools\s*=\s*\[\{ google_search: \{\} \}\]/.test(llmText) &&
+    !/url_context/.test(llmText) &&
+    !/getOfficialUrlContextCandidates\(query\)/.test(llmText),
+  "網路來源不得讀 Samsung 官網或 URL Context；官網只能保留客戶可點連結",
+);
+assert(
+  !/refundAdvancedSourceUsage_\(grant,\s*"web_no_verifiable_evidence"\)/.test(
+    advancedRouteText,
+  ) &&
+    /供應商請求已送出，本次仍計 1 次/.test(advancedRouteText),
+  "Web 已送供應商但無引用時仍須計一次，且不得用退款繞過成本上限",
+);
+assert(
+  /LAST_SOURCE_TEST_STATE\.source/.test(
+    extractFunction(linebot, "renderCustomerFacingText_"),
+  ) && /executed === "verified_manual_chunk"/.test(linebot),
+  "人工核對手冊片段也必須走統一來源／NT$0.0000／剩餘額度尾註",
+);
 
 console.log("三來源狀態、配額、postback 與 TestUI 契約通過。");

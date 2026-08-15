@@ -1497,15 +1497,17 @@ assertStep(
   "cross-device web continuation must preserve manual facts and expose both real sources",
 );
 
+const advancedLlmText = extractFunction(linebot, "callLLMWithRetry");
 assertStep(
-  /Official Page Fetch v29\.6\.077/.test(linebot) &&
-    /fetchOfficialUrlEvidence_\(officialUrlContexts,\s*query\)/.test(linebot) &&
-    /Official Product Guard v29\.6\.092/.test(linebot) &&
-    /isOfficialProductPageEvidenceValid_\(identity,\s*url,\s*plainText\)/.test(linebot) &&
-    /程式直接擷取的官方技術規格頁證據/.test(linebot) &&
-    /directOfficialPageEvidence\.length > 0[\s\S]{0,900}lastWebEvidenceValid = true/.test(linebot) &&
-    /Cross Device Web Evidence v29\.6\.077/.test(linebot),
-  "known official URLs must be fetched as auditable evidence before cross-device web answers",
+  /tools\s*=\s*\[\{ google_search: \{\} \}\]/.test(advancedLlmText) &&
+    !/url_context/.test(advancedLlmText) &&
+    !/fetchOfficialUrlEvidence_\(/.test(advancedLlmText) &&
+    /禁止搜尋或讀取 Samsung 官網/.test(linebot) &&
+    /function buildSamsungOfficialPageQuickReply_/.test(linebot) &&
+    /type:\s*"uri"/.test(
+      extractFunction(linebot, "buildSamsungOfficialPageQuickReply_"),
+    ),
+  "Web must search only non-official public pages; Samsung official pages remain customer-clickable URI actions only",
 );
 
 const qaMatchCode = [
@@ -1683,13 +1685,12 @@ assertStep(
 assertStep(
   /let lastWebEvidenceValid = false;/.test(linebot) &&
     /grounding\.groundingChunks[\s\S]{0,180}grounding\.groundingSupports/.test(linebot) &&
-    /Grounding Audit v29\.6\.095/.test(linebot) &&
+    /Grounding Audit v29\.6\.132/.test(linebot) &&
     /不為補引用自動再生成/.test(linebot) &&
     !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
     /lastWebEvidenceValid\s*&&[\s\S]{0,160}lastSearchSources/.test(linebot) &&
-    /tools\.unshift\(\{ url_context: \{\} \}\)/.test(linebot) &&
-    /URL_RETRIEVAL_STATUS_SUCCESS/.test(linebot) &&
-    /官方頁讀取成功/.test(linebot),
+    !/url_context/.test(advancedLlmText) &&
+    /非官方內容，請斟酌參考/.test(linebot),
   "web answers must require auditable grounding chunks and supports before showing the web-search source",
 );
 
