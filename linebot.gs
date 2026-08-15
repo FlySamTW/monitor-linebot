@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.138"; // 2026-08-15 編輯者專用真實 TestUI
-const BUILD_TIMESTAMP = "2026-08-15 21:54";
+const GAS_VERSION = "v29.6.154"; // 2026-08-15 USB 網搜固定安全摘要與成本收斂
+const BUILD_TIMESTAMP = "2026-08-15 23:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -23,6 +23,7 @@ const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
 const SOURCE_DAILY_LIMITS = { manual: 5, web: 10 };
+const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 20;
 
 // ════════════════════════════════════════════════════════════════
@@ -40,6 +41,9 @@ const LLM_PROVIDER = "Gemini";
 const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
 const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
 const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
+const GEMINI_MODEL_WEB = "models/gemini-2.5-flash";
+const PRICE_WEB_INPUT = 0.3; // $0.30 per 1M Input (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
+const PRICE_WEB_OUTPUT = 2.5; // $2.50 per 1M Output (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -2708,7 +2712,7 @@ function findBluetoothAudioRuleEvidence_(text) {
         .join(" ")
         .trim();
       const upper = line.toUpperCase();
-      if (!upper || /^(?:活動|系列|術語)_/.test(upper)) continue;
+      if (!upper || /^(?:活動|別稱|系列|術語)_/.test(upper)) continue;
       if (upper.indexOf(model.toUpperCase()) < 0) continue;
       if (!/(?:TIZEN|SMART\s*TV|智慧型TIZEN)/i.test(line)) continue;
       const bluetoothMatch = line.match(/(?:藍牙|BLUETOOTH)\s*([0-9.]+)?/i);
@@ -2745,6 +2749,150 @@ function enforceBluetoothAudioRuleEvidence_(query, rawResponse) {
     `[RULE Bluetooth Guard v29.6.126] ${evidence.model} 的 CLASS_RULES 明載 ${versionText}，覆蓋模型相反說法`,
   );
   return `${evidence.model} 有支援${versionText}，並搭載 Tizen 作業系統。\n[來源:官方規格庫]`;
+}
+
+/**
+ * 特定型號能力題的規格證據守門。
+ * 「術語_」列只能解釋功能，不能證明任一型號具備該功能；若完整型號列沒有
+ * 明載該能力，就不得把同系列其他型號或通用術語套到目前型號。
+ */
+function findExactModelRuleLine_(model) {
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  if (!normalizedModel || !ss) return "";
+  const cache = CacheService.getScriptCache();
+  const cacheKey = `EXACT_RULE_LINE_${normalizedModel}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet || sheet.getLastRow() <= 1) return "";
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    const needle = normalizedModel.toUpperCase();
+    for (let i = 0; i < values.length; i++) {
+      const line = values[i]
+        .map((cell) => String(cell || ""))
+        .join(" ")
+        .trim();
+      const upper = toHalfWidth(line).toUpperCase();
+      if (!upper || /^(?:活動|別稱|系列|術語)_/.test(upper)) continue;
+      if (upper.indexOf(needle) < 0) continue;
+      cache.put(cacheKey, line, 21600);
+      return line;
+    }
+  } catch (e) {
+    writeLog(`[RULE Exact Model Guard] 讀取 ${normalizedModel} 規格失敗: ${e.message}`);
+  }
+  return "";
+}
+
+function getExplicitCapabilityCheck_(query) {
+  const q = String(query || "");
+  if (!/(?:有|支援|支持|內建|具備|是否|能不能|可不可以).{0,28}(?:嗎|呢|\?|？)?|(?:嗎|呢|\?|？)/i.test(q)) {
+    return null;
+  }
+  const capabilities = [
+    { label: "KVM", query: /\bKVM\b/i, evidence: /\bKVM\b/i },
+    { label: "耳機孔", query: /耳機孔|3\.5\s*MM/i, evidence: /耳機孔|3\.5\s*MM/i },
+    { label: "USB-C", query: /USB[\s-]*C|TYPE[\s-]*C/i, evidence: /USB[\s-]*C|TYPE[\s-]*C/i },
+    { label: "藍牙", query: /藍牙|BLUETOOTH/i, evidence: /藍牙|BLUETOOTH/i },
+    { label: "喇叭", query: /喇叭|揚聲器/i, evidence: /喇叭|揚聲器/i },
+    { label: "攝影機", query: /鏡頭|攝影機|相機/i, evidence: /鏡頭|攝影機|相機/i },
+    { label: "PIP／PBP", query: /\bPIP\b|\bPBP\b|子母畫面|多畫面/i, evidence: /\bPIP\b|\bPBP\b|子母畫面|多畫面/i },
+    { label: "VESA 壁掛", query: /VESA|壁掛/i, evidence: /VESA|壁掛/i },
+    { label: "DisplayPort", query: /DISPLAYPORT|\bDP\b/i, evidence: /DISPLAYPORT|\bDP\b/i },
+    { label: "HDMI", query: /HDMI/i, evidence: /HDMI/i },
+  ];
+  for (let i = 0; i < capabilities.length; i++) {
+    if (capabilities[i].query.test(q)) return capabilities[i];
+  }
+  return null;
+}
+
+function enforceExactModelCapabilityEvidence_(query, rawResponse) {
+  const cleanQuery = String(query || "");
+  const models = dedupDisplayModels(extractFullModelLikeTokens(cleanQuery), 3);
+  if (models.length !== 1) return String(rawResponse || "");
+
+  const capability = getExplicitCapabilityCheck_(cleanQuery);
+  if (!capability) return String(rawResponse || "");
+  const model = normalizeModelForDisplay(models[0]);
+  const exactRuleLine = findExactModelRuleLine_(model);
+  if (exactRuleLine && capability.evidence.test(exactRuleLine)) {
+    return String(rawResponse || "");
+  }
+
+  writeLog(
+    `[RULE Exact Model Guard] ${model} 的完整規格列未明載 ${capability.label}；禁止用術語列或同系列型號作肯定／否定結論`,
+  );
+  return `${model} 的台灣三星官方規格資料目前沒有列出「${capability.label}」，所以我不能把其他同系列型號的功能套到這台，也不能直接說它有或沒有。\n\n若要再確認官方手冊是否另有記載，請按「查手冊｜5次/日」；系統會沿用 ${model}，不必重新選型號。\n[AUTO_SEARCH_PDF]`;
+}
+
+function pickExactComparisonFields_(ruleLine, query) {
+  const fields = String(ruleLine || "")
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+  const patterns = [
+    /(?:ODYSSEY|SMART MONITOR|VIEWFINITY|電競顯示器|智慧顯示器)/i,
+    /(?:IPS|OLED|VA).*(?:螢幕|面板)/i,
+    /(?:解析度|雙模.*(?:\dK|\d+\s*HZ))/i,
+    /(?:更新頻率|更新率|刷新率|\d+\s*HZ)/i,
+    /反應時間/i,
+    /(?:HDR10|DISPLAYHDR|VESA CERTIFIED)/i,
+    /(?:FREESYNC|G-SYNC)/i,
+  ];
+  if (/(?:介面|接口|HDMI|DISPLAYPORT|USB|TYPE-?C)/i.test(String(query || ""))) {
+    patterns.push(/介面[:：]|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C/i);
+  }
+
+  const selected = [];
+  patterns.forEach((pattern) => {
+    const hit = fields.find(
+      (field) =>
+        !/^L?[SCF]\d{2}[A-Z0-9]+$/i.test(field) &&
+        !/^型號[:：]/.test(field) &&
+        selected.indexOf(field) < 0 &&
+        pattern.test(field),
+    );
+    if (hit && selected.indexOf(hit) < 0) selected.push(hit);
+  });
+  return selected.slice(0, 7);
+}
+
+function buildExactRuleComparisonReply_(query) {
+  const text = String(query || "");
+  if (!/(?:比較|差異|差別|VS|VERSUS|哪一台|哪一款|怎麼選|選哪)/i.test(text)) {
+    return "";
+  }
+  const models = dedupDisplayModels(extractFullModelLikeTokens(text), 3).map(
+    normalizeModelForDisplay,
+  );
+  if (models.length !== 2) return "";
+
+  const entries = models.map((model) => {
+    const ruleLine = findExactModelRuleLine_(model);
+    return {
+      model,
+      ruleLine,
+      fields: pickExactComparisonFields_(ruleLine, text),
+    };
+  });
+  if (entries.some((entry) => !entry.ruleLine || entry.fields.length < 2)) return "";
+
+  writeLog(
+    `[RULE Exact Comparison v29.6.143] 只用兩個完整型號的規格列比較: ${models.join(" vs ")}`,
+  );
+  return [
+    "兩台都能用於遊戲，主要差異如下：",
+    "",
+    `${entries[0].model}：${entries[0].fields.join("；")}。`,
+    "",
+    `${entries[1].model}：${entries[1].fields.join("；")}。`,
+    "",
+    "怎麼選：請依上面明載的面板、解析度／更新頻率與反應時間取捨；我不會把其他型號的數字或未記載的主觀評價套進來。",
+    "[來源:官方規格庫]",
+  ].join("\n");
 }
 
 function buildBluetoothAudioManualSearchQuery_(query, targetModelName) {
@@ -2874,6 +3022,16 @@ function getRecentOfficialManualAnswer_(messages) {
 function sanitizePriceNumbers_(text) {
   if (!text) return "";
   let processed = String(text);
+  // 點卡、禮券、購物金是活動權益面額，不是商品售價；先保護再做售價遮罩。
+  const protectedBenefits = [];
+  processed = processed.replace(
+    /(?:STEAM\s*)?\d{1,3}(?:,\d{3})*\s*元\s*(?:點卡|禮券|購物金)/gi,
+    (match) => {
+      const token = `__CAMPAIGN_BENEFIT_${protectedBenefits.length}__`;
+      protectedBenefits.push(match);
+      return token;
+    },
+  );
   // 1. 替換如 NT$ 100 以上的格式，小數點後最多 2 位，不匹配 NT$0.xxxx
   processed = processed.replace(/NT\$\s*(?!0\.\d)\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi, "官網當下優惠價");
   processed = processed.replace(/(?:TWD|NTD|台幣)\s*(?!0\.\d)\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/gi, "官網當下優惠價");
@@ -2882,6 +3040,9 @@ function sanitizePriceNumbers_(text) {
   processed = processed.replace(/\b(?!0\.\d)\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\s*(?:元|台幣)/g, "官網當下優惠價");
   // 替換無逗號但長度在 4 到 6 位的純數字 + 元 (例如 32900元，排除 0.xxxx元)
   processed = processed.replace(/\b(?!0\.\d)\d{4,6}\s*(?:元|台幣)/g, "官網當下優惠價");
+  protectedBenefits.forEach((benefit, index) => {
+    processed = processed.replace(`__CAMPAIGN_BENEFIT_${index}__`, benefit);
+  });
   return processed;
 }
 
@@ -3537,7 +3698,7 @@ function isOutOfProjectScopeQuery(text) {
   if (purePhoneOrApplianceContext) return true;
 
   const mentionsCompetitor =
-    /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC)/i.test(
+    /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|樂金|聯想|惠普|LG|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC|LENOVO|HP)/i.test(
       q,
     );
   const asksMonitorOrPriceOrTable =
@@ -3566,6 +3727,23 @@ function isTimelyWebInfoQuery(text) {
   );
 }
 
+function isCampaignRuleCurrentlyActive_(ruleText) {
+  const text = String(ruleText || "");
+  const datePattern = /\b(20\d{2})[\/-](\d{1,2})[\/-](\d{1,2})\b/g;
+  const stamps = [];
+  let match;
+  while ((match = datePattern.exec(text)) !== null) {
+    stamps.push(
+      Number(match[1]) * 10000 + Number(match[2]) * 100 + Number(match[3]),
+    );
+  }
+  if (stamps.length === 0) return true;
+
+  const todayText = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMdd");
+  const todayStamp = Number(todayText);
+  return Math.max.apply(null, stamps) >= todayStamp;
+}
+
 function findLocalCampaignRuleForQuery(text) {
   try {
     const q = String(text || "");
@@ -3591,6 +3769,10 @@ function findLocalCampaignRuleForQuery(text) {
       ) {
         continue;
       }
+      if (!isCampaignRuleCurrentlyActive_(ruleText)) {
+        writeLog("[Campaign Rule Guard v29.6.143] 已略過過期活動 RULE");
+        continue;
+      }
       for (let j = 0; j < models.length; j++) {
         if (upperRule.indexOf(models[j]) >= 0) {
           return ruleText;
@@ -3601,6 +3783,45 @@ function findLocalCampaignRuleForQuery(text) {
     writeLog(`[Campaign Rule Guard] ${e.message}`);
   }
   return "";
+}
+
+function buildLocalCampaignRuleReply_(query) {
+  const text = String(query || "");
+  const models = dedupDisplayModels(extractFullModelLikeTokens(text), 2).map(
+    normalizeModelForDisplay,
+  );
+  if (models.length !== 1) return "";
+  const model = models[0];
+  const ruleText = findLocalCampaignRuleForQuery(text);
+  if (!ruleText) return "";
+
+  const clauses = ruleText
+    .split(/[；;]/)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  const modelUpper = model.toUpperCase();
+  const benefitClauses = clauses.filter((clause) => {
+    const upper = toHalfWidth(clause).toUpperCase();
+    return (
+      upper.indexOf(modelUpper) >= 0 ||
+      /(?:指定螢幕機種可參加|月月抽|共通抽獎)/i.test(clause)
+    );
+  });
+  if (benefitClauses.length === 0) return "";
+
+  const activityName = (ruleText.match(/活動名稱[:：]([^,，]+)/i) || [])[1] || "";
+  const activityPeriod =
+    (ruleText.match(/活動期間[:：]([^,，]+)/i) || [])[1] || "";
+  const registrationPeriod =
+    (ruleText.match(/登錄期間[:：]([^,，]+)/i) || [])[1] || "";
+  const lines = [`${model} 目前在本地官方活動 RULE 中的權益如下：`];
+  benefitClauses.forEach((clause) => lines.push(`• ${clause}`));
+  if (activityName) lines.push(`活動名稱：${activityName}`);
+  if (activityPeriod) lines.push(`活動期間：${activityPeriod}`);
+  if (registrationPeriod) lines.push(`登錄期間：${registrationPeriod}`);
+  lines.push("[來源:官方活動庫]");
+  writeLog(`[Campaign Rule Exact v29.6.145] ${model} 零 LLM 精確回覆有效活動`);
+  return lines.join("\n");
 }
 
 function isServiceHoursQuery(text) {
@@ -3797,6 +4018,18 @@ function buildSmartMonitorCodecManualQuery_(model) {
 function getVerifiedManualChunks_() {
   return [
     {
+      models: ["S32HG806ES"],
+      intent: "DUAL_MODE",
+      sourceFile:
+        "S25HG402,S27HG402,S27HG612,S27HG802,S27HG806,S32HG702,S32HG732,S32HG802,S32HG806.pdf",
+      pages: "27、35、43",
+      facts: [
+        "切換路徑是螢幕 OSD 的「Game → Dual Mode」；這個功能會變更解析度與更新率",
+        "也可在「Setup Custom Key」把 Dual Mode 指派為自訂鍵，之後直接切換",
+        "S32HG806ES 的手冊規格列出 48–165 Hz／48–330 Hz，最高解析度列有 6144 × 3456 @ 165 Hz；若要使用最佳解析度，手冊要求關閉 Dual Mode",
+      ],
+    },
+    {
       models: ["S32FM703"],
       intent: "HEVC",
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
@@ -3841,10 +4074,15 @@ function findVerifiedManualChunk_(query, model) {
       return isPdfModelTokenMatch_(String(item || ""), normalizedModel);
     });
     const intentHit =
+      (chunk.intent === "DUAL_MODE" &&
+        /(?:Dual\s*Mode|雙模|6\s*K|330\s*Hz)/i.test(text)) ||
       (chunk.intent === "HEVC" && /HEVC|H\.?\s*265|H265/i.test(text)) ||
       (chunk.intent === "RETAIL_MODE" && isRetailModeManualQuery_(text)) ||
       (chunk.intent === "USB_MEDIA_PLAYBACK" &&
-        isUsbMediaPlaybackManualQuery_(text));
+        isUsbMediaPlaybackManualQuery_(text) &&
+        !/(?:斷線|中斷|不穩|異常|當機|失敗|無法|不能|故障|非官方|網路解法)/i.test(
+          text,
+        ));
     if (modelHit && intentHit) return chunk;
   }
   return null;
@@ -4307,7 +4545,14 @@ function rememberRecentSourceQuestion_(contextId, question, model) {
   const text = String(question || "").trim();
   if (!text || text.startsWith("#") || text.startsWith("/")) return;
   const explicitModels = extractFullModelLikeTokens(text);
-  const explicitModel = normalizeModelForDisplay(model || explicitModels[0] || "");
+  const candidateModel = normalizeModelForDisplay(model || explicitModels[0] || "");
+  const explicitModel =
+    candidateModel && isKnownFullModelToken(candidateModel) ? candidateModel : "";
+  if (candidateModel && !explicitModel) {
+    writeLog(
+      `[Product State Guard v29.6.145] 未登錄型號 ${candidateModel} 不寫入持久產品狀態`,
+    );
+  }
   if (explicitModel) {
     rememberSourceProductModel_(contextId, explicitModel, "question");
   }
@@ -4391,6 +4636,22 @@ function reserveAdvancedSourceUsage_(grant) {
   try {
     const props = PropertiesService.getScriptProperties();
     const dateKey = getSourceDateKey_();
+    if (grant.systemRescue === true && source === "web") {
+      const rescueKey = `SRC_RESCUE_${getSourceContextHash_(grant.contextId)}_${dateKey}`;
+      const rescueUsed = Math.max(0, Number(props.getProperty(rescueKey) || 0));
+      if (rescueUsed >= SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT) {
+        throw new Error("SOURCE_RESCUE_EXHAUSTED_WEB");
+      }
+      props.setProperty(rescueKey, String(rescueUsed + 1));
+      grant.reserved = true;
+      grant.systemRescueReserved = true;
+      grant.used = rescueUsed + 1;
+      grant.remaining = getSourceRemaining_(grant.contextId, "web");
+      writeLog(
+        `[Source Rescue v29.6.148] webAttempt=${grant.used}/${SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT} userWebQuotaCharged=0`,
+      );
+      return grant;
+    }
     const key = getSourceQuotaKey_(grant.contextId, dateKey);
     let state = parseSourceStateJson_(props.getProperty(key));
     if (!state || state.date !== dateKey) {
@@ -4517,13 +4778,15 @@ function clearAdvancedSourceOperation_(operation) {
   }
 }
 
-function activateAdvancedSourceGrant_(source, contextId, userId) {
+function activateAdvancedSourceGrant_(source, contextId, userId, options) {
+  const normalizedOptions = options || {};
   ACTIVE_ADVANCED_SOURCE_GRANT = {
     source: source,
     contextId: contextId,
     userId: userId,
     createdAt: Date.now(),
     reserved: false,
+    systemRescue: normalizedOptions.systemRescue === true,
   };
   return ACTIVE_ADVANCED_SOURCE_GRANT;
 }
@@ -5030,6 +5293,16 @@ function parseExplicitSourceCommand_(message) {
   return null;
 }
 
+function isExplicitNonOfficialWebRequest_(query) {
+  const text = String(query || "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  const hasWebSource = /(?:非官方|網路上|公開網頁|網友|論壇|使用者經驗)/i.test(
+    text,
+  );
+  const hasSearchIntent = /(?:解法|做法|方法|經驗|查|搜|搜尋|找)/i.test(text);
+  return hasWebSource && hasSearchIntent;
+}
+
 function parseContextualSourceIntent_(message, contextId) {
   const text = String(message || "").trim();
   if (!text || extractFullModelLikeTokens(text).length > 0) return null;
@@ -5267,6 +5540,65 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   );
 }
 
+function buildDeterministicExactRuleReply_(query, model) {
+  const text = String(query || "");
+  if (
+    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|黑屏|閃爍|重置|恢復原廠)/i.test(
+      text,
+    )
+  ) {
+    return "";
+  }
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  if (!normalizedModel) return "";
+  const ruleLine = findExactModelRuleLine_(normalizedModel);
+  if (!ruleLine) return "";
+  const fields = ruleLine
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+  const patterns = [];
+  const addPattern = (queryPattern, fieldPattern) => {
+    if (queryPattern.test(text)) patterns.push(fieldPattern);
+  };
+  addPattern(/規格|詳細資料/i, /(?:ODYSSEY|SMART MONITOR|VIEWFINITY|吋|面板|螢幕|解析度|更新頻率|反應時間|亮度|對比|HDR|介面[:：])/i);
+  addPattern(/解析度|4K|5K|6K|UHD|QHD|FHD/i, /解析度|雙模/i);
+  addPattern(/更新率|刷新率|HZ/i, /更新頻率|更新率|刷新率|雙模|\d+\s*HZ/i);
+  addPattern(/面板|IPS|VA|OLED/i, /IPS|VA|OLED/i);
+  addPattern(/反應時間|GTG|MPRT/i, /反應時間|GTG|MPRT/i);
+  addPattern(/亮度|NIT|CD\//i, /亮度|NIT|CD\//i);
+  addPattern(/對比/i, /對比/i);
+  addPattern(/HDR/i, /HDR/i);
+  addPattern(/HDMI/i, /HDMI/i);
+  addPattern(/DISPLAYPORT|\bDP\b/i, /DISPLAYPORT|\bDP\b/i);
+  addPattern(/USB[\s-]*C|TYPE[\s-]*C/i, /USB[\s-]*C|TYPE[\s-]*C/i);
+  addPattern(/喇叭|揚聲器/i, /喇叭|揚聲器/i);
+  addPattern(/藍牙|BLUETOOTH/i, /藍牙|BLUETOOTH/i);
+  addPattern(/耳機孔|3\.5\s*MM/i, /耳機孔|3\.5\s*MM/i);
+  addPattern(/VESA|壁掛/i, /VESA|壁掛/i);
+  addPattern(/重量/i, /重量|淨重/i);
+  addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
+  addPattern(/HAS|升降|支架/i, /HAS|升降|支架/i);
+  if (patterns.length === 0) return "";
+
+  const selected = [];
+  patterns.forEach((pattern) => {
+    fields.forEach((field) => {
+      if (
+        selected.length < 10 &&
+        !/^L?[SCF]\d{2}[A-Z0-9]+$/i.test(field) &&
+        !/^型號[:：]/.test(field) &&
+        pattern.test(field) &&
+        selected.indexOf(field) < 0
+      ) {
+        selected.push(field);
+      }
+    });
+  });
+  if (selected.length === 0) return "";
+  return `${normalizedModel} 的台灣三星官方規格明載：${selected.join("；")}。\n[來源:官方規格庫]`;
+}
+
 function tryManualFreeLocalAnswer_(
   query,
   contextId,
@@ -5346,46 +5678,15 @@ function tryManualFreeLocalAnswer_(
   }
 
   if (!allowRule || !isLikelyLocalSpecRuleQuestion_(query)) return false;
-
-  const history = getHistoryFromCacheOrSheet(contextId);
-  let rawResponse = "";
-  try {
-    rawResponse = callLLMWithRetry(
-      query,
-      history.concat([{ role: "user", content: query }]),
-      [],
-      false,
-      null,
-      false,
-      userId,
-      false,
-      model || null,
-    );
-  } catch (error) {
+  const deterministicRuleReply = buildDeterministicExactRuleReply_(query, model);
+  if (!deterministicRuleReply) {
     writeLog(
-      `[Manual Free Precheck v29.6.113] RULE Fast Mode 失敗，改走已授權手冊: ${error}`,
+      "[Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
     );
     return false;
   }
-
-  const localSourceTag = getVerifiedFastSourceTag_(query, rawResponse);
-  const asksAdvancedSource =
-    /\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC)\]/i.test(rawResponse) ||
-    isKnowledgeMissingReply_(stripAnySourceTags(rawResponse));
-  if (
-    asksAdvancedSource ||
-    !/\[來源:(?:QA庫|官方規格庫|官方活動庫)\]/.test(localSourceTag)
-  ) {
-    writeLog(
-      "[Manual Free Precheck v29.6.113] RULE 無高信心本機答案，繼續已授權手冊路徑",
-    );
-    return false;
-  }
-
   const remaining = getSourceRemaining_(contextId, "manual");
-  let finalText = stripAnySourceTags(formatForLineMobile(rawResponse));
-  finalText = sanitizeLeadDatabasePhrase(finalText);
-  finalText = `${finalText}\n\n這題已由規格／FAQ回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。\n${localSourceTag}`;
+  let finalText = `${deterministicRuleReply}\n\n這題已由精確規格回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`;
   finalText = enforceNiTone(finalText);
   clearPendingSourceState_(contextId);
   LAST_SOURCE_TEST_STATE = {
@@ -5396,19 +5697,183 @@ function tryManualFreeLocalAnswer_(
     remaining: remaining,
   };
   writeLog(
-    "[Manual Free Precheck v29.6.113] 高信心 QA/RULE 回覆，不讀 PDF、不扣手冊次數",
+    "[Manual Free Precheck v29.6.147] deterministic RULE 回覆，不讀 PDF、不扣手冊次數",
   );
   replyMessage(replyToken, finalText);
   writeRecordDirectly(userId, query, contextId, "user", "");
   writeRecordDirectly(userId, finalText, contextId, "assistant", "");
   updateHistorySheetAndCache(
     contextId,
-    history,
+    getHistoryFromCacheOrSheet(contextId),
     { role: "user", content: query },
     { role: "assistant", content: finalText },
   );
   rememberRecentSourceQuestion_(contextId, query, model || "");
   return true;
+}
+
+function buildTentativeManualFallback_(rawResponse, model) {
+  let tentative = stripAnySourceTags(
+    formatForLineMobile(String(rawResponse || "")),
+  )
+    .replace(/\[手冊證據:[^\]]+\]/gi, "")
+    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
+    .replace(/\[型號[:：][^\]]+\]/g, "")
+    .trim();
+  if (
+    !tentative ||
+    isApiFailureReply(tentative) ||
+    isManualEvidenceFailureReply_(tentative)
+  ) {
+    tentative = [
+      "先從螢幕 OSD 中與問題最接近的功能選單確認設定，再檢查訊號線／連接埠、Windows 顯示設定與顯示卡驅動。",
+      "若畫面仍異常，先恢復該功能的預設值後重新連接；不要連續套用來源不明的韌體或工程模式操作。",
+    ].join("\n");
+  }
+  return [
+    `目前最可能的處理方向${model ? `（${model}）` : ""}：`,
+    tentative,
+    "",
+    "這段是手冊與公開網頁都未取得可核對證據後的保守參考，不代表三星官方已證實。",
+  ].join("\n");
+}
+
+function isMonitorUsbMediaWebQuestion_(query) {
+  return (
+    /(?:USB|隨身碟)/i.test(String(query || "")) &&
+    /(?:播放|影片|照片|音樂|媒體|斷線|讀取)/i.test(String(query || ""))
+  );
+}
+
+function buildSafeUsbMediaWebAnswer_(model) {
+  return [
+    `可先依序排查${model ? `（${model}）` : ""}：`,
+    "1. 備份資料後確認隨身碟格式，並換另一支隨身碟交叉測試。",
+    "2. 直接插螢幕 USB 埠，不經 Hub／延長線；同時只接一個 USB 裝置。",
+    "3. 先用小容量、常見 H.264 MP4 測試。只有特定影片中斷時，優先檢查檔案損壞、編碼或位元率。",
+    "4. 全部隨身碟都會中斷時，拔除螢幕電源約 30 秒再開機；仍未改善就記下檔案格式與發生時間，交由三星檢查 USB 埠或系統。",
+  ].join("\n");
+}
+
+function buildTentativeWebFallback_(rawResponse, query, model) {
+  const isMonitorUsbMedia = isMonitorUsbMediaWebQuestion_(query);
+  let lines = stripAnySourceTags(
+    formatForLineMobile(String(rawResponse || "")),
+  )
+    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
+    .replace(/\[型號[:：][^\]]+\]/g, "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !/^(?:透過|根據)(?:本次)?網路搜尋|^以下(?:是|為)(?:搜尋|找到)/i.test(
+          line,
+        ),
+    )
+    .filter(
+      (line) =>
+        !isMonitorUsbMedia ||
+        !/(?:Windows[^。]{0,30}USB|USB[^。]{0,30}選擇性暫停|主機板|電腦端[^。]{0,20}USB)/i.test(
+          line,
+        ),
+    )
+    .filter(
+      (line) =>
+        !/(?:非官方|第三方)[^。]{0,20}(?:韌體|firmware)[^。]{0,20}(?:下載|安裝|更新)/i.test(
+          line,
+        ),
+    );
+
+  // LINE 手機閱讀以五個具體處理方向為上限，避免模型引言或尾段把答案撐長。
+  const numbered = lines.filter((line) => /^\d+[.、)]\s*/.test(line));
+  if (isMonitorUsbMedia && numbered.length < 3) {
+    // Search grounding 偶爾會以 MAX_TOKENS 只留下半個步驟；不可把殘句當完成答案。
+    lines = [];
+  } else if (numbered.length > 0) {
+    lines = numbered.slice(0, 5);
+  } else {
+    lines = lines.slice(0, 6);
+  }
+  let tentative = lines.join("\n").trim();
+  if (!tentative || isApiFailureReply(tentative)) {
+    tentative = isMonitorUsbMedia
+      ? [
+          "1. 先把隨身碟改用 FAT32 或 exFAT，並用另一支隨身碟交叉測試。",
+          "2. 直接插螢幕 USB 埠，不經 Hub 或延長線，並改測另一個 USB 埠。",
+          "3. 用單一、常見格式的小檔案測試；若只有特定檔案中斷，優先檢查影片編碼與檔案損壞。",
+          "4. 若不同隨身碟與檔案都會中斷，記下發生時間與檔案格式，再聯絡三星檢查 USB 埠或系統異常。",
+        ].join("\n")
+      : "先以可逆、低風險的方式逐項排除設定、連接與相容性；不要安裝來源不明的韌體或進入工程模式。";
+  }
+  return [
+    `目前最可能的排查方向${model ? `（${model}）` : ""}：`,
+    tentative,
+    "",
+    "本次已啟動網路搜尋，但 Google 沒有回傳可核對連結；以上是模型整理的保守做法，不代表三星或外部網頁已證實。",
+  ].join("\n");
+}
+
+function runManualWebRescue_(originalQuestion, model, contextId, userId) {
+  const canonicalQuery = buildCanonicalWebQuery_(originalQuestion, model || "");
+  const rescueGrant = activateAdvancedSourceGrant_(
+    "web",
+    contextId,
+    userId,
+    { systemRescue: true },
+  );
+  try {
+    const webResponse = callLLMWithRetry(
+      canonicalQuery,
+      [{ role: "user", content: canonicalQuery }],
+      [],
+      false,
+      null,
+      false,
+      userId,
+      true,
+      model || null,
+    );
+    const webText = stripAnySourceTags(formatForLineMobile(webResponse || ""))
+      .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
+      .replace(/\[型號[:：][^\]]+\]/g, "")
+      .trim();
+    if (
+      lastWebEvidenceValid &&
+      webText &&
+      !isApiFailureReply(webText) &&
+      Array.isArray(lastSearchSources) &&
+      lastSearchSources.length > 0
+    ) {
+      return {
+        attempted: true,
+        success: true,
+        text: webText,
+        sources: lastSearchSources.slice(),
+        userQuotaCharged: false,
+      };
+    }
+    return {
+      attempted: true,
+      success: false,
+      text: "",
+      sources: [],
+      userQuotaCharged: false,
+    };
+  } catch (error) {
+    writeLog(
+      `[Source Rescue v29.6.148] 自動 Web 補救失敗: ${String(error && error.message ? error.message : error)}`,
+    );
+    return {
+      attempted: false,
+      success: false,
+      text: "",
+      sources: [],
+      userQuotaCharged: false,
+    };
+  } finally {
+    ACTIVE_ADVANCED_SOURCE_GRANT = null;
+  }
 }
 
 function executeAdvancedSourceQuery_(
@@ -5848,6 +6313,8 @@ function executeAdvancedSourceQuery_(
     formatForLineMobile(evidenceGuardedResponse),
   );
   const recommendedWeb = /\[AUTO_SEARCH_WEB\]/i.test(finalText);
+  let manualEvidenceFailed = false;
+  let manualWebRescue = null;
   finalText = finalText
     .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
     .replace(/\[型號[:：][^\]]+\]/g, "")
@@ -5874,9 +6341,49 @@ function executeAdvancedSourceQuery_(
         finalText +=
           "\n\n手冊若未涵蓋裝置端或現況資訊，可再按「網路解答」；系統不會自動跨來源。";
       }
+      manualEvidenceFailed = isManualEvidenceFailureReply_(finalText);
+      if (manualEvidenceFailed && grant.reserved) {
+        manualWebRescue = runManualWebRescue_(
+          originalQuestion,
+          primaryModel || selectedModel,
+          contextId,
+          userId,
+        );
+        if (manualWebRescue.success) {
+          finalText = [
+            "官方手冊這次沒有抓到可核對段落，我已自動補查一次公開網頁；這是系統補救，不扣你的網搜次數。",
+            "",
+            manualWebRescue.text,
+            "",
+            `(📊 已搜尋 ${manualWebRescue.sources.length} 個來源：${manualWebRescue.sources.join("、")})`,
+            "非官方內容，請斟酌參考。",
+            "[來源:網路搜尋]",
+          ].join("\n");
+        } else {
+          finalText = [
+            "官方手冊這次沒有抓到可核對段落；系統也已自動補查一次公開網頁，沒有再要求你重按，且不扣你的網搜次數。",
+            "",
+            buildTentativeManualFallback_(
+              response,
+              primaryModel || selectedModel,
+            ),
+          ].join("\n");
+        }
+      }
     }
   } else {
     finalText = sanitizeManualDeflection(finalText, normalizedQuery);
+    if (
+      lastWebEvidenceValid &&
+      isMonitorUsbMediaWebQuestion_(originalQuestion)
+    ) {
+      finalText = buildSafeUsbMediaWebAnswer_(
+        primaryModel || selectedModel,
+      );
+      writeLog(
+        "[Web USB Media Guard v29.6.154] 以已取得的網路來源產生固定安全摘要，排除 Android／電腦端／USB-C 顯示偏方",
+      );
+    }
     if (
       !isApiFailureReply(finalText) &&
       lastWebEvidenceValid &&
@@ -5891,9 +6398,14 @@ function executeAdvancedSourceQuery_(
       const officialPage = getSamsungOfficialModelPage_(
         primaryModel || selectedModel,
       );
-      finalText = officialPage
-        ? "這次網路工具沒有回傳可核對的非官方公開網頁，因此我不拿模型內建資料冒充搜尋答案。供應商請求已送出，本次仍計 1 次；下方保留「到這款官網」供你自行查看。"
-        : "這次網路工具沒有回傳可核對的非官方公開網頁，因此我不拿模型內建資料冒充搜尋答案。供應商請求已送出，本次仍計 1 次；相同題目不會再次搜尋或扣次。";
+      finalText = buildTentativeWebFallback_(
+        lastWebUnverifiedDraft,
+        originalQuestion,
+        primaryModel || selectedModel,
+      );
+      finalText += officialPage
+        ? "\n\n下方保留「到這款官網」；這個連結只供查看產品資訊，不會拿官網內容冒充非官方搜尋結果。"
+        : "\n\n相同題目不會再次搜尋或扣次。";
     }
   }
 
@@ -5910,7 +6422,9 @@ function executeAdvancedSourceQuery_(
         ? lastWebEvidenceValid
           ? "success"
           : "no_evidence"
-        : manualPreflightStopped || isManualEvidenceFailureReply_(finalText)
+        : manualWebRescue && manualWebRescue.success
+          ? "rescued_web"
+          : manualPreflightStopped || manualEvidenceFailed
           ? "no_evidence"
           : "success",
     pending: false,
@@ -5962,11 +6476,15 @@ function executeAdvancedSourceQuery_(
   const sourceSucceeded =
     normalizedSource === "web"
       ? lastWebEvidenceValid
-      : response !== "[KB_EXPIRED]" &&
-        !manualPreflightStopped &&
-        !isManualEvidenceFailureReply_(finalText);
+      : (manualWebRescue && manualWebRescue.success) ||
+        (response !== "[KB_EXPIRED]" &&
+          !manualPreflightStopped &&
+          !manualEvidenceFailed);
   if (sourceSucceeded) {
-    rememberSourceLastAdvanced_(contextId, normalizedSource);
+    rememberSourceLastAdvanced_(
+      contextId,
+      manualWebRescue && manualWebRescue.success ? "web" : normalizedSource,
+    );
     rememberRecentSourceQuestion_(
       contextId,
       originalQuestion,
@@ -7288,6 +7806,8 @@ function buildDynamicContext(messages, userId, isPDFMode = false) {
         if (topLines.length > 0) {
           specContext +=
             "=== 🖥️ 產品型號詳細規格 (Spec Rules - Smart Filtered) ===\n";
+          specContext +=
+            "【證據鐵律】「術語_」列只用來解釋功能名稱，絕對不能證明某個產品具備該功能；特定型號能力只能依該完整型號自己的規格列判定。規格列未記載時只能說目前無法確認，不得把同系列其他型號的功能套用。\n";
           specContext += topLines.join("\n") + "\n\n";
           relevantContext += specContext;
           writeLog(
@@ -7391,6 +7911,7 @@ const CACHE_KEYS = {
 const CONFIG = {
   // v24.2.3: 雙模型策略
   MODEL_NAME_FAST: GEMINI_MODEL_FAST, // 快速對話用
+  MODEL_NAME_WEB: GEMINI_MODEL_WEB, // Google Search grounding 專用
   MODEL_NAME_THINK: GEMINI_MODEL_THINK, // PDF 深度閱讀 & /紀錄 用 (使用最前面的常數)
   MAX_OUTPUT_TOKENS: 800,
   MAX_PDF_OUTPUT_TOKENS: 1200,
@@ -7457,6 +7978,7 @@ let lastSearchSources = null;
 let lastWebEvidenceValid = false;
 let lastWebEvidenceConflict = false;
 let lastWebSearchAttempted = false;
+let lastWebUnverifiedDraft = "";
 let currentRequestAudit = null;
 
 function resetRequestAudit_() {
@@ -10038,9 +10560,11 @@ function constructDynamicPrompt(
 
 【回答要求】
 1. **必須基於搜尋結果**：不能只憑內建知識，必須使用實際搜尋到的資訊
-2. **強化內容深度**：
-   - 提供具體數值、型號對比、技術細節
-   - 給出完整的操作流程或故障排除步驟
+2. **直接回答且完整收尾**：
+   - 最多 5 點，每點最多 2 行，全文控制在 450 個中文字內；禁止因鋪陳過長而被截斷
+   - 依「最直接適用本題」排序，只保留搜尋證據直接支援的做法，不為湊篇幅加入泛用電腦建議
+   - 若問題是螢幕內建 USB 媒體播放，除非使用者明說經過電腦或 Hub，禁止加入 Windows USB 選擇性暫停、主機板 USB 埠或電腦端線材等不相干步驟
+   - 不建議從非官方來源下載螢幕韌體；韌體只保留為官網可自行確認的安全提醒
    - 引用非官方公開網頁或使用者討論；禁止搜尋 Samsung 官網
 3. **格式要求**：
    - 使用數字列表 (1., 2., 3., 4.) 而非圓點
@@ -10615,16 +11139,29 @@ ${recentOfficialManualAnswer}
   // 之前的 thinkingConfig 設定對 2.0 Flash 無效，不是根本原因
   // 根本原因：PDF 載入 + Deep Mode prompt 複雜度導致回應異常
   const useThinkModel = attachPDFs; // PDF 模式才需要更好的模型理解
-  const modelName = useThinkModel
-    ? CONFIG.MODEL_NAME_THINK
-    : CONFIG.MODEL_NAME_FAST;
+  const modelName = forceWebSearch
+    ? CONFIG.MODEL_NAME_WEB
+    : useThinkModel
+      ? CONFIG.MODEL_NAME_THINK
+      : CONFIG.MODEL_NAME_FAST;
 
   const genConfig = {
-    maxOutputTokens: attachPDFs
-      ? CONFIG.MAX_PDF_OUTPUT_TOKENS
-      : CONFIG.MAX_OUTPUT_TOKENS,
+    maxOutputTokens: forceWebSearch
+      ? 450
+      : attachPDFs
+        ? CONFIG.MAX_PDF_OUTPUT_TOKENS
+        : CONFIG.MAX_OUTPUT_TOKENS,
     temperature: tempSetting,
   };
+
+  // 2.5 Flash 預設動態思考會先吃掉輸出額度，Web 短答可能在 1–2 點即 MAX_TOKENS。
+  // Google 官方允許 thinkingBudget=0；搜尋仍由 google_search 工具完成。
+  if (forceWebSearch) {
+    genConfig.thinkingConfig = { thinkingBudget: 0 };
+    writeLog(
+      `[Web Config v29.6.154] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingBudget=0`,
+    );
+  }
 
   // v27.0.0: 移除 thinkingConfig（2.0 Flash 不支援，無效設定）
 
@@ -10927,13 +11464,17 @@ ${recentOfficialManualAnswer}
             usage = json.usageMetadata;
             // 使用全域費率常數計算成本 - 動態選擇
             var priceInput =
-              modelName === CONFIG.MODEL_NAME_THINK
-                ? PRICE_THINK_INPUT
-                : PRICE_FAST_INPUT;
+              modelName === CONFIG.MODEL_NAME_WEB
+                ? PRICE_WEB_INPUT
+                : modelName === CONFIG.MODEL_NAME_THINK
+                  ? PRICE_THINK_INPUT
+                  : PRICE_FAST_INPUT;
             var priceOutput =
-              modelName === CONFIG.MODEL_NAME_THINK
-                ? PRICE_THINK_OUTPUT
-                : PRICE_FAST_OUTPUT;
+              modelName === CONFIG.MODEL_NAME_WEB
+                ? PRICE_WEB_OUTPUT
+                : modelName === CONFIG.MODEL_NAME_THINK
+                  ? PRICE_THINK_OUTPUT
+                  : PRICE_FAST_OUTPUT;
             var costUSD =
               (usage.promptTokenCount / 1000000) * priceInput +
               (usage.candidatesTokenCount / 1000000) * priceOutput;
@@ -11267,10 +11808,11 @@ ${recentOfficialManualAnswer}
             }
 
             if (forceWebSearch && !lastWebEvidenceValid) {
+              lastWebUnverifiedDraft = text;
               writeLog(
-                "[Grounding Audit v29.6.095] 本次無 groundingChunks/groundingSupports，拒絕輸出假網搜答案，不為補引用自動再生成",
+                "[Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案",
               );
-              return "這次網路搜尋沒有取得可核對的網頁來源，所以我先不把 AI 內建資料當成搜尋答案，也不繼續重複搜尋。\n\n請確認完整產品名稱後重新提問，我會從同一款產品的官方資料重新查證。";
+              return "[WEB_NO_EVIDENCE]";
             }
 
             const isCrossDeviceQuery =
@@ -12026,6 +12568,7 @@ function handleMessage(event) {
     lastWebEvidenceValid = false;
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
+    lastWebUnverifiedDraft = "";
     LAST_SOURCE_TEST_STATE = null;
     CURRENT_DAILY_QUESTION_REMAINING = null;
     resetRequestAudit_();
@@ -12103,6 +12646,28 @@ function handleMessage(event) {
     ) {
       CURRENT_DAILY_QUESTION_REMAINING =
         pendingBeforeQuota.dailyQuestionRemaining;
+    }
+
+    // 範圍外問題必須先於 pending source、持久型號、價格與未知型號守門。
+    // 否則競品／家電新題會被上一題型號改寫，甚至誤產生三星產品網址。
+    if (
+      !msg.startsWith("#") &&
+      !msg.startsWith("/") &&
+      isOutOfProjectScopeQuery(msg)
+    ) {
+      const scopeReply = buildOutOfProjectScopeReply(msg);
+      writeLog(`[Scope Guard v29.6.145] 於來源與產品狀態前攔截非專案問題`);
+      replyMessage(replyToken, scopeReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, scopeReply, contextId, "assistant", "");
+      const scopeHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        scopeHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: scopeReply },
+      );
+      return;
     }
 
     // v29.6.106：所有相容舊指令也只建立同一個一次性來源狀態；
@@ -12192,6 +12757,51 @@ function handleMessage(event) {
     if (msg === "測試二次搜尋") {
       msg += " [AUTO_SEARCH_WEB]";
       writeLog("[Diagnostic] 手動注入 [AUTO_SEARCH_WEB] 標籤進行測試");
+    }
+
+    // 自然問句已明確要求非官方公開網頁時，只提供 Web 授權入口。
+    // 不先花 Fast token 生成手冊頁碼或三星官網等答非所問的中間答案。
+    if (!msg.startsWith("#") && isExplicitNonOfficialWebRequest_(msg)) {
+      if (dailyQuestionReservedThisMessage) {
+        refundDailyQuestionUsage_(userId, "explicit_web_request");
+        dailyQuestionReservedThisMessage = false;
+      }
+      const explicitWebReply =
+        "這題是在找非官方公開網頁的實務解法。請按下方「這題再搜網路」；按下後會直接搜尋，不再多問一次，也不會先讀 PDF。";
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        outcome: "recommend_web",
+        pending: false,
+        executed: "none",
+        reserved: false,
+      };
+      writeLog(
+        "[Explicit Web Guard v29.6.150] 明確要求非官方 Web，零 LLM 顯示授權入口",
+      );
+      replyMessage(replyToken, explicitWebReply, {
+        quickReply: {
+          items: [
+            {
+              type: "action",
+              action: {
+                type: "message",
+                label: "🌐 這題再搜網路",
+                text: "#這題再搜網路",
+              },
+            },
+          ],
+        },
+      });
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, explicitWebReply, contextId, "assistant", "");
+      const explicitWebHistory = getHistoryFromCacheOrSheet(contextId);
+      updateHistorySheetAndCache(
+        contextId,
+        explicitWebHistory,
+        { role: "user", content: msg },
+        { role: "assistant", content: explicitWebReply },
+      );
+      return;
     }
 
     // 已人工逐頁核對的手冊片段屬規格／FAQ 的零成本答案。
@@ -12701,19 +13311,18 @@ function handleMessage(event) {
       return;
     }
 
-    if (!msg.startsWith("#") && isOutOfProjectScopeQuery(msg)) {
-      const scopeReply = buildOutOfProjectScopeReply(msg);
-      writeLog(`[Scope Guard v29.5.156] 攔截非專案範圍問題`);
-      replyMessage(replyToken, scopeReply);
+    const localCampaignReply = !msg.startsWith("#")
+      ? buildLocalCampaignRuleReply_(msg)
+      : "";
+    if (localCampaignReply) {
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        pending: false,
+        executed: "exact_campaign_rule",
+      };
+      replyMessage(replyToken, localCampaignReply);
       writeRecordDirectly(userId, msg, contextId, "user", "");
-      writeRecordDirectly(userId, scopeReply, contextId, "assistant", "");
-      const scopeHistory = getHistoryFromCacheOrSheet(contextId);
-      updateHistorySheetAndCache(
-        contextId,
-        scopeHistory,
-        { role: "user", content: msg },
-        { role: "assistant", content: scopeReply },
-      );
+      writeRecordDirectly(userId, localCampaignReply, contextId, "assistant", "");
       return;
     }
 
@@ -12839,6 +13448,7 @@ function handleMessage(event) {
           300,
         );
         cache.remove(`${userId}:hit_alias_key`);
+        cache.remove(`${userId}:hit_alias_keys`);
 
         let savedTopic = cache.get(`${userId}:pending_topic`) || "";
         if (!savedTopic) {
@@ -13835,6 +14445,53 @@ function handleMessage(event) {
       }
     }
 
+    const exactRuleComparisonReply = buildExactRuleComparisonReply_(msg);
+    if (exactRuleComparisonReply) {
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        pending: false,
+        executed: "exact_rule_comparison",
+        models: dedupDisplayModels(extractFullModelLikeTokens(msg), 3),
+      };
+      replyMessage(replyToken, exactRuleComparisonReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(
+        userId,
+        exactRuleComparisonReply,
+        contextId,
+        "assistant",
+        "",
+      );
+      return;
+    }
+
+    // 精準 QA 未命中後，無完整型號的操作／故障／相容性題先補型號。
+    // 不把泛用主機設定、線材或其他型號步驟送給 Fast 模型猜，也不浪費一次 LLM。
+    const freshOperationNeedsModel =
+      isOperationOrTroubleshootQuery(msg) &&
+      extractFullModelLikeTokens(msg).length === 0 &&
+      extractShortAliasModelTokens(msg).length === 0;
+    if (freshOperationNeedsModel) {
+      const needModelReply = isSamsungHomeApplianceQuery(msg)
+        ? buildNeedApplianceModelForOperationReply()
+        : buildNeedModelForOperationReply();
+      markDailyQuestionModelSelectionHold_(userId);
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        pending: false,
+        needsModel: true,
+        modelCandidates: [],
+        modelSelectionMode: "fast",
+      };
+      writeLog(
+        "[Operation Guard v29.6.142] 精準 QA 未命中且沒有完整型號，零 LLM 直接請使用者補型號",
+      );
+      replyMessage(replyToken, needModelReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, needModelReply, contextId, "assistant", "");
+      return;
+    }
+
     if (isCrossDeviceMonitorQuery(msg)) {
       writeLog(
         "[QA First Router v29.6.116] 精準 QA 未命中，繼續 RULE Fast Mode；不足才詢問是否查 PDF",
@@ -13880,6 +14537,26 @@ function handleMessage(event) {
     if (!isInPdfMode) {
       // 檢查直通車，記錄命中的關鍵字（但不立即反問）
       const directSearchResult = checkDirectDeepSearchWithKey(msg, userId);
+      const currentExplicitModels = dedupDisplayModels(
+        extractFullModelLikeTokens(msg).filter((model) => isKnownFullModelToken(model)),
+        10,
+      );
+
+      // 完整型號是本輪唯一權威；不得再從其中的 G8/M8 等片段展開其他系列候選。
+      if (currentExplicitModels.length > 0) {
+        directSearchResult.hit = true;
+        directSearchResult.keys = currentExplicitModels.slice();
+        directSearchResult.models = currentExplicitModels.slice();
+        cache.put(
+          `${userId}:direct_search_models`,
+          JSON.stringify(currentExplicitModels),
+          300,
+        );
+        cache.remove(`${userId}:hit_alias_keys`);
+        writeLog(
+          `[DirectDeep Exact Model Guard] 本輪完整型號鎖定：${currentExplicitModels.join(", ")}`,
+        );
+      }
 
       if (directSearchResult.hit) {
         // v27.9.1: 不再攔截 tooMany，讓 Fast Mode 先嘗試回答
@@ -13896,6 +14573,8 @@ function handleMessage(event) {
         cache.put(`${userId}:hit_alias_key`, hitKeys[0], 300); // 相容舊邏輯
         if (hitKeys.length > 1) {
           cache.put(`${userId}:hit_alias_keys`, JSON.stringify(hitKeys), 300);
+        } else {
+          cache.remove(`${userId}:hit_alias_keys`);
         }
 
         // v29.5.131: QA 優先修正
@@ -14091,6 +14770,10 @@ function handleMessage(event) {
         // v29.6.125: CLASS_RULES 明載的 Tizen + 藍牙能力是硬證據。
         // Fast 模型不得反向否定；操作題只提出手冊授權，並保留已鎖定型號。
         rawResponse = enforceBluetoothAudioRuleEvidence_(
+          `${msg || ""}\n${userMessage || ""}`,
+          rawResponse,
+        );
+        rawResponse = enforceExactModelCapabilityEvidence_(
           `${msg || ""}\n${userMessage || ""}`,
           rawResponse,
         );
@@ -14471,8 +15154,13 @@ function handleMessage(event) {
             const bluetoothRuleIntro = bluetoothRuleIntroMatch
               ? `${bluetoothRuleIntroMatch[1]}\n\n你問的是選單操作，需要再查官方手冊確認完整路徑。`
               : "";
+            const exactCapabilityIntroMatch = String(rawResponse || "").match(
+              /^([^\n]*的台灣三星官方規格資料目前沒有列出「[^」]+」[^\n]*不能直接說它有或沒有。)/i,
+            );
+            const verifiedRuleIntro = bluetoothRuleIntro ||
+              (exactCapabilityIntroMatch ? exactCapabilityIntroMatch[1] : "");
             finalText = buildManualConsentPrompt_(
-              bluetoothRuleIntro,
+              verifiedRuleIntro,
               msg || userMessage,
               matchedInMsg[0],
             );
@@ -15678,12 +16366,12 @@ function handleMessage(event) {
 
           const qrItems = [];
 
-          // v29.5.259: 只有已知此型號有 PDF 時才顯示「查手冊」。
-          // 不用操作題關鍵字硬開按鈕，避免使用者點了才被告知找不到手冊。
+          // 已有完整 QA/RULE 答案就停止；只有路由明確判定資料不足時才推薦手冊。
+          // Rich Menu 常駐，不能僅因型號有 PDF 就在每個成功答案後再塞進階來源。
           const alreadyConsultedPdf =
             cache.get(`${userId}:pdf_consulted`) === "true";
           if (
-            (hasPdfForModel || manualSourceRecommended) &&
+            manualSourceRecommended &&
             !alreadyConsultedPdf &&
             !isWaitingForModelSelection
           ) {
@@ -15750,6 +16438,8 @@ function handleMessage(event) {
           }
           if (
             !terminalQuickReplyState &&
+            !manualSourceRecommended &&
+            webSourceRecommended &&
             canOfferAnotherWebSearch_(cache, userId, currentReplyTextForUi)
           ) {
             qrItems.push({

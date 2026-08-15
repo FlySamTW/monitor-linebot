@@ -207,13 +207,12 @@ function doPost(e) {
 - [ ] PNG 為 `2500 × 843`、JPEG／PNG、`≤ 1 MB`。
 - [ ] 390px 寬縮圖仍看得清三個主標，沒有裁切、重疊或過小文字。
 - [ ] 三個點擊 bounds 無縫覆蓋整張圖，沒有死區或互相重疊。
-- [ ] 使用手機 viewport 與真實 touch 事件逐一點擊三區。
-- [ ] 手機 LINE App 真人逐一點擊三區，確認路由、Reply、焦點與選單收合／展開。
+- [ ] 手機 LINE App 真人逐一點擊三區，確認路由、Reply、焦點與選單收合／展開；TestUI 不做 Web viewport 驗收。
 - [ ] Postback 沒有 `displayText`，聊天室不會冒出假裝是使用者送出的指令。
 - [ ] 既有 Quick Reply、一般問答、`#查手冊`、`#再詳細說明`、`#搜尋網路` 全部回歸通過。
 - [ ] 連點同一區不會重複 Reply 或造成重型任務併發。
 - [ ] 正式執行紀錄符合中位數與 P95 延遲門檻。
-- [ ] Per-user 綁定回讀正確，default Rich Menu ID 未變。
+- [ ] Default Rich Menu ID 綁定與回讀正確，所有未個別綁定選單的使用者都能看到三格選單。
 - [ ] 實作完成後依 `AGENTS.md` 使用唯一正式發布入口：`tools\release_existing_webhook.ps1`；不得只執行 `clasp push`。
 
 ## 九、明確禁止事項

@@ -278,7 +278,8 @@ assert(
   })() &&
     /純手機、平板、手錶、耳機、電視、家電、筆電/.test(prompt) &&
     /只表示「建議使用者按常駐選單的官方手冊」/.test(prompt) &&
-    /同一訊息不得自動跨來源/.test(prompt) &&
+    /一次受控的非官方 Web 補救/.test(prompt) &&
+    /不得再次重試或跨回 PDF/.test(prompt) &&
     !/建議[^\n]{0,20}(?:問|聯絡)\s*Sam|問問\s*Sam|必須使用表情|智慧家電（/.test(prompt),
   "Prompt 仍含範圍、手冊授權或轉問 Sam 的矛盾規則",
 );

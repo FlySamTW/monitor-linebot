@@ -52,10 +52,15 @@ if (-not $SkipStaticTests) {
       return
     }
     Push-Location $testRunner
+    $staticExitCode = 0
     try {
       npm run test:static
+      $staticExitCode = $LASTEXITCODE
     } finally {
       Pop-Location
+    }
+    if ($staticExitCode -ne 0) {
+      throw "npm run test:static failed with exit code $staticExitCode. Release stopped."
     }
   }
 } else {
@@ -101,6 +106,9 @@ Invoke-Step "3/5 Push GAS and update existing deployment" {
   }
 
   & powershell @args
+  if ($LASTEXITCODE -ne 0) {
+    throw "deploy_existing_webhook.ps1 failed with exit code $LASTEXITCODE. Release stopped."
+  }
 }
 
 if (-not $SkipReadinessCheck) {
@@ -110,6 +118,9 @@ if (-not $SkipReadinessCheck) {
       return
     }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "tools\check_deploy_readiness.ps1")
+    if ($LASTEXITCODE -ne 0) {
+      throw "check_deploy_readiness.ps1 failed with exit code $LASTEXITCODE. Release stopped."
+    }
   }
 } else {
   Write-Host ""
@@ -123,10 +134,15 @@ if (-not $SkipWebhookVersionCheck) {
       return
     }
     Push-Location $testRunner
+    $versionGuardExitCode = 0
     try {
       npm run check:webhook-version
+      $versionGuardExitCode = $LASTEXITCODE
     } finally {
       Pop-Location
+    }
+    if ($versionGuardExitCode -ne 0) {
+      throw "npm run check:webhook-version failed with exit code $versionGuardExitCode. Release stopped."
     }
   }
 } else {

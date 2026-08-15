@@ -150,6 +150,77 @@ assert.strictEqual(
   "同型號同意圖改寫不得重複送出 Web／PDF 供應商請求",
 );
 
+const exactRuleCache = new Map();
+const exactRuleVmSource = [
+  extractFunction(linebot, "toHalfWidth"),
+  extractFunction(linebot, "isShortAliasModelToken"),
+  extractFunction(linebot, "extractFullModelLikeTokens"),
+  extractFunction(linebot, "normalizeModelForDisplay"),
+  extractFunction(linebot, "dedupDisplayModels"),
+  extractFunction(linebot, "findExactModelRuleLine_"),
+  extractFunction(linebot, "getExplicitCapabilityCheck_"),
+  extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
+  `globalThis.__kvmGuarded = enforceExactModelCapabilityEvidence_("G8 有 KVM 嗎？ (型號: S32HG806ES)", "有，S32HG806ES 內建 KVM Switch。");`,
+  `globalThis.__headphonePreserved = enforceExactModelCapabilityEvidence_("那它有耳機孔嗎？ (型號: S32HG806ES)", "有，S32HG806ES 具備耳機孔。");`,
+].join("\n\n");
+const exactRuleVmContext = {
+  SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
+  ss: {
+    getSheetByName() {
+      const rows = classRules.split(/\r?\n/).filter(Boolean).map((line) => [line]);
+      return {
+        getLastRow() { return rows.length + 1; },
+        getRange() { return { getValues() { return rows; } }; },
+      };
+    },
+  },
+  CacheService: {
+    getScriptCache() {
+      return {
+        get(key) { return exactRuleCache.get(key) || null; },
+        put(key, value) { exactRuleCache.set(key, String(value)); },
+      };
+    },
+  },
+  writeLog() {},
+};
+vm.runInNewContext(exactRuleVmSource, exactRuleVmContext);
+assert(
+  /沒有列出「KVM」/.test(exactRuleVmContext.__kvmGuarded) &&
+    !/內建 KVM Switch/.test(exactRuleVmContext.__kvmGuarded),
+  "通用術語_KVM 不得變成 S32HG806ES 的型號能力證據",
+);
+assert.strictEqual(
+  exactRuleVmContext.__headphonePreserved,
+  "有，S32HG806ES 具備耳機孔。",
+  "完整型號規格明載耳機孔時不得被能力守門誤擋",
+);
+
+const directDeepRouteText = linebot.slice(
+  linebot.indexOf("const directSearchResult = checkDirectDeepSearchWithKey"),
+  linebot.indexOf("// 智慧退出：簡單問題不需要 PDF"),
+);
+assert(
+  /currentExplicitModels/.test(directDeepRouteText) &&
+    /directSearchResult\.models = currentExplicitModels\.slice\(\)/.test(directDeepRouteText) &&
+    /DirectDeep Exact Model Guard/.test(directDeepRouteText),
+  "選定完整型號後 DirectDeep/PDF 候選必須只保留本輪完整型號，不得重新展開 G8 系列",
+);
+assert(
+  /exactCapabilityIntroMatch/.test(linebot) &&
+    /const verifiedRuleIntro = bluetoothRuleIntro \|\|/.test(linebot) &&
+    /buildManualConsentPrompt_\(\s*verifiedRuleIntro/.test(linebot),
+  "精確型號能力守門結論必須保留到最終手冊授權泡泡，不得被泛用模板洗掉",
+);
+assert(
+  /!manualSourceRecommended &&\s*webSourceRecommended &&\s*canOfferAnotherWebSearch_/.test(
+      linebot,
+    ) &&
+    /if \(\s*manualSourceRecommended &&\s*!alreadyConsultedPdf/.test(linebot) &&
+    !/\(hasPdfForModel \|\| manualSourceRecommended\)/.test(linebot),
+  "正在建議手冊時不得同輪提前顯示 Web 搜尋；手冊無證據後才可進 Web",
+);
+
 const doPostText = extractFunction(linebot, "doPost");
 assert(
   doPostText.indexOf("handleRichMenuPostback_(event)") <
@@ -179,6 +250,10 @@ const historyIndex = linebot.indexOf(
   "const history = getHistoryFromCacheOrSheet(contextId)",
   directQaIndex,
 );
+const freshOperationGuardIndex = linebot.indexOf(
+  "const freshOperationNeedsModel",
+  directQaIndex,
+);
 const generalRouterText = linebot.slice(generalRouterStart, historyIndex + 200);
 assert(
   aliasLookupBeforeQaIndex >= 0 &&
@@ -190,6 +265,14 @@ assert(
     ) &&
     /promptAliasOnlyModelSelection\([\s\S]{0,180}"fast"/.test(generalRouterText),
   "系列別稱型號題必須在泛用 QA／RULE 前先完成實體一致檢查並顯示完整型號選單",
+);
+assert(
+  freshOperationGuardIndex > directQaIndex &&
+    freshOperationGuardIndex < historyIndex &&
+    /freshOperationNeedsModel[\s\S]{0,900}markDailyQuestionModelSelectionHold_\(userId\)[\s\S]{0,900}replyMessage\(replyToken, needModelReply\)[\s\S]{0,400}return;/.test(
+      generalRouterText,
+    ),
+  "精準 QA 未命中的無型號操作／跨裝置題必須在 Fast 前零 LLM 進入 ASK_MODEL",
 );
 const aliasCandidateText = extractFunction(
   linebot,
@@ -629,10 +712,22 @@ assert(
   prompt.includes(`【Prompt ${gasVersionMatch[1]}】`),
   "Prompt.csv 版本必須與 linebot.gs GAS_VERSION 一致",
 );
-assert(/同一訊息不得自動跨來源/.test(prompt));
+assert(
+  /一次受控的非官方 Web 補救/.test(prompt) &&
+    /補救不扣使用者網搜額度/.test(prompt) &&
+    /不得再次重試或跨回 PDF/.test(prompt),
+  "Prompt 必須只允許 PDF 無證據後的一次性 Web 補救，禁止來源迴圈",
+);
 
 const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
 const advancedRouteText = extractFunction(linebot, "executeAdvancedSourceQuery_");
+const handleMessageStart = linebot.indexOf("function handleMessage(event)");
+const handleMessageEnd = linebot.indexOf(
+  "function handleDeepSearch(",
+  handleMessageStart,
+);
+assert(handleMessageStart >= 0 && handleMessageEnd > handleMessageStart);
+const handleMessageText = linebot.slice(handleMessageStart, handleMessageEnd);
 assert(
   /stripInternalRoutingHints_\(query\)/.test(webCanonicalText) &&
     /台灣 非官方 公開網頁 實務解法 -site:samsung\.com/.test(
@@ -649,17 +744,187 @@ assert(
   "網路來源不得讀 Samsung 官網或 URL Context；官網只能保留客戶可點連結",
 );
 assert(
+  /最多 5 點/.test(linebot) &&
+    /450 個中文字內/.test(linebot) &&
+    /禁止加入 Windows USB 選擇性暫停/.test(linebot) &&
+    /不建議從非官方來源下載螢幕韌體/.test(linebot),
+  "Web 回答必須聚焦、完整收尾，且內建 USB 播放不得混入電腦端排錯或非官方韌體",
+);
+assert(
   !/refundAdvancedSourceUsage_\(grant,\s*"web_no_verifiable_evidence"\)/.test(
     advancedRouteText,
   ) &&
-    /供應商請求已送出，本次仍計 1 次/.test(advancedRouteText),
+    /buildTentativeWebFallback_/.test(advancedRouteText) &&
+    /本次已啟動網路搜尋，但 Google 沒有回傳可核對連結/.test(linebot),
   "Web 已送供應商但無引用時仍須計一次，且不得用退款繞過成本上限",
+);
+assert(
+  /function isExplicitNonOfficialWebRequest_/.test(linebot) &&
+    /refundDailyQuestionUsage_\(userId, "explicit_web_request"\)/.test(
+      handleMessageText,
+    ) &&
+    handleMessageText.indexOf("isExplicitNonOfficialWebRequest_(msg)") <
+      handleMessageText.indexOf("每題都先走 Fast Mode"),
+  "自然問句已明確要求非官方 Web 時，必須在 Fast LLM 前零成本顯示授權入口並退一般額度",
 );
 assert(
   /LAST_SOURCE_TEST_STATE\.source/.test(
     extractFunction(linebot, "renderCustomerFacingText_"),
   ) && /executed === "verified_manual_chunk"/.test(linebot),
   "人工核對手冊片段也必須走統一來源／NT$0.0000／剩餘額度尾註",
+);
+const verifiedManualVm = {
+  isPdfModelTokenMatch_: (item, model) =>
+    String(model).toUpperCase().startsWith(String(item).toUpperCase()),
+  isRetailModeManualQuery_: () => false,
+  isUsbMediaPlaybackManualQuery_: (text) => /USB/i.test(String(text)),
+};
+vm.createContext(verifiedManualVm);
+vm.runInContext(
+  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n` +
+    `globalThis.hit = findVerifiedManualChunk_("S32HG806ES 如何切換 6K 165Hz 和 3K 330Hz 雙模？", "S32HG806ES");\n` +
+    `globalThis.wrongModel = findVerifiedManualChunk_("如何切換 Dual Mode？", "S32HG802SC");\n` +
+    `globalThis.usbHowTo = findVerifiedManualChunk_("如何播放 USB？", "S32FM803UC");\n` +
+    `globalThis.usbFailure = findVerifiedManualChunk_("USB 播放時常斷線，網路上有沒有非官方解法？", "S32FM803UC");`,
+  verifiedManualVm,
+);
+assert(
+  verifiedManualVm.hit &&
+    verifiedManualVm.hit.intent === "DUAL_MODE" &&
+    verifiedManualVm.hit.pages === "27、35、43" &&
+    verifiedManualVm.wrongModel === null &&
+    verifiedManualVm.usbHowTo &&
+    verifiedManualVm.usbFailure === null,
+  "手冊片段須精準匹配型號與意圖：雙模不得污染其他 G8，USB 播放步驟不得攔截斷線／非官方解法",
+);
+assert(
+  /systemRescue:\s*true/.test(
+    extractFunction(linebot, "runManualWebRescue_"),
+  ) &&
+    /userWebQuotaCharged=0/.test(linebot) &&
+    /SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT\s*=\s*3/.test(linebot) &&
+    /buildTentativeManualFallback_/.test(advancedRouteText),
+  "PDF 無證據後只能自動補搜一次受控 Web；不扣使用者網搜額度，且仍須提供保守參考方向",
+);
+const exactComparisonText = extractFunction(
+  linebot,
+  "buildExactRuleComparisonReply_",
+);
+assert(
+  /models\.length !== 2/.test(exactComparisonText) &&
+    /findExactModelRuleLine_\(model\)/.test(exactComparisonText) &&
+    !/callLLMWithRetry|UrlFetchApp\.fetch/.test(exactComparisonText) &&
+    /buildExactRuleComparisonReply_\(msg\)[\s\S]{0,700}replyMessage\(replyToken, exactRuleComparisonReply\)[\s\S]{0,500}return;/.test(
+      linebot,
+    ),
+  "兩完整型號比較必須只讀各自精確 RULE 並在 Fast LLM 前零成本回覆",
+);
+const exactComparisonVm = {
+  writeLog: () => {},
+  extractFullModelLikeTokens: () => ["S32HG806ES", "S32HG802SC"],
+  dedupDisplayModels: (models) => models,
+  normalizeModelForDisplay: (model) => model,
+  findExactModelRuleLine_: (model) =>
+    model === "S32HG806ES"
+      ? "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8 雙模平面電競顯示器 G80HS,32吋16:9 IPS平面螢幕,雙模 6K 165Hz / 3K 330Hz,1ms(GtG)反應時間,HDR10+ Gaming,FreeSync Premium Pro"
+      : "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,HDR10+ Gaming,AMD FreeSync Premium Pro",
+};
+vm.createContext(exactComparisonVm);
+vm.runInContext(
+  `${extractFunction(linebot, "pickExactComparisonFields_")}\n${exactComparisonText}\nglobalThis.result = buildExactRuleComparisonReply_("S32HG806ES 跟 S32HG802SC 哪一台比較適合打遊戲？");`,
+  exactComparisonVm,
+);
+assert(
+  /雙模 6K 165Hz \/ 3K 330Hz/.test(exactComparisonVm.result) &&
+    /最大240Hz更新頻率/.test(exactComparisonVm.result) &&
+    !/600Hz|1040Hz/.test(exactComparisonVm.result),
+  "比較回答必須完整保留兩台各自的更新頻率，且不得再出現跨型號幻覺數字",
+);
+assert(
+  /function isCampaignRuleCurrentlyActive_/.test(linebot) &&
+    /Utilities\.formatDate\(new Date\(\), "Asia\/Taipei", "yyyyMMdd"\)/.test(
+      linebot,
+    ) &&
+    /!isCampaignRuleCurrentlyActive_\(ruleText\)/.test(
+      extractFunction(linebot, "findLocalCampaignRuleForQuery"),
+    ),
+  "活動 RULE 必須以台北日期排除過期資料",
+);
+const handleScopeOrderText = linebot.slice(
+  linebot.indexOf("function handleMessage"),
+  generalRouterStart,
+);
+assert(
+  /Scope Guard v29\.6\.145/.test(handleScopeOrderText) &&
+    handleScopeOrderText.indexOf("Scope Guard v29.6.145") <
+      handleScopeOrderText.indexOf("parseExplicitSourceCommand_(msg)") &&
+    handleScopeOrderText.indexOf("Scope Guard v29.6.145") <
+      handleScopeOrderText.indexOf("rememberRecentSourceQuestion_("),
+  "競品／家電 Scope Guard 必須先於來源 pending 與持久產品狀態",
+);
+assert(
+  /candidateModel && isKnownFullModelToken\(candidateModel\)/.test(
+    extractFunction(linebot, "rememberRecentSourceQuestion_"),
+  ),
+  "未知完整型號不得寫入持久產品狀態",
+);
+const campaignReplyVm = {
+  dedupDisplayModels: (models) => models,
+  extractFullModelLikeTokens: () => ["S27HG806EF"],
+  normalizeModelForDisplay: (model) => model,
+  toHalfWidth: (text) => text,
+  writeLog: () => {},
+  findLocalCampaignRuleForQuery: () =>
+    "活動_202605_202609螢幕登錄送,電腦螢幕活動RULE,活動名稱：高解析度6K螢幕強勢登場,活動期間：即日起至2026/9/30 23:59,登錄期間：2026/5/1至2026/10/2,活動內容：購買指定機種；S27HG806EF、S32HG806ES 登錄送 Steam 1,000元點卡；指定高階螢幕如 S34BG850SC 登錄送全機延長保固兩年；指定螢幕機種可參加月月抽 Galaxy S26",
+};
+vm.createContext(campaignReplyVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildLocalCampaignRuleReply_")}\nglobalThis.result = buildLocalCampaignRuleReply_("S27HG806EF 最近有沒有促銷、登錄送或延長保固？");`,
+  campaignReplyVm,
+);
+assert(
+  /Steam 1,000元點卡/.test(campaignReplyVm.result) &&
+    /月月抽 Galaxy S26/.test(campaignReplyVm.result) &&
+    !/延長保固兩年/.test(campaignReplyVm.result),
+  "有效活動只能回本題型號條款與共通抽獎，不得混入其他型號贈品",
+);
+const priceSanitizerVm = {};
+vm.createContext(priceSanitizerVm);
+vm.runInContext(
+  `${extractFunction(linebot, "sanitizePriceNumbers_")}\nglobalThis.result = sanitizePriceNumbers_("登錄送 Steam 1,000元點卡；產品售價 32,900元");`,
+  priceSanitizerVm,
+);
+assert(
+  /Steam 1,000元點卡/.test(priceSanitizerVm.result) &&
+    !/32,900元/.test(priceSanitizerVm.result) &&
+    /官網當下優惠價/.test(priceSanitizerVm.result),
+  "售價遮罩必須保留活動點卡面額，但仍遮罩真正產品售價",
+);
+const manualFreePrecheckText = extractFunction(
+  linebot,
+  "tryManualFreeLocalAnswer_",
+);
+assert(
+  /buildDeterministicExactRuleReply_\(query, model\)/.test(
+    manualFreePrecheckText,
+  ) &&
+    !/callLLMWithRetry|UrlFetchApp\.fetch/.test(manualFreePrecheckText),
+  "手冊免費預檢只能用 deterministic QA／RULE／人工片段，不得呼叫 Fast LLM 擋住 PDF",
+);
+const deterministicRuleVm = {
+  normalizeModelForDisplay: (model) => model,
+  findExactModelRuleLine_: () =>
+    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間",
+};
+vm.createContext(deterministicRuleVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");`,
+  deterministicRuleVm,
+);
+assert(
+  deterministicRuleVm.operation === "" &&
+    /雙模 6K 165Hz \/ 3K 330Hz/.test(deterministicRuleVm.fact),
+  "操作步驟不得被 RULE 支援事實冒充；明載規格題仍可零成本回答",
 );
 
 console.log("三來源狀態、配額、postback 與 TestUI 契約通過。");

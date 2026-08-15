@@ -115,16 +115,25 @@ for (const constantName of productionGeminiModels) {
   );
 }
 
+const webModelMatch = linebot.match(
+  /const\s+GEMINI_MODEL_WEB\s*=\s*"([^"]+)"/,
+);
+assertStep(webModelMatch, "GEMINI_MODEL_WEB must be defined");
 assertStep(
-  !/const\s+GEMINI_MODEL_(FAST|THINK|POLISH)\s*=\s*"[^"]*latest"/.test(linebot),
+  webModelMatch[1] === "models/gemini-2.5-flash",
+  "Web grounding must use the reviewed stable models/gemini-2.5-flash model",
+);
+
+assertStep(
+  !/const\s+GEMINI_MODEL_(FAST|THINK|POLISH|WEB)\s*=\s*"[^"]*latest"/.test(linebot),
   "production Gemini model constants must not use latest aliases",
 );
 
 const executableLinebot = stripNonExecutableComments(linebot);
 
 assertStep(
-  !/["']models\/gemini-(?!2\.5-flash-lite["'])[^"']+["']/i.test(executableLinebot),
-  "executable GAS code must not hard-code Gemini models other than models/gemini-2.5-flash-lite",
+  !/["']models\/gemini-(?!2\.5-flash(?:-lite)?["'])[^"']+["']/i.test(executableLinebot),
+  "executable GAS code must only hard-code reviewed stable Gemini 2.5 Flash/Flash-Lite models",
 );
 
 assertStep(
@@ -140,12 +149,16 @@ assertStep(
 const campaignRuleGuardCode = [
   "const writeLog = () => {};",
   "const SHEET_NAMES = { CLASS_RULES: 'CLASS_RULES' };",
+  "const Utilities = { formatDate: () => '20260815' };",
   `const ss = {
     getSheetByName(name) {
       if (name !== SHEET_NAMES.CLASS_RULES) return null;
       const values = [
         [
-          "活動_202605_202609螢幕登錄送,電腦螢幕活動RULE,活動內容：S27HG806EF、S32HG806ES 登錄送 Steam 1,000元點卡；指定高階螢幕如 S34BG850SC 登錄送全機延長保固兩年；指定螢幕機種可參加月月抽 Galaxy S26 系列手機"
+          "活動_202601限時特價,有效期間2026/01/05-2026/02/01,活動內容：S27HG806EF 舊價格"
+        ],
+        [
+          "活動_202605_202609螢幕登錄送,電腦螢幕活動RULE,活動期間：2026/05/01至2026/09/30,活動內容：S27HG806EF、S32HG806ES 登錄送 Steam 1,000元點卡；指定高階螢幕如 S34BG850SC 登錄送全機延長保固兩年；指定螢幕機種可參加月月抽 Galaxy S26 系列手機"
         ],
         [
           "別稱_G5,Odyssey G5入門電競，型號模式為：G5,S27?G5*,S32?G5*"
@@ -158,10 +171,11 @@ const campaignRuleGuardCode = [
     }
   };`,
   extractFunction(linebot, "extractModelNumbers"),
+  extractFunction(linebot, "isCampaignRuleCurrentlyActive_"),
   extractFunction(linebot, "findLocalCampaignRuleForQuery"),
   `
   globalThis.__campaignRuleGuardResult = {
-    exactSteam: !!findLocalCampaignRuleForQuery("S27HG806EF 本期三星螢幕登錄活動送什麼？"),
+    exactSteam: findLocalCampaignRuleForQuery("S27HG806EF 本期三星螢幕登錄活動送什麼？"),
     exactWarranty: !!findLocalCampaignRuleForQuery("S34BG850SC 本期登錄活動有什麼資格或贈品？"),
     aliasOnly: !!findLocalCampaignRuleForQuery("G5 活動有哪些？"),
     specOnly: !!findLocalCampaignRuleForQuery("S27HG806EF 解析度是多少？")
@@ -173,7 +187,8 @@ vm.createContext(campaignRuleGuardContext);
 vm.runInContext(campaignRuleGuardCode, campaignRuleGuardContext);
 
 assertStep(
-  campaignRuleGuardContext.__campaignRuleGuardResult.exactSteam === true &&
+  /Steam/.test(campaignRuleGuardContext.__campaignRuleGuardResult.exactSteam) &&
+    !/舊價格/.test(campaignRuleGuardContext.__campaignRuleGuardResult.exactSteam) &&
     campaignRuleGuardContext.__campaignRuleGuardResult.exactWarranty === true,
   "known local Samsung monitor campaign RULE rows must bypass the timely-web guard",
 );
@@ -972,10 +987,11 @@ assertStep(
 );
 
 assertStep(
-  /\(hasPdfForModel \|\| manualSourceRecommended\)\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
+  /manualSourceRecommended\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
     linebot,
-  ),
-  "manual quick reply/reminder must be hidden after PDF consult or during model selection",
+  ) &&
+    !/\(hasPdfForModel \|\| manualSourceRecommended\)/.test(linebot),
+  "manual quick reply/reminder must require an explicit recommendation and stay hidden after PDF consult or during model selection",
 );
 
 assertStep(
@@ -1686,10 +1702,11 @@ assertStep(
 );
 
 assertStep(
-  /let lastWebEvidenceValid = false;/.test(linebot) &&
+    /let lastWebEvidenceValid = false;/.test(linebot) &&
     /grounding\.groundingChunks[\s\S]{0,180}grounding\.groundingSupports/.test(linebot) &&
     /Grounding Audit v29\.6\.132/.test(linebot) &&
-    /不為補引用自動再生成/.test(linebot) &&
+    /保留安全過濾後的可能解法，不冒充有引用的網搜答案/.test(linebot) &&
+    /buildTentativeWebFallback_/.test(linebot) &&
     !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
     /lastWebEvidenceValid\s*&&[\s\S]{0,160}lastSearchSources/.test(linebot) &&
     !/url_context/.test(advancedLlmText) &&
@@ -1707,7 +1724,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,900}isCrossDeviceMonitorQuery\(msg\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,1800}freshOperationNeedsModel[\s\S]{0,1800}isCrossDeviceMonitorQuery\(msg\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(

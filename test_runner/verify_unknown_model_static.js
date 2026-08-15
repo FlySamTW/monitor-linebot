@@ -29,7 +29,7 @@ function extractFunction(source, functionName) {
 }
 
 const guardIndex = linebot.indexOf("[Unknown Model Guard v29.5.283]");
-const scopeGuardIndex = linebot.indexOf("[Scope Guard v29.5.156]");
+const scopeGuardIndex = linebot.indexOf("[Scope Guard v29.6.145]");
 const timelyGuardIndex = linebot.indexOf("[Force Web Intent v29.5.156]");
 const priceGuardIndex = linebot.indexOf("[Price Guard v29.5.157]");
 const firstLlmIndex = linebot.indexOf("callLLMWithRetry", linebot.indexOf("function handleMessage"));

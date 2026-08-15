@@ -51,6 +51,16 @@ assert(
   "Gemini 2.5 Flash-Lite Standard 成本常數符合官方現價",
 );
 assert(
+  /GEMINI_MODEL_WEB\s*=\s*"models\/gemini-2\.5-flash"/.test(linebot) &&
+    /PRICE_WEB_INPUT\s*=\s*0\.3/.test(linebot) &&
+    /PRICE_WEB_OUTPUT\s*=\s*2\.5/.test(linebot) &&
+    /forceWebSearch[\s\S]{0,120}CONFIG\.MODEL_NAME_WEB/.test(linebot) &&
+    /modelName === CONFIG\.MODEL_NAME_WEB[\s\S]{0,100}PRICE_WEB_INPUT/.test(
+      linebot,
+    ),
+  "Web grounding 必須獨立使用 Gemini 2.5 Flash 並依官方費率估算",
+);
+assert(
   /MAX_FAST_INPUT_TOKENS:\s*12000/.test(linebot) &&
     /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
     /MAX_LEGACY_PDF_INPUT_TOKENS:\s*100000/.test(linebot) &&
@@ -174,8 +184,17 @@ assert(
 );
 assert(
   !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
-    /不為補引用自動再生成/.test(linebot),
-  "網搜缺引用時停止，不自動付費再生成",
+    /buildTentativeWebFallback_/.test(linebot) &&
+    /保留安全過濾後的可能解法，不冒充有引用的網搜答案/.test(linebot),
+  "網搜缺引用時不重複付費，改以明確未證實的保守答案完成回覆",
+);
+assert(
+  /if \(forceWebSearch\)[\s\S]{0,100}thinkingBudget:\s*0/.test(linebot) &&
+    /maxOutputTokens:\s*forceWebSearch\s*\?\s*450/.test(linebot) &&
+    /numbered\.length < 3/.test(linebot) &&
+    /buildSafeUsbMediaWebAnswer_/.test(linebot) &&
+    /Web USB Media Guard v29\.6\.154/.test(linebot),
+  "Web 關閉動態思考並限制輸出；USB 媒體題以 grounded 來源產生固定安全摘要",
 );
 assert(
   /--paid-live/.test(paidRunner) &&
