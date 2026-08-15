@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.136"; // 2026-08-15 回答鏈、非官方網搜與成本守門修復
-const BUILD_TIMESTAMP = "2026-08-15 20:27";
+const GAS_VERSION = "v29.6.137"; // 2026-08-15 非官方網搜網域證據守門
+const BUILD_TIMESTAMP = "2026-08-15 20:36";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 2;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
@@ -2640,11 +2640,27 @@ function buildCanonicalWebQuery_(query, model) {
     .replace(/^(?:那你|那|請你|麻煩你)?\s*(?:再)?(?:幫我)?(?:查|搜尋|搜)(?:一下)?\s*/i, "")
     .trim();
   if (!text) text = cleanQuery;
-  return ["Samsung", normalizedModel, text, "台灣 非官方 公開網頁 實務解法"]
+  return [
+    "Samsung",
+    normalizedModel,
+    text,
+    "台灣 非官方 公開網頁 實務解法 -site:samsung.com",
+  ]
     .filter(Boolean)
     .join(" ")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function isSamsungOfficialGroundingChunk_(chunk) {
+  const web = chunk && chunk.web ? chunk.web : {};
+  const uri = String(web.uri || "").toLowerCase();
+  const title = String(web.title || "").trim().toLowerCase();
+  return (
+    /samsung\.com(?:\.[a-z]{2})?/i.test(uri) ||
+    /samsung\.com(?:\.[a-z]{2})?/i.test(title) ||
+    /^(?:samsung|samsung electronics|samsung support)$/i.test(title)
+  );
 }
 
 function isBluetoothAudioManualQuery_(text) {
@@ -11062,18 +11078,54 @@ ${recentOfficialManualAnswer}
                 writeLog(`[Grounding] webSearchQueries 不存在或為空`);
               }
 
-              // v29.5.112: 提取搜尋來源並保存到全域變數
+              const allGroundingChunks = Array.isArray(
+                grounding.groundingChunks,
+              )
+                ? grounding.groundingChunks
+                : [];
+              const nonOfficialChunkIndexes = new Set();
+              const nonOfficialGroundingChunks = [];
+              allGroundingChunks.forEach((chunk, index) => {
+                if (!isSamsungOfficialGroundingChunk_(chunk)) {
+                  nonOfficialChunkIndexes.add(index);
+                  nonOfficialGroundingChunks.push(chunk);
+                }
+              });
+              const nonOfficialGroundingSupports = Array.isArray(
+                grounding.groundingSupports,
+              )
+                ? grounding.groundingSupports.filter((support) => {
+                    const indices = Array.isArray(
+                      support && support.groundingChunkIndices,
+                    )
+                      ? support.groundingChunkIndices
+                      : [];
+                    return indices.some((index) =>
+                      nonOfficialChunkIndexes.has(index),
+                    );
+                  })
+                : [];
               if (
-                grounding.groundingChunks &&
-                grounding.groundingChunks.length > 0
+                allGroundingChunks.length !==
+                nonOfficialGroundingChunks.length
               ) {
+                writeLog(
+                  `[Grounding Guard v29.6.137] 排除 ${
+                    allGroundingChunks.length -
+                    nonOfficialGroundingChunks.length
+                  } 個 Samsung 官網來源，不作為網路解答證據`,
+                );
+              }
+
+              // v29.5.112: 提取搜尋來源並保存到全域變數
+              if (nonOfficialGroundingChunks.length > 0) {
                 // writeLog(
                 //   `[Grounding] 來源數量: ${grounding.groundingChunks.length}`,
                 // );
 
                 // 提取所有來源的域名
                 const sourceSet = new Set();
-                grounding.groundingChunks.forEach((chunk, i) => {
+                nonOfficialGroundingChunks.forEach((chunk, i) => {
                   if (chunk.web && chunk.web.uri) {
                     // 從 URI 提取域名
                     try {
@@ -11110,16 +11162,8 @@ ${recentOfficialManualAnswer}
                   }
                 });
 
-                // 轉換為陣列並排序 (samsung.com 優先)
+                // 只保留非官方來源，依搜尋回傳順序顯示。
                 let sources = Array.from(sourceSet);
-                sources.sort((a, b) => {
-                  // samsung.com 或 samsung.com.tw 優先
-                  const aIsSamsung = a.includes("samsung");
-                  const bIsSamsung = b.includes("samsung");
-                  if (aIsSamsung && !bIsSamsung) return -1;
-                  if (!aIsSamsung && bIsSamsung) return 1;
-                  return 0;
-                });
 
                 // 限制最多顯示 5 個來源
                 lastSearchSources = sources.slice(0, 5);
@@ -11132,10 +11176,8 @@ ${recentOfficialManualAnswer}
 
               lastWebEvidenceValid = Boolean(
                 forceWebSearch &&
-                  grounding.groundingChunks &&
-                  grounding.groundingChunks.length > 0 &&
-                  grounding.groundingSupports &&
-                  grounding.groundingSupports.length > 0,
+                  nonOfficialGroundingChunks.length > 0 &&
+                  nonOfficialGroundingSupports.length > 0,
               );
               writeLog(
                 `[Grounding Audit v29.6.075] 可稽核 Google Search 證據: ${lastWebEvidenceValid}`,

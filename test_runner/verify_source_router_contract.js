@@ -635,8 +635,12 @@ const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
 const advancedRouteText = extractFunction(linebot, "executeAdvancedSourceQuery_");
 assert(
   /stripInternalRoutingHints_\(query\)/.test(webCanonicalText) &&
-    /台灣 非官方 公開網頁 實務解法/.test(webCanonicalText),
-  "Web provider query 必須剝除 System Hint，並明確限定非官方公開網頁",
+    /台灣 非官方 公開網頁 實務解法 -site:samsung\.com/.test(
+      webCanonicalText,
+    ) &&
+    /isSamsungOfficialGroundingChunk_/.test(linebot) &&
+    /nonOfficialGroundingSupports/.test(linebot),
+  "Web provider query 必須剝除 System Hint、排除 Samsung 網域，且只接受非官方證據 support",
 );
 assert(
   /tools\s*=\s*\[\{ google_search: \{\} \}\]/.test(llmText) &&

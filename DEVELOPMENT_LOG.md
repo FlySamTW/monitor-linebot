@@ -1,5 +1,11 @@
 # 開發對話紀錄
 
+## 2026-08-15 (v29.6.137 / 非官方網搜網域證據守門)
+
+- 網搜 canonical query 加入 `-site:samsung.com`，不主動搜尋 Samsung 官網。
+- Grounding 回傳若仍混入 `samsung.com`／Samsung 官方來源，程式會在證據層排除；只有至少一個非官方 chunk 且有對應 support 才算網搜成功。官方產品頁只保留客戶可點的「到這款官網」按鈕。
+- 唯一正式發布工具已把既有 Webhook 更新至 Apps Script `@1334`；local、Remote HEAD、formal health 與 TestUI 版本守門皆為 `v29.6.137 [2026-08-15 20:36]`。本次沒有送出 Gemini 問題或產生 AI 費用；`Prompt!C3` 仍待維運授權同步。
+
 ## 2026-08-15 (v29.6.136 / 回答鏈、非官方網搜與成本守門)
 
 - 依正式 Google Sheet `LOG` 回讀 15:15～15:18 與 18:54～18:55 旅程修正：PDF 雖有 `files=1/pdfCalls=1`，Fast 自然追問卻掉回 `pdfCalls=0`；Web canonical query 外洩 `[System Hint]`、加入 Samsung 官網抓頁且 grounding 為 0，造成無答案與重複成本。

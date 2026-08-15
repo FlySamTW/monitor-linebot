@@ -1503,6 +1503,9 @@ assertStep(
     !/url_context/.test(advancedLlmText) &&
     !/fetchOfficialUrlEvidence_\(/.test(advancedLlmText) &&
     /禁止搜尋或讀取 Samsung 官網/.test(linebot) &&
+    /-site:samsung\.com/.test(linebot) &&
+    /function isSamsungOfficialGroundingChunk_/.test(linebot) &&
+    /nonOfficialGroundingSupports\.length > 0/.test(linebot) &&
     /function buildSamsungOfficialPageQuickReply_/.test(linebot) &&
     /type:\s*"uri"/.test(
       extractFunction(linebot, "buildSamsungOfficialPageQuickReply_"),
