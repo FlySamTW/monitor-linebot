@@ -38,6 +38,36 @@ function stripNonExecutableComments(source) {
 }
 
 const linebot = read("linebot.gs");
+const promptCsv = read("Prompt.csv");
+const qaCsv = read("QA.csv");
+
+assertStep(
+  promptCsv.length < 1600 &&
+    !/iPhone Air 既有 QA/.test(promptCsv) &&
+    /iPhone Air 無法使用 USB-C 連接 Smart Monitor/.test(qaCsv) &&
+    /iPhone 17 可以用 USB-C 直接連接三星 Smart Monitor/.test(qaCsv),
+  "Prompt must stay concise and product-specific iPhone facts must live in QA.csv",
+);
+
+const promptTemperatureContext = {};
+vm.createContext(promptTemperatureContext);
+vm.runInContext(
+  `${extractFunction(linebot, "resolveGenerationTemperature_")}
+  globalThis.__temperatures = {
+    fast: resolveGenerationTemperature_(0.3, false, false, false),
+    manual: resolveGenerationTemperature_(0.3, true, false, false),
+    web: resolveGenerationTemperature_(0.3, false, true, false),
+    retryDoesNotRaise: resolveGenerationTemperature_(0.1, false, false, true)
+  };`,
+  promptTemperatureContext,
+);
+assertStep(
+  promptTemperatureContext.__temperatures.fast === 0.3 &&
+    promptTemperatureContext.__temperatures.manual === 0.2 &&
+    promptTemperatureContext.__temperatures.web === 0.15 &&
+    promptTemperatureContext.__temperatures.retryDoesNotRaise === 0.1,
+  "Fast/PDF/Web temperatures must remain 0.3/0.2/0.15 without a second polish call",
+);
 
 const restartBranchMatch = linebot.match(
   /if \(cmd === "\/重啟"[\s\S]*?(?=\n\s*if \(cmd === "\/重設規格庫")/,
@@ -1192,12 +1222,11 @@ assertStep(
     !/function buildSmartCodecElaborationFromPreviousPdf/.test(linebot) &&
     !/function enforceSmartCodecPdfSupportConclusion_/.test(linebot) &&
     !/HEVC\/PDF 再詳細說明沿用上一則手冊結果/.test(linebot) &&
-    /function buildManualElaborationQuery_/.test(linebot) &&
-    /previousWasManual/.test(linebot) &&
-    /manualResponse\s*=\s*callLLMWithRetry/.test(linebot) &&
-    /manualFiles,\s*true/.test(linebot) &&
-    !/未呼叫 LLM/.test(extractFunction(linebot, "buildManualElaborationQuery_")),
-  "manual #再詳細說明 must reattach the same PDF and call the LLM; fixed HEVC answers are forbidden",
+    /previousWasManual[\s\S]{0,800}上一則已經用過一次手冊授權[\s\S]{0,500}return;/.test(
+      linebot,
+    ) &&
+    /手冊回答不再掛「再詳細說明」/.test(linebot),
+  "manual answers must not expose generic elaboration; a stale detail click must ask for explicit manual authorization and must not silently reread PDF",
 );
 
 assertStep(
@@ -1724,7 +1753,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,1800}freshOperationNeedsModel[\s\S]{0,1800}isCrossDeviceMonitorQuery\(msg\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,6000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(msg\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(

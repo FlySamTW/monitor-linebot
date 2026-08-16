@@ -124,15 +124,20 @@ async function main() {
     }
 
     assertStep(
-      hasPattern(t3.logs, /再詳細說明計數:\s*1\/2/) &&
-        hasPattern(t4.logs, /再詳細說明計數:\s*2\/2/),
-      "Step1 failed: 前兩次 #再詳細說明 計數紀錄不正確。",
+      hasPattern(t3.logs, /已保留一次性再詳細說明/) &&
+        [t4, t5].every(
+          (turn) =>
+            hasPattern(turn.logs, /一次性再詳細說明已使用/) &&
+            hasPattern(turn.replies, /這題我已經補充過一次/),
+        ),
+      "Step1 failed: 第一次必須展開，後續舊按鈕必須零 LLM 友善停止。",
     );
 
     assertStep(
-      hasPattern(t5.logs, /再詳細說明達上限/) &&
-        hasPattern(t5.replies, /已經補充到第\s*2\s*次|已經補充到第2次/),
-      "Step2 failed: 第三次 #再詳細說明 未觸發上限保護。",
+      ![t3, t4, t5].some((turn) =>
+        hasPattern(turn.logs, /Daily Question Guard.*used=/),
+      ),
+      "Step2 failed: #再詳細說明 不得重複扣一般 20 題額度。",
     );
 
     console.log("\nPASS: verify_elaboration_limit");

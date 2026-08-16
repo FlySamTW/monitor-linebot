@@ -7,6 +7,7 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
+- 通用 Prompt 只負責 FAST 證據邊界、回答方式與來源建議；產品個案放 QA，路由／授權／額度／補救／來源標籤由程式負責。Fast／PDF／Web 溫度固定為 0.3／0.2／0.15，不增加第二次潤飾呼叫。
 - 預設只走 QA／CLASS_RULES。已確認完整型號跨日保存；手冊需「確認要查」，網路按鍵即授權。來源執行完不得黏住下一題，但不可清除產品型號。
 - 手冊／網路 10 分鐘內相同來源＋型號＋問題只回傳操作快取，零供應商、零再次扣次。
 - Web 優先採有 grounding supports/chunks 的非官方公開網頁；只有具可稽核證據時才能標為網路來源。Google 未回傳引用時仍須提供經安全過濾且明確標示未證實的可能方向。不得把 Samsung 官網送進模型、`url_context` 或直接抓頁；官網只保留 `🔗 到這款官網` URI 選項。
@@ -14,6 +15,9 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - 只有來源成功才更新 `lastSource` 與最近題目；Web 無證據、來源錯誤與 canonical provider query 不得覆蓋前一次成功手冊鏈或使用者原句。
 - G8 是 Odyssey 系列。短別稱先列 CLASS_RULES 完整型號；選型前零 PDF、零網路、零扣次。
 - RULE 明載的規格是硬事實。模型不得把 Smart／Tizen 型號的藍牙、喇叭或介面答成相反結論。
+- 系列別稱只是候選不是 confirmed model；規格欄位只能由完整型號自己的 RULE 終止回答。未明載就是 UNKNOWN，零 LLM 建議手冊，不得套用同系列。
+- 「再詳細說明」每個答案最多一次，是零一般額度的 control action；必須保留原題與 confirmed model，不得把內部補充指令寫回最近題目。
+- 系統要求補型號後，氣泡點選與直接輸入完整型號都要接回 pending original question，不新增 20 題計次。
 - 使用者選定完整型號後，DirectDeep、RULE 與 PDF 候選只能使用該型號，不得由型號內的 G8／M8 片段重新展開同系列其他機種。
 - `術語_` RULE 只能解釋名詞，不是型號能力證據；完整型號列未明載時不得回答支援或不支援，應保留型號並建議手冊查證。
 - 能力守門的可見結論不得被手冊授權模板洗掉；正在建議手冊時不顯示 Web 入口，只有手冊仍無證據後才可推薦 Web。
@@ -30,7 +34,7 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - Web grounding 獨立使用穩定版 `models/gemini-2.5-flash` 與 US$0.30／US$2.50 費率；Fast／PDF／Polish 不跟著升級。更高費率只在使用者按 Web 或 PDF 無證據的一次性補救時發生。
 - Web 最多 5 點／450 個中文字並必須完整收尾；只留直接適用本題的 grounding 做法。螢幕內建 USB 播放不得混入 Windows／主機板排錯，亦不得建議非官方韌體下載。
 - PDF 成功答案必須同時具 PDF 顯示頁碼、型號適用範圍與可核對證據摘錄；缺任一者不得掛「三星官方手冊」來源。人工逐頁片段也要顯示 `NT$0.0000` 與未扣手冊額度。
-- 禁止 LINE Push。Rich Menu 與一般客服一律使用 reply；沒有業主另案明確授權不得新增 Push API。
+- 禁止未授權 LINE Push。Rich Menu 與一般客服一律使用 reply；只有業主當次明確授權的單次通知可使用 Push，不得因此新增常駐推播路由或擴大授權。
 
 ## 官網承接
 

@@ -1,5 +1,18 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.159 Prompt 與模型呼叫契約
+
+- Fast、PDF、Web 只取得各自必要提示；路由、授權、額度與來源標籤由程式守門，不重複塞入 Prompt。
+- 特定產品事實（含 iPhone Air／iPhone 17）放在 `QA.csv`，不得放進通用 Prompt。
+- 溫度為 Fast 0.3、PDF 0.2、Web 0.15；不增加第二次潤飾模型呼叫。
+
+## v29.6.158 回答鏈與一次性補充契約
+
+- 系列別稱只產生候選，不得把候選第一款寫入已確認型號。型號特定規格只能用該完整型號自己的 RULE；未明載等於 UNKNOWN，不可讓 Fast 猜測，直接建議手冊並退回一般額度。
+- 規格欄位可由精確 RULE 回答時必須 terminal return：不建 history／Top-K／Fast prompt，`LLM=0`、PDF=0、Web=0。
+- 「再詳細說明」是一次性 control action：保留 active question 與 confirmed model，不扣 20 題，使用後不再顯示；重點是友善表達，不得改寫型號事實或暗中跨到 PDF／Web。
+- 系統請使用者補型號後，點選與直接輸入完整型號都必須接回原問題，而不是把型號當一題新問題。
+
 ## v29.6.157 回答鏈、精確型號證據與逐頁索引基線
 
 - LINE 可見回答固定依「直接答案 → 必要步驟 → 必要限制 → 官方手冊頁碼 → 簡短費用／額度」排列。`RAG`、`BM25`、chunk、evidence ID、revision、token、grounding、適用範圍等只准留在後台；模型的「證據摘錄」只供程式驗證，送 LINE 前必須剝除。

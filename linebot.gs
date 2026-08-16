@@ -13,10 +13,10 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.157"; // 2026-08-16 選型後直達已核對手冊答案
-const BUILD_TIMESTAMP = "2026-08-16 01:47";
+const GAS_VERSION = "v29.6.159"; // 2026-08-16 Prompt 精簡與來源溫度分流
+const BUILD_TIMESTAMP = "2026-08-16 10:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
-const MAX_ELABORATE_PER_ANSWER = 2;
+const MAX_ELABORATE_PER_ANSWER = 1;
 const ELABORATE_STATE_TTL_SECONDS = 21600; // 6 小時
 const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
@@ -2076,6 +2076,21 @@ function isApiFailureReply(text) {
   );
 }
 
+function reserveElaborationOnce_(cache, userId, anchor) {
+  if (!anchor) return false;
+  const lock = LockService.getUserLock();
+  if (!lock.tryLock(2000)) return false;
+  try {
+    if (getElaborationCountForAnchor_(cache, userId, anchor) >= 1) {
+      return false;
+    }
+    writeElaborationState_(cache, userId, anchor, 1);
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function isTerminalWebSearchReply_(text) {
   return (
     isApiFailureReply(text) ||
@@ -2826,6 +2841,23 @@ function enforceExactModelCapabilityEvidence_(query, rawResponse) {
     `[RULE Exact Model Guard] ${model} 的完整規格列未明載 ${capability.label}；禁止用術語列或同系列型號作肯定／否定結論`,
   );
   return `${model} 的台灣三星官方規格資料目前沒有列出「${capability.label}」，所以我不能把其他同系列型號的功能套到這台，也不能直接說它有或沒有。\n\n若要再確認官方手冊是否另有記載，請按「查手冊｜5次/日」；系統會沿用 ${model}，不必重新選型號。\n[AUTO_SEARCH_PDF]`;
+}
+
+function buildMissingExactRuleFactReply_(query, model) {
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  if (!normalizedModel) return "";
+  const capability = getExplicitCapabilityCheck_(query);
+  if (!capability) return "";
+  const exactRuleLine = findExactModelRuleLine_(normalizedModel);
+  if (exactRuleLine && capability.evidence.test(exactRuleLine)) return "";
+  writeLog(
+    `[RULE Missing Fact v29.6.158] ${normalizedModel} 規格列未明載 ${capability.label}，零 LLM 停止猜測`,
+  );
+  return [
+    `這份台灣官方規格還沒有列出 ${normalizedModel} 的「${capability.label}」，我不想拿其他同系列型號套過來猜。`,
+    "",
+    "你可以按「查手冊｜5次/日」，我會沿用這款型號繼續確認，不用再選一次。",
+  ].join("\n");
 }
 
 function pickExactComparisonFields_(ruleLine, query) {
@@ -4511,6 +4543,9 @@ function shouldCountDailyQuestionText_(message, contextId) {
   const text = String(message || "").trim();
   if (!text || isSourceCancelText_(text) || /^\//.test(text)) return false;
 
+  // 「再詳細說明」只是展開上一題，不是新的實質問題。
+  if (text === "#再詳細說明") return false;
+
   // 型號按鈕只是延續同一題，不得再扣一次一般提問額度。
   if (/^#型號:/i.test(text)) return false;
 
@@ -5652,7 +5687,7 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別)/i.test(
     text,
   );
 }
@@ -5691,6 +5726,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/USB[\s-]*C|TYPE[\s-]*C/i, /USB[\s-]*C|TYPE[\s-]*C/i);
   addPattern(/喇叭|揚聲器/i, /喇叭|揚聲器/i);
   addPattern(/藍牙|BLUETOOTH/i, /藍牙|BLUETOOTH/i);
+  addPattern(/WI[\s-]*FI|無線網路/i, /WI[\s-]*FI|無線網路/i);
   addPattern(/耳機孔|3\.5\s*MM/i, /耳機孔|3\.5\s*MM/i);
   addPattern(/VESA|壁掛/i, /VESA|壁掛/i);
   addPattern(/重量/i, /重量|淨重/i);
@@ -5713,7 +5749,32 @@ function buildDeterministicExactRuleReply_(query, model) {
     });
   });
   if (selected.length === 0) return "";
-  return `${normalizedModel} 的台灣三星官方規格明載：${selected.join("；")}。\n[來源:官方規格庫]`;
+
+  const portIntent = [
+    { query: /HDMI/i, label: "HDMI", pattern: /HDMI(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
+    { query: /DISPLAYPORT|\bDP\b/i, label: "DisplayPort", pattern: /(?:DISPLAYPORT|\bDP\b)(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
+    { query: /USB[\s-]*C|TYPE[\s-]*C/i, label: "USB-C", pattern: /(?:USB[\s-]*C|TYPE[\s-]*C)(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
+  ].find((item) => item.query.test(text));
+  if (portIntent) {
+    const joined = selected.join("；");
+    const match = joined.match(portIntent.pattern);
+    if (match) {
+      const versionText = match[1] ? ` ${match[1]}` : "";
+      return [
+        `${normalizedModel} 這款有 ${match[2]} 個 ${portIntent.label}${versionText} 連接埠。`,
+        "",
+        "如果你要接電腦、遊戲機或機上盒，也可以告訴我設備，我再幫你看怎麼接比較順。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
+
+  return [
+    `${normalizedModel} 我幫你確認到的規格是：${selected.join("；")}。`,
+    "",
+    "如果你還想確認實際接法或設定位置，直接接著問就好。",
+    "[來源:官方規格庫]",
+  ].join("\n");
 }
 
 function tryManualFreeLocalAnswer_(
@@ -7117,6 +7178,7 @@ function shouldPromptAliasModelSelection_(query, candidates) {
     Array.isArray(candidates) &&
     candidates.length > 1 &&
     (isFeatureBinaryQuestion(query) ||
+      isLikelyLocalSpecRuleQuestion_(query) ||
       isOperationOrTroubleshootQuery(query) ||
       isManualVerificationRequiredQuery(query))
   );
@@ -10594,6 +10656,80 @@ function constructDynamicPrompt(
   imageBlob = null,
   targetModelName = null,
 ) {
+  return constructLeanDynamicPromptV159_(
+    query,
+    messages,
+    kbFiles,
+    forceWebSearch,
+    imageBlob,
+    targetModelName,
+  );
+}
+
+// v29.6.159：各來源只取得完成本輪任務所需的提示，避免把路由、額度、
+// 狀態機與個案 QA 重複塞給模型。這些守門由程式與 QA/RULE 負責。
+function constructLeanDynamicPromptV159_(
+  query,
+  messages,
+  kbFiles = [],
+  forceWebSearch = false,
+  imageBlob = null,
+  targetModelName = null,
+) {
+  const userId = messages.length > 0 ? messages[0].userId : "unknown";
+  const modelLabel = targetModelName || "使用者正在詢問的三星螢幕";
+  let dynamicPrompt = "";
+
+  if (forceWebSearch) {
+    const today = Utilities.formatDate(
+      new Date(),
+      "Asia/Taipei",
+      "yyyy年MM月dd日",
+    );
+    dynamicPrompt = `【WEB 模式｜${today}】
+使用者已同意搜尋公開網頁。請實際使用 google_search，只查可核對的非官方資料；不要搜尋或讀取 Samsung 官網，官方規格由系統 RULE／QA 提供，介面會另給官網連結。
+查證對象：${modelLabel}
+問題：${query}
+
+直接給最可能解決問題的答案，最多 5 點、450 個中文字。非官方做法要清楚提醒「非官方，請斟酌參考」。只採搜尋證據直接支持的內容，不用內建知識補空白；沒有可核對結果就誠實說明，不要假裝搜到。`;
+  } else if (kbFiles.length > 0) {
+    dynamicPrompt = `【PDF 模式】
+唯一資料來源是本輪掛載的三星官方手冊 PDF。
+查證型號：${modelLabel}
+問題：${query}
+
+先直接回答，再列必要步驟或條件。不得引用 QA、RULE、網路或內建知識。規格、操作與故障題都必須提供 PDF 顯示頁碼，並用不超過 25 字的「證據摘錄」摘要該頁文字。
+最後只輸出一個稽核標記：[手冊證據:第N頁|範圍:型號明確]、[手冊證據:第N頁|範圍:全檔共通]、[手冊證據:第N頁|範圍:依型號而異] 或 [手冊證據:未找到|範圍:未找到]。不得猜頁碼；找不到可核對段落時只建議下一步，不可自行聯網。`;
+  } else {
+    dynamicPrompt = buildDynamicContext(messages, userId, false);
+    const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
+    const c3Prompt = promptSheet.getRange("C3").getValue() || "";
+    if (c3Prompt) {
+      dynamicPrompt += `\n\n【FAST 模式規則】\n${c3Prompt}\n`;
+    }
+    if (targetModelName) {
+      dynamicPrompt += `\n【已確認型號】${targetModelName}。直接回答，不得再次追問型號。`;
+    }
+    if (imageBlob) {
+      dynamicPrompt += "\n【圖片模式】只描述圖片中可見內容，並依 QA／RULE 回答；看不清楚就明說。";
+    }
+  }
+
+  dynamicPrompt += `\n【共同輸出規則】
+使用台灣繁體中文與「你」，像熟悉產品的朋友：先回答重點，語氣自然、有溫度，但不油腔、不硬塞笑話。只回答本題需要的內容，避免客服套話、內部術語、成本或系統流程。
+只用本輪提供且可對應目前型號的證據；資料沒寫只能說「目前資料未記載」，不能推成「沒有／不支援」。不要跨型號套規格，不評論或貶低競品，不自行標示 QA／RULE／手冊／網路來源。`;
+  dynamicPrompt += buildCrossDeviceMonitorPromptRule(query);
+  return dynamicPrompt;
+}
+
+function constructDynamicPromptLegacyV158_(
+  query,
+  messages,
+  kbFiles = [],
+  forceWebSearch = false,
+  imageBlob = null,
+  targetModelName = null,
+) {
   const cache = CacheService.getScriptCache();
   const userId = messages.length > 0 ? messages[0].userId : "unknown"; // Assuming userId is available in messages or passed
 
@@ -10906,6 +11042,20 @@ function countGeminiPayloadTokens_(apiKey, modelName, payload, attachPDFs) {
   return { ok: false, totalTokens: null, error: lastError || "countTokens failed" };
 }
 
+function resolveGenerationTemperature_(
+  configuredFastTemperature,
+  attachPDFs,
+  forceWebSearch,
+  isRetry,
+) {
+  let temperature = Number(configuredFastTemperature);
+  if (!isFinite(temperature)) temperature = 0.3;
+  if (attachPDFs) temperature = 0.2;
+  if (forceWebSearch) temperature = 0.15;
+  if (isRetry) temperature = Math.min(temperature, 0.3);
+  return temperature;
+}
+
 function estimatePdfWorstCaseCostTwd_(inputTokens) {
   const safeInput = Math.max(0, Number(inputTokens) || 0);
   const inputUsd = (safeInput / 1000000) * PRICE_THINK_INPUT;
@@ -11007,8 +11157,14 @@ function callLLMWithRetry(
   // v27.1.0: 增加 temp 參數，Retry 時降低 (0.7 -> 0.3)
   const promptSheet = ss.getSheetByName(SHEET_NAMES.PROMPT);
   const configData = promptSheet.getRange("B3:C3").getValues()[0];
-  let tempSetting = typeof configData[0] === "number" ? configData[0] : 0.6;
-  if (isRetry) tempSetting = 0.3;
+  const configuredFastTemperature =
+    typeof configData[0] === "number" ? configData[0] : 0.3;
+  const tempSetting = resolveGenerationTemperature_(
+    configuredFastTemperature,
+    attachPDFs,
+    forceWebSearch,
+    isRetry,
+  );
 
   // --- 決定掛載檔案 ---
   // filesToAttach 已經由 getRelevantKBFiles 決定並傳入
@@ -12742,6 +12898,10 @@ function handleMessage(event) {
     const messageId = event.message.id || null;
     let msg = userMessage;
     const incomingMessageWasModelSelection = /^#型號:/i.test(msg);
+    const incomingMessageWasElaboration = msg === "#再詳細說明";
+    let elaborationOriginalQuestion = "";
+    let elaborationReplyAnchor = "";
+    let resumedFromPlainModelClarification = false;
     let dailyQuestionReservedThisMessage = false;
     let isDualBubbleComplete = false; // v29.3.29: 修正旗標未定義問題
     let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
@@ -12750,7 +12910,23 @@ function handleMessage(event) {
     let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
 
     const pendingBeforeQuota = readPendingSourceState_(contextId, true);
-    if (shouldCountDailyQuestionText_(msg, contextId)) {
+    const pendingPlainModelTopic = String(
+      cache.get(`${userId}:pending_topic`) || "",
+    ).trim();
+    const pendingPlainModelMode = String(
+      cache.get(`${userId}:model_select_mode`) || "",
+    ).trim();
+    const plainModelTokens = dedupDisplayModels(
+      extractFullModelLikeTokens(msg),
+      2,
+    ).map(normalizeModelForDisplay);
+    const isPlainModelClarification = Boolean(
+      pendingPlainModelTopic &&
+        pendingPlainModelMode === "fast" &&
+        isManualModelHintOnly_(msg) &&
+        plainModelTokens.length === 1,
+    );
+    if (!isPlainModelClarification && shouldCountDailyQuestionText_(msg, contextId)) {
       const dailyQuota = reserveDailyQuestionOrReply_(userId, replyToken);
       if (!dailyQuota.allowed) return;
       dailyQuestionReservedThisMessage = true;
@@ -12764,6 +12940,25 @@ function handleMessage(event) {
     ) {
       CURRENT_DAILY_QUESTION_REMAINING =
         pendingBeforeQuota.dailyQuestionRemaining;
+    }
+
+    if (isPlainModelClarification) {
+      const clarifiedModel = plainModelTokens[0];
+      const resumedQuestion = pendingPlainModelTopic;
+      msg = `${resumedQuestion} (型號: ${clarifiedModel})`;
+      userMessage = msg;
+      resumedFromPlainModelClarification = true;
+      cache.put(
+        `${userId}:direct_search_models`,
+        JSON.stringify([clarifiedModel]),
+        300,
+      );
+      cache.remove(`${userId}:pending_topic`);
+      cache.remove(`${userId}:model_select_mode`);
+      rememberSourceProductModel_(contextId, clarifiedModel, "plain_model_clarification");
+      writeLog(
+        `[Model Clarification v29.6.158] ${clarifiedModel} 接回原題：${resumedQuestion.substring(0, 80)}`,
+      );
     }
 
     // 範圍外問題必須先於 pending source、持久型號、價格與未知型號守門。
@@ -13644,6 +13839,92 @@ function handleMessage(event) {
             { role: "assistant", content: selectedVerifiedReply },
           );
           rememberRecentSourceQuestion_(contextId, normalizedTopic, selectedModel);
+          clearDailyQuestionModelSelectionHold_(userId);
+          return;
+        }
+
+        // 多型號別稱完成選型後，單一規格欄位直接由該型號自己的 RULE 回答。
+        // 不再為 HDMI／DP／USB-C／解析度等確定規格建立大型 Fast prompt。
+        const selectedRuleReply = normalizedTopic
+          ? buildDeterministicExactRuleReply_(normalizedTopic, selectedModel)
+          : "";
+        if (selectedRuleReply) {
+          const selectedRuleFinal = `${selectedRuleReply}\n[費用:NT$0.0000（未呼叫 LLM）]`;
+          cache.remove(`${userId}:pending_topic`);
+          cache.remove(modelSelectModeKey);
+          LAST_SOURCE_TEST_STATE = {
+            source: "spec",
+            outcome: "exact_rule",
+            pending: false,
+            executed: "model_selected_exact_rule",
+            reserved: false,
+          };
+          CURRENT_DAILY_QUESTION_REMAINING = getDailyQuestionRemaining_(userId);
+          writeLog(
+            `[Model Select RULE v29.6.158] ${selectedModel} 選型後由精確規格直接回答，零 LLM／PDF 呼叫`,
+          );
+          replyMessage(replyToken, selectedRuleFinal);
+          writeRecordDirectly(userId, normalizedTopic, contextId, "user", "");
+          writeRecordDirectly(
+            userId,
+            selectedRuleFinal,
+            contextId,
+            "assistant",
+            "",
+          );
+          updateHistorySheetAndCache(
+            contextId,
+            getHistoryFromCacheOrSheet(contextId),
+            { role: "user", content: normalizedTopic },
+            { role: "assistant", content: selectedRuleFinal },
+          );
+          rememberRecentSourceQuestion_(contextId, normalizedTopic, selectedModel);
+          clearDailyQuestionModelSelectionHold_(userId);
+          return;
+        }
+
+        const selectedMissingFactReply = normalizedTopic
+          ? buildMissingExactRuleFactReply_(normalizedTopic, selectedModel)
+          : "";
+        if (selectedMissingFactReply) {
+          cache.remove(`${userId}:pending_topic`);
+          cache.remove(modelSelectModeKey);
+          if (consumeDailyQuestionModelSelectionHold_(userId)) {
+            refundDailyQuestionUsage_(userId, "model_selection_to_manual_missing_fact");
+          }
+          LAST_SOURCE_TEST_STATE = {
+            source: "spec",
+            outcome: "missing_exact_rule_fact",
+            pending: false,
+            executed: "model_selected_missing_fact",
+            model: selectedModel,
+          };
+          rememberSourceProductModel_(contextId, selectedModel, "model_selection");
+          rememberRecentSourceQuestion_(contextId, normalizedTopic, selectedModel);
+          replyMessage(replyToken, selectedMissingFactReply, {
+            quickReply: {
+              items: [
+                buildSourcePostbackQuickReply_(
+                  "📖 查手冊｜5次/日",
+                  "rm_action=select_source&source=manual&v=2",
+                ),
+              ],
+            },
+          });
+          writeRecordDirectly(userId, normalizedTopic, contextId, "user", "");
+          writeRecordDirectly(
+            userId,
+            selectedMissingFactReply,
+            contextId,
+            "assistant",
+            "",
+          );
+          updateHistorySheetAndCache(
+            contextId,
+            getHistoryFromCacheOrSheet(contextId),
+            { role: "user", content: normalizedTopic },
+            { role: "assistant", content: selectedMissingFactReply },
+          );
           return;
         }
 
@@ -13911,22 +14192,8 @@ function handleMessage(event) {
             userId,
             queryText,
           );
-          const manualElaborationCount = getElaborationCountForAnchor_(
-            cache,
-            userId,
-            manualReplyAnchor,
-          );
           const qrItems = [];
-          if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
-            qrItems.push({
-              type: "action",
-              action: {
-                type: "message",
-                label: "💬 再詳細說明",
-                text: "#再詳細說明",
-              },
-            });
-          }
+          // 手冊本身已是完整查證結果；不再提供通用補充按鈕，避免重讀同一本 PDF。
           if (canOfferAnotherWebSearch_(cache, userId, replyText)) {
             qrItems.push({
               type: "action",
@@ -14172,22 +14439,8 @@ function handleMessage(event) {
         }
 
         const manualReplyAnchor = computeReplyAnchor_(finalText);
-        const manualElaborationCount = getElaborationCountForAnchor_(
-          cache,
-          userId,
-          manualReplyAnchor,
-        );
         const manualQrItems = [];
-        if (manualElaborationCount < MAX_ELABORATE_PER_ANSWER) {
-          manualQrItems.push({
-            type: "action",
-            action: {
-              type: "message",
-              label: "💬 再詳細說明",
-              text: "#再詳細說明",
-            },
-          });
-        }
+        // 手冊回答不再掛「再詳細說明」；需要重新查證時使用來源明確的按鈕。
         if (canOfferAnotherWebSearch_(cache, userId, replyText)) {
           manualQrItems.push({
             type: "action",
@@ -14243,6 +14496,36 @@ function handleMessage(event) {
         return;
       }
 
+      const previousQuestionForElaboration = String(
+        cache.get(`${userId}:last_meaningful_query`) ||
+          getPreviousMeaningfulUserQuestion_(historyForContinue) ||
+          "",
+      ).trim();
+      if (!previousQuestionForElaboration) {
+        replyMessage(
+          replyToken,
+          "我這邊沒有上一題可以接著補充，你把問題再傳一次就好。",
+        );
+        return;
+      }
+      elaborationOriginalQuestion = previousQuestionForElaboration;
+      const replyAnchor = getElaborationTopicAnchor_(
+        cache,
+        userId,
+        previousQuestionForElaboration,
+      );
+      elaborationReplyAnchor = replyAnchor;
+      if (!reserveElaborationOnce_(cache, userId, replyAnchor)) {
+        const alreadyExpandedText =
+          "這題我已經補充過一次了。你還想確認哪個部分，直接告訴我就好。";
+        replyMessage(replyToken, alreadyExpandedText);
+        writeLog(
+          "[Quick Reply v29.6.158] 一次性再詳細說明已使用；零 LLM、零額度",
+        );
+        return;
+      }
+      writeLog("[Quick Reply v29.6.158] 已保留一次性再詳細說明");
+
       const previousWasManual = /\[來源[:：]\s*官方手冊\]/.test(
         String(lastAssistantMsg.content || ""),
       );
@@ -14268,153 +14551,31 @@ function handleMessage(event) {
         );
         writeLog("[Manual Consent v29.6.094] 再詳細說明不重用舊授權，等待使用者重新同意");
         return;
-
-        const selectedManualModel =
-          String(cache.get(`${userId}:last_selected_model`) || "").trim().toUpperCase() ||
-          getSelectedModelFromRecentHistory_(historyForContinue);
-        const previousQuestion = getPreviousMeaningfulUserQuestion_(historyForContinue);
-        if (!selectedManualModel || !previousQuestion) {
-          const retryManualText =
-            "我找不到剛才查手冊時使用的完整型號或原問題，先不憑印象補充。你再點一次型號或直接補完整型號，我會重新照官方手冊說明。";
-          replyMessage(replyToken, retryManualText);
-          writeLog("[Manual Elaboration Guard] 缺少原題或型號，拒絕離線補寫手冊答案");
-          return;
-        }
-
-        const manualElaborationQuery = buildManualElaborationQuery_(
-          previousQuestion,
-          selectedManualModel,
-        );
-        const kbList = JSON.parse(
-          PropertiesService.getScriptProperties().getProperty(CACHE_KEYS.KB_URI_LIST) || "[]",
-        );
-        const kbResult = getRelevantKBFiles(
-          [{ role: "user", content: manualElaborationQuery }],
-          kbList,
-          userId,
-          contextId,
-          true,
-          manualElaborationQuery,
-        );
-        const manualFiles = Array.isArray(kbResult)
-          ? kbResult
-          : kbResult && Array.isArray(kbResult.files)
-            ? kbResult.files
-            : [];
-
-        if (manualFiles.length === 0) {
-          const retryManualText =
-            "剛才那本官方手冊目前沒有成功掛回來，我先不把舊答案換句話說。請稍後再試一次，我會重新查證後再補充。";
-          replyMessage(replyToken, retryManualText);
-          writeLog(`[Manual Elaboration Guard] 找不到 ${selectedManualModel} 的 PDF，不輸出固定補充`);
-          return;
-        }
-
-        const manualResponse = callLLMWithRetry(
-          manualElaborationQuery,
-          historyForContinue,
-          manualFiles,
-          true,
-          null,
-          false,
-          userId,
-          false,
-          selectedManualModel,
-        );
-        if (!manualResponse || manualResponse === "[KB_EXPIRED]") {
-          const retryManualText =
-            "這次重新讀取官方手冊時沒有拿到可用回答，我先不補猜。請稍後再試一次。";
-          replyMessage(replyToken, retryManualText);
-          writeLog(`[Manual Elaboration Guard] ${selectedManualModel} 手冊 LLM 回覆不可用`);
-          return;
-        }
-
-        let manualReply = stripAnySourceTags(formatForLineMobile(manualResponse));
-        manualReply = manualReply
-          .replace(/\[AUTO_SEARCH_PDF\]/g, "")
-          .replace(/\[AUTO_SEARCH_WEB\]/g, "")
-          .replace(/\[型號[:：][^\]]+\]/g, "")
-          .trim();
-        manualReply = enforceManualNumberedList(
-          sanitizeManualDeflection(manualReply, manualElaborationQuery),
-        );
-        manualReply = appendPdfSourceTag(manualReply, manualFiles, 1);
-        replyMessage(replyToken, manualReply);
-        writeLog(`[Manual Elaboration] 已重新掛載 ${selectedManualModel} 官方手冊並呼叫 LLM`);
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, manualReply, contextId, "assistant", "");
-        updateHistorySheetAndCache(
-          contextId,
-          historyForContinue,
-          { role: "user", content: msg },
-          { role: "assistant", content: manualReply },
-        );
-        return;
       }
 
-      const replyAnchor = getElaborationTopicAnchor_(
-        cache,
-        userId,
-        lastAssistantMsg.content,
+      const persistentProductForElaboration = readSourceProductState_(contextId);
+      const selectedModelForElaboration = normalizeModelForDisplay(
+        (persistentProductForElaboration && persistentProductForElaboration.model) ||
+          cache.get(`${userId}:last_selected_model`) ||
+          getSelectedModelFromRecentHistory_(historyForContinue) ||
+          "",
       );
-      const currentElaborationCount = getElaborationCountForAnchor_(
-        cache,
-        userId,
-        replyAnchor,
-      );
-      if (currentElaborationCount >= MAX_ELABORATE_PER_ANSWER) {
-        const limitText =
-          `這一題我已經補充到第 ${MAX_ELABORATE_PER_ANSWER} 次了。\n` +
-          "你可以直接告訴我想深入的段落，或輸入「#查手冊 型號 你的問題」我會改走手冊解答。";
-        const limitQrItems = [];
-        if (canOfferAnotherWebSearch_(cache, userId, limitText)) {
-          limitQrItems.push({
-            type: "action",
-            action: {
-              type: "message",
-              label: "🌐 這題再搜網路",
-              text: "#這題再搜網路",
-            },
-          });
-        }
-        if (hasPdfForModel) {
-          limitQrItems.unshift({
-            type: "action",
-            action: { type: "message", label: "📖 查手冊", text: "#查手冊" },
-          });
-        }
-        replyMessage(replyToken, limitText, {
-          quickReply: { items: limitQrItems },
-        });
-        writeLog(
-          `[Quick Reply v29.5.134] 再詳細說明達上限 ${currentElaborationCount}/${MAX_ELABORATE_PER_ANSWER}`,
-        );
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, limitText, contextId, "assistant", "");
-        updateHistorySheetAndCache(
-          contextId,
-          historyForContinue,
-          { role: "user", content: msg },
-          { role: "assistant", content: limitText },
-        );
-        return;
-      }
-
-      writeElaborationState_(
-        cache,
-        userId,
-        replyAnchor,
-        currentElaborationCount + 1,
-      );
+      const previousAnswerForElaboration = stripAnySourceTags(
+        String(lastAssistantMsg.content || ""),
+      ).substring(0, 1200);
+      const continueMsg = [
+        `請延續使用者原問題：「${previousQuestionForElaboration}」。`,
+        selectedModelForElaboration
+          ? `目前已確認型號：${selectedModelForElaboration}。`
+          : "目前沒有已確認的完整型號；若答案會因型號不同，不可猜測。",
+        `上一則回答：「${previousAnswerForElaboration}」`,
+        "請只補一次真正有幫助的新資訊：先直接回答，再補必要步驟、使用情境與注意事項；不要重複上一則。",
+        "可以加入一般產品知識讓說明更好懂，但特定型號的規格、支援與選單路徑只能沿用已核對資料，不可自行補成官方事實。",
+        "保持像熟悉產品的朋友，簡短自然；不查 PDF、不搜尋網路，也不要輸出任何系統暗號或工程術語。",
+      ].join("\n");
       writeLog(
-        `[Quick Reply v29.5.134] 再詳細說明計數: ${currentElaborationCount + 1}/${MAX_ELABORATE_PER_ANSWER}`,
+        `[Quick Reply v29.6.158] 一次性補充沿用原題與型號: ${previousQuestionForElaboration.substring(0, 60)} / ${selectedModelForElaboration || "none"}`,
       );
-      // 對話歷史已保留完整上下文（5輪），AI 看得到自己上次的回答
-      // 只需改寫 msg 和 userMessage，讓後面的流程自動帶歷史
-      // ⚠️ 注意：不能在此設 userMsgObj，因為 const userMsgObj 在後面第 5500 行才宣告 (TDZ)
-      const continueMsg =
-        "請針對你剛才的回答再詳細說明，補充更多細節、步驟與注意事項；請延續原主題，不需要查 PDF 或網路，也不要輸出任何系統暗號。";
-      writeLog(`[Quick Reply v29.5.129] 送出: ${continueMsg}`);
       showLoadingAnimation(userId, 60);
       msg = continueMsg;
       userMessage = continueMsg;
@@ -14442,11 +14603,6 @@ function handleMessage(event) {
         userId,
         cmdResult,
       );
-      const webElaborationCount = getElaborationCountForAnchor_(
-        cache,
-        userId,
-        webReplyAnchor,
-      );
       let canShowManualQuickReply = hasPdfForModel;
       if (!canShowManualQuickReply) {
         try {
@@ -14466,19 +14622,7 @@ function handleMessage(event) {
         lastWebEvidenceConflict ||
         isTerminalWebSearchReply_(cmdResult) ||
         (lastWebSearchAttempted && !lastWebEvidenceValid);
-      if (
-        !terminalWebState &&
-        webElaborationCount < MAX_ELABORATE_PER_ANSWER
-      ) {
-        qrItems.push({
-          type: "action",
-          action: {
-            type: "message",
-            label: "💬 再詳細說明",
-            text: "#再詳細說明",
-          },
-        });
-      }
+      // Web 已是一次完整來源查證；不再用通用補充按鈕重跑或混入其他來源。
       if (canShowManualQuickReply) {
         qrItems.push({
           type: "action",
@@ -14605,6 +14749,94 @@ function handleMessage(event) {
       }
     }
 
+    // 完整型號＋明確規格欄位先由該型號自己的 RULE 終止回答。
+    // RULE 已能回答時，不得再建立 history、Top-K 或 Gemini payload。
+    const exactRuleModels = dedupDisplayModels(
+      extractFullModelLikeTokens(msg),
+      2,
+    ).map(normalizeModelForDisplay);
+    if (
+      !incomingMessageWasElaboration &&
+      exactRuleModels.length === 1 &&
+      isLikelyLocalSpecRuleQuestion_(msg)
+    ) {
+      const exactRuleReply = buildDeterministicExactRuleReply_(
+        msg,
+        exactRuleModels[0],
+      );
+      if (exactRuleReply) {
+        const exactRuleFinal = `${exactRuleReply}\n[費用:NT$0.0000（未呼叫 LLM）]`;
+        LAST_SOURCE_TEST_STATE = {
+          source: "spec",
+          pending: false,
+          executed: "exact_rule",
+          model: exactRuleModels[0],
+        };
+        CURRENT_DAILY_QUESTION_REMAINING = getDailyQuestionRemaining_(userId);
+        rememberSourceProductModel_(contextId, exactRuleModels[0], "exact_rule");
+        rememberRecentSourceQuestion_(contextId, msg, exactRuleModels[0]);
+        if (resumedFromPlainModelClarification) {
+          clearDailyQuestionModelSelectionHold_(userId);
+        }
+        writeLog(
+          `[RULE Direct v29.6.158] ${exactRuleModels[0]} 明確規格零 LLM 直接回答`,
+        );
+        replyMessage(replyToken, exactRuleFinal);
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, exactRuleFinal, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          getHistoryFromCacheOrSheet(contextId),
+          { role: "user", content: msg },
+          { role: "assistant", content: exactRuleFinal },
+        );
+        return;
+      }
+
+
+      const missingExactFactReply = buildMissingExactRuleFactReply_(
+        msg,
+        exactRuleModels[0],
+      );
+      if (missingExactFactReply) {
+        const heldPlainModelCharge = resumedFromPlainModelClarification
+          ? consumeDailyQuestionModelSelectionHold_(userId)
+          : false;
+        if (dailyQuestionReservedThisMessage || heldPlainModelCharge) {
+          refundDailyQuestionUsage_(userId, "exact_model_missing_fact_to_manual");
+          dailyQuestionReservedThisMessage = false;
+        }
+        LAST_SOURCE_TEST_STATE = {
+          source: "spec",
+          outcome: "missing_exact_rule_fact",
+          pending: false,
+          executed: "missing_fact_guard",
+          model: exactRuleModels[0],
+        };
+        rememberSourceProductModel_(contextId, exactRuleModels[0], "exact_rule_missing");
+        rememberRecentSourceQuestion_(contextId, msg, exactRuleModels[0]);
+        replyMessage(replyToken, missingExactFactReply, {
+          quickReply: {
+            items: [
+              buildSourcePostbackQuickReply_(
+                "📖 查手冊｜5次/日",
+                "rm_action=select_source&source=manual&v=2",
+              ),
+            ],
+          },
+        });
+        writeRecordDirectly(userId, msg, contextId, "user", "");
+        writeRecordDirectly(userId, missingExactFactReply, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          getHistoryFromCacheOrSheet(contextId),
+          { role: "user", content: msg },
+          { role: "assistant", content: missingExactFactReply },
+        );
+        return;
+      }
+    }
+
     const exactRuleComparisonReply = buildExactRuleComparisonReply_(msg);
     if (exactRuleComparisonReply) {
       LAST_SOURCE_TEST_STATE = {
@@ -14636,6 +14868,8 @@ function handleMessage(event) {
         ? buildNeedApplianceModelForOperationReply()
         : buildNeedModelForOperationReply();
       markDailyQuestionModelSelectionHold_(userId);
+      cache.put(`${userId}:pending_topic`, msg, 600);
+      cache.put(`${userId}:model_select_mode`, "fast", 600);
       LAST_SOURCE_TEST_STATE = {
         source: "spec",
         pending: false,
@@ -16490,6 +16724,16 @@ function handleMessage(event) {
           let currentReplyTextForUi = Array.isArray(replyText)
             ? replyText.join("\n")
             : String(replyText || "");
+          if (
+            incomingMessageWasElaboration &&
+            elaborationReplyAnchor &&
+            isApiFailureReply(currentReplyTextForUi)
+          ) {
+            writeElaborationState_(cache, userId, elaborationReplyAnchor, 0);
+            writeLog(
+              "[Quick Reply v29.6.158] 補充生成失敗，釋放一次性使用權",
+            );
+          }
           const terminalQuickReplyState =
             lastWebEvidenceConflict ||
             isTerminalWebSearchReply_(currentReplyTextForUi) ||
@@ -16562,6 +16806,9 @@ function handleMessage(event) {
 
           if (
             !terminalQuickReplyState &&
+            !isWaitingForModelSelection &&
+            !manualSourceRecommended &&
+            !webSourceRecommended &&
             !offerOfficialModelPage &&
             elaborationCountForThisReply < MAX_ELABORATE_PER_ANSWER
           ) {
@@ -16627,7 +16874,8 @@ function handleMessage(event) {
         if (responseWaitingForModelSelection && dailyQuestionReservedThisMessage) {
           markDailyQuestionModelSelectionHold_(userId);
         } else if (manualSourceRecommended || webSourceRecommended) {
-          const heldModelSelectionCharge = incomingMessageWasModelSelection
+          const heldModelSelectionCharge =
+            incomingMessageWasModelSelection || resumedFromPlainModelClarification
             ? consumeDailyQuestionModelSelectionHold_(userId)
             : false;
           if (dailyQuestionReservedThisMessage || heldModelSelectionCharge) {
@@ -16639,7 +16887,10 @@ function handleMessage(event) {
             );
             dailyQuestionReservedThisMessage = false;
           }
-        } else if (incomingMessageWasModelSelection) {
+        } else if (
+          incomingMessageWasModelSelection ||
+          resumedFromPlainModelClarification
+        ) {
           clearDailyQuestionModelSelectionHold_(userId);
         }
 
@@ -16686,12 +16937,21 @@ function handleMessage(event) {
         const recentFullModels = extractFullModelLikeTokens(
           `${msg || ""}\n${userMessage || ""}`,
         );
+        const persistentRecentProduct = readSourceProductState_(contextId);
         const resolvedRecentModel = normalizeModelForDisplay(
           recentFullModels[0] ||
-            primaryModel ||
+            (incomingMessageWasElaboration && persistentRecentProduct
+              ? persistentRecentProduct.model
+              : "") ||
             (suggestedModels.length === 1 ? suggestedModels[0] : ""),
         );
-        const recentQuestionText = String(msg || userMessage || "")
+        // primaryModel 可能只是系列候選排序第一名，絕不是使用者確認型號。
+        // 「再詳細說明」也必須保存原問題，不能把內部補充指令寫成上一題。
+        const recentQuestionText = String(
+          incomingMessageWasElaboration && elaborationOriginalQuestion
+            ? elaborationOriginalQuestion
+            : msg || userMessage || "",
+        )
           .replace(/\s*\(型號[:：][^)]+\)\s*/gi, " ")
           .replace(/\s{2,}/g, " ")
           .trim();

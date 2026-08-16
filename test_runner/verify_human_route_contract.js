@@ -292,12 +292,12 @@ assert(
     );
     return version && prompt.includes(`Prompt ${version[1]}`);
   })() &&
-    /純手機、平板、手錶、耳機、電視、家電、筆電/.test(prompt) &&
-    /只表示「建議使用者按常駐選單的官方手冊」/.test(prompt) &&
-    /一次受控的非官方 Web 補救/.test(prompt) &&
-    /不得再次重試或跨回 PDF/.test(prompt) &&
+    prompt.length < 1600 &&
+    /只使用本輪提供的 QA 與 RULE/.test(prompt) &&
+    /標記只代表建議下一來源，不代表已執行/.test(prompt) &&
+    !/一次受控的非官方 Web 補救|不得再次重試或跨回 PDF/.test(prompt) &&
     !/建議[^\n]{0,20}(?:問|聯絡)\s*Sam|問問\s*Sam|必須使用表情|智慧家電（/.test(prompt),
-  "Prompt 仍含範圍、手冊授權或轉問 Sam 的矛盾規則",
+  "Prompt 必須保持精簡、只負責 FAST 證據與回答規則，不承擔來源狀態機",
 );
 
 const scenarioCoverage = [

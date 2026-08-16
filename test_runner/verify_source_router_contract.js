@@ -160,8 +160,12 @@ const exactRuleVmSource = [
   extractFunction(linebot, "findExactModelRuleLine_"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
   extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
+  extractFunction(linebot, "buildMissingExactRuleFactReply_"),
+  extractFunction(linebot, "buildDeterministicExactRuleReply_"),
   `globalThis.__kvmGuarded = enforceExactModelCapabilityEvidence_("G8 有 KVM 嗎？ (型號: S32HG806ES)", "有，S32HG806ES 內建 KVM Switch。");`,
   `globalThis.__headphonePreserved = enforceExactModelCapabilityEvidence_("那它有耳機孔嗎？ (型號: S32HG806ES)", "有，S32HG806ES 具備耳機孔。");`,
+  `globalThis.__m7HdmiExact = buildDeterministicExactRuleReply_("M7 有幾個 HDMI 埠？", "S32FM703UC");`,
+  `globalThis.__m7HdmiMissing = buildMissingExactRuleFactReply_("M7 有幾個 HDMI 埠？", "S27CM703UC");`,
 ].join("\n\n");
 const exactRuleVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -194,6 +198,40 @@ assert.strictEqual(
   exactRuleVmContext.__headphonePreserved,
   "有，S32HG806ES 具備耳機孔。",
   "完整型號規格明載耳機孔時不得被能力守門誤擋",
+);
+assert(
+  /S32FM703UC 這款有 2 個 HDMI 2\.0 連接埠/.test(
+    exactRuleVmContext.__m7HdmiExact,
+  ),
+  "M7 選定 S32FM703UC 後必須由精確 RULE 零模型回答 HDMI 數量",
+);
+assert(
+  /S27CM703UC/.test(exactRuleVmContext.__m7HdmiMissing) &&
+    /不想拿其他同系列型號套過來猜/.test(
+      exactRuleVmContext.__m7HdmiMissing,
+    ) &&
+    /查手冊/.test(exactRuleVmContext.__m7HdmiMissing),
+  "精確型號 RULE 未明載 HDMI 時必須零模型停止猜測並建議手冊",
+);
+
+assert(
+  /const MAX_ELABORATE_PER_ANSWER = 1;/.test(linebot) &&
+    /function reserveElaborationOnce_/.test(linebot) &&
+    /if \(text === "#再詳細說明"\) return false;/.test(linebot) &&
+    /一次性再詳細說明已使用；零 LLM、零額度/.test(linebot) &&
+    /incomingMessageWasElaboration && elaborationOriginalQuestion/.test(linebot) &&
+    /!isWaitingForModelSelection[\s\S]{0,100}!manualSourceRecommended[\s\S]{0,100}!webSourceRecommended/.test(
+      linebot,
+    ) &&
+    /補充生成失敗，釋放一次性使用權/.test(linebot),
+  "再詳細說明必須每個答案只能一次、零一般額度並保留原題",
+);
+assert(
+  /const isPlainModelClarification = Boolean\(/.test(linebot) &&
+    /\[Model Clarification v29\.6\.158\]/.test(linebot) &&
+    /cache\.put\(`\$\{userId\}:pending_topic`, msg, 600\);/.test(linebot) &&
+    /resumedFromPlainModelClarification/.test(linebot),
+  "系統請使用者補型號後，直接輸入完整型號也必須接回原題且不重複扣額度",
 );
 
 const directDeepRouteText = linebot.slice(
@@ -713,10 +751,10 @@ assert(
   "Prompt.csv 版本必須與 linebot.gs GAS_VERSION 一致",
 );
 assert(
-  /一次受控的非官方 Web 補救/.test(prompt) &&
-    /補救不扣使用者網搜額度/.test(prompt) &&
-    /不得再次重試或跨回 PDF/.test(prompt),
-  "Prompt 必須只允許 PDF 無證據後的一次性 Web 補救，禁止來源迴圈",
+  !/一次受控的非官方 Web 補救|補救不扣使用者網搜額度|不得再次重試或跨回 PDF/.test(
+    prompt,
+  ) && /標記只代表建議下一來源，不代表已執行/.test(prompt),
+  "Prompt 不得承擔 PDF/Web 補救狀態機；只可輸出來源建議",
 );
 
 const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
