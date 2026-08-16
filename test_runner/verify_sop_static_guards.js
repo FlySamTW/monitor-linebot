@@ -62,11 +62,11 @@ vm.runInContext(
   promptTemperatureContext,
 );
 assertStep(
-  promptTemperatureContext.__temperatures.fast === 0.3 &&
+  promptTemperatureContext.__temperatures.fast === 0.4 &&
     promptTemperatureContext.__temperatures.manual === 0.2 &&
     promptTemperatureContext.__temperatures.web === 0.15 &&
     promptTemperatureContext.__temperatures.retryDoesNotRaise === 0.1,
-  "Fast/PDF/Web temperatures must remain 0.3/0.2/0.15 without a second polish call",
+  "Fast/PDF/Web temperatures must remain 0.4/0.2/0.15 without a second polish call",
 );
 
 const restartBranchMatch = linebot.match(
@@ -1245,7 +1245,7 @@ assertStep(
 );
 
 assertStep(
-  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;\s*lastWebEvidenceConflict\s*=\s*false;\s*lastWebSearchAttempted\s*=\s*false;/.test(
+  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;\s*lastWebSupportedSegments\s*=\s*\[\];\s*lastWebEvidenceConflict\s*=\s*false;\s*lastWebSearchAttempted\s*=\s*false;/.test(
     extractFunction(linebot, "handleMessage"),
   ),
   "each new user message must reset token/search/LLM usage before calculating the current reply cost",

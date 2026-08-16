@@ -1,5 +1,13 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.171 回答保留、PDF 證據與 Web 支持句段契約
+
+- 正式 12:59 LOG 證實舊型號鎖定分支會在最後把 Fast 已產生的部分回答洗成純手冊 CTA；完整型號鎖定後只准清除缺型號狀態，不得再次依藍牙、能力題等特例重建答案。
+- 客戶文案不解釋「不會再問一次」等內部狀態；按鍵與標籤已能表達動作，只說「想核對可點查官方手冊確認」。
+- 手冊索引有同型號不代表能回答所有題目。`S32FM902SC` 現有 41 頁 PDF 是硬體安裝／規格手冊，App 操作位於三星繁中 HTML 使用者指南 v6.5.0；證據 metadata 必須保留文件種類與位置，不可把硬體 PDF 冒充智慧功能 e-Manual。
+- 手冊授權後，缺檔、索引過期、token／費用預檢、供應商錯誤、缺頁碼證據或模型明示需 Web，全部進同一個每日最多 3 次的非 Samsung 公開網頁補救；不要求使用者重按、不扣 10 次網搜額度，也不得再跨回 PDF。
+- Fast 實際溫度由程式限制在 0.4–0.5，PDF 0.2、Web 0.15，且每次生成寫入 stage／temperature LOG；溫度只改善口吻，不能取代來源與證據守門。
+
 ## v29.6.161 證據守門與單次手冊授權契約
 
 - Rich Menu 是使用者主動指定來源的捷徑，不是自然問答的必經關卡。QA／RULE 或已核對手冊片段已有答案時，必須直接回答，禁止先生成再以「可查 PDF」為由丟棄答案。
@@ -12,7 +20,10 @@
 
 - Fast、PDF、Web 只取得各自必要提示；路由、授權、額度與來源標籤由程式守門，不重複塞入 Prompt。
 - 特定產品事實（含 iPhone Air／iPhone 17）放在 `QA.csv`，不得放進通用 Prompt。
-- 溫度為 Fast 0.3、PDF 0.2、Web 0.15；不增加第二次潤飾模型呼叫。
+- v29.6.162 起 Fast 為 0.4–0.5、PDF 0.2、Web 0.15；不增加第二次潤飾模型呼叫。
+- Google 官方邊界：Files API 掛整本 PDF 是文件理解／長上下文，不等於 File Search RAG；真正 File Search 會 chunk、embedding、semantic retrieval 並可用 metadata filter。現行已核對片段與離線逐頁索引屬本專案自管 retrieval，但整本 PDF 路徑仍非真正檢索。M9 等智慧螢幕須以 `document_role` 區分硬體 PDF 與 HTML e-Manual；不得再以「同型號有 PDF」判定題目可被該文件回答。
+- 不在 v29.6.162 熱修直接切 File Search：官方現行支援清單不含 2.5 Flash-Lite，且不可和 Google Search／URL Context 同請求；先以代表題 shadow pilot 比較引用成功率、正確文件召回率、有效答案成本與 P95 延遲，達標才另版遷移。
+- PDF 模型的可稽核輸出固定以「證據摘錄」及單一手冊證據標記收尾；Web 有 grounding 仍須通過本題型號相關性，明說只找到其他系列時不得當成功。任何截斷 `[cite` 或超長網搜草稿不得送上 LINE。
 
 ## v29.6.158 回答鏈與一次性補充契約
 

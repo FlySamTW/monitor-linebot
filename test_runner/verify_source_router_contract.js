@@ -245,10 +245,10 @@ assert(
   "選定完整型號後 DirectDeep/PDF 候選必須只保留本輪完整型號，不得重新展開 G8 系列",
 );
 assert(
-  /exactCapabilityIntroMatch/.test(linebot) &&
-    /const verifiedRuleIntro = bluetoothRuleIntro \|\|/.test(linebot) &&
-    /buildManualConsentPrompt_\(\s*verifiedRuleIntro/.test(linebot),
-  "精確型號能力守門結論必須保留到最終手冊授權泡泡，不得被泛用模板洗掉",
+  /前面已建立的部分回答與[\s\S]*手冊建議必須原樣保留/.test(linebot) &&
+    /if \(!\/查官方手冊確認\//.test(linebot) &&
+    !/const verifiedRuleIntro = bluetoothRuleIntro/.test(linebot),
+  "完整型號鎖定後必須保留所有題型的部分回答，不得再由藍牙等題型特例洗掉",
 );
 assert(
   /!manualSourceRecommended &&\s*webSourceRecommended &&\s*canOfferAnotherWebSearch_/.test(
@@ -496,6 +496,7 @@ const props = {
   getProperties: () => Object.fromEntries(propertyValues.entries()),
 };
 const context = {
+  GAS_VERSION: "v29.6.171-test",
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_OPERATION_CACHE_TTL_SECONDS: 600,
@@ -521,6 +522,7 @@ vm.runInContext(
     extractFunction(linebot, "toHalfWidth"),
     extractFunction(linebot, "isShortAliasModelToken"),
     extractFunction(linebot, "normalizeModelForDisplay"),
+    extractFunction(linebot, "isGroundedWebAnswerRelevant_"),
     extractFunction(linebot, "stripInternalRoutingHints_"),
     extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
     extractFunction(linebot, "normalizeAdvancedSourceTopicIdentity_"),
@@ -553,6 +555,22 @@ vm.runInContext(
     extractFunction(linebot, "refundDailyQuestionUsage_"),
   ].join("\n\n"),
   context,
+);
+
+assert.strictEqual(
+  context.isGroundedWebAnswerRelevant_(
+    "沒有找到針對這個特定型號的步驟，以下根據其他 Odyssey G 系列經驗。",
+    "S32HG802SC",
+  ),
+  false,
+  "有 grounding 但明說只找到其他系列時，不得冒充目前型號的有效答案",
+);
+assert.strictEqual(
+  context.isGroundedWebAnswerRelevant_(
+    "S32HG802SC 可先檢查連接器是否鎖緊。",
+    "S32HG802SC",
+  ),
+  true,
 );
 
 for (let index = 0; index < 5; index += 1) {
@@ -852,7 +870,8 @@ assert(
 assert(
   /查官方手冊確認/.test(linebot) &&
     !/官方手冊」再點「確認要查/.test(linebot) &&
-    /選完就會直接查，不會再問一次/.test(linebot) &&
+    /選完就會直接查/.test(linebot) &&
+    !/不會再問一次/.test(linebot) &&
     /Manual Authorization v29\.6\.160/.test(
       extractFunction(linebot, "executeAdvancedSourceQuery_"),
     ) &&
@@ -867,8 +886,133 @@ assert(
   ) &&
     /userWebQuotaCharged=0/.test(linebot) &&
     /SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT\s*=\s*3/.test(linebot) &&
-    /buildTentativeManualFallback_/.test(advancedRouteText),
-  "PDF 無證據後只能自動補搜一次受控 Web；不扣使用者網搜額度，且仍須提供保守參考方向",
+    /buildTentativeManualFallback_/.test(
+      extractFunction(linebot, "buildManualWebRescueReply_"),
+    ) &&
+    /function isGroundedWebAnswerRelevant_/.test(linebot) &&
+    /(?:沒有\|未能\|找不到)/.test(
+      extractFunction(linebot, "isGroundedWebAnswerRelevant_"),
+    ) &&
+    /replace\(\/\\s\*\\\[cite\[\\s\\S\]\*\$\/i/.test(
+      extractFunction(linebot, "compactGroundedWebAnswer_"),
+    ) &&
+    /回答結尾固定兩行，兩行都不得省略/.test(linebot) &&
+    /Grounding Relevance v29\.6\.168/.test(advancedRouteText) &&
+    extractFunction(linebot, "compactGroundedWebAnswer_").includes(
+      "通常這類",
+    ) &&
+    extractFunction(linebot, "compactGroundedWebAnswer_").includes(
+      "suppressSpeculativeList",
+    ) &&
+    /function getGroundedQuestionFocusTokens_/.test(linebot) &&
+    /function buildGroundedSupportedAnswer_/.test(linebot) &&
+    /groundingSupports[\s\S]*support\.segment[\s\S]*lastWebSupportedSegments/.test(
+      linebot,
+    ) &&
+    /Grounding Support v29\.6\.167/.test(linebot) &&
+    /lastWebSupportedSegments/.test(advancedRouteText) &&
+    /lastWebEvidenceValid = false;[\s\S]*lastWebUnverifiedDraft = "\[NO_RELEVANT_WEB_EVIDENCE\]"/.test(
+      advancedRouteText,
+    ) &&
+    advancedRouteText.indexOf("beginAdvancedSourceOperation_(") <
+      advancedRouteText.indexOf("getRelevantKBFiles(") &&
+    /noManualReply[\s\S]*finishAdvancedSourceOperation_\([\s\S]*sourceOperation,[\s\S]*noManualReply/.test(
+      advancedRouteText,
+    ) &&
+    /const needsAutomaticWebRescue =/.test(advancedRouteText) &&
+    /manualPreflightStopped \|\|[\s\S]*recommendedWeb \|\|[\s\S]*manualEvidenceFailed/.test(advancedRouteText),
+  "PDF 無證據後只能自動補搜一次受控 Web；不扣使用者網搜額度，同一缺檔結果也不得重複呼叫",
+);
+
+const groundedSupportContext = {
+  compactGroundedWebAnswer_: (value) => String(value || "").trim(),
+  normalizeModelForDisplay: (value) => String(value || "").trim(),
+  toHalfWidth: (value) => String(value || ""),
+};
+vm.createContext(groundedSupportContext);
+vm.runInContext(
+  `${extractFunction(linebot, "getGroundedQuestionFocusTokens_")}
+   ${extractFunction(linebot, "buildGroundedSupportedAnswer_")}
+   globalThis.exactSupported = buildGroundedSupportedAnswer_([
+     "S32HG802SC 的底座採免工具安裝。",
+     "通常這類螢幕可能需要螺絲起子。"
+   ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");
+   globalThis.otherModelRejected = buildGroundedSupportedAnswer_([
+     "S32HG806ES 的底座可免工具安裝。"
+   ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");
+   globalThis.irrelevantExactModelRejected = buildGroundedSupportedAnswer_([
+     "S32HG802SC 是 32 吋電競螢幕，支援旋轉。",
+     "購物網站有販售 S32HG802SC。"
+   ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");`,
+  groundedSupportContext,
+);
+assert(
+  /S32HG802SC/.test(groundedSupportContext.exactSupported) &&
+    !/通常|可能|螺絲起子/.test(groundedSupportContext.exactSupported) &&
+    groundedSupportContext.otherModelRejected === "" &&
+    groundedSupportContext.irrelevantExactModelRejected === "",
+  "Web 最終回答只能使用 groundingSupports 同時支持完整型號與本題核心詞的句段",
+);
+
+const webFallbackContext = {
+  isMonitorUsbMediaWebQuestion_: () => false,
+};
+vm.createContext(webFallbackContext);
+vm.runInContext(
+  `${extractFunction(linebot, "buildTentativeWebFallback_")}
+   globalThis.noEvidence = buildTentativeWebFallback_(
+     "沒有找到這個型號的明確資料。一般來說，可能採免工具設計。",
+     "底座需要工具嗎？",
+     "S32HG802SC"
+   );
+   globalThis.noRelevantSupport = buildTentativeWebFallback_(
+     "[NO_RELEVANT_WEB_EVIDENCE]",
+     "底座需要工具嗎？",
+     "S32HG802SC"
+   );`,
+  webFallbackContext,
+);
+assert(
+  /沒有足夠證據/.test(webFallbackContext.noEvidence) &&
+    /官方手冊/.test(webFallbackContext.noEvidence) &&
+    !/可能採免工具/.test(webFallbackContext.noEvidence) &&
+    /沒有足夠證據/.test(webFallbackContext.noRelevantSupport),
+  "Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者",
+);
+
+assert(
+  /組裝/.test(extractFunction(linebot, "isOperationOrTroubleshootQuery")) &&
+    /!isOperationOrTroubleshootQuery\(user\)/.test(
+      extractFunction(linebot, "inferFastLocalSourceTag_"),
+    ),
+  "組裝／拆裝／固定題不得因相鄰規格詞而被洗白成官方規格答案",
+);
+
+assert(
+  /const identity = \[\s*GAS_VERSION,/.test(
+    extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+  ),
+  "PDF／Web 結果快取鍵必須包含 GAS_VERSION，證據規則更新後不得沿用舊答案",
+);
+
+const manualUiContext = { writeLog: () => {} };
+vm.createContext(manualUiContext);
+vm.runInContext(
+  `${extractFunction(linebot, "buildManualConsentPrompt_")}
+   ${extractFunction(linebot, "isManualEvidenceFailureReply_")}
+   globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
+   globalThis.unsourcedRemoved = buildManualConsentPrompt_("請把支架鎖到 VESA 孔。", "問題", "S32FM902SC");
+   globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");`,
+  manualUiContext,
+);
+assert(
+  /已確認搭載 Tizen/.test(manualUiContext.preserved) &&
+    /查官方手冊確認/.test(manualUiContext.preserved) &&
+    !/VESA 孔/.test(manualUiContext.unsourcedRemoved) &&
+    /查官方手冊確認/.test(manualUiContext.unsourcedRemoved) &&
+    !/不會再問一次/.test(manualUiContext.preserved) &&
+    manualUiContext.newFailureDetected === true,
+  "Fast 只保留有 QA/RULE 來源的已知部分；未驗證草稿不得先顯示，新版手冊失敗文案仍須補救",
 );
 const exactComparisonText = extractFunction(
   linebot,

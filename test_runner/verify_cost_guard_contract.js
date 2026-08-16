@@ -146,13 +146,13 @@ assert(
     /function enforceBluetoothAudioRuleEvidence_/.test(linebot) &&
     /CLASS_RULES 明載 Tizen \+/.test(linebot) &&
     /不能回答成沒有內建藍牙/.test(linebot) &&
-    /const bluetoothRuleIntroMatch/.test(linebot) &&
-    /const bluetoothRuleIntro/.test(linebot) &&
     /三星官方規格已確認搭載 Tizen 作業系統與\$\{versionText\}/.test(
       linebot,
     ) &&
+    /前面已建立的部分回答與[\s\S]*手冊建議必須原樣保留/.test(linebot) &&
+    !/const bluetoothRuleIntroMatch/.test(linebot) &&
     /\[AUTO_SEARCH_PDF\]/.test(linebot),
-  "CLASS_RULES 明載的 Smart/Tizen 藍牙能力不得被 Fast 模型反向否定，操作題只建議手冊",
+  "CLASS_RULES 明載的 Smart/Tizen 藍牙能力不得被 Fast 模型反向否定，且通用回答鏈不得被藍牙特例覆寫",
 );
 assert(
   /let failedUploadCount = 0/.test(linebot) &&

@@ -188,6 +188,23 @@ assert(
   streamingChunk && streamingChunk.intent === "APP_MANAGEMENT" && streamingChunk.pages === "68–72",
   "S32FM703 的 Netflix／串流 App 問法必須命中已核對的 App 手冊片段",
 );
+const m9StreamingChunk = manualChunkContext.findVerifiedManualChunk_(
+  "S32FM902SC 那要怎麼安裝 Netflix？",
+  "S32FM902SC",
+);
+const m9StreamingReply = manualChunkContext.buildVerifiedManualChunkReply_(
+  "S32FM902SC",
+  m9StreamingChunk,
+);
+assert(
+  m9StreamingChunk &&
+    m9StreamingChunk.intent === "APP_MANAGEMENT" &&
+    m9StreamingChunk.sourceType === "official_html_manual" &&
+    /首頁 → 應用程式/.test(m9StreamingReply) &&
+    /HTML/.test(m9StreamingChunk.sourceFile) &&
+    !/第 undefined 頁/.test(m9StreamingReply),
+  "M9 App 問法必須使用已核對的繁中 HTML 使用者指南，不得誤掛 41 頁硬體 PDF",
+);
 assert.strictEqual(
   manualChunkContext.findVerifiedManualChunk_("S32FM703 如何調整亮度？", "S32FM703"),
   null,
