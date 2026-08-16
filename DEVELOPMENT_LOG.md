@@ -2399,3 +2399,14 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - 根因：過去任一 Gemini Files URI 過期都排程 `syncGeminiKnowledgeBase(true)`，會重新上傳整個 Drive PDF 資料夾；單一手冊故障因此可能撞到 GAS 執行時間，正式 TestUI 長時間停在 `[KB_EXPIRED]`。
 - 改為 `refreshStalePdfAttachmentsFromDrive_()`：只按本題已選中的 PDF 檔名由 Drive 重新上傳 1～2 份，覆寫同名 URI，並以新 URI 重跑一次 `countTokens`。預檢成功後才扣手冊額度與送出 `generateContent`；單檔更新仍失敗才保留既有背景整庫重建。
 - `verify_source_router_contract.js` 新增單檔精準更新、先預檢後扣額度及最多重試一次契約。
+# 2026-08-16 (v29.6.160 / 移除 Fast 答案的重複手冊確認)
+
+- 正式 LINE LOG 的 `M7 可以接第四台嗎？→ 它要怎麼看 Netflix` 顯示 Fast 已產生可用的 Tizen／Netflix 操作答案，舊守門卻只因沒有來源標籤就追加 PDF，退回一般額度並要求使用者按常駐選單後再次確認；這是路由錯誤，不是 PDF 缺檔或使用者操作錯誤。
+- Rich Menu 保留為自選來源捷徑：本題加完整型號已存在時，按「查官方手冊確認」即直接執行；只有缺完整型號才選型，選完即執行；無題目才請輸入題目。移除所有客戶可見的「再點確認／確認後才會讀」文字。
+- 將 S32FM702／703／803 手冊第 68–72 頁的 App 操作納入已核對片段，涵蓋 Netflix、YouTube、Disney+、Prime Video 與一般串流 App 的開啟／登入／安裝問法；精準型號命中時零 LLM、零 PDF、零手冊扣次。
+- Fast 操作答覆改為依答案是否不足／不確定判斷是否建議手冊，不再把已有步驟的安全答案整段丟棄。重設等高風險題維持手冊守門。
+# 2026-08-16 (v29.6.161 / 證據守門收斂)
+
+- 依 ChatGPT 高階版與 Gemini Flash 的共同檢視，停止把「模型回覆看似有步驟」當作已驗證事實；無 QA／RULE／已核對 evidence 的 Fast 操作答覆只能保留為部分提示，並提供單次手冊授權，避免以便利換取幻覺風險。
+- `查官方手冊確認` 的單次授權仍維持：按鍵後已有本題與完整型號即直接查 PDF，缺型號只選型、選完即查，禁止第二次確認。
+- 後續新增內容只准進既有 `Evidence[]` 資料索引（型號 scope、topic、頁碼、facts、同義錨點、排除條件）與回歸測試；禁止再以新題型 JavaScript 分支堆疊路由規則。

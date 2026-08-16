@@ -722,7 +722,7 @@ vm.runInContext(fastEscalationCode, fastEscalationContext);
 
 assertStep(
   fastEscalationContext.__fastEscalationResult.noTrustedSource === true,
-  "operation/manual questions with PDF available must not trust generic Fast Mode steps without a trusted source",
+  "無本機證據的操作步驟只能作部分提示並建議手冊，不得當成已核對事實",
 );
 
 assertStep(

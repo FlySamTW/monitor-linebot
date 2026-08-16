@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.159"; // 2026-08-16 Prompt 精簡與來源溫度分流
+const GAS_VERSION = "v29.6.161"; // 2026-08-16 單次手冊授權與證據守門收斂
 const BUILD_TIMESTAMP = "2026-08-16 10:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -3903,8 +3903,9 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
     return false;
   }
 
-  // v29.5.276: 規格/能力題不自動升 PDF。
-  // 操作/故障題或明確手冊查證題，必須同時有可信來源與足夠答案才算 Fast Mode 過關。
+  // 規格/能力題不自動升 PDF。對於沒有本機證據的操作答覆，保留模型
+  // 已產生的有用內容作「部分回答」，但仍只提供一次手冊授權，不能把
+  // 無來源步驟誤判成已核對事實。已核對片段會在 Fast 前直接 terminal return。
   const isPdfEligibleIntent =
     !!info.operationIntent || !!info.manualVerificationIntent;
   if (!isPdfEligibleIntent) {
@@ -3918,7 +3919,6 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
   if (!trustedFastSource) {
     return true;
   }
-
   if (isFactoryResetQueryWithoutPinIssue(info.userQuestion)) {
     return true;
   }
@@ -3930,7 +3930,10 @@ function shouldEscalateFastAnswerToPdf(intentInfo) {
     return false;
   }
 
-  return isOperationAnswerInsufficient(info.normalizedFastAnswer);
+  const answerInsufficient = isOperationAnswerInsufficient(
+    info.normalizedFastAnswer,
+  );
+  return answerInsufficient;
 }
 
 function extractContinuationTargetModel(text) {
@@ -4052,9 +4055,11 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32HG806ES"],
       intent: "DUAL_MODE",
+      topic: "display_mode",
       sourceFile:
         "S25HG402,S27HG402,S27HG612,S27HG802,S27HG806,S32HG702,S32HG732,S32HG802,S32HG806.pdf",
       pages: "27、35、43",
+      queryPatterns: [/(?:Dual\s*Mode|雙模|6\s*K|330\s*Hz)/i],
       facts: [
         "切換路徑是螢幕 OSD 的「Game → Dual Mode」；這個功能會變更解析度與更新率",
         "也可在「Setup Custom Key」把 Dual Mode 指派為自訂鍵，之後直接切換",
@@ -4064,8 +4069,10 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM703"],
       intent: "HEVC",
+      topic: "media_codec",
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "180、187",
+      queryPatterns: [/(?:HEVC|H\.?\s*265|H265)/i],
       facts: [
         "支援 HEVC（H.265 - Main、Main10）",
         "HEVC 編解碼器僅適用於 MKV、MP4、TS 檔案類型",
@@ -4074,8 +4081,10 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "RETAIL_MODE",
+      topic: "usage_mode",
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "170",
+      queryPatterns: [/(?:零售模式|展示模式|商店模式|賣場模式|使用模式|家庭模式)/i],
       facts: [
         "零售模式路徑是「設定 → 所有設定 → 一般與隱私權 → 使用模式 → 零售模式」",
         "零售模式僅供店內展示，部分功能會停用且設定會定時自動重設；一般使用請選家庭模式",
@@ -4084,8 +4093,11 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "USB_MEDIA_PLAYBACK",
+      topic: "usb_media",
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "97、176",
+      queryPatterns: [/(?:USB.{0,12}(?:播放|影片|相片|音樂|媒體)|(?:播放|影片|相片|音樂|媒體).{0,12}USB|已連接裝置|外部儲存裝置)/i],
+      excludePatterns: [/(?:斷線|中斷|不穩|異常|當機|失敗|無法|不能|故障|非官方|網路解法)/i],
       facts: [
         "USB 播放路徑是「接上 USB 裝置 → 已連接裝置 → 選擇 USB 裝置 → 選擇內容」",
         "能否播放仍受檔案格式與編碼限制",
@@ -4094,6 +4106,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "BLUETOOTH_AUDIO",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "151",
       queryPatterns: [
@@ -4108,6 +4121,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "WIFI_SETUP",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "8–10",
       queryPatterns: [
@@ -4122,6 +4136,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "MOBILE_SCREEN_SHARE",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "12–13",
       queryPatterns: [
@@ -4136,6 +4151,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "BLUETOOTH_INPUT",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "34",
       queryPatterns: [
@@ -4150,13 +4166,15 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "APP_MANAGEMENT",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "68–72",
       queryPatterns: [
         /(?:App|APP|應用程式).{0,24}(?:安裝|下載|新增|刪除|移除|解除安裝|更新|重新安裝)|(?:安裝|下載|刪除|移除|更新).{0,24}(?:App|APP|應用程式)/i,
+        /(?:Netflix|YouTube|Disney\+?|Prime\s*Video|串流|影音).{0,24}(?:看|觀看|開啟|打開|登入|安裝|下載)|(?:看|觀看|開啟|打開|登入|安裝|下載).{0,24}(?:Netflix|YouTube|Disney\+?|Prime\s*Video|串流|影音)/i,
       ],
       facts: [
-        "安裝 App 請到「首頁 → 應用程式」，選擇要安裝的 App，再選擇安裝；完成後可直接開啟",
+        "要看 Netflix、YouTube 等串流 App，請從「首頁 → 應用程式」找到 App 後開啟並登入；若尚未安裝，選擇該 App 後按安裝",
         "更新、移除或重新安裝請到應用程式首頁底部的「應用程式設定」管理；預設的標準應用程式無法解除安裝",
         "使用與更新 App 時螢幕必須連線到網路",
       ],
@@ -4164,6 +4182,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "SOFTWARE_UPDATE",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "158–159",
       queryPatterns: [
@@ -4178,6 +4197,7 @@ function getVerifiedManualChunks_() {
     {
       models: ["S32FM702", "S32FM703", "S32FM803"],
       intent: "FACTORY_RESET",
+      requiresAction: true,
       sourceFile: "S32FM702,S32FM703,S32FM803.pdf",
       pages: "171",
       queryPatterns: [
@@ -4192,6 +4212,29 @@ function getVerifiedManualChunks_() {
   ];
 }
 
+function isVerifiedManualEvidenceQuery_(chunk, query) {
+  const text = String(query || "");
+  const patterns = Array.isArray(chunk && chunk.queryPatterns)
+    ? chunk.queryPatterns
+    : [];
+  if (patterns.length === 0 || !patterns.some(function (pattern) {
+    return pattern && pattern.test(text);
+  })) {
+    return false;
+  }
+  const excluded = Array.isArray(chunk && chunk.excludePatterns) &&
+    chunk.excludePatterns.some(function (pattern) {
+      return pattern && pattern.test(text);
+    });
+  if (excluded) return false;
+  if (chunk && chunk.requiresAction === true) {
+    return /(?:如何|怎麼|怎樣|哪裡|在哪|設定|操作|連接|連線|配對|安裝|下載|刪除|移除|更新|升級|恢復|回復|還原|重設|重置|投影|分享|鏡像|開啟|找不到)/i.test(
+      text,
+    );
+  }
+  return true;
+}
+
 function findVerifiedManualChunk_(query, model) {
   const normalizedModel = String(model || "").trim().toUpperCase();
   const text = String(query || "");
@@ -4203,26 +4246,7 @@ function findVerifiedManualChunk_(query, model) {
     const modelHit = (chunk.models || []).some(function (item) {
       return isPdfModelTokenMatch_(String(item || ""), normalizedModel);
     });
-    const declaredPatternHit =
-      Array.isArray(chunk.queryPatterns) &&
-      chunk.queryPatterns.some(function (pattern) {
-        return pattern && pattern.test(text);
-      });
-    const intentHit =
-      (chunk.intent === "DUAL_MODE" &&
-        /(?:Dual\s*Mode|雙模|6\s*K|330\s*Hz)/i.test(text)) ||
-      (chunk.intent === "HEVC" && /HEVC|H\.?\s*265|H265/i.test(text)) ||
-      (chunk.intent === "RETAIL_MODE" && isRetailModeManualQuery_(text)) ||
-      (chunk.intent === "USB_MEDIA_PLAYBACK" &&
-        isUsbMediaPlaybackManualQuery_(text) &&
-        !/(?:斷線|中斷|不穩|異常|當機|失敗|無法|不能|故障|非官方|網路解法)/i.test(
-          text,
-        )) ||
-      (declaredPatternHit &&
-        /(?:如何|怎麼|怎樣|哪裡|在哪|設定|操作|連接|連線|配對|安裝|下載|刪除|移除|更新|升級|恢復|回復|還原|重設|重置|投影|分享|鏡像|開啟|找不到)/i.test(
-          text,
-        ));
-    if (modelHit && intentHit) return chunk;
+    if (modelHit && isVerifiedManualEvidenceQuery_(chunk, text)) return chunk;
   }
   return null;
 }
@@ -5140,15 +5164,13 @@ function buildSourceSelectionPrompt_(
       lines.push(`目前沿用型號：${normalizeModelForDisplay(previousModel)}。若型號不對，可點「換型號」。`);
     }
     lines.push(
-      source === "manual"
-        ? "確認後才會讀取 PDF 並扣手冊次數；可點「確認要查」、「換型號」或「取消」。"
-        : "你已按下網路解答，系統會直接搜尋，不再要求二次確認。",
+      "你剛才的按鍵就是授權；系統會直接查詢，不會再要求第二次確認。",
     );
   } else {
     lines.push(
       source === "manual"
-        ? "請直接輸入「系列／型號＋問題」；有多個版本時我會列出按鈕讓你選。輸入「取消」離開。"
-        : "請直接輸入問題；輸入「取消」離開。",
+        ? "請直接輸入「系列／型號＋問題」；若需要選型號，選完就會直接查，不會再問一次。輸入「取消」離開。"
+        : "請直接輸入問題；收到後會直接搜尋。輸入「取消」離開。",
     );
   }
   return lines.join("\n\n");
@@ -5201,7 +5223,8 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
     draftQuery: "",
   });
 
-  // 網路鍵本身就是授權；有現題便立即查。手冊則先走型號解析與「確認要查」。
+  // 來源鍵本身就是授權；已有問題即直接查。缺完整型號時只補選型，
+  // 選完便直接執行，禁止再出現第二個「確認要查」。
   if (previousQuestion && source === "web") {
     return executeAdvancedSourceQuery_(
       "web",
@@ -6260,53 +6283,11 @@ function executeAdvancedSourceQuery_(
       return true;
     }
 
-    if (!(pendingState && pendingState.confirmedManual)) {
-      const confirmationQuestion = stripKnownModelFromSourceQuestion_(
-        normalizedQuery,
-        selectedModel,
-      );
-      writePendingSourceState_(contextId, {
-        source: "manual",
-        userIdHash: getSourceContextHash_(userId),
-        previousQuestion: confirmationQuestion,
-        previousModel: selectedModel,
-        draftQuery: normalizedQuery,
-        confirmationReady: true,
-        dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
-      });
-      LAST_SOURCE_TEST_STATE = {
-        source: "manual",
-        pending: true,
-        confirmationReady: true,
-        hasPrevious: true,
-        hasPreviousModel: true,
-        model: selectedModel,
-        remaining: remainingBefore,
-      };
-      replyMessage(
-        replyToken,
-        `📖 官方手冊｜今日剩餘 ${remainingBefore}/${SOURCE_DAILY_LIMITS.manual} 次\n\n型號：${selectedModel}\n問題：「${String(confirmationQuestion || normalizedQuery).substring(0, 160)}」\n\n會完整搜尋對應型號的官方使用手冊，回覆時間較長。確認後才會讀取 PDF 並扣 1 次。`,
-        {
-          quickReply: {
-            items: [
-              buildSourcePostbackQuickReply_(
-                "確認要查",
-                "rm_action=confirm_manual&v=2",
-              ),
-              buildSourcePostbackQuickReply_(
-                "換型號",
-                "rm_action=reselect_manual_model&v=2",
-              ),
-              buildSourcePostbackQuickReply_(
-                "取消",
-                "rm_action=cancel_source&v=2",
-              ),
-            ],
-          },
-        },
-      );
-      return true;
-    }
+    // 來源鍵（或相容 #查手冊 指令）本身已是明確授權。完整型號解析完成後
+    // 直接進 token/PDF 預檢；禁止再送一個「確認要查」把同一題卡成兩次操作。
+    writeLog(
+      `[Manual Authorization v29.6.160] source=${pendingState ? "pending" : "explicit"} model=${selectedModel}，選型完成後直接執行`,
+    );
   }
 
   clearLegacyAdvancedRouteState_(cache, userId, contextId);
@@ -6878,8 +6859,8 @@ function buildManualConsentPrompt_(answerText, query, model) {
   }
   const target = String(model || "").trim();
   const question = target
-    ? `若要更精準確認 ${target}，請按下方「官方手冊」再點「確認要查」；確認後才會讀取手冊。`
-    : "目前的 QA 與規格資料還不足。若要繼續查證，請按下方「官方手冊」；系統不會自動讀取。";
+    ? `若想逐項核對 ${target}，可點下方「查官方手冊確認」；按一下就會開始查，不會再問一次。`
+    : "目前的 QA 與規格資料還不足。若要繼續查證，可點下方「查官方手冊確認」；按一下就會開始查。";
   return [body, question].filter(Boolean).join("\n\n");
 }
 
@@ -13244,7 +13225,7 @@ function handleMessage(event) {
           quickReply: {
             items: [
               buildSourcePostbackQuickReply_(
-                "📖 官方手冊",
+                "📖 查官方手冊確認",
                 "rm_action=select_source&source=manual&v=2",
               ),
             ],
@@ -16781,21 +16762,12 @@ function handleMessage(event) {
           ) {
             qrItems.push(
               buildSourcePostbackQuickReply_(
-                "📖 官方手冊",
+                "📖 查官方手冊確認",
                 "rm_action=select_source&source=manual&v=2",
               ),
             );
 
-            // v29.5.149: 修改回答末尾的查手冊等待提醒
-            if (!/請按下方「官方手冊」/.test(currentReplyTextForUi)) {
-              const pdfReminder =
-                "\n\n如果以上資訊不夠，請按下方「官方手冊」再授權查證。";
-              if (Array.isArray(replyText)) {
-                replyText[replyText.length - 1] += pdfReminder;
-              } else {
-                replyText += pdfReminder;
-              }
-            }
+            // 按鈕文字已說明這一下就是授權與執行；不再附加「再授權／再確認」文案。
           }
 
           if (offerOfficialModelPage) {

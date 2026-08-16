@@ -158,6 +158,7 @@ vm.runInContext(
     extractFunction(linebot, "isBluetoothAudioManualQuery_"),
     extractFunction(linebot, "isBluetoothAudioOperationQuery_"),
     extractFunction(linebot, "getVerifiedManualChunks_"),
+    extractFunction(linebot, "isVerifiedManualEvidenceQuery_"),
     extractFunction(linebot, "findVerifiedManualChunk_"),
     extractFunction(linebot, "buildVerifiedManualChunkReply_"),
   ].join("\n\n"),
@@ -178,6 +179,14 @@ assert(
     /第 180、187 頁/.test(hevcChunkReply) &&
     /\[來源:官方手冊\]/.test(hevcChunkReply),
   "可稽核手冊片段缺少 HEVC 結論、容器限制、頁碼或來源",
+);
+const streamingChunk = manualChunkContext.findVerifiedManualChunk_(
+  "S32FM703UC 它要怎麼看 Netflix？",
+  "S32FM703",
+);
+assert(
+  streamingChunk && streamingChunk.intent === "APP_MANAGEMENT" && streamingChunk.pages === "68–72",
+  "S32FM703 的 Netflix／串流 App 問法必須命中已核對的 App 手冊片段",
 );
 assert.strictEqual(
   manualChunkContext.findVerifiedManualChunk_("S32FM703 如何調整亮度？", "S32FM703"),

@@ -714,7 +714,7 @@ for (const manualText of [
       /\| R01 \|/.test(manualText) &&
       /\| R24 \|/.test(manualText) &&
       /手冊 → 網路 → 再手冊/.test(manualText) &&
-      /確認要查／換型號／取消/.test(manualText),
+      /按鍵即授權與執行/.test(manualText),
     "開發手冊必須保存完整三來源流程矩陣與換型號例外",
   );
 }
@@ -823,7 +823,7 @@ const verifiedManualVm = {
 };
 vm.createContext(verifiedManualVm);
 vm.runInContext(
-  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n${extractFunction(linebot, "buildVerifiedManualChunkReply_")}\n` +
+  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "isVerifiedManualEvidenceQuery_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n${extractFunction(linebot, "buildVerifiedManualChunkReply_")}\n` +
     `globalThis.hit = findVerifiedManualChunk_("S32HG806ES 如何切換 6K 165Hz 和 3K 330Hz 雙模？", "S32HG806ES");\n` +
     `globalThis.wrongModel = findVerifiedManualChunk_("如何切換 Dual Mode？", "S32HG802SC");\n` +
     `globalThis.usbHowTo = findVerifiedManualChunk_("如何播放 USB？", "S32FM803UC");\n` +
@@ -848,6 +848,18 @@ assert(
     /第 151 頁/.test(verifiedManualVm.bluetoothReply) &&
     /\[來源:官方手冊\]/.test(verifiedManualVm.bluetoothReply),
   "手冊片段須精準匹配型號與意圖：M8 藍牙題須回第 151 頁；錯型號與 USB 故障題不得借用",
+);
+assert(
+  /查官方手冊確認/.test(linebot) &&
+    !/官方手冊」再點「確認要查/.test(linebot) &&
+    /選完就會直接查，不會再問一次/.test(linebot) &&
+    /Manual Authorization v29\.6\.160/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
+    ) &&
+    !/confirmationReady:\s*true/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
+    ),
+  "手冊按鍵必須是單次授權；缺型號只選型，不得形成第二次確認迴圈",
 );
 assert(
   /systemRescue:\s*true/.test(
