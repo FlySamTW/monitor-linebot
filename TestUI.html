@@ -655,7 +655,6 @@
           </div>
           <div id="source-model-bar" class="source-model-bar" aria-label="相近型號選擇"></div>
           <div id="source-action-bar" class="source-action-bar">
-            <button id="confirm-manual-source" class="source-action-btn" onclick="confirmManualSource()">確認要查</button>
             <button id="reselect-manual-model" class="source-action-btn" onclick="reselectManualModel()">換型號</button>
             <button class="source-action-btn" onclick="cancelSourceMode()">取消</button>
           </div>
@@ -1143,7 +1142,6 @@
       // --- 訊息發送 ---
       function renderSourceActions(state) {
         var bar = document.getElementById("source-action-bar");
-        var confirmButton = document.getElementById("confirm-manual-source");
         var reselectButton = document.getElementById("reselect-manual-model");
         var modelBar = document.getElementById("source-model-bar");
         modelBar.innerHTML = "";
@@ -1172,8 +1170,6 @@
           return;
         }
         activeSource = state.source || "spec";
-        confirmButton.style.display =
-          state.source === "manual" && state.confirmationReady ? "block" : "none";
         reselectButton.style.display =
           state.source === "manual" && state.hasPreviousModel ? "block" : "none";
         bar.classList.add("visible");
@@ -1231,12 +1227,6 @@
 
       function selectSource(source) {
         runSourcePostback("select_source", source);
-      }
-
-      function confirmManualSource() {
-        if (activeSource === "manual") {
-          runSourcePostback("confirm_manual", "manual");
-        }
       }
 
       function reselectManualModel() {

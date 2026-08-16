@@ -295,17 +295,18 @@ assert(
 );
 assert(
   /前面已建立的部分回答與[\s\S]*手冊建議必須原樣保留/.test(linebot) &&
-    /if \(!\/查官方手冊確認\//.test(linebot) &&
+    /if \(!\/查官方手冊\//.test(linebot) &&
     !/const verifiedRuleIntro = bluetoothRuleIntro/.test(linebot),
   "完整型號鎖定後必須保留所有題型的部分回答，不得再由藍牙等題型特例洗掉",
 );
 assert(
-  /!manualSourceRecommended &&\s*webSourceRecommended &&\s*canOfferAnotherWebSearch_/.test(
-      linebot,
-    ) &&
-    /if \(\s*manualSourceRecommended &&\s*!alreadyConsultedPdf/.test(linebot) &&
-    !/\(hasPdfForModel \|\| manualSourceRecommended\)/.test(linebot),
-  "正在建議手冊時不得同輪提前顯示 Web 搜尋；手冊無證據後才可進 Web",
+  /function buildFastAnswerEnvelope_/.test(linebot) &&
+    /function buildEvidenceActionQuickReplies_/.test(linebot) &&
+    /allowedActions\.includes\("manual"\)/.test(linebot) &&
+    /allowedActions\.includes\("web"\)/.test(linebot) &&
+    /items\.slice\(0, 3\)/.test(linebot) &&
+    !/!manualSourceRecommended &&\s*webSourceRecommended/.test(linebot),
+  "部分／無證據回答必須可同時提供手冊與 Web，並將 Quick Reply 限制在三個內",
 );
 
 const doPostText = extractFunction(linebot, "doPost");
@@ -326,11 +327,11 @@ const aliasLookupBeforeQaIndex = linebot.indexOf(
   generalRouterStart,
 );
 const directQaIndex = linebot.indexOf(
-  "const directLocalQa = findLocalMatchInQA(msg, userId)",
+  "const directLocalQa = incomingMessageWasElaboration",
   generalRouterStart,
 );
 const aliasGateIndex = linebot.indexOf(
-  "shouldPromptAliasModelSelection_(msg, aliasSelectionBeforeQa)",
+  "shouldPromptAliasModelSelection_(routingQuestion, aliasSelectionBeforeQa)",
   directQaIndex,
 );
 const historyIndex = linebot.indexOf(
@@ -347,7 +348,7 @@ assert(
     aliasLookupBeforeQaIndex < directQaIndex &&
     aliasGateIndex > directQaIndex &&
     aliasGateIndex < historyIndex &&
-    /doesQaMatchCoverQueryAliases_\(msg, directLocalQa\.question\)/.test(
+    /doesQaMatchCoverQueryAliases_\(routingQuestion, directLocalQa\.question\)/.test(
       generalRouterText,
     ) &&
     /promptAliasOnlyModelSelection\([\s\S]{0,180}"fast"/.test(generalRouterText),
@@ -701,9 +702,10 @@ assert.strictEqual(context.readPendingSourceState_("C2", false), null);
 assert(/function testSourcePostback\(/.test(linebot), "TestUI 有正式 postback 模擬入口");
 assert(
   /selectSource\('manual'\)/.test(testUi) &&
-    /confirmManualSource\(\)/.test(testUi) &&
-    /runSourcePostback\("confirm_manual", "manual"\)/.test(testUi),
-  "TestUI 可按三來源，手冊以確認要查授權且網路不二次確認",
+    !/confirmManualSource\(\)/.test(testUi) &&
+    !/confirm_manual/.test(testUi) &&
+    !/action === "confirm_manual"/.test(linebot),
+  "TestUI 與正式 webhook 都必須一按即授權，不能保留第二次手冊確認死狀態",
 );
 assert(
   /id="reselect-manual-model"/.test(testUi) &&
@@ -732,21 +734,20 @@ assert(
 const modelHoldOccurrences = (
   linebot.match(/markDailyQuestionModelSelectionHold_\(userId\)/g) || []
 ).length;
-const consentSelectionStart = linebot.indexOf(
-  '} else if (modelSelectMode === "consent")',
+const smartRouterSelectionStart = linebot.indexOf(
+  '// 系列選型本身不是手冊授權。',
 );
-const consentSelectionText = linebot.slice(
-  consentSelectionStart,
-  consentSelectionStart + 1800,
+const smartRouterSelectionText = linebot.slice(
+  smartRouterSelectionStart,
+  smartRouterSelectionStart + 1200,
 );
 assert(
   modelHoldOccurrences >= 2 &&
-    /consumeDailyQuestionModelSelectionHold_\(userId\)/.test(
-      consentSelectionText,
-    ) &&
-    consentSelectionText.indexOf("refundDailyQuestionUsage_") <
-      consentSelectionText.indexOf("replyMessage("),
-  "後段 Smart Router 選型也必須保留計次；consent 只導向手冊時立即退回一般額度",
+    /const modelSelectMode = "fast";/.test(smartRouterSelectionText) &&
+    !/"consent"/.test(smartRouterSelectionText) &&
+    /舊授權旁路已停用/.test(extractFunction(linebot, "grantManualSearchConsent_")) &&
+    /return false;/.test(extractFunction(linebot, "consumeManualSearchConsent_")),
+  "系列選型只鎖定實體，不得自行成為 PDF 授權；舊 manual consent 旁路必須 fail closed",
 );
 assert.strictEqual(menu.size.width, 2500);
 assert.strictEqual(menu.size.height, 843);
@@ -917,7 +918,7 @@ assert(
   "手冊片段須精準匹配型號與意圖：M8 藍牙題須回第 151 頁；錯型號與 USB 故障題不得借用",
 );
 assert(
-  /查官方手冊確認/.test(linebot) &&
+  /查官方手冊/.test(linebot) &&
     !/官方手冊」再點「確認要查/.test(linebot) &&
     /選完就會直接查/.test(linebot) &&
     !/不會再問一次/.test(linebot) &&
@@ -933,6 +934,12 @@ assert(
   /systemRescue:\s*true/.test(
     extractFunction(linebot, "runManualWebRescue_"),
   ) &&
+    /lastWebUnverifiedDraft \|\| webResponse/.test(
+      extractFunction(linebot, "runManualWebRescue_"),
+    ) &&
+    /buildTentativeWebFallback_\(\s*rawWebDraft/.test(
+      extractFunction(linebot, "runManualWebRescue_"),
+    ) &&
     /userWebQuotaCharged=0/.test(linebot) &&
     /SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT\s*=\s*3/.test(linebot) &&
     /buildTentativeManualFallback_/.test(
@@ -981,6 +988,8 @@ const groundedSupportContext = {
 vm.createContext(groundedSupportContext);
 vm.runInContext(
   `${extractFunction(linebot, "getGroundedQuestionFocusTokens_")}
+   ${extractFunction(linebot, "expandGroundedSupportToCompleteLine_")}
+   ${extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_")}
    ${extractFunction(linebot, "buildGroundedSupportedAnswer_")}
    globalThis.exactSupported = buildGroundedSupportedAnswer_([
      "S32HG802SC 的底座採免工具安裝。",
@@ -1000,15 +1009,19 @@ assert(
     !/通常|可能|螺絲起子/.test(groundedSupportContext.exactSupported) &&
     groundedSupportContext.otherModelRejected === "" &&
     groundedSupportContext.irrelevantExactModelRejected === "",
-  "Web 最終回答只能使用 groundingSupports 同時支持完整型號與本題核心詞的句段",
+  `Web 最終回答只能使用 groundingSupports 同時支持完整型號與本題核心詞的句段: ${JSON.stringify({ exactSupported: groundedSupportContext.exactSupported, otherModelRejected: groundedSupportContext.otherModelRejected, irrelevantExactModelRejected: groundedSupportContext.irrelevantExactModelRejected })}`,
 );
 
 const webFallbackContext = {
   isMonitorUsbMediaWebQuestion_: () => false,
+  stripAnySourceTags: (value) => String(value || ""),
+  formatForLineMobile: (value) => String(value || ""),
+  isApiFailureReply: () => false,
 };
 vm.createContext(webFallbackContext);
 vm.runInContext(
-  `${extractFunction(linebot, "buildTentativeWebFallback_")}
+  `${extractFunction(linebot, "sanitizeTentativeWebActionLine_")}
+   ${extractFunction(linebot, "buildTentativeWebFallback_")}
    globalThis.noEvidence = buildTentativeWebFallback_(
      "沒有找到這個型號的明確資料。一般來說，可能採免工具設計。",
      "底座需要工具嗎？",
@@ -1018,6 +1031,16 @@ vm.runInContext(
      "[NO_RELEVANT_WEB_EVIDENCE]",
      "底座需要工具嗎？",
      "S32HG802SC"
+   );
+   globalThis.safeTerminal = buildTentativeWebFallback_(
+     "很抱歉，無法找到直接解法。\\n* **使用數位機上盒：** 若機上盒有 HDMI 輸出，可用 HDMI 線連接螢幕並切換輸入源。\\n* 其他型號可能有類似方法。\\n* **諮詢業者：** 確認機上盒提供 HDMI 輸出。",
+     "M9 可以接第四台嗎？",
+     "S32FM902SC"
+   );
+   globalThis.noPurchase = buildTentativeWebFallback_(
+     "沒有找到直接解法。\\n* **外接數位電視盒：** 你可以購買市面上的電視盒，它通常有第四台輸入，並透過 HDMI 線連接到 S32FM902SC。",
+     "M9 可以接第四台嗎？",
+     "S32FM902SC"
    );`,
   webFallbackContext,
 );
@@ -1025,7 +1048,13 @@ assert(
   /沒有足夠證據/.test(webFallbackContext.noEvidence) &&
     /官方手冊/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
-    /沒有足夠證據/.test(webFallbackContext.noRelevantSupport),
+    /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
+    /使用數位機上盒/.test(webFallbackContext.safeTerminal) &&
+    /諮詢業者/.test(webFallbackContext.safeTerminal) &&
+    !/其他型號可能/.test(webFallbackContext.safeTerminal) &&
+    /不代表三星或外部網頁已證實/.test(webFallbackContext.safeTerminal) &&
+    /HDMI 線連接/.test(webFallbackContext.noPurchase) &&
+    !/購買|通常/.test(webFallbackContext.noPurchase),
   "Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者",
 );
 
@@ -1097,9 +1126,9 @@ vm.runInContext(
 );
 assert(
   /已確認搭載 Tizen/.test(manualUiContext.preserved) &&
-    /查官方手冊確認/.test(manualUiContext.preserved) &&
+    /查官方手冊/.test(manualUiContext.preserved) &&
     !/VESA 孔/.test(manualUiContext.unsourcedRemoved) &&
-    /查官方手冊確認/.test(manualUiContext.unsourcedRemoved) &&
+    /查官方手冊/.test(manualUiContext.unsourcedRemoved) &&
     !/不會再問一次/.test(manualUiContext.preserved) &&
     manualUiContext.newFailureDetected === true &&
     /第36頁/.test(manualUiContext.structuredManual) &&
@@ -1110,14 +1139,13 @@ assert(
     /操作路徑：Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
-    !/AUTO_SEARCH_WEB/.test(manualUiContext.formatError),
-  "手冊 Structured Output 必須穩定產出 evidence；只有明確 NOT_FOUND 可轉 Web，格式錯誤不得跨來源",
+    /補查一次公開網頁/.test(manualUiContext.formatError),
+  "手冊 Structured Output 必須穩定產出 evidence；NOT_FOUND 與格式驗證失敗都要進受控 Web 補救",
 );
 assert(
   /const manualEvidenceNotFound =/.test(linebot) &&
-    /manualEvidenceNotFound \|\|\s*recommendedWeb/.test(linebot) &&
-    !/recommendedWeb \|\|\s*manualEvidenceFailed/.test(linebot),
-  "PDF 格式／證據驗證失敗不得再被當成手冊無答案而自動跨 Web",
+    /manualEvidenceNotFound \|\|\s*manualEvidenceFailed \|\|\s*recommendedWeb/.test(linebot),
+  "PDF NOT_FOUND、格式或證據驗證失敗都必須進同一次受控 Web 補救",
 );
 const exactComparisonText = extractFunction(
   linebot,
@@ -1127,7 +1155,7 @@ assert(
   /models\.length !== 2/.test(exactComparisonText) &&
     /findExactModelRuleLine_\(model\)/.test(exactComparisonText) &&
     !/callLLMWithRetry|UrlFetchApp\.fetch/.test(exactComparisonText) &&
-    /buildExactRuleComparisonReply_\(msg\)[\s\S]{0,700}replyMessage\(replyToken, exactRuleComparisonReply\)[\s\S]{0,500}return;/.test(
+    /buildExactRuleComparisonReply_\(routingQuestion\)[\s\S]{0,700}replyMessage\(replyToken, exactRuleComparisonReply\)[\s\S]{0,500}return;/.test(
       linebot,
     ),
   "兩完整型號比較必須只讀各自精確 RULE 並在 Fast LLM 前零成本回覆",

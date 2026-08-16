@@ -1,5 +1,36 @@
 # 開發對話紀錄
 
+## 2026-08-16 (v29.6.193 / 未引用答案禁止消費性建議)
+
+- v29.6.192 正式旅程已成功交付無引用草稿，但原文包含「購買數位電視盒、通常有第四台輸入」，即使有未證實警語也可能導致錯誤消費。
+- 共通 sanitizer 將每個條列拆成子句，排除購買／付費／通常／可能／不一定／其他型號等內容，只保留連接、切換、確認、詢問等可逆動作；未新增產品特例。
+- 正式 Google Sheet `Prompt!C3` 已由 v29.6.159 同步為 v29.6.193 並回讀一致；Prompt 本文未增加題型特例，本次修復維持在 AnswerEnvelope、證據與來源狀態機。
+
+## 2026-08-16 (v29.6.192 / 接通 Web 無引用草稿)
+
+- v29.6.191 正式 LOG 顯示無引用 Web 已產生完整機上盒接法，但 `callLLMWithRetry()` 將全文放在 `lastWebUnverifiedDraft` 後只回 `[WEB_NO_EVIDENCE]`；rescue 用錯回傳值，安全摘要器實際只收到標記。
+- 改由 rescue 讀既有 unverified draft，再套 v29.6.191 的可逆動作過濾；沒有新增題型、Prompt 或來源放寬。
+
+## 2026-08-16 (v29.6.191 / 無引用 Web 的可逆終點)
+
+- v29.6.190 正式重測時 PDF 正確掛檔並自動 Web，但 Google 只回 `webSearchQueries=3／chunks=0／supports=0`；舊 rescue 丟掉 Web 產生的安全 HDMI 機上盒方向，反而把手冊 `found=false` 原文當終點，仍讓使用者問了個寂寞。
+- `buildTentativeWebFallback_` 現在可從同次無引用回應保留低風險動作條列，排除可能、不一定、其他型號、韌體與工程模式；清楚標成未經網頁證實。手冊 rescue 只有真的存在安全動作才交付，否則維持 fail closed。
+
+## 2026-08-16 (v29.6.190 / Grounding 完整句與問題完成度守門)
+
+- v29.6.189 正式 TestUI 重走 `M9可以接第四台嗎？ → #再詳細說明 → 查官方手冊`：Fast 無來源草稿已正確擋下、補充為零 LLM；手冊確實 `Files=1／pdfCalls=1`，無證據後也自動 `webCalls=1` 且不扣使用者 Web 額度。
+- 找到相鄰顯示缺陷：Google `groundingSupports` 只標到同一句逗號前，舊摘要直接輸出「具備 HDMI 輸入介面」半句，雖有引用卻沒有回答問題。
+- 通用修正為：support 只能在原始 Web 回答的同一條列／同一行內擴回完整句，不得跨段拼接；完成後再檢查是非題是否有明確可／不可或連接結論、操作題是否有實際動作。只有半句時 fail closed，不把不完整引用當答案。未新增 M9／第四台特例。
+
+## 2026-08-16 (v29.6.189 / AnswerEnvelope 與單一來源狀態機)
+
+- 依 19:26 正式雲端 LOG 修復：兩次 Fast 合計約 NT$0.0474 卻沒有 PDF／Web，且補充 instruction 污染操作意圖。新增 AnswerEnvelope，路由只讀原題，無 QA／RULE 實證的產品草稿不得送 LINE。
+- `#再詳細說明` 在上一答無證據時零 LLM、零費用直接顯示手冊＋Web；有證據才補充一次。手冊與 Web 不再互斥，Quick Reply 上限三個。
+- Fast evidence refs 綁實際 QA 列／精確型號 RULE；混合回答會移除未查證的業者、App、韌體、庫存等推測句。
+- 查手冊按鍵即授權；v2 postback、相容指令與舊型號泡泡統一匯入來源狀態機。舊 `confirm_manual` 移除，`manual_search_consent` fail-closed。
+- 手冊無檔、索引／token／供應商／格式／證據失敗，皆自動補查一次非三星公開網頁；不扣使用者 Web 額度、每聊天室每日最多 3 次，回答分「手冊結果／網路補充」。
+- `/重啟` 與 TestUI 清理同步刪除 AnswerEnvelope；過期 envelope 由每日清理移除。Fast 保持 Gemini 2.5 Flash-Lite，PDF／Web 保持 Gemini 2.5 Flash。
+
 ## 2026-08-16 (v29.6.188 / 新手冊候選輪替防永久卡隊)
 
 - 每輪仍最多處理 2 本以守住 GAS 時間與 Gemini 成本，但新增持久 `OFFICIAL_NEW_MODEL_CURSOR` 輪替候選；即使前兩本長期驗證失敗，後續新品也不會永遠排不到。

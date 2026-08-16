@@ -86,32 +86,26 @@ const relevantOnly = relevanceContext.sanitizeManualAnswerForQuestion_(
 assert(/影像輸入|DisplayPort/.test(relevantOnly), "顯示題的必要影像條件被誤刪");
 assert(!/65W|充電|攝影機/.test(relevantOnly), "顯示題仍混入供電或攝影機資訊");
 
-const consentContext = { writeLog: () => {} };
-vm.createContext(consentContext);
+const sourceEntryContext = {};
+vm.createContext(sourceEntryContext);
 vm.runInContext(
   [
-    "const MANUAL_SEARCH_CONSENT_TTL_SEC = 600;",
-    extractFunction(linebot, "normalizeManualConsentQuery_"),
-    extractFunction(linebot, "grantManualSearchConsent_"),
-    extractFunction(linebot, "consumeManualSearchConsent_"),
+    extractFunction(linebot, "parseExplicitSourceCommand_"),
     extractFunction(linebot, "limitManualPdfFiles_"),
   ].join("\n\n"),
-  consentContext,
+  sourceEntryContext,
 );
-const values = new Map();
-const cache = {
-  put: (key, value) => values.set(key, value),
-  get: (key) => values.get(key) || null,
-  remove: (key) => values.delete(key),
-};
-assert(consentContext.grantManualSearchConsent_(cache, "U1", "M8 沒畫面", []));
-assert(consentContext.consumeManualSearchConsent_(cache, "U1", "M8 沒畫面", "S32BM801"));
-assert(!consentContext.consumeManualSearchConsent_(cache, "U1", "M8 沒畫面", "S32BM801"));
-consentContext.grantManualSearchConsent_(cache, "U1", "M8 沒畫面", []);
-assert(!consentContext.consumeManualSearchConsent_(cache, "U1", "G5 重置", "S27DG502"));
+assert.strictEqual(
+  sourceEntryContext.parseExplicitSourceCommand_("#查手冊").source,
+  "manual",
+);
+assert.strictEqual(
+  sourceEntryContext.parseExplicitSourceCommand_("#這題再搜網路").source,
+  "web",
+);
 const pdfs = [1, 2, 3].map((id) => ({ id, mimeType: "application/pdf" }));
-assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M8 沒畫面").length, 1);
-assert.strictEqual(consentContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
+assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M8 沒畫面").length, 1);
+assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
 
 const detailedManualContext = {
   isManualVerificationRequiredQuery: (query) =>
@@ -255,15 +249,24 @@ assert(
 assert(
   /Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF/.test(linebot) &&
     /aiRequestedPdfSearch = false;/.test(linebot) &&
-    /\? "consent"\s*:\s*"fast"/.test(linebot),
+    /const modelSelectMode = "fast";/.test(linebot) &&
+    /function buildFastAnswerEnvelope_/.test(linebot),
   "Fast Mode 的 PDF 暗號仍可能代表直接查手冊",
 );
 assert(
-  /consumeManualSearchConsent_\([\s\S]{0,500}callLLMWithRetry/.test(linebot),
-  "明確查手冊路徑沒有在 LLM 前消耗單次授權",
+  /const explicitSourceCommand = parseExplicitSourceCommand_\(msg\)[\s\S]{0,1500}executeAdvancedSourceQuery_/.test(
+    linebot,
+  ) &&
+    /const grant = activateAdvancedSourceGrant_\([\s\S]{0,1000}callLLMWithRetry/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
+    ) &&
+    /reserveAdvancedSourceUsage_\(advancedGrant\)[\s\S]{0,12000}UrlFetchApp\.fetch/.test(
+      extractFunction(linebot, "callLLMWithRetry"),
+    ),
+  "明確來源入口必須統一進來源狀態機，並在供應商請求前原子保留額度",
 );
 assert(
-  /const directLocalQa = findLocalMatchInQA\(msg, userId\)/.test(linebot) &&
+  /const directLocalQa = incomingMessageWasElaboration[\s\S]{0,120}findLocalMatchInQA\(routingQuestion, userId\)/.test(linebot) &&
     /QA First Router v29\.6\.116/.test(linebot) &&
     /Alias Selection Gate v29\.6\.116/.test(linebot) &&
     !/callLLMWithRetry|UrlFetchApp/.test(

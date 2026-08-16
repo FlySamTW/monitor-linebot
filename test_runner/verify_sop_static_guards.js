@@ -1014,18 +1014,21 @@ assertStep(
 );
 
 assertStep(
-  /const alreadyConsultedPdf\s*=\s*[\s\S]*?cache\.get\(`\$\{userId\}:pdf_consulted`\)\s*===\s*"true"/.test(
-    linebot,
-  ),
-  "quick reply logic must track whether PDF was already consulted",
+  /function buildFastAnswerEnvelope_/.test(linebot) &&
+    /evidenceRefs/.test(extractFunction(linebot, "buildFastAnswerEnvelope_")) &&
+    /allowedActions/.test(extractFunction(linebot, "buildFastAnswerEnvelope_")),
+  "quick reply logic must derive from the current answer evidence envelope",
 );
 
 assertStep(
-  /manualSourceRecommended\s*&&\s*!alreadyConsultedPdf\s*&&\s*!isWaitingForModelSelection/.test(
-    linebot,
-  ) &&
-    !/\(hasPdfForModel \|\| manualSourceRecommended\)/.test(linebot),
-  "manual quick reply/reminder must require an explicit recommendation and stay hidden after PDF consult or during model selection",
+  /buildEvidenceActionQuickReplies_\(activeAnswerEnvelope/.test(linebot) &&
+    /allowedActions\.includes\("manual"\)/.test(
+      extractFunction(linebot, "buildEvidenceActionQuickReplies_"),
+    ) &&
+    /allowedActions\.includes\("web"\)/.test(
+      extractFunction(linebot, "buildEvidenceActionQuickReplies_"),
+    ),
+  "manual and web quick replies must be driven by unresolved evidence claims, not sticky PDF state",
 );
 
 assertStep(
@@ -1226,11 +1229,13 @@ assertStep(
     !/function buildSmartCodecElaborationFromPreviousPdf/.test(linebot) &&
     !/function enforceSmartCodecPdfSupportConclusion_/.test(linebot) &&
     !/HEVC\/PDF 再詳細說明沿用上一則手冊結果/.test(linebot) &&
-    /previousWasManual[\s\S]{0,800}上一則已經用過一次手冊授權[\s\S]{0,500}return;/.test(
-      linebot,
-    ) &&
-    /手冊回答不再掛「再詳細說明」/.test(linebot),
-  "manual answers must not expose generic elaboration; a stale detail click must ask for explicit manual authorization and must not silently reread PDF",
+    !/上一則已經用過一次手冊授權/.test(linebot) &&
+    /buildAdvancedAnswerEnvelope_/.test(linebot) &&
+    /inheritedElaborationEnvelope/.test(linebot) &&
+    /inheritedEvidenceRefs/.test(linebot) &&
+    /只能把上一則已核對內容講得更白話/.test(linebot) &&
+    /allowElaborate/.test(extractFunction(linebot, "buildAdvancedSourceQuickReplies_")),
+  "manual/web success must support one evidence-bound elaboration without rereading PDF or asking for a second authorization",
 );
 
 assertStep(
@@ -1757,7 +1762,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(msg, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,6000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(msg\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,8000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(
