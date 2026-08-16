@@ -183,11 +183,20 @@ assert(
 );
 assert(
   /setProperty\("PENDING_MODEL_REVIEW"/.test(linebot) &&
-    /未寫入 CLASS_RULES/.test(linebot) &&
+    /function buildOfficialMinimalRuleLine_/.test(linebot) &&
+    /官方新品自動驗證/.test(linebot) &&
+    /validateOfficialManualFirstPage_/.test(linebot) &&
+    /activatedRuleLines\.map/.test(linebot) &&
     /function isIncompleteModelRuleLine_/.test(linebot) &&
     /Sync RULE Guard v29\.6\.096/.test(linebot) &&
     !/const placeholderLine = `\$\{model\},型號：尚無資訊`/.test(linebot),
-  "新舊未完成型號只進待審核且不注入正式 RULE prompt/index",
+  "新品只有在官方欄位與手冊第一頁交叉驗證後才可寫入 A 欄最小 RULE；未完成型號仍不得注入",
+);
+assert(
+  /function validateOfficialManualFirstPage_[\s\S]*?GEMINI_MODEL_FAST}:countTokens[\s\S]*?totalTokens > 250000[\s\S]*?requestFirstPageIdentity_\(GEMINI_MODEL_FAST\)[\s\S]*?GEMINI_MODEL_THINK !== GEMINI_MODEL_FAST[\s\S]*?requestFirstPageIdentity_\(GEMINI_MODEL_THINK\)/.test(
+    linebot,
+  ),
+  "新品第一頁型號驗證先用 Flash-Lite；只有失敗才允許 2.5 Flash 再核對一次，並受 250K token 上限保護",
 );
 assert(
   /Fast\/Web 歷史先裁減/.test(linebot) &&

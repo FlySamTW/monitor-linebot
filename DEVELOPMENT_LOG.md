@@ -1,5 +1,43 @@
 # 開發對話紀錄
 
+## 2026-08-16 (v29.6.187 / 新手冊尾碼依舊規則通用正規化)
+
+- 第二次正式同步確認 2.5 Flash 已通過 `LS40H850TACXZW` 第一頁身分驗證；真正阻塞是舊白名單漏收 2026 尾碼 `EAC／UAC／EFA／TAC`，Gemini fallback 正式檔名未以數字結尾而被拒絕。
+- 檔名正規化改回專案原始通則：移除 `L` 與 `XZW` 後，只有當去掉尾端 1–3 個英文字會留下數字結尾且長度合法時才移除。官方第一頁六型號因此確定命名為 `S27H704,S27H802,S32H704,S32H802,S40H850.pdf`，不再逐尾碼補特例。
+- 隔離 LOG 現在附完整 `validationReason`，日後第一頁、Drive、Gemini fallback 或檔名失敗可直接從雲端 LOG 判讀。
+- v29.6.187 正式一鍵旅程通過：`LS40H850TACXZW` 與 `LS27H802EFAXZW` 皆自動核對並以同一本 `S27H704,S27H802,S32H704,S32H802,S40H850.pdf` 加入 Gemini Files RAG，新增 2 筆 A 欄最小 RULE；隨後同步顯示 `ManualPDF: 12、PDF索引: 176、Drive手冊: 77`，每日 04:00 觸發器仍存在。
+
+## 2026-08-16 (v29.6.186 / 新手冊自動維護一鍵驗證入口)
+
+- 新增 Apps Script 編輯者限定 `adminRunOfficialManualAutomation()`：無參數執行官網新品／手冊掃描，有新手冊啟用時接續刷新 RAG 並回傳版本、scan、sync 摘要。
+- 此函式沒有公開 Web route；正常維護仍由每日 04:00 `dailyKnowledgeRefresh()` 自動完成，管理者不必定期操作，只在希望立刻驗證時才需要按一次執行。
+
+## 2026-08-16 (v29.6.185 / 新手冊第一頁驗證自動升級一次)
+
+- 正式 `LS40H850TACXZW` 手冊為 55 頁、2.48 MB；以 PyMuPDF 抽取官方 PDF 第 1 頁，確認明列 `S27H704EAC、S32H704EAC、S27H802UAC、S32H802UAC、S27H802EFA、S40H850TAC`，因此先前失敗是 Flash-Lite 結構化擷取漏判，不是手冊不適用。
+- 每日新品驗證仍先用最低成本 2.5 Flash-Lite；只有第一頁身分驗證失敗才允許同一 PDF 用 2.5 Flash 再核對一次。共用 250K token 上限、只重試一次，避免昂貴或無限循環。
+- 驗證失敗理由現在包含模型實際擷取到的第一頁型號摘要，日後可從雲端 LOG 判斷，不必再猜測。
+
+## 2026-08-16 (v29.6.184 / 新手冊無 Drive 寫權自動進 Gemini RAG)
+
+- 正式真人同步抓到 129 款、辨識 6 款新品；兩本候選均完成官網下載及第一頁驗證，但 Apps Script 執行身分對目標 Drive 資料夾回覆 `Access denied: DriveApp`，因此 v29.6.183 的 Drive-only promotion 無法完成。
+- 通過第一頁驗證後若 Drive 無寫入權，現在會自動以正確正式檔名重新上傳 Gemini Files API，持久合併 `MANUAL_PDF_KB_LIST`、`KB_URI_LIST` 與 `PDF_MODEL_INDEX`，並照常建立最小 RULE；不再要求管理員搬檔。
+- Gemini fallback 更新採強制刷新，同名手冊內容改版時不會誤用舊 URI；若 Drive 與 Gemini 都失敗，待重試狀態仍寫入 ScriptProperties，不因隔離資料夾同樣無寫權而遺失。
+
+## 2026-08-16 (v29.6.183 / 手冊自動入庫失敗保護與選單實檔守門)
+
+- 手冊自動入庫在 Drive 更新例外時不再中斷：下載檔會留在隔離區，下一次每日排程自動重試，既有正式 PDF 與索引不受污染。
+- 官網同步回傳本輪發現、啟用、隔離重試與正式檔名摘要，讓維護者不必猜測同步是否真的完成。
+- 「官方手冊」的型號選單只允許 `PDF_MODEL_INDEX` 目前確實覆蓋的型號；即使 RULE 有型號，沒有正式 PDF、仍在隔離區或按鈕已過期都不得進入手冊查詢。
+
+## 2026-08-16 (v29.6.182 / 新機 RULE 與 PDF 自動核驗入庫)
+
+- 修正 v29.6.181 的人工斷點：舊流程只建立 `PENDING__SKU__fileId.pdf`，沒有第一頁自動驗證、正式改名或移入根目錄，管理員也沒有可靠提醒來源，因此不算閉環。
+- 新流程由 Gemini Structured Output 只讀 PDF 第 1 頁，抽出全部完整型號並與 Samsung TW 支援頁 SKU 交叉驗證；通過後依既有尾碼白名單去國家／銷售碼、排序去重、半形逗號命名，自動建立正式 Drive PDF。
+- 同名內容變更先 `makeCopy` 到 `_MANUAL_AUTO_BACKUP`，再以 Drive v3 保留原 fileId 更新；共享範圍衝突時保留舊 active、隔離新檔並重試，禁止污染正式索引。
+- Product Finder 新品以 A 欄單一 CSV 大字串新增最小可信 RULE，只納入型號、產品名稱、官方特色與台灣 PDP；價格、庫存及未提供規格不寫入。
+
+
 ## 2026-08-16 (v29.6.181 / 手冊操作路徑結構化)
 
 - v29.6.180 正式真人題已正確找到自我診斷第 36／37 頁、頁碼去重且成本 NT$0.1428，但模型摘要仍漏掉 `Support → Self Diagnosis`；因此 v29.6.180 不視為操作題完成。

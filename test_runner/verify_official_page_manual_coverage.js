@@ -169,6 +169,18 @@ const coverage = context.buildManualCoverageReport_();
 assert.strictEqual(coverage.currentGenerationModelCount, 6);
 assert.strictEqual(coverage.currentGenerationMissingCount, 0);
 properties.set(
+  "PENDING_MODEL_REVIEW",
+  JSON.stringify([{ model: "LS32ZZ999XZW", manualStatus: "AUTO_VALIDATION_RETRY" }]),
+);
+const retryCoverage = context.buildManualCoverageReport_();
+assert.strictEqual(retryCoverage.autoImportRetryCount, 1);
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(retryCoverage.autoImportRetryModels)),
+  ["LS32ZZ999XZW"],
+  "自動驗證失敗須顯示為系統重試，不要求管理員手動搬檔",
+);
+properties.delete("PENDING_MODEL_REVIEW");
+properties.set(
   "PDF_MODEL_INDEX",
   JSON.stringify(hPdfIndex.filter((model) => model !== "S27HG806")),
 );
@@ -228,7 +240,9 @@ assert(
     /action\.type === "uri"/.test(testUi) &&
     /res\.quickReplies/.test(testUi) &&
     /control\.target = "_top"/.test(testUi) &&
-    /report\.status !== "OK"[\s\S]{0,220}手冊覆蓋：待檢查/.test(testUi),
+    /report\.status !== "OK"[\s\S]{0,220}手冊覆蓋：待檢查/.test(testUi) &&
+    /手冊自動重試/.test(testUi) &&
+    /不需要手動搬檔/.test(testUi),
   "TestUI 必須顯示維護覆蓋狀態，並讓 Apps Script sandbox 內的 URI quick reply 可實際開啟",
 );
 

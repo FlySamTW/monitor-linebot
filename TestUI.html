@@ -1015,11 +1015,16 @@
             }
             var total = Number(report && report.currentGenerationModelCount || 0);
             var missing = Number(report && report.currentGenerationMissingCount || 0);
-            badge.textContent = missing > 0
+            var retrying = Number(report && report.autoImportRetryCount || 0);
+            badge.textContent = retrying > 0
+              ? "手冊自動重試：" + retrying
+              : missing > 0
               ? "手冊缺口：" + missing + " 款"
               : "2026手冊：" + total + "/" + total;
-            badge.classList.toggle("warning", missing > 0);
-            badge.title = missing > 0
+            badge.classList.toggle("warning", missing > 0 || retrying > 0);
+            badge.title = retrying > 0
+              ? "系統會於每日排程自動重試，不需要手動搬檔：" + (report.autoImportRetryModels || []).join("、")
+              : missing > 0
               ? "待補：" + (report.currentGenerationMissingModels || []).join("、")
               : "2026 H 世代 RULE 型號都有正式 PDF 索引覆蓋";
           })

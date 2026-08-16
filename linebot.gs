@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.181"; // 2026-08-16 手冊操作路徑結構化
+const GAS_VERSION = "v29.6.187"; // 2026-08-16 新手冊尾碼依舊規則通用正規化
 const BUILD_TIMESTAMP = "2026-08-16 16:06";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -25,6 +25,28 @@ const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
 const SOURCE_DAILY_LIMITS = { manual: 5, web: 10 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 20;
+
+/**
+ * Apps Script 編輯器限定的一鍵維護入口。
+ * 正常仍由每日 04:00 排程自動執行；本函式只供管理者立即稽核，
+ * 不接收外部輸入，也沒有公開 Web 路由。
+ */
+function adminRunOfficialManualAutomation() {
+  const scanResult = scanOfficialWebsiteForNewMonitors();
+  let syncResult = "SKIPPED_NO_ACTIVATION";
+  if (
+    scanResult &&
+    scanResult.success === true &&
+    Number(scanResult.activatedCount || 0) > 0
+  ) {
+    syncResult = syncGeminiKnowledgeBase(false);
+  }
+  return {
+    gasVersion: GAS_VERSION,
+    scan: scanResult,
+    sync: syncResult,
+  };
+}
 
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
@@ -5485,6 +5507,7 @@ function handleRichMenuPostback_(event) {
       state.source !== "manual" ||
       !selectedModel ||
       candidates.indexOf(selectedModel) < 0 ||
+      !hasOfficialManualForModel_(selectedModel) ||
       !state.draftQuery
     ) {
       clearPendingSourceState_(contextId);
@@ -5639,8 +5662,22 @@ function isManualModelHintOnly_(text) {
 
 function getManualSourceCandidateModels_(query, limit) {
   const max = Math.max(1, Number(limit) || 10);
+  const pdfIndex = readPdfModelIndexForCoverage_();
+  function keepOnlyIndexedManualModels_(models) {
+    return dedupDisplayModels(
+      (Array.isArray(models) ? models : []).filter(function (model) {
+        const display = normalizeModelForDisplay(model);
+        return pdfIndex.some(function (pdfModel) {
+          return isPdfModelTokenMatch_(pdfModel, display);
+        });
+      }),
+      max,
+    );
+  }
   const aliasCandidates = getAliasOnlySelectionModelsFromQuery(query, max);
-  if (aliasCandidates.length > 0) return aliasCandidates;
+  if (aliasCandidates.length > 0) {
+    return keepOnlyIndexedManualModels_(aliasCandidates);
+  }
 
   const upper = toHalfWidth(String(query || "")).trim().toUpperCase();
   const hints = upper.match(/\b(?:LS|S|C|F)\d{2}[A-Z0-9]{1,10}\b/g) || [];
@@ -5656,7 +5693,7 @@ function getManualSourceCandidateModels_(query, limit) {
       return display.indexOf(hint) === 0 || display.indexOf(hint) >= 0;
     });
   });
-  return dedupDisplayModels(candidates, max);
+  return keepOnlyIndexedManualModels_(candidates);
 }
 
 function createManualSourceModelSelectionFlex_(models) {
@@ -10200,6 +10237,289 @@ function bytesToHex_(bytes) {
     .join("");
 }
 
+function normalizeOfficialManualFileModelToken_(value) {
+  let model = String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/^L(?=[SCF]\d{2,3})/, "")
+    .replace(/XZW$/, "");
+  // 專案既有命名鐵律：第一頁完整型號的尾端 1–3 碼英文字為
+  // 地區／通路／顏色尾碼；只在移除後以數字結尾時才套用。
+  const suffixMatch = model.match(/([A-Z]{1,3})$/);
+  if (suffixMatch) {
+    const withoutSuffix = model.slice(0, -suffixMatch[1].length);
+    if (/\d$/.test(withoutSuffix) && withoutSuffix.length >= 7) {
+      model = withoutSuffix;
+    }
+  }
+  return /^[SCF]\d{2,3}[A-Z0-9]{4,}$/i.test(model) ? model : "";
+}
+
+function buildOfficialManualFinalFileName_(models, candidateFullSku) {
+  const candidateModel = normalizeModelForDisplay(candidateFullSku);
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(models) ? models : [])
+        .map(normalizeOfficialManualFileModelToken_)
+        .filter(Boolean),
+    ),
+  ).sort();
+  if (
+    !candidateModel ||
+    normalized.length === 0 ||
+    normalized.length > 16 ||
+    !normalized.some(function (manualModel) {
+      return isPdfModelTokenMatch_(manualModel, candidateModel);
+    })
+  ) {
+    return "";
+  }
+  return `${normalized.join(",")}.pdf`;
+}
+
+function deleteTemporaryGeminiFile_(fileUri, apiKey) {
+  const uri = String(fileUri || "");
+  if (!/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/files\//i.test(uri)) {
+    return;
+  }
+  try {
+    UrlFetchApp.fetch(`${uri}?key=${encodeURIComponent(apiKey)}`, {
+      method: "delete",
+      muteHttpExceptions: true,
+    });
+  } catch (error) {
+    writeLog(`[Manual Auto Import] 暫存 Gemini File 清理失敗: ${error.message}`);
+  }
+}
+
+function validateOfficialManualFirstPage_(blob, candidate) {
+  const apiKey =
+    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+  if (!apiKey) return { valid: false, reason: "MISSING_GEMINI_API_KEY" };
+  const fileUri = uploadFileToGemini(
+    apiKey,
+    blob,
+    blob.getBytes().length,
+    "application/pdf",
+  );
+  if (!fileUri) return { valid: false, reason: "GEMINI_FILE_UPLOAD_FAILED" };
+  try {
+    const payload = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text:
+                "只讀這份三星螢幕官方 PDF 的第 1 頁。逐字擷取第 1 頁列出的所有完整螢幕型號；不要從檔名、其他頁或常識補型號。若第 1 頁無法辨識就回 page1Readable=false。",
+            },
+            {
+              fileData: {
+                mimeType: "application/pdf",
+                fileUri: fileUri,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 400,
+        thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            page1Readable: { type: "BOOLEAN" },
+            isSamsungMonitorManual: { type: "BOOLEAN" },
+            page1Models: {
+              type: "ARRAY",
+              items: { type: "STRING" },
+            },
+          },
+          required: ["page1Readable", "isSamsungMonitorManual", "page1Models"],
+        },
+      },
+    };
+    const countResponse = UrlFetchApp.fetch(
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:countTokens?key=${apiKey}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({ contents: payload.contents }),
+        muteHttpExceptions: true,
+      },
+    );
+    if (countResponse.getResponseCode() !== 200) {
+      return { valid: false, reason: "FIRST_PAGE_COUNT_TOKENS_FAILED" };
+    }
+    const totalTokens = Number(
+      JSON.parse(countResponse.getContentText()).totalTokens || 0,
+    );
+    if (!totalTokens || totalTokens > 250000) {
+      return { valid: false, reason: "FIRST_PAGE_TOKEN_LIMIT" };
+    }
+    function requestFirstPageIdentity_(modelName) {
+      const response = UrlFetchApp.fetch(
+        `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`,
+        {
+          method: "post",
+          contentType: "application/json",
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true,
+        },
+      );
+      if (response.getResponseCode() !== 200) {
+        return {
+          valid: false,
+          reason: `FIRST_PAGE_HTTP_${response.getResponseCode()}`,
+          modelName: modelName,
+        };
+      }
+      const json = JSON.parse(response.getContentText());
+      const resultText = String(
+        (((json.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || "",
+      );
+      const result = JSON.parse(resultText);
+      const finalFileName = buildOfficialManualFinalFileName_(
+        result.page1Models,
+        candidate.fullSku,
+      );
+      return {
+        valid:
+          result.page1Readable === true &&
+          result.isSamsungMonitorManual === true &&
+          Boolean(finalFileName),
+        reason: finalFileName
+          ? ""
+          : `FIRST_PAGE_IDENTITY_MISMATCH_${(result.page1Models || [])
+              .join("|")
+              .substring(0, 120)}`,
+        modelName: modelName,
+        finalFileName: finalFileName,
+        page1Models: result.page1Models,
+      };
+    }
+    let extraction = requestFirstPageIdentity_(GEMINI_MODEL_FAST);
+    if (!extraction.valid && GEMINI_MODEL_THINK !== GEMINI_MODEL_FAST) {
+      writeLog(
+        `[Manual Auto Import] ${candidate.fullSku} Flash-Lite 第一頁核對未通過，改由 2.5 Flash 再核對一次`,
+      );
+      extraction = requestFirstPageIdentity_(GEMINI_MODEL_THINK);
+    }
+    if (!extraction.valid) {
+      return { valid: false, reason: extraction.reason || "FIRST_PAGE_IDENTITY_MISMATCH" };
+    }
+    return {
+      valid: true,
+      finalFileName: extraction.finalFileName,
+      page1Models: extraction.page1Models,
+      inputTokens: totalTokens,
+      validationModel: extraction.modelName,
+    };
+  } catch (error) {
+    return { valid: false, reason: `FIRST_PAGE_PARSE_${error.message}` };
+  } finally {
+    deleteTemporaryGeminiFile_(fileUri, apiKey);
+  }
+}
+
+function persistOfficialManualManifest_(candidate, sha256, finalFileName) {
+  const props = PropertiesService.getScriptProperties();
+  let manifest = {};
+  try {
+    manifest = JSON.parse(props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}");
+    if (!manifest || Array.isArray(manifest)) manifest = {};
+  } catch (error) {
+    manifest = {};
+  }
+  manifest[candidate.fullSku] = {
+    fileId: candidate.fileId,
+    sha256: sha256,
+    finalFileName: finalFileName,
+    modifiedAt: candidate.modifiedAt,
+    verifiedAt: new Date().toISOString(),
+  };
+  props.setProperty("OFFICIAL_MANUAL_MANIFEST", JSON.stringify(manifest));
+}
+
+function promoteOfficialManualToRoot_(blob, candidate, sha256, finalFileName) {
+  const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  const files = rootFolder.getFilesByName(finalFileName);
+  const matches = [];
+  while (files.hasNext()) matches.push(files.next());
+  if (matches.length > 1) {
+    return { success: false, reason: "DUPLICATE_ACTIVE_FILENAME" };
+  }
+  if (matches.length === 0) {
+    const newTokens = getPdfFileModelTokens_(finalFileName);
+    const overlapping = [];
+    const allRootFiles = rootFolder.getFiles();
+    while (allRootFiles.hasNext()) {
+      const rootFile = allRootFiles.next();
+      const rootName = String(rootFile.getName() || "");
+      if (!/\.pdf$/i.test(rootName)) continue;
+      const oldTokens = getPdfFileModelTokens_(rootName);
+      if (
+        oldTokens.some(function (oldToken) {
+          return newTokens.some(function (newToken) {
+            return isPdfModelTokenMatch_(oldToken, newToken);
+          });
+        })
+      ) {
+        overlapping.push(rootFile);
+      }
+    }
+    if (overlapping.length === 1) {
+      const oldTokens = getPdfFileModelTokens_(overlapping[0].getName());
+      const scopeOnlyExpanded = oldTokens.every(function (oldToken) {
+        return newTokens.some(function (newToken) {
+          return isPdfModelTokenMatch_(oldToken, newToken);
+        });
+      });
+      if (scopeOnlyExpanded) matches.push(overlapping[0]);
+    }
+    if (overlapping.length > 0 && matches.length === 0) {
+      return { success: false, reason: "SHARED_SCOPE_CONFLICT" };
+    }
+  }
+  if (matches.length === 0) {
+    const created = rootFolder.createFile(blob.copyBlob().setName(finalFileName));
+    persistOfficialManualManifest_(candidate, sha256, finalFileName);
+    return { success: true, driveFileId: created.getId(), action: "CREATED" };
+  }
+  const current = matches[0];
+  const props = PropertiesService.getScriptProperties();
+  let manifest = {};
+  try {
+    manifest = JSON.parse(props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}");
+  } catch (error) {}
+  const previous = manifest[candidate.fullSku] || {};
+  if (previous.sha256 === sha256) {
+    return { success: true, driveFileId: current.getId(), action: "UNCHANGED" };
+  }
+  const backupFolders = rootFolder.getFoldersByName("_MANUAL_AUTO_BACKUP");
+  const backupFolder = backupFolders.hasNext()
+    ? backupFolders.next()
+    : rootFolder.createFolder("_MANUAL_AUTO_BACKUP");
+  const timestamp = Utilities.formatDate(
+    new Date(),
+    "Asia/Taipei",
+    "yyyyMMdd_HHmmss",
+  );
+  current.makeCopy(
+    `${finalFileName}.${timestamp}.${String(previous.sha256 || "legacy").slice(0, 12)}.bak.pdf`,
+    backupFolder,
+  );
+  Drive.Files.update(
+    { name: finalFileName, mimeType: "application/pdf" },
+    current.getId(),
+    blob,
+  );
+  persistOfficialManualManifest_(candidate, sha256, finalFileName);
+  return { success: true, driveFileId: current.getId(), action: "UPDATED" };
+}
+
 function stageOfficialTwManualCandidate_(product) {
   if (!CONFIG.DRIVE_FOLDER_ID) return null;
   const candidate = discoverOfficialTwManualCandidate_(product);
@@ -10237,29 +10557,168 @@ function stageOfficialTwManualCandidate_(product) {
   const sha256 = bytesToHex_(
     Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes),
   );
-  const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  const validation = validateOfficialManualFirstPage_(blob, candidate);
+  if (validation.valid) {
+    try {
+      const promotion = promoteOfficialManualToRoot_(
+        blob,
+        candidate,
+        sha256,
+        validation.finalFileName,
+      );
+      if (promotion.success) {
+        return Object.assign({}, candidate, validation, promotion, {
+          sha256: sha256,
+          manualStatus: "ACTIVE_AUTO_VALIDATED",
+          stagedAt: new Date().toISOString(),
+        });
+      }
+    } catch (promotionError) {
+      validation.reason = `PROMOTION_EXCEPTION_${String(
+        promotionError && promotionError.message
+          ? promotionError.message
+          : promotionError,
+      ).substring(0, 160)}`;
+      writeLog(
+        `[Manual Auto Import] ${candidate.fullSku} 正式入庫失敗，已改存隔離區等下次自動重試: ${validation.reason}`,
+      );
+      try {
+        const geminiFallback = upsertManualPdfToGemini_(
+          validation.finalFileName,
+          bytes,
+          true,
+        );
+        persistOfficialManualManifest_(
+          candidate,
+          sha256,
+          validation.finalFileName,
+        );
+        writeLog(
+          `[Manual Auto Import] ${candidate.fullSku} Drive 無寫入權，已自動改存 Gemini Files RAG: ${validation.finalFileName}`,
+        );
+        return Object.assign({}, candidate, validation, {
+          sha256: sha256,
+          uri: geminiFallback.uri,
+          action: "GEMINI_FILE_API_FALLBACK",
+          manualStatus: "ACTIVE_AUTO_VALIDATED",
+          stagedAt: new Date().toISOString(),
+        });
+      } catch (fallbackError) {
+        validation.reason += `_GEMINI_FALLBACK_${String(
+          fallbackError && fallbackError.message
+            ? fallbackError.message
+            : fallbackError,
+        ).substring(0, 120)}`;
+      }
+    }
+  }
   const stagingName = "_PENDING_MANUAL_REVIEW";
-  const stagingFolders = rootFolder.getFoldersByName(stagingName);
-  const stagingFolder = stagingFolders.hasNext()
-    ? stagingFolders.next()
-    : rootFolder.createFolder(stagingName);
   const stagedFileName = `PENDING__${candidate.fullSku}__${candidate.fileId || sha256.slice(0, 12)}.pdf`;
-  const existing = stagingFolder.getFilesByName(stagedFileName);
   let driveFileId = "";
-  if (existing.hasNext()) {
-    driveFileId = existing.next().getId();
-  } else {
-    driveFileId = stagingFolder
-      .createFile(blob.setName(stagedFileName))
-      .getId();
+  try {
+    const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const stagingFolders = rootFolder.getFoldersByName(stagingName);
+    const stagingFolder = stagingFolders.hasNext()
+      ? stagingFolders.next()
+      : rootFolder.createFolder(stagingName);
+    const existing = stagingFolder.getFilesByName(stagedFileName);
+    if (existing.hasNext()) {
+      driveFileId = existing.next().getId();
+    } else {
+      driveFileId = stagingFolder
+        .createFile(blob.setName(stagedFileName))
+        .getId();
+    }
+  } catch (stagingError) {
+    validation.reason += `_STAGING_UNAVAILABLE_${String(
+      stagingError && stagingError.message ? stagingError.message : stagingError,
+    ).substring(0, 120)}`;
+    writeLog(
+      `[Manual Staging] ${candidate.fullSku} 隔離區不可寫；待重試狀態仍保存於 ScriptProperties`,
+    );
   }
   return Object.assign({}, candidate, {
     sha256: sha256,
     driveFileId: driveFileId,
     stagedFileName: stagedFileName,
-    manualStatus: "PENDING_FIRST_PAGE_MODEL_REVIEW",
+    manualStatus: "AUTO_VALIDATION_RETRY",
+    validationReason: validation.reason || "PROMOTION_FAILED",
     stagedAt: new Date().toISOString(),
   });
+}
+
+function sanitizeOfficialRuleField_(value) {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[\r\n,]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function buildOfficialMinimalRuleLine_(product) {
+  const fullSku = String((product && product.model) || "").toUpperCase();
+  const model = normalizeModelForDisplay(fullSku);
+  const displayName = sanitizeOfficialRuleField_(product && product.displayName);
+  const officialUrl = String((product && product.detailUrl) || "");
+  const highlights = (Array.isArray(product && product.officialHighlights)
+    ? product.officialHighlights
+    : [])
+    .map(sanitizeOfficialRuleField_)
+    .filter(Boolean)
+    .slice(0, 3);
+  if (
+    !/^L?[SCF][A-Z0-9]{7,}XZW$/i.test(fullSku) ||
+    !isFullSamsungMonitorModelForOfficialPage_(model) ||
+    !displayName ||
+    !isSafeSamsungTwOfficialUrl_(officialUrl)
+  ) {
+    return "";
+  }
+  return [
+    fullSku,
+    `型號：${model}`,
+    "官方新品自動驗證",
+    `產品名稱：${displayName}；官方特色：${highlights.join("；") || "未列"}；官網網址：${officialUrl}`,
+  ].join(",");
+}
+
+function auditOneOfficialManualUpdate_(discoveredProducts, existingLines) {
+  const eligible = (Array.isArray(discoveredProducts) ? discoveredProducts : []).filter(
+    function (product) {
+      const fullSku = String((product && product.model) || "").toUpperCase();
+      const matchKey = fullSku.replace(/XZW$/, "");
+      return (Array.isArray(existingLines) ? existingLines : []).some(function (line) {
+        return line.startsWith(fullSku) || line.startsWith(matchKey);
+      });
+    },
+  );
+  if (eligible.length === 0) return null;
+  const props = PropertiesService.getScriptProperties();
+  const cursor = Math.max(
+    0,
+    Number(props.getProperty("OFFICIAL_MANUAL_AUDIT_CURSOR") || 0),
+  );
+  const product = eligible[cursor % eligible.length];
+  props.setProperty(
+    "OFFICIAL_MANUAL_AUDIT_CURSOR",
+    String((cursor + 1) % eligible.length),
+  );
+  const candidate = discoverOfficialTwManualCandidate_(product);
+  if (!candidate) return null;
+  let manifest = {};
+  try {
+    manifest = JSON.parse(props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}");
+  } catch (error) {}
+  const previous = manifest[candidate.fullSku] || null;
+  const model = normalizeModelForDisplay(candidate.fullSku);
+  if (!previous && hasOfficialManualForModel_(model)) {
+    persistOfficialManualManifest_(candidate, "", "BASELINED_EXISTING");
+    return { action: "BASELINED", model: model };
+  }
+  if (!previous || String(previous.fileId || "") !== String(candidate.fileId || "")) {
+    return stageOfficialTwManualCandidate_(product);
+  }
+  return { action: "UNCHANGED", model: model };
 }
 
 function scanOfficialWebsiteForNewMonitors() {
@@ -10271,7 +10730,7 @@ function scanOfficialWebsiteForNewMonitors() {
     const response = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
     if (response.getResponseCode() !== 200) {
       writeLog(`[Auto Crawler Error] 三星官方 Product Finder API 請求失敗 (${response.getResponseCode()})`);
-      return;
+      return { success: false, reason: "PRODUCT_FINDER_HTTP_ERROR" };
     }
     
     const apiData = JSON.parse(response.getContentText());
@@ -10298,7 +10757,12 @@ function scanOfficialWebsiteForNewMonitors() {
           discoveredProducts.push({
             model: sku,
             detailUrl: detailUrl,
-            displayName: String(modelObj?.displayName || modelObj?.modelName || family?.fmyMarketingName || "Samsung Monitor").trim()
+            displayName: String(modelObj?.displayName || modelObj?.modelName || family?.fmyMarketingName || "Samsung Monitor").trim(),
+            officialHighlights: Array.isArray(modelObj?.uspDescription)
+              ? modelObj.uspDescription
+              : Array.isArray(modelObj?.marketingMessage)
+              ? modelObj.marketingMessage
+              : []
           });
         }
       });
@@ -10308,13 +10772,13 @@ function scanOfficialWebsiteForNewMonitors() {
     
     if (discoveredProducts.length === 0) {
       writeLog("[Auto Crawler Warning] 官方 Product Finder API 未回傳任何螢幕。跳過掃描。");
-      return;
+      return { success: false, reason: "PRODUCT_FINDER_EMPTY" };
     }
     
         // 2. 獲取當前 CLASS_RULES 的已有機型
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
-    if (!sheet) return;
+    if (!sheet) return { success: false, reason: "CLASS_RULES_SHEET_MISSING" };
     
     const lastRow = sheet.getLastRow();
     const existingLines = [];
@@ -10340,7 +10804,14 @@ function scanOfficialWebsiteForNewMonitors() {
     
     if (newProducts.length === 0) {
       writeLog("[Auto Crawler] 🎉 本地與官網規格庫已完全同步，今日無新機型。");
-      return;
+      return {
+        success: true,
+        discoveredCount: discoveredProducts.length,
+        newCount: 0,
+        activatedCount: 0,
+        activatedManuals: [],
+        retryCount: 0,
+      };
     }
     
     // v29.6.095: Product Finder 只負責發現候選型號。
@@ -10375,13 +10846,11 @@ function scanOfficialWebsiteForNewMonitors() {
       }
     });
 
-    // 每日最多下載 2 本，避免撞 GAS 6 分鐘；檔案只進隔離子資料夾，
-    // 未經第一頁型號／共用範圍人工核准前，正式 RAG 根目錄完全看不到。
-    const unstagedProducts = newProducts.filter(function (product) {
-      const pending = pendingByModel[String(product.model).toUpperCase()];
-      return !(pending && pending.manualStatus === "PENDING_FIRST_PAGE_MODEL_REVIEW");
-    });
-    unstagedProducts.slice(0, 2).forEach(function (product) {
+    // 每日最多下載 2 本，避免撞 GAS 6 分鐘；系統自行核對第一頁型號與
+    // 共用範圍，通過才進正式 RAG；失敗則隔離並於下一輪自動重試。
+    const activatedRuleLines = [];
+    const activatedManuals = [];
+    newProducts.slice(0, 2).forEach(function (product) {
       try {
         const staged = stageOfficialTwManualCandidate_(product);
         if (staged) {
@@ -10391,8 +10860,19 @@ function scanOfficialWebsiteForNewMonitors() {
             staged,
           );
           writeLog(
-            `[Manual Staging] ${product.model} 繁中 User Manual 已進隔離待審；未加入正式 RAG`,
+            staged.manualStatus === "ACTIVE_AUTO_VALIDATED"
+              ? `[Manual Auto Import] ${product.model} 已依第一頁驗證並加入正式 RAG: ${staged.finalFileName}`
+              : `[Manual Staging] ${product.model} 自動驗證未通過，保留隔離並於下次重試: ${staged.validationReason || "UNKNOWN"}`,
           );
+          if (staged.manualStatus === "ACTIVE_AUTO_VALIDATED") {
+            const ruleLine = buildOfficialMinimalRuleLine_(product);
+            if (ruleLine) activatedRuleLines.push(ruleLine);
+            activatedManuals.push({
+              model: product.model,
+              fileName: staged.finalFileName,
+              action: staged.action,
+            });
+          }
         }
       } catch (manualError) {
         writeLog(
@@ -10400,6 +10880,31 @@ function scanOfficialWebsiteForNewMonitors() {
         );
       }
     });
+    if (activatedRuleLines.length > 0) {
+      sheet
+        .getRange(sheet.getLastRow() + 1, 1, activatedRuleLines.length, 1)
+        .setValues(
+          activatedRuleLines.map(function (line) {
+            return [line];
+          }),
+        );
+      writeLog(
+        `[Auto Crawler] 已以 A 欄 CSV 格式加入 ${activatedRuleLines.length} 筆官方新品最小 RULE`,
+      );
+    }
+    try {
+      const updateAudit = auditOneOfficialManualUpdate_(
+        discoveredProducts,
+        existingLines,
+      );
+      if (updateAudit) {
+        writeLog(
+          `[Manual Auto Audit] ${JSON.stringify(updateAudit).substring(0, 300)}`,
+        );
+      }
+    } catch (updateError) {
+      writeLog(`[Manual Auto Audit] 更新檢查失敗: ${updateError.message}`);
+    }
     const mergedPending = Object.keys(pendingByModel)
       .sort()
       .map(function (model) {
@@ -10408,11 +10913,23 @@ function scanOfficialWebsiteForNewMonitors() {
       .slice(-30);
     props.setProperty("PENDING_MODEL_REVIEW", JSON.stringify(mergedPending));
     writeLog(
-      `[Auto Crawler Review] 發現 ${newProducts.length} 款候選型號，已進待審核清單；未寫入 CLASS_RULES`,
+      `[Auto Crawler Review] 發現 ${newProducts.length} 款候選型號；本輪自動啟用 ${activatedRuleLines.length} 款，其餘保留隔離重試`,
     );
+    return {
+      success: true,
+      discoveredCount: discoveredProducts.length,
+      newCount: newProducts.length,
+      activatedCount: activatedRuleLines.length,
+      activatedManuals: activatedManuals,
+      retryCount: Math.max(
+        0,
+        newProducts.slice(0, 2).length - activatedManuals.length,
+      ),
+    };
     
   } catch (e) {
     writeLog(`[Auto Crawler Error] 掃描全過程出錯: ${e.message}`);
+    return { success: false, reason: String(e && e.message ? e.message : e) };
   }
 }
 
@@ -10482,6 +10999,23 @@ function hasOfficialManualForModel_(model) {
 function buildManualCoverageReport_() {
   const identities = readManualCoverageRuleIdentities_();
   const pdfIndex = readPdfModelIndexForCoverage_();
+  let pendingItems = [];
+  try {
+    pendingItems = JSON.parse(
+      PropertiesService.getScriptProperties().getProperty("PENDING_MODEL_REVIEW") || "[]",
+    );
+    if (!Array.isArray(pendingItems)) pendingItems = [];
+  } catch (error) {
+    pendingItems = [];
+  }
+  const autoRetryModels = pendingItems
+    .filter(function (item) {
+      return item && item.manualStatus === "AUTO_VALIDATION_RETRY";
+    })
+    .map(function (item) {
+      return String(item.model || "").toUpperCase();
+    })
+    .filter(Boolean);
   const indexAvailable = pdfIndex.length > 0;
   const coveredModels = [];
   const missingModels = [];
@@ -10520,6 +11054,8 @@ function buildManualCoverageReport_() {
     currentGenerationMissingModels: indexAvailable
       ? currentMissingModels
       : [],
+    autoImportRetryCount: autoRetryModels.length,
+    autoImportRetryModels: autoRetryModels,
     acquisitionMode: "OFFICIAL_DISCOVERY_WITH_MANUAL_VALIDATION",
   };
 }
@@ -23431,13 +23967,13 @@ function assertStandardPdfBytes_(pdfBytes) {
   }
 }
 
-function upsertManualPdfToGemini_(fileName, pdfBytes) {
+function upsertManualPdfToGemini_(fileName, pdfBytes, forceRefresh) {
   const safeName = validateManualPdfFileName_(fileName);
   assertStandardPdfBytes_(pdfBytes);
   const existing = getManualPdfKbList_().filter(function (item) {
     return item.name === safeName && item.uri;
   });
-  if (existing.length > 0) {
+  if (existing.length > 0 && !forceRefresh) {
     const state = persistManualPdfKbItem_(existing[0]);
     return {
       uri: existing[0].uri,

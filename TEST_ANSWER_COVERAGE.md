@@ -30,9 +30,9 @@
 
 ## 新機型／新手冊自動化邊界
 
-- 每日 04:00 由 Samsung TW Product Finder 發現新品；新型號只進 `PENDING_MODEL_REVIEW`，不得把尚未核對的欄位直接寫入正式 RULE。
-- 同批最多自動下載 2 本 Samsung TW 繁中 UM PDF，驗證官方網域、台灣站、PDF magic／MIME、10KB–48MB 與 SHA-256 後，放入 Drive `_PENDING_MANUAL_REVIEW`。
-- 第一次 RULE 與第一次手冊啟用須人工核對完整型號、地區版與共用範圍；核准並移入正式根目錄後，每日同步會自動重傳 Gemini Files，使用者不需 `/重啟`。
+- 每日 04:00 由 Samsung TW Product Finder 發現新品；只採 SKU、產品名稱、官方特色與台灣 PDP 白名單欄位，以 A 欄 CSV 大字串自動新增最小 RULE。
+- 同批最多自動處理 2 本 Samsung TW 繁中 UM PDF；驗證官方網域、台灣站、PDF magic／MIME、10KB–48MB、SHA-256，再由 Gemini 只讀第 1 頁抽全部型號並與支援頁 SKU 交叉驗證。
+- 驗證通過後自動去銷售尾碼、排序、逗號命名並進正式根目錄；更新先備份再保留 fileId 覆寫。矛盾才隔離重試，正常新品不需要人工複製或 `/重啟`。
 - 2026 H 世代正式覆蓋現況由 TestUI 實際回讀為 `6/6`。全自動「直接上船」會把錯國別／共用手冊錯配帶進所有回答，因此明確不採用；自動發現、下載、驗證與提醒，人工只做一次升級核准。
 
 | 類別 | 實際問法／操作 | 預期與目前結果 | 成本結果 |

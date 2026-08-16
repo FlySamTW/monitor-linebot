@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.181)
+# Samsung LINE Bot 完整流程解析 (v29.6.187)
 
 ## 📋 核心哲學
 
@@ -39,10 +39,14 @@
 
 ### 新型號與新手冊每日納管
 
-- Product Finder 新 SKU 自動寫入 `PENDING_MODEL_REVIEW`，不能直接寫正式 `CLASS_RULES`。第一次 customer-facing RULE 必須人工核准，避免空規格、錯地區或跨型號資料污染。
+- Product Finder 新 SKU 先寫入 `PENDING_MODEL_REVIEW`；只有繁中官方手冊第一頁型號也通過交叉驗證後，才自動把白名單欄位寫成正式 A 欄最小 `CLASS_RULES`，不需人工複製。未驗證、錯地區或跨型號資料維持隔離。
 - 每日掃描對待審 SKU 建立 `https://www.samsung.com/tw/support/model/<完整XZW料號>/`，只接受 `contentsTypeCode=UM`、繁中、台灣 area、`org.downloadcenter.samsung.com` 且 query 明載 `CDSite=UNI_TW／CDCttType=UM` 的 PDF。
-- 下載後驗 `%PDF-`、MIME、10KB–48MB 與 SHA-256，每輪最多 2 本；只放 Drive `_PENDING_MANUAL_REVIEW` 子資料夾。正式同步只掃根目錄，因此 staging 絕不會被客服 RAG 誤用。
-- 新手冊第一次啟用、多人共用手冊範圍、或既有手冊 SHA-256 改變，須人工核對第一頁精確型號與繁中內容後，依專案 PDF 命名規則移到正式根目錄。舊 active 在核准前繼續服務，不先刪舊檔。
+- 下載後驗 `%PDF-`、MIME、10KB–48MB 與 SHA-256，每輪最多 2 本；再由 Gemini Structured Output 只讀第 1 頁抽出完整型號，必須與 Samsung TW 支援頁 SKU 交叉命中才能自動入庫。失敗才放 Drive `_PENDING_MANUAL_REVIEW` 隔離，下一輪重試，不要求管理員搬檔。
+- 第一頁核對先使用 2.5 Flash-Lite；只有結構化身分驗證失敗時才以 2.5 Flash 對同一檔案再核對一次，且整體仍受 250K token 上限與單次升級限制。兩次都失敗才隔離，不得以支援頁 SKU 單獨取代 PDF 內證據。
+- 正式檔名完全沿用既有規則：第一頁所有型號去 `L` 前綴與 `XZW`，再於「移除後仍是合法且以數字結尾的型號」前提下移除尾端 1–3 個英文字銷售／地區碼，排序去重後用半形逗號連接；不可維護逐尾碼白名單。新檔自動建立；同名內容更新先複製到 `_MANUAL_AUTO_BACKUP`，再保留原 Drive fileId 更新。共用範圍與既有 active 衝突時不覆蓋，保留隔離重試與 LOG。
+- 若 GAS 執行身分對手冊 Drive 資料夾沒有寫入權，通過第一頁驗證的 PDF 會以相同正式檔名直接上傳 Gemini Files API，持久併入 `MANUAL_PDF_KB_LIST`、`KB_URI_LIST` 與 `PDF_MODEL_INDEX`；同名內容更新強制刷新 URI。Drive 與 Gemini 都失敗時，待重試資料仍保存在 ScriptProperties，不需要管理員搬檔。
+- 使用者進入手冊流程時，系列／前段型號候選必須再與正式 `PDF_MODEL_INDEX` 取交集；RULE 有型號但無正式 PDF、仍在隔離區或舊按鈕已失效者一律不可選，也不得扣手冊額度。
+- Product Finder 欄位通過 SKU、台灣 Samsung URL、產品名稱與官方特色白名單後，以既有 A 欄 CSV 大字串格式自動新增「最小可信 RULE」；不寫價格、庫存或未提供的詳細規格。詳細題仍依 RULE → PDF 路由查證。
 - 已核准且內容未變的正式 Drive PDF，由每日 04:00 `syncGeminiKnowledgeBase(true)` 重新上傳 Gemini Files（官方保存 48 小時）；一般使用者與管理員都不需為此 `/重啟`。只有正式索引異常時由 403／404 自癒排程重建；`/重啟` 只用於管理員強制清除對話與來源狀態。
 
 ### v29.6.162 正式 12:59 回歸與共用修復
@@ -203,11 +207,12 @@
 - `countTokens` 的 429／5xx／缺欄位／連線例外只退避重試一次；PDF generate 的 429／5xx、異常空答也只重試一次。403／404 先從 Drive 單獨重傳本題 PDF 後再試一次，不得直接叫使用者 `/重啟`。
 - 每日 04:00（Asia/Taipei）由 `dailyKnowledgeRefresh()` 強制重新上傳 Drive PDF；同步上傳失敗必須以獨立 `failedUploadCount` 計數並排程一分鐘後背景重試。舊清單與備份不可被空清單覆蓋。
 - `/重啟` 只清除該使用者的對話與 pending 狀態，不重建 PDF、不清空 QA／RULE／手冊索引。正常使用不需要人工 `/重啟`；只有對話卡在錯誤舊狀態時才使用。PDF 過期或上傳失敗由單檔更新、每日排程與背景重建自癒。
+- 日常不需管理者啟動同步；每日 04:00 會自動掃描並重建。若要立即稽核，可在 Apps Script 編輯器執行無參數 `adminRunOfficialManualAutomation()`，它會回傳掃描與同步摘要；此函式沒有公開 Web route。
 - 每日重傳完成後必須執行 `auditManualCoverageGaps_()`，比對 `CLASS_RULES` 完整型號與正式 `PDF_MODEL_INDEX`。新加入 RULE 卻缺 PDF，或當代 H／2026 型號缺 PDF 時，寫入 `MANUAL_COVERAGE_REPORT`、`PENDING_MODEL_REVIEW.manualStatus=PENDING_MANUAL_REVIEW` 與 `[Manual Coverage Alert]` LOG。
 - `?manualCoverage=1` 與 TestUI 的覆蓋徽章提供人工維護入口，兩者都必須驗證維護憑證。索引空白時狀態為 `INDEX_UNAVAILABLE`，不得把所有型號誤報成缺口。
 - 每日重傳若部分 Gemini Files 上傳失敗，`PDF_MODEL_INDEX` 仍以本次完整 Drive 檔名目錄建立；若 Drive 掃描中途例外，正式 URI、索引與備份一律保留前次完整狀態。兩種失敗都排程一分鐘後受控重試，且維運回覆不得假稱同步完成。
 - `到這款官網` 只可採本題完整型號或本題路由產生的 `primaryModel`；不得讀取上一題 `direct_search_models` 或 suggested cache。
-- 官網 Product Finder 只負責發現新機與官方 PDP；正式 RAG 不自動下載並採信新 PDF。三星支援頁可自動找到下載網址，但入庫前仍須驗證 HTTPS、PDF MIME／magic bytes、SHA-256、防重複、第一頁完整型號與既有逗號檔名規則；GAS 無可靠第一頁文字驗證時必須停在人工審核，不可冒險上船。
+- 官網 Product Finder 負責發現新機與官方 PDP；Samsung TW 支援頁提供繁中 UM。只有 HTTPS、PDF MIME／magic bytes、SHA-256、Gemini 第 1 頁型號、支援頁 SKU 與既有逗號檔名規則全部一致才自動進正式 RAG；任何矛盾都保留舊 active 並隔離重試，不要求日常人工複製。
 - 2026-08-15 正式 `PDF_MODEL_INDEX` 當次回讀 176 項；RULE 的 6 款 H／2026 世代完整型號全部被正式基型號索引覆蓋，當下缺口為 0。H=2026 是本專案年代碼判定，若日後資料來源新增明確年份欄位，應改用欄位而非繼續擴張正則。
 
 - 固定順序：範圍／型號 → 精準 QA → QA＋CLASS_RULES Fast Mode → 推薦下一個來源 → 使用者按鍵授權 → 單次 PDF 或單次 Web → 回到 Fast Mode。
@@ -265,7 +270,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.181）
+## ✅ 現行鐵律 SOP（v29.6.187）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責推薦；「查官方手冊確認」按鍵就是一次授權，按後仍先做免費 QA／RULE 預檢，未命中便直接進 PDF。只有缺完整型號才先選型，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

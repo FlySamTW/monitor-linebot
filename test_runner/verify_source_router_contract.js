@@ -37,6 +37,16 @@ const g8RuleModels = g8ModelLines
   })
   .filter(Boolean);
 assert(
+  /function adminRunOfficialManualAutomation\(\)/.test(linebot) &&
+    /scanOfficialWebsiteForNewMonitors\(\)/.test(
+      extractFunction(linebot, "adminRunOfficialManualAutomation"),
+    ) &&
+    /syncGeminiKnowledgeBase\(false\)/.test(
+      extractFunction(linebot, "adminRunOfficialManualAutomation"),
+    ),
+  "編輯者須有不接受外部參數的一鍵新品手冊同步入口，日常仍由排程自動執行",
+);
+assert(
   g8AliasLine && /Odyssey G8/i.test(g8AliasLine) && g8ModelLines.length >= 2,
   "G8 必須由 CLASS_RULES 定義為 Odyssey 系列，且保留多個完整型號候選",
 );
@@ -1153,15 +1163,29 @@ assert(
     ),
   "活動 RULE 必須以台北日期排除過期資料",
 );
-const manualDiscoveryVm = { writeLog: () => {} };
+const manualDiscoveryVm = {
+  writeLog: () => {},
+  normalizeModelForDisplay: (model) =>
+    String(model).replace(/^LS/, "S").replace(/XZW$/, ""),
+  isPdfModelTokenMatch_: (manualModel, candidateModel) =>
+    manualModel === candidateModel ||
+    (candidateModel.startsWith(manualModel) &&
+      /^[A-Z]{1,4}$/.test(candidateModel.slice(manualModel.length))),
+};
 vm.createContext(manualDiscoveryVm);
 vm.runInContext(
   `${extractFunction(linebot, "extractEmbeddedJsonArrayByKey_")}
    ${extractFunction(linebot, "isSafeSamsungTwManualDownload_")}
+   ${extractFunction(linebot, "normalizeOfficialManualFileModelToken_")}
+   ${extractFunction(linebot, "buildOfficialManualFinalFileName_")}
    globalThis.manuals = extractEmbeddedJsonArrayByKey_('{"manuals":[{"contentsTypeCode":"UM","languageList":[{"orgCode":"ZH2"}],"areaList":[{"code":"TW"}],"downloadUrl":"https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&CDCttType=UM"}],"softwares":[]}', "manuals");
    globalThis.safe = isSafeSamsungTwManualDownload_(manuals[0].downloadUrl);
    globalThis.wrongMarket = isSafeSamsungTwManualDownload_("https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_UK&CDCttType=UM");
-   globalThis.wrongType = isSafeSamsungTwManualDownload_("https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&CDCttType=FM");`,
+   globalThis.wrongType = isSafeSamsungTwManualDownload_("https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&CDCttType=FM");
+   globalThis.sharedName = buildOfficialManualFinalFileName_(["S32HG806ES","S27HG806EF"], "LS32HG806ESXZW");
+   globalThis.singleName = buildOfficialManualFinalFileName_(["S27FG532EC"], "LS27FG532ECXZW");
+   globalThis.hSeriesName = buildOfficialManualFinalFileName_(["S27H704EAC","S32H704EAC","S27H802UAC","S32H802UAC","S27H802EFA","S40H850TAC"], "LS40H850TACXZW");
+   globalThis.mismatchName = buildOfficialManualFinalFileName_(["S27FG532EC"], "LS32HG806ESXZW");`,
   manualDiscoveryVm,
 );
 assert(
@@ -1169,13 +1193,69 @@ assert(
     manualDiscoveryVm.safe === true &&
     manualDiscoveryVm.wrongMarket === false &&
     manualDiscoveryVm.wrongType === false &&
+    manualDiscoveryVm.sharedName === "S27HG806,S32HG806.pdf" &&
+    manualDiscoveryVm.singleName === "S27FG532.pdf" &&
+    manualDiscoveryVm.hSeriesName === "S27H704,S27H802,S32H704,S32H802,S40H850.pdf" &&
+    manualDiscoveryVm.mismatchName === "" &&
     /_PENDING_MANUAL_REVIEW/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
+    /validateOfficialManualFirstPage_/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /promoteOfficialManualToRoot_/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /Drive\.Files\.update/.test(
+      extractFunction(linebot, "promoteOfficialManualToRoot_"),
+    ) &&
+    /getRange\(sheet\.getLastRow\(\) \+ 1, 1, activatedRuleLines\.length, 1\)/.test(
+      extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
+    ) &&
     /slice\(0, 2\)/.test(
       extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
+    ) &&
+    /PROMOTION_EXCEPTION_/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /upsertManualPdfToGemini_\([\s\S]*true/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /GEMINI_FILE_API_FALLBACK/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /readPdfModelIndexForCoverage_/.test(
+      extractFunction(linebot, "getManualSourceCandidateModels_"),
+    ) &&
+    /isPdfModelTokenMatch_/.test(
+      extractFunction(linebot, "getManualSourceCandidateModels_"),
+    ) &&
+    /!hasOfficialManualForModel_\(selectedModel\)/.test(
+      extractFunction(linebot, "handleRichMenuPostback_"),
     ),
-  "新手冊只可從台灣三星 UM 下載鏈進隔離 Drive 子資料夾，且每日限量避免 GAS 逾時",
+  "新手冊須以台灣三星 UM、第一頁型號與舊尾碼規則自動命名入庫；失敗才隔離重試，且每日限量",
+);
+const autoRuleVm = {
+  normalizeModelForDisplay: (model) =>
+    String(model).replace(/^LS/, "S").replace(/XZW$/, ""),
+  isFullSamsungMonitorModelForOfficialPage_: (model) => /^S\d{2}[A-Z0-9]{6,}$/.test(model),
+  isSafeSamsungTwOfficialUrl_: (url) => /^https:\/\/www\.samsung\.com\/tw\//.test(url),
+};
+vm.createContext(autoRuleVm);
+vm.runInContext(
+  `${extractFunction(linebot, "sanitizeOfficialRuleField_")}
+   ${extractFunction(linebot, "buildOfficialMinimalRuleLine_")}
+   globalThis.ruleLine = buildOfficialMinimalRuleLine_({model:"LS32HG732SCXZW",displayName:"32吋 Odyssey, OLED G7",detailUrl:"https://www.samsung.com/tw/monitors/gaming/example/",officialHighlights:["4K OLED","雙模式：4K 或 330Hz"]});`,
+  autoRuleVm,
+);
+assert(
+  autoRuleVm.ruleLine.startsWith(
+    "LS32HG732SCXZW,型號：S32HG732SC,官方新品自動驗證,",
+  ) &&
+    /產品名稱：32吋 Odyssey OLED G7/.test(autoRuleVm.ruleLine) &&
+    /官方特色：4K OLED；雙模式：4K 或 330Hz/.test(autoRuleVm.ruleLine) &&
+    /官網網址：https:\/\/www\.samsung\.com\/tw\//.test(autoRuleVm.ruleLine),
+  "新品最小 RULE 必須保持 A 欄 CSV 架構，且只使用已驗證官方欄位",
 );
 const handleScopeOrderText = linebot.slice(
   linebot.indexOf("function handleMessage"),

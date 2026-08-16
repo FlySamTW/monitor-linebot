@@ -50,8 +50,11 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - 維護者用受保護的 `?manualCoverage=1` 或 TestUI 覆蓋徽章檢查。索引不可用時不得製造假缺口。
 - 部分 PDF 上傳失敗時，保留前次完整 `KB_URI_LIST` 與備份；索引使用完整 Drive 檔名目錄。Drive 掃描中途失敗時，正式 URI、索引與備份都不得由部分清單覆蓋；兩種失敗均一分鐘後受控重試。
 - Drive 出現同名 PDF 時不得隨機掛檔或刷新正式索引；同步守門保留前次完整狀態並持續警示，執行期再以檔名＋Drive fileId／updatedAt 唯一化，最多只掛一個確定身分。
-- Product Finder 只發現產品與 PDP。自動下載的 PDF 未通過 HTTPS、MIME／`%PDF-`、SHA-256、第一頁完整型號及既有逗號檔名驗證前，不得進正式 Drive/RAG。
-- 每日新品 discovery 將新型號寫入 `PENDING_MODEL_REVIEW`，每輪最多下載 2 本 Samsung TW 繁中 UM 到 Drive `_PENDING_MANUAL_REVIEW`。第一次正式 RULE、第一次手冊啟用與手冊內容變更都要人工核對；禁止把待審資料直接注入 Fast Prompt 或正式 PDF 索引。
+- Product Finder 發現產品與 PDP；白名單內的 SKU、產品名稱、官方特色與台灣 PDP 可自動寫成 A 欄單一 CSV 最小 RULE，價格／庫存／未提供規格禁止寫入。
+- 每日每輪最多處理 2 本 Samsung TW 繁中 UM。PDF 必須通過 HTTPS、MIME／`%PDF-`、SHA-256、Gemini 第 1 頁所有完整型號與支援頁 SKU 交叉驗證；正式檔名移除 `L`／`XZW`，再於移除後以數字結尾的前提下去尾端 1–3 個英文字銷售碼，排序後用半形逗號連接，不得維護逐尾碼白名單。矛盾才隔離並下輪重試。
+- 第一頁驗證先用 2.5 Flash-Lite；只有身分漏判才以 2.5 Flash 對同一檔再核對一次，兩者共用 250K token 上限且只升級一次。仍失敗才隔離，禁止用支援頁 SKU 單獨冒充 PDF 證據。
+- 若執行身分無 Drive 寫權，驗證通過的手冊須以正式檔名自動改存 Gemini Files API 並持久合併手冊清單與 `PDF_MODEL_INDEX`；同名更新強制刷新 URI。Drive 與 Gemini 都失敗時仍保存可自動重試的 ScriptProperties 狀態。
+- 手冊型號候選必須與正式 `PDF_MODEL_INDEX` 取交集；RULE-only、隔離中或舊按鈕帶入的無實檔型號不得執行 PDF、不得扣額度。
 - 手冊經核准並移入正式 Drive 根目錄後，每日同步自動重新上傳 Gemini Files；一般使用者、管理員與新品維護都不需要 `/重啟`。
 - `/重啟` 是管理員強制清除該對話、pending、最近題目與持久型號；不重建 PDF。正常 PDF 過期、同步與新手冊維護不需要人工 `/重啟`。
 

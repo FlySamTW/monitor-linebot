@@ -15,7 +15,10 @@
 - Gemini Files PDF 回覆必須用 Structured Output JSON：`found／answer／pageNumber／scope／evidenceExcerpt`。程式組來源與頁碼；不得再以模型是否輸出某句自然語言標籤判定證據存在。
 - 只有明確 `found=false` 等於 `MANUAL_EVIDENCE_NOT_FOUND`，可自動補一次非 Samsung Web。格式錯誤、驗證錯誤、逾時、索引錯誤與官方證據衝突都不是「手冊無答案」，不得跨來源掩蓋我方問題。
 - `HDMl／HDIM／HMDI` 等輸入錯字在正規化層修正；更新、升級、插哪個孔等屬通用操作意圖，不得被相鄰規格詞洗白成 RULE 結論。
-- 新型號 discovery 全自動但只進 `PENDING_MODEL_REVIEW`；新繁中 UM 可自動下載到 Drive `_PENDING_MANUAL_REVIEW` 隔離子資料夾。第一次正式 RULE、新手冊第一次啟用、既有手冊 hash 變更均需人工核准；正式 RAG 只讀根目錄／active 資料，不讀 staging。
+- 新型號 discovery 全自動：Samsung TW Product Finder 的可信白名單欄位寫入 A 欄最小 RULE；新繁中 UM 經 PDF magic／MIME／SHA-256、Gemini 第 1 頁型號及支援頁 SKU 交叉驗證後，自動依舊檔名規則進正式 Drive/RAG。驗證矛盾才進 `_PENDING_MANUAL_REVIEW` 隔離重試；既有檔更新先自動備份，正常流程不需人工搬檔。
+- 第一頁身分驗證先用 2.5 Flash-Lite，僅漏判時自動升級 2.5 Flash 一次；共用 250K token 上限，仍失敗才隔離。
+- GAS 對 Drive 無寫權時，驗證通過的手冊以相同正式檔名自動改存 Gemini Files API，持久合併 `MANUAL_PDF_KB_LIST`、`KB_URI_LIST` 與 `PDF_MODEL_INDEX`；無須人工補搬。
+- 手冊型號選單只能列正式 `PDF_MODEL_INDEX` 實際覆蓋的型號；RULE-only、隔離重試中或舊按鈕帶入的型號都不得執行 PDF 或扣額度。
 - 已核准且內容不變的 Drive PDF 每日自動重傳 Gemini Files，使用者不需 `/重啟`；`/重啟` 只是管理員強制清理對話／快取狀態，不是日常維護步驟。
 
 ## v29.6.173 已核對證據的短追問契約
