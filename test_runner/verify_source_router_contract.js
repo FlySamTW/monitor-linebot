@@ -1212,7 +1212,10 @@ assert(
     /getRange\(sheet\.getLastRow\(\) \+ 1, 1, activatedRuleLines\.length, 1\)/.test(
       extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
     ) &&
-    /slice\(0, 2\)/.test(
+    /OFFICIAL_NEW_MODEL_CURSOR/.test(
+      extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
+    ) &&
+    /selectedNewProducts = orderedNewProducts\.slice\(0, 2\)/.test(
       extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
     ) &&
     /PROMOTION_EXCEPTION_/.test(

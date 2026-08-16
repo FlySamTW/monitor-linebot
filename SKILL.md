@@ -52,6 +52,7 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - Drive 出現同名 PDF 時不得隨機掛檔或刷新正式索引；同步守門保留前次完整狀態並持續警示，執行期再以檔名＋Drive fileId／updatedAt 唯一化，最多只掛一個確定身分。
 - Product Finder 發現產品與 PDP；白名單內的 SKU、產品名稱、官方特色與台灣 PDP 可自動寫成 A 欄單一 CSV 最小 RULE，價格／庫存／未提供規格禁止寫入。
 - 每日每輪最多處理 2 本 Samsung TW 繁中 UM。PDF 必須通過 HTTPS、MIME／`%PDF-`、SHA-256、Gemini 第 1 頁所有完整型號與支援頁 SKU 交叉驗證；正式檔名移除 `L`／`XZW`，再於移除後以數字結尾的前提下去尾端 1–3 個英文字銷售碼，排序後用半形逗號連接，不得維護逐尾碼白名單。矛盾才隔離並下輪重試。
+- 每輪 2 本必須用持久游標輪替候選，避免兩本永久失敗讓其餘新品永遠飢餓；輪替不得放寬任何證據守門。
 - 第一頁驗證先用 2.5 Flash-Lite；只有身分漏判才以 2.5 Flash 對同一檔再核對一次，兩者共用 250K token 上限且只升級一次。仍失敗才隔離，禁止用支援頁 SKU 單獨冒充 PDF 證據。
 - 若執行身分無 Drive 寫權，驗證通過的手冊須以正式檔名自動改存 Gemini Files API 並持久合併手冊清單與 `PDF_MODEL_INDEX`；同名更新強制刷新 URI。Drive 與 Gemini 都失敗時仍保存可自動重試的 ScriptProperties 狀態。
 - 手冊型號候選必須與正式 `PDF_MODEL_INDEX` 取交集；RULE-only、隔離中或舊按鈕帶入的無實檔型號不得執行 PDF、不得扣額度。

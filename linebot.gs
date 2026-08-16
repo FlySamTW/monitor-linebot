@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.187"; // 2026-08-16 新手冊尾碼依舊規則通用正規化
+const GAS_VERSION = "v29.6.188"; // 2026-08-16 新手冊候選輪替防永久卡隊
 const BUILD_TIMESTAMP = "2026-08-16 16:06";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -10850,7 +10850,19 @@ function scanOfficialWebsiteForNewMonitors() {
     // 共用範圍，通過才進正式 RAG；失敗則隔離並於下一輪自動重試。
     const activatedRuleLines = [];
     const activatedManuals = [];
-    newProducts.slice(0, 2).forEach(function (product) {
+    const newModelCursor = Math.max(
+      0,
+      Number(props.getProperty("OFFICIAL_NEW_MODEL_CURSOR") || 0),
+    ) % newProducts.length;
+    const orderedNewProducts = newProducts
+      .slice(newModelCursor)
+      .concat(newProducts.slice(0, newModelCursor));
+    const selectedNewProducts = orderedNewProducts.slice(0, 2);
+    props.setProperty(
+      "OFFICIAL_NEW_MODEL_CURSOR",
+      String((newModelCursor + selectedNewProducts.length) % newProducts.length),
+    );
+    selectedNewProducts.forEach(function (product) {
       try {
         const staged = stageOfficialTwManualCandidate_(product);
         if (staged) {
@@ -10923,7 +10935,7 @@ function scanOfficialWebsiteForNewMonitors() {
       activatedManuals: activatedManuals,
       retryCount: Math.max(
         0,
-        newProducts.slice(0, 2).length - activatedManuals.length,
+        selectedNewProducts.length - activatedManuals.length,
       ),
     };
     

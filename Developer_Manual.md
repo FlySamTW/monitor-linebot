@@ -1,4 +1,4 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.187)
+# Samsung LINE Bot 完整流程解析 (v29.6.188)
 
 ## 📋 核心哲學
 
@@ -42,6 +42,7 @@
 - Product Finder 新 SKU 先寫入 `PENDING_MODEL_REVIEW`；只有繁中官方手冊第一頁型號也通過交叉驗證後，才自動把白名單欄位寫成正式 A 欄最小 `CLASS_RULES`，不需人工複製。未驗證、錯地區或跨型號資料維持隔離。
 - 每日掃描對待審 SKU 建立 `https://www.samsung.com/tw/support/model/<完整XZW料號>/`，只接受 `contentsTypeCode=UM`、繁中、台灣 area、`org.downloadcenter.samsung.com` 且 query 明載 `CDSite=UNI_TW／CDCttType=UM` 的 PDF。
 - 下載後驗 `%PDF-`、MIME、10KB–48MB 與 SHA-256，每輪最多 2 本；再由 Gemini Structured Output 只讀第 1 頁抽出完整型號，必須與 Samsung TW 支援頁 SKU 交叉命中才能自動入庫。失敗才放 Drive `_PENDING_MANUAL_REVIEW` 隔離，下一輪重試，不要求管理員搬檔。
+- 每輪 2 本以 `OFFICIAL_NEW_MODEL_CURSOR` 輪替候選；任何單本長期失敗都不能卡住後續新品，失敗本身仍保留並在之後輪次重試。
 - 第一頁核對先使用 2.5 Flash-Lite；只有結構化身分驗證失敗時才以 2.5 Flash 對同一檔案再核對一次，且整體仍受 250K token 上限與單次升級限制。兩次都失敗才隔離，不得以支援頁 SKU 單獨取代 PDF 內證據。
 - 正式檔名完全沿用既有規則：第一頁所有型號去 `L` 前綴與 `XZW`，再於「移除後仍是合法且以數字結尾的型號」前提下移除尾端 1–3 個英文字銷售／地區碼，排序去重後用半形逗號連接；不可維護逐尾碼白名單。新檔自動建立；同名內容更新先複製到 `_MANUAL_AUTO_BACKUP`，再保留原 Drive fileId 更新。共用範圍與既有 active 衝突時不覆蓋，保留隔離重試與 LOG。
 - 若 GAS 執行身分對手冊 Drive 資料夾沒有寫入權，通過第一頁驗證的 PDF 會以相同正式檔名直接上傳 Gemini Files API，持久併入 `MANUAL_PDF_KB_LIST`、`KB_URI_LIST` 與 `PDF_MODEL_INDEX`；同名內容更新強制刷新 URI。Drive 與 Gemini 都失敗時，待重試資料仍保存在 ScriptProperties，不需要管理員搬檔。
@@ -270,7 +271,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.187）
+## ✅ 現行鐵律 SOP（v29.6.188）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責推薦；「查官方手冊確認」按鍵就是一次授權，按後仍先做免費 QA／RULE 預檢，未命中便直接進 PDF。只有缺完整型號才先選型，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。
