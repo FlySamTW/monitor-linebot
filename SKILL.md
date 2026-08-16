@@ -30,10 +30,10 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - S32HG806ES 雙模操作只可命中官方手冊第 27／35／43 頁的精準片段；其他 G8 不得共用。PDF 已付費但無可核對證據時，系統可自動補搜一次非 Samsung 官網 Web，不扣使用者網搜額度，另以每聊天室每日 3 次限制供應商補救成本；仍無證據就提供明確標示未經證實的保守方向，不得叫使用者反覆重搜。
 - 已核對 USB 播放片段只處理播放路徑／格式限制；含斷線、不穩、異常、無法、故障或明確非官方／網路意圖時不得因關鍵字重疊搶答。
 - 問句已明確要求非官方／公開網頁解法時，在 Fast 前零成本顯示 Web 授權入口並退一般額度；不得先產生手冊頁碼或三星官網中間答案。
-- PDF 生產只用 `models/gemini-2.5-flash-lite`，送出前以同一 payload `countTokens`；單次最壞 NT$0.35，手冊模式不得聯網。先以 QA／RULE、頁面收斂與已核對片段達成答案；低成本方法已達標時禁止再為模型比較花費。只有未覆蓋題組的整體成功率仍不足，才另案 A/B MANUAL；不得連 Fast／QA／RULE 一起換。
-- Web grounding 獨立使用穩定版 `models/gemini-2.5-flash` 與 US$0.30／US$2.50 費率；Fast／PDF／Polish 不跟著升級。更高費率只在使用者按 Web 或 PDF 無證據的一次性補救時發生。
+- Fast／Polish 使用 `models/gemini-2.5-flash-lite`；只有未命中 QA／RULE／已核對片段的整本 PDF fallback 使用 `models/gemini-2.5-flash`。PDF 送出前以同一 payload `countTokens`，單次最壞 NT$0.35，手冊模式不得聯網；低成本證據已達標時禁止再呼叫模型。
+- Web grounding 獨立使用穩定版 `models/gemini-2.5-flash` 與 US$0.30／US$2.50 費率。較高費率只在整本 PDF、使用者按 Web 或 PDF 無證據的一次性補救發生，不得連 Fast／QA／RULE 一起升級。
 - Web 最多 5 點／450 個中文字並必須完整收尾；只留直接適用本題的 grounding 做法。螢幕內建 USB 播放不得混入 Windows／主機板排錯，亦不得建議非官方韌體下載。
-- PDF 成功答案必須同時具 PDF 顯示頁碼、型號適用範圍與可核對證據摘錄；缺任一者不得掛「三星官方手冊」來源。人工逐頁片段也要顯示 `NT$0.0000` 與未扣手冊額度。
+- PDF 成功答案必須同時具 PDF 顯示頁碼、型號適用範圍與可核對 Evidence[]；操作題另須以結構化 `operationPath` 呈現「入口分類 → 功能名稱」，不得只回注意事項。缺任一必要證據不得掛「三星官方手冊」來源；同頁證據去重。人工逐頁片段也要顯示 `NT$0.0000` 與未扣手冊額度。
 - 禁止未授權 LINE Push。Rich Menu 與一般客服一律使用 reply；只有業主當次明確授權的單次通知可使用 Push，不得因此新增常駐推播路由或擴大授權。
 
 ## 官網承接
@@ -51,6 +51,8 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - 部分 PDF 上傳失敗時，保留前次完整 `KB_URI_LIST` 與備份；索引使用完整 Drive 檔名目錄。Drive 掃描中途失敗時，正式 URI、索引與備份都不得由部分清單覆蓋；兩種失敗均一分鐘後受控重試。
 - Drive 出現同名 PDF 時不得隨機掛檔或刷新正式索引；同步守門保留前次完整狀態並持續警示，執行期再以檔名＋Drive fileId／updatedAt 唯一化，最多只掛一個確定身分。
 - Product Finder 只發現產品與 PDP。自動下載的 PDF 未通過 HTTPS、MIME／`%PDF-`、SHA-256、第一頁完整型號及既有逗號檔名驗證前，不得進正式 Drive/RAG。
+- 每日新品 discovery 將新型號寫入 `PENDING_MODEL_REVIEW`，每輪最多下載 2 本 Samsung TW 繁中 UM 到 Drive `_PENDING_MANUAL_REVIEW`。第一次正式 RULE、第一次手冊啟用與手冊內容變更都要人工核對；禁止把待審資料直接注入 Fast Prompt 或正式 PDF 索引。
+- 手冊經核准並移入正式 Drive 根目錄後，每日同步自動重新上傳 Gemini Files；一般使用者、管理員與新品維護都不需要 `/重啟`。
 - `/重啟` 是管理員強制清除該對話、pending、最近題目與持久型號；不重建 PDF。正常 PDF 過期、同步與新手冊維護不需要人工 `/重啟`。
 
 ## 驗證與發布
