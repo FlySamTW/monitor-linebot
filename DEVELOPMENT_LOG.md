@@ -1,5 +1,64 @@
 # 開發對話紀錄
 
+## 2026-08-16 (v29.6.181 / 手冊操作路徑結構化)
+
+- v29.6.180 正式真人題已正確找到自我診斷第 36／37 頁、頁碼去重且成本 NT$0.1428，但模型摘要仍漏掉 `Support → Self Diagnosis`；因此 v29.6.180 不視為操作題完成。
+- Structured Output 新增通用 `operationPath` 欄位；操作／設定／開啟類問題若手冊有功能表或章節入口，程式固定以「操作路徑」顯示，不再依自然回答是否碰巧寫出，也不新增 Self Diagnosis 個案路由。
+
+
+## 2026-08-16 (v29.6.180 / 手冊重點與頁碼去重)
+
+- 手冊 Structured Output 的同頁證據改為程式去重，避免 LINE 出現「第 36、36、37 頁」。
+- 通過內部頁碼／摘錄／型號範圍驗證後，客戶端保留一行自然的「手冊重點」，讓操作入口不會因模型摘要過短而消失；RAG、evidence、token 等工程術語仍不外露。
+- 契約測試新增重複頁碼與操作入口案例，禁止以單一題目特例修補。
+
+## 2026-08-16 (v29.6.179 / 操作路徑與證據精簡)
+
+- 10 題真人矩陣發現：黑畫面 Evidence[] 已完整，但回答仍漏 `Support → Self Diagnosis`；Aim Point／Black Equalizer 又多列封面頁。schema 通用要求操作題輸出「入口分類 → 功能名稱」，並排除封面／目錄／型號清單證據。
+- `Eye Saver 後偏黃` 雖由 Fast 正確回答，卻沒有封閉資料來源；將偏色／色偏／偏黃／顏色異常歸入通用故障症狀，精準 QA／RULE 未命中時才請使用者授權查手冊。
+
+## 2026-08-16 (v29.6.178 / PDF Evidence[] 多證據回答)
+
+- v29.6.177 已解決 JSON 截斷，但真人黑畫面題雖命中第 36 頁，答案只回自我診斷注意事項、漏掉問題要求的選單路徑。將 PDF schema 由單一頁碼改為通用 `{found, answer, evidence[]}`；最多 3 筆證據，複合題逐項回答，操作題若證據有路徑／步驟必須寫出。
+
+## 2026-08-16 (v29.6.177 / PDF 結構輸出不中斷)
+
+- 正式黑畫面題已找到 PDF 並回 `found:true`，但 2.5 Flash 預設 Thinking 吃掉輸出額度，JSON 在 37 tokens 中途截斷。PDF Structured Output 固定 `thinkingBudget=0`，不另做一次格式重試，保留 1,200 tokens 給完整答案／頁碼／摘錄並降低輸出成本。
+- 修正同一 RULE 複合題漏答旋轉欄位、`[MANUAL_EVIDENCE_NOT_FOUND]` 內部標記外洩，以及 PDF→Web 已補查仍顯示網路重搜按鈕。
+
+## 2026-08-16 (v29.6.176 / 不完整型號候選與有效答案成本)
+
+- 正式 v29.6.175 實問 `G806 雙模怎麼開？` 發現操作題缺型號 guard 搶先要求手打完整型號。通用修正 `G806／M703` 等不完整代碼：只從 CLASS_RULES 已存在的完整型號 token 解析，多候選列選單、唯一候選鎖定、零候選才追問；不新增 G806 題目特例。
+- v29.6.175 的整本 PDF 修復已由正式 TestUI 證實：`S32HG806ES 韌體更新隨身碟要插哪個孔？` 零 Fast 後掛載正確 48 頁 PDF，2.5 Flash 於 4.70 秒找到第 36 頁 SERVICE 埠；12,881 input／89 output、NT$0.1308、`pdfCalls=1／webCalls=0`。
+
+## 2026-08-16 (v29.6.175 / 操作題零 Fast 與 PDF 有效答案成本)
+
+- v29.6.174 正式重走韌體題：一般提問仍先花 NT$0.0145 讓 Flash-Lite 猜錯 USB Hub，雖然最後被來源守門刪除，這次生成仍完全多餘。完整型號操作題在精準 QA／RULE／已核對 Evidence 都未命中時，現在直接顯示手冊授權，退回一般額度，`Fast=0`。
+- 同一輪整本 PDF 的 Structured Output 格式正確，Flash-Lite 卻回 `found=false`，再次漏掉第 36 頁，證明剩餘問題是長文件召回品質而非輸出格式。整本 PDF fallback 改用 Gemini 2.5 Flash；Fast／免費 Evidence／Polish 仍維持 Flash-Lite。
+- Google 2026-08-16 Standard 價格：Flash-Lite US$0.10/M input、US$0.40/M output；Flash US$0.30/M input、US$2.50/M output。以該 48 頁手冊 12,881 input 計，Flash 約 NT$0.13，仍受單次 NT$0.35 硬上限；比 NT$0.04 但拿不到答案的失敗呼叫更符合「最低有效成本」。
+- Structured Output 增加 `found／page／scope／excerpt length` 診斷 LOG；真人驗收必須看到 page/evidence 成功且 `webCalls=0`，不能只以 API 200 或模型名稱宣稱改善。
+
+## 2026-08-16 (v29.6.174 / PDF 結構化證據與新手冊隔離納管)
+
+- 正式 TestUI 實測 `S32HG806ES 韌體更新隨身碟要插哪個孔？`：正確 48 頁 PDF 已掛載，Flash-Lite 也找到第 36 頁與 SERVICE 埠，卻只因漏輸出「證據摘錄」被舊 regex 當成手冊無答案，再浪費一次 Web。這是輸出格式錯誤，不是 PDF 沒有答案。
+- PDF 路徑改用 Gemini 2.5 Flash-Lite 官方 Structured Output：固定回傳 `found／answer／pageNumber／scope／evidenceExcerpt`，程式再組 LINE 文案；只有 `found=false` 可自動 Web。JSON 格式錯誤、頁碼／摘錄驗證錯誤、逾時都不得冒充 `NO_EVIDENCE` 跨來源。
+- 常見輸入正規化補 `HDMl → HDMI`；操作意圖共通涵蓋韌體更新、升級與插孔，不再讓 Fast 把操作題洗白成官方規格。
+- 新 SKU 仍只進待審 RULE，不會直接污染正式 `CLASS_RULES`。每日掃描會從台灣 Samsung support model 頁找繁中 `UM`，僅接受官方 download center、台灣站、PDF 檔頭與大小檢查，最多 2 本下載到 Drive `_PENDING_MANUAL_REVIEW` 隔離子資料夾。第一次啟用或 hash 改變須人工核對第一頁型號與共用範圍；核准後移入正式手冊根目錄，既有每日同步自動刷新 Gemini Files，無需一般使用者 `/重啟`。
+- 此決策採三方共同結論：短期用 Structured Output 止血，長期以已存在的逐頁 BM25 `Evidence[]` 讓模型只引用候選 evidence ID；不再用自由文字格式決定手冊有沒有答案，也不在本版把未驗證手冊自動升正式。
+
+## 2026-08-16 (v29.6.173 / 已核對證據的短追問承接)
+
+- 正式連續旅程在 `它支援雙模式嗎？ → 要怎麼切？` 找到第二層省略主詞缺口：第一題已由第 27／35／43 頁零成本回答，第二題卻遺失「雙模式」主題，另花 Fast 費用後只剩手冊 CTA。
+- 新增共通 Evidence continuation：短追問若本句無法獨立命中，先與歷史中上一則使用者主題合併，只重查現有已核對 Evidence；命中即零 LLM、零 PDF 回答。
+- 含新完整型號的獨立題不借用上一題；這個機制只承接省略主詞，不把來源模式黏住，也不放寬證據門檻。
+
+## 2026-08-16 (v29.6.172 / 模糊系列與輸入錯字守門)
+
+- 真人連續旅程 `Ｇ８有幾個 hdim？` 找到結構性缺口：未知縮寫錯字會讓 G8 多型號題繞過選型，Fast 模型只列部分型號，並被錯誤補上官方規格來源。
+- 新增共通輸入正規化層（全形轉半形後修正 HDMI／DisplayPort 常見字母錯置）；不把單題答案或產品特例塞入 Prompt。
+- 任何短系列別稱若對應多個完整型號，除純系列介紹外一律先選型號；即使意圖分類沒認出錯字，也不得用部分型號概括回答。
+- Fast 來源推論明確排除 G8／M7 等短別稱；只有題目含真正完整型號，才可能由 deterministic 規格命中補官方規格來源。
+
 ## 2026-08-16 (v29.6.171 / 進階來源快取按版本隔離)
 
 - 正式 v29.6.170 TestUI 已確認 Fast 操作題不再來源洗白，但語意相同的 Web 題仍命中前版 10 分鐘結果快取，顯示舊文案。

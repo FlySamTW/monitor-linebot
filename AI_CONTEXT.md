@@ -1,5 +1,35 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.179 Evidence[]、操作路徑與有效答案成本契約
+
+- 已確認完整型號的操作／設定題，若精準 QA、RULE、verified Evidence 都未命中，零 Fast 直接顯示手冊授權；不得先讓 Fast 猜一次、刪答案後仍收費。
+- Fast／Polish 維持 Gemini 2.5 Flash-Lite。只有經使用者授權且無逐頁 Evidence 的整本 PDF fallback 使用 Gemini 2.5 Flash，因正式 48 頁手冊已兩次證明 Flash-Lite 可能漏頁。
+- `G806／M703` 等不完整代碼先在 CLASS_RULES 的完整型號 token 中解析：多候選列選單、唯一候選鎖定、零候選才追問完整型號；不可讓操作題的缺型號 guard 搶先中斷既有候選流程。
+- PDF Structured Output 固定 `thinkingBudget=0`，避免預設 Thinking 吃掉輸出額度而截斷 JSON；PDF→Web 已自動補查後不再顯示網路重搜，內部 evidence marker 不得外洩。
+- PDF schema 統一 `{found, answer, evidence[]}`，最多 3 筆頁碼／範圍／摘錄；複合題需逐項回答，操作題有路徑或步驟時不可只回注意事項。
+- 操作答案用「入口分類 → 功能名稱」呈現；Evidence[] 排除封面／目錄／型號清單。偏色、色偏、偏黃與顏色異常視為通用故障症狀，避免 Fast 無來源作答。
+- PDF Flash 依官方 US$0.30/M input、US$2.50/M output 計費，仍受 NT$0.35 單次硬上限與 token 預檢；衡量指標是每個可核對答案的成本，不是單次 API 表面最便宜。
+
+## v29.6.174 PDF evidence 與新手冊納管契約
+
+- Gemini Files PDF 回覆必須用 Structured Output JSON：`found／answer／pageNumber／scope／evidenceExcerpt`。程式組來源與頁碼；不得再以模型是否輸出某句自然語言標籤判定證據存在。
+- 只有明確 `found=false` 等於 `MANUAL_EVIDENCE_NOT_FOUND`，可自動補一次非 Samsung Web。格式錯誤、驗證錯誤、逾時、索引錯誤與官方證據衝突都不是「手冊無答案」，不得跨來源掩蓋我方問題。
+- `HDMl／HDIM／HMDI` 等輸入錯字在正規化層修正；更新、升級、插哪個孔等屬通用操作意圖，不得被相鄰規格詞洗白成 RULE 結論。
+- 新型號 discovery 全自動但只進 `PENDING_MODEL_REVIEW`；新繁中 UM 可自動下載到 Drive `_PENDING_MANUAL_REVIEW` 隔離子資料夾。第一次正式 RULE、新手冊第一次啟用、既有手冊 hash 變更均需人工核准；正式 RAG 只讀根目錄／active 資料，不讀 staging。
+- 已核准且內容不變的 Drive PDF 每日自動重傳 Gemini Files，使用者不需 `/重啟`；`/重啟` 只是管理員強制清理對話／快取狀態，不是日常維護步驟。
+
+## v29.6.173 已核對證據的短追問契約
+
+- `它支援雙模式嗎？ → 要怎麼切？` 這類省略主詞追問，若本句不能獨立命中 Evidence，須與歷史中上一則使用者主題合併後重查既有 Evidence。
+- 命中既有 QA／RULE／已核對手冊片段即零生成回答；不得已經有答案卻再花 Fast token，最後只回手冊 CTA。
+- 新完整型號代表獨立問題，不得借用上一題主題；來源仍維持 QA/RULE → PDF → Web，Evidence 承接不等於付費模式黏住。
+
+## v29.6.172 模糊系列、錯字與證據來源契約
+
+- 全形與常見介面縮寫錯字先在輸入正規化層處理，不以 Prompt 或逐題 route 特例修補。
+- G8／M7 等短別稱對應多款實體時，除純系列介紹外必須先顯示完整型號候選；選型後才回答原題。
+- 短別稱不是完整型號，禁止據此替模型概括回答補 `[來源:官方規格庫]`。
+
 ## v29.6.171 回答保留、PDF 證據與 Web 支持句段契約
 
 - 正式 12:59 LOG 證實舊型號鎖定分支會在最後把 Fast 已產生的部分回答洗成純手冊 CTA；完整型號鎖定後只准清除缺型號狀態，不得再次依藍牙、能力題等特例重建答案。
@@ -23,7 +53,7 @@
 - v29.6.162 起 Fast 為 0.4–0.5、PDF 0.2、Web 0.15；不增加第二次潤飾模型呼叫。
 - Google 官方邊界：Files API 掛整本 PDF 是文件理解／長上下文，不等於 File Search RAG；真正 File Search 會 chunk、embedding、semantic retrieval 並可用 metadata filter。現行已核對片段與離線逐頁索引屬本專案自管 retrieval，但整本 PDF 路徑仍非真正檢索。M9 等智慧螢幕須以 `document_role` 區分硬體 PDF 與 HTML e-Manual；不得再以「同型號有 PDF」判定題目可被該文件回答。
 - 不在 v29.6.162 熱修直接切 File Search：官方現行支援清單不含 2.5 Flash-Lite，且不可和 Google Search／URL Context 同請求；先以代表題 shadow pilot 比較引用成功率、正確文件召回率、有效答案成本與 P95 延遲，達標才另版遷移。
-- PDF 模型的可稽核輸出固定以「證據摘錄」及單一手冊證據標記收尾；Web 有 grounding 仍須通過本題型號相關性，明說只找到其他系列時不得當成功。任何截斷 `[cite` 或超長網搜草稿不得送上 LINE。
+- PDF 模型的可稽核輸出固定包含 `answer／operationPath／Evidence[]`；操作題的功能表或章節入口由 `operationPath` 固定呈現，不得依自然回答碰運氣。Web 有 grounding 仍須通過本題型號相關性，明說只找到其他系列時不得當成功。任何截斷 `[cite` 或超長網搜草稿不得送上 LINE。
 
 ## v29.6.158 回答鏈與一次性補充契約
 
@@ -34,7 +64,7 @@
 
 ## v29.6.157 回答鏈、精確型號證據與逐頁索引基線
 
-- LINE 可見回答固定依「直接答案 → 必要步驟 → 必要限制 → 官方手冊頁碼 → 簡短費用／額度」排列。`RAG`、`BM25`、chunk、evidence ID、revision、token、grounding、適用範圍等只准留在後台；模型的「證據摘錄」只供程式驗證，送 LINE 前必須剝除。
+- LINE 可見回答固定依「直接答案 → 必要步驟 → 必要限制 → 手冊重點 → 官方手冊頁碼 → 簡短費用／額度」排列。`RAG`、`BM25`、chunk、evidence ID、revision、token、grounding、適用範圍等只准留在後台；模型的原始證據欄位只供程式驗證，送 LINE 時僅保留去重後、可幫助實際操作的短「手冊重點」。
 - 已核對手冊片段用確定性重排，不再呼叫第二次模型潤稿；只可刪贅詞、調整順序與換成台灣口語，型號、數字、單位、選單名稱及「僅／必須／不支援／可能／需要」等限制詞不可改寫或省略。
 - `tools/build_manual_page_index.py` 是離線、零 API 的通用逐頁索引產生器；來源由 `config/manual_registry.json` 精確綁定手冊與型號，`config/manual_lexicon.json` 只做跨問法意圖擴詞。輸出採小型 meta、lexical index 與頁面 shards，不把整本索引塞進 GAS 熱路徑。
 - v29.6.157 的正式回答仍以既有 QA／RULE、已核對片段與整本 PDF 為主；逐頁索引先完成 M8／G8 影子驗證，不得假稱已全面取代正式 PDF。正式切換需另版完成 Drive artifact、ScriptProperties active pointer、revision／SHA 原子發布與頁面 evidence ID 驗證。
@@ -75,7 +105,7 @@
 
 - 藍牙耳機／喇叭操作題在 PDF 階段必須擴查手冊正式標題與選單同義詞（音效輸出、藍牙揚聲器清單、Bluetooth Speaker List、掃描、配對），不得因使用者用語不同就誤回「手冊未記載」。
 
-- Fast／PDF／Polish 仍固定 `models/gemini-2.5-flash-lite`（US$0.10/M input、US$0.40/M output）；只有實際 Google Search grounding 改用穩定版 `models/gemini-2.5-flash`（US$0.30/M、US$2.50/M）。2026-08-16 真人 LOG 證實 Flash-Lite 雖收到 `google_search` payload，仍回 queries/chunks/supports 全 0 並用內建知識假裝搜尋；Web 專用升級是為了有效答案，不能擴及 QA／RULE／PDF。
+- Fast／Polish 固定 `models/gemini-2.5-flash-lite`（US$0.10/M input、US$0.40/M output）；整本 PDF fallback 與實際 Google Search grounding 使用穩定版 `models/gemini-2.5-flash`（US$0.30/M、US$2.50/M）。PDF 只在 QA／RULE／逐頁 Evidence 不足且使用者授權後啟用，並受 NT$0.35 單次上限約束。
 - Web 回答最多 5 點、每點最多 2 行、450 個中文字內並須完整收尾。螢幕內建 USB 媒體播放題不得混入 Windows USB 省電、主機板 USB 埠或電腦端線材；非官方韌體下載不得列為解法。
 - 成本比較看有效答案而非單次單價：先用精準 QA／RULE、頁面收斂與已核對手冊片段。只有未覆蓋題組的整體正確率仍不足，才另案 A/B MANUAL；不得在低成本方法已達標後繼續為模型比較花費。
 - PDF 先以官方 `countTokens` 精算同一 payload，單次硬上限 NT$0.35；生成後以 `usageMetadata` 記實際費用。TestUI 不得再顯示舊的「約 NT$1.5」。
@@ -92,7 +122,7 @@
 - Rich Menu 與 TestUI 三格使用雙排超大字：第一排 `直接問`／`查手冊`／`搜網路`，第二排 `20題/日`／`5次/日`／`10次/日`。禁止縮回單行小字或塞入長句。
 
 - `G8` 是 `CLASS_RULES` 已定義的 Odyssey 系列別稱。系列別稱遇到型號相關功能／操作／手冊題時，先從 RULE 列完整型號按鈕；只有涵蓋相同別稱的精準 QA 可直接回答，禁止泛用 Smart／其他型號資料搶答。選定完整型號後不得再次進入選型迴圈。
-- 手冊 `countTokens` 的 20K 是成本警戒而非拒絕線；先刪除無關歷史，只保留本輪完整問題。100K 與單次最壞 NT$0.35 為雙重硬上限；超限先用 `MEDIA_RESOLUTION_LOW` 重算，仍超標才停止且不扣次。
+- 手冊 `countTokens` 的 20K 是成本警戒而非拒絕線；先刪除無關歷史，只保留本輪完整問題。100K 是絕對 token ceiling，2.5 Flash 依現價計算的 NT$0.35 成本 ceiling 通常更早生效；超限先用 `MEDIA_RESOLUTION_LOW` 重算，仍超標才停止且不扣次。
 - 免費 QA／RULE 預檢未命中後，PDF 生成階段只能載入官方手冊，不得再混入 QA、RULE、Prompt!C3 或網路。型號規格結論必須附 PDF 頁碼與「型號明確／全檔共通」證據範圍；「依型號而定」不能當肯定證據。
 
 - 手冊 URI 過期時，只更新本題實際選中的 1～2 份 PDF 並重跑 token 預檢；成功後才送出生成請求與扣除手冊額度。單檔更新仍失敗才使用既有背景整庫重建，禁止因一份手冊過期就先同步全部 PDF。

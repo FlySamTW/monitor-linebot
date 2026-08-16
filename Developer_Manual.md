@@ -1,10 +1,49 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.171)
+# Samsung LINE Bot 完整流程解析 (v29.6.181)
 
 ## 📋 核心哲學
 
 本機 QA／RULE 優先 + 跨日產品狀態 + 使用者選擇單一來源 + 應用層每日配額 + 可核對來源
 
 代表性真人題、成本與另一個 AI 題庫取捨統一記錄於 `TEST_ANSWER_COVERAGE.md`；不得以 80+ 題批次付費轟炸取代少量關鍵旅程。
+
+### v29.6.175 最低「有效答案」成本
+
+- 完整型號操作題先依序查精準 QA、該型號 RULE 與 verified Evidence；全部未命中時直接顯示手冊授權並退一般題額度，禁止先呼叫 Fast 猜測再刪除。
+- Fast／Polish 保持 `gemini-2.5-flash-lite`。只有使用者已授權、且沒有逐頁 Evidence 的整本 PDF fallback 使用 `gemini-2.5-flash`；理由是同一 48 頁官方手冊已實證 Flash-Lite 會漏掉明載第 36 頁的內容。
+- 2026-08-16 Google Standard 官方價：Flash-Lite input/output 為 US$0.10／0.40 每百萬 tokens；Flash 為 US$0.30／2.50。48 頁案例約 12.9K input，Flash 約 NT$0.13，仍受 NT$0.35 單次硬上限。成本 KPI 是「得到可核對答案的總成本」，不是單次模型最低牌價。
+
+### v29.6.176 不完整型號候選
+
+- `G806／M703` 這類可辨識但不完整的代碼，不得直接要求使用者手打完整型號。程式只在 CLASS_RULES 的完整型號 token 中做包含比對：多個候選就列選單、唯一候選才可鎖定；完全找不到才追問背貼完整型號。選型不呼叫模型，也不另扣一般提問次數。
+
+### v29.6.177 PDF 結構輸出與終止 UX
+
+- 2.5 Flash 的預設 Thinking 會與可見回答共用輸出額度；正式黑畫面題曾只輸出 37 tokens，JSON 截在答案中途。PDF Structured Output 固定 `thinkingBudget=0`，將 1,200 tokens 全留給答案、頁碼與摘錄；不為格式補打一通 API。
+- PDF→Web 自動補查已執行後，不再顯示「網路解答」讓使用者重複付費；只保留「到這款官網」。任何 `[MANUAL_EVIDENCE_NOT_FOUND]` 等內部標記都不得出現在 LINE。
+
+### v29.6.178 Evidence[] 多證據回答
+
+- PDF schema 不再只允許一頁：統一回 `{found, answer, evidence[]}`，每筆 evidence 含 PDF 顯示頁碼、型號適用範圍與原文摘錄，最多 3 筆。複合題要回答使用者問到的每個子項，操作題若證據有選單路徑／步驟就必須寫出；程式驗證全部 evidence 後才標示官方手冊。
+
+### v29.6.179 操作路徑與證據精簡
+
+- 操作答案必須把手冊章節／功能表整理成「入口分類 → 功能名稱」，不能只回注意事項；Evidence[] 不得拿封面、目錄或型號清單湊證據。偏色／色偏／偏黃／顏色異常屬通用顯示故障症狀，精準 QA／RULE 未命中時走手冊授權，不讓一般模型無來源猜測。
+- 發布後必須用同一失敗題確認 Structured Output `found=true`、正確頁碼／摘錄、`pdfCalls=1`、`webCalls=0`；若沒有這組正式證據，不得宣稱換模型改善。
+
+### v29.6.174 決策：PDF 證據存在、輸出格式與跨 Web 必須分離
+
+- 事故原委：`S32HG806ES 韌體更新隨身碟要插哪個孔？` 已將正確 PDF 送入 2.5 Flash-Lite，模型也找到第 36 頁、SERVICE 埠與 `.bin／.img`，但漏了一行自由文字「證據摘錄」，舊程式便把 FORMAT_ERROR 誤當 NO_EVIDENCE，丟棄正確答案又自動 Web。這不是換模型能根治的問題。
+- 立即架構：PDF `generateContent` 使用 Google 官方 Structured Output，固定欄位為 `found／answer／pageNumber／scope／evidenceExcerpt`。程式驗欄位後才組客戶文案；模型不再自行控制來源、頁碼 footer 或內部標籤。
+- 唯一 Web gate：只有 PDF 明確 `found=false` 才是 `MANUAL_EVIDENCE_NOT_FOUND`。JSON 解析失敗、欄位缺漏、非法頁碼、摘要缺失、逾時與 API 錯誤皆屬 pipeline 問題，不得自動 Web 冒充手冊無資料。
+- 長期架構：QA／RULE → verified chunks → 逐頁 BM25 top-K `Evidence[]` → Flash-Lite 只整理答案並回 evidence IDs → 程式驗證 IDs／page／SHA／原文；整本 Files PDF 只作索引未建或長上下文 fallback。不得再為單一問句新增路由特例。
+
+### 新型號與新手冊每日納管
+
+- Product Finder 新 SKU 自動寫入 `PENDING_MODEL_REVIEW`，不能直接寫正式 `CLASS_RULES`。第一次 customer-facing RULE 必須人工核准，避免空規格、錯地區或跨型號資料污染。
+- 每日掃描對待審 SKU 建立 `https://www.samsung.com/tw/support/model/<完整XZW料號>/`，只接受 `contentsTypeCode=UM`、繁中、台灣 area、`org.downloadcenter.samsung.com` 且 query 明載 `CDSite=UNI_TW／CDCttType=UM` 的 PDF。
+- 下載後驗 `%PDF-`、MIME、10KB–48MB 與 SHA-256，每輪最多 2 本；只放 Drive `_PENDING_MANUAL_REVIEW` 子資料夾。正式同步只掃根目錄，因此 staging 絕不會被客服 RAG 誤用。
+- 新手冊第一次啟用、多人共用手冊範圍、或既有手冊 SHA-256 改變，須人工核對第一頁精確型號與繁中內容後，依專案 PDF 命名規則移到正式根目錄。舊 active 在核准前繼續服務，不先刪舊檔。
+- 已核准且內容未變的正式 Drive PDF，由每日 04:00 `syncGeminiKnowledgeBase(true)` 重新上傳 Gemini Files（官方保存 48 小時）；一般使用者與管理員都不需為此 `/重啟`。只有正式索引異常時由 403／404 自癒排程重建；`/重啟` 只用於管理員強制清除對話與來源狀態。
 
 ### v29.6.162 正式 12:59 回歸與共用修復
 
@@ -76,7 +115,7 @@
 
 - 官方 PDF 已人工核對的「型號＋意圖＋頁碼」必須先由程式確定性回答，不得再把同題交給整本 PDF 的機率式檢索。M8／M7 現已涵蓋藍牙音訊、Wi-Fi、Smart View／AirPlay、藍牙輸入裝置、App、軟體更新、出廠重設、零售模式、USB 與 HEVC；G8 涵蓋 S32HG806ES Dual Mode。
 - 只有完整型號與操作意圖同時命中才可使用；其他型號、純規格題或故障題不得借用。命中片段時 `pdfCalls=0`、不扣手冊額度，但仍須顯示官方手冊來源、頁碼與 NT$0.0000。
-- 客戶回答不得顯示 RAG、BM25、chunk、evidence ID、revision、token、grounding、證據摘錄或適用範圍。內部證據驗證完成後，LINE 只顯示「答案 → 步驟 → 限制 → 官方手冊第 N 頁 → 本次約 NT$…｜額度」。
+- 客戶回答不得顯示 RAG、BM25、chunk、evidence ID、revision、token、grounding、原始證據欄位或適用範圍。內部證據驗證完成後，LINE 只顯示「答案 → 步驟 → 限制 → 手冊重點 → 官方手冊第 N 頁 → 本次約 NT$…｜額度」；同頁證據必須去重，手冊重點只留對操作有幫助的短句。
 - 確定性片段不再用第二次 LLM 潤稿。程式只做受限重排：選單名稱、數字、單位與「僅／必須／不支援／可能／需要」等限制詞必須原樣保留；資訊太長寧可保留必要條件，不得為縮短而變更意思。
 
 ### 通用逐頁手冊索引（v29.6.156 影子基線）
@@ -158,9 +197,9 @@
 
 ### PDF 可用性、成本與自癒契約
 
-- Fast／PDF／Polish 固定為 `models/gemini-2.5-flash-lite`（Standard US$0.10／US$0.40 每百萬 tokens）；Web grounding 獨立使用穩定版 `models/gemini-2.5-flash`（US$0.30／US$2.50）。只升 Web 是因真人 LOG 證實 Flash-Lite 未執行搜尋工具；不得把較高費率擴到 QA／RULE／PDF。
+- Fast／Polish 固定為 `models/gemini-2.5-flash-lite`（Standard US$0.10／US$0.40 每百萬 tokens）；整本 PDF fallback 與 Web grounding 使用 `models/gemini-2.5-flash`（US$0.30／US$2.50）。PDF 只在 QA／RULE／逐頁 Evidence 都不足且使用者授權後才使用，並受 NT$0.35 單次上限約束。
 - 模型決策必須看「有效答案成本」：本次 64,501 input 的 2.5 實際約 NT$0.2068；相同 token 改 3.5 約 NT$0.62。但精準手冊片段已讓同題以 NT$0 正確回答，因此不做 3.5 A/B、也不升級。鐵律是先用 QA／RULE、頁面收斂與已核對片段達成目標；只有未覆蓋題組的整體成功率仍不足，才另案比較 MANUAL 模型，Fast／QA／RULE 永遠不跟著升級。
-- 每次 PDF 送出前，必須用同一份含 `file_uri` 的完整 payload 呼叫官方 `countTokens`。以匯率 32、100K input、最多 1,200 output 計算，理論上限約 NT$0.3354，程式硬上限取 NT$0.35；生成後再依 `usageMetadata` 顯示實際費用。
+- 每次 PDF 送出前，必須用同一份含 `file_uri` 的完整 payload 呼叫官方 `countTokens`。100K 是異常防護的絕對 token ceiling；以 2.5 Flash 費率估算的 NT$0.35 單次 ceiling 會更早生效。生成後再依 `usageMetadata` 顯示實際費用。
 - `countTokens` 的 429／5xx／缺欄位／連線例外只退避重試一次；PDF generate 的 429／5xx、異常空答也只重試一次。403／404 先從 Drive 單獨重傳本題 PDF 後再試一次，不得直接叫使用者 `/重啟`。
 - 每日 04:00（Asia/Taipei）由 `dailyKnowledgeRefresh()` 強制重新上傳 Drive PDF；同步上傳失敗必須以獨立 `failedUploadCount` 計數並排程一分鐘後背景重試。舊清單與備份不可被空清單覆蓋。
 - `/重啟` 只清除該使用者的對話與 pending 狀態，不重建 PDF、不清空 QA／RULE／手冊索引。正常使用不需要人工 `/重啟`；只有對話卡在錯誤舊狀態時才使用。PDF 過期或上傳失敗由單檔更新、每日排程與背景重建自癒。
@@ -177,7 +216,7 @@
 - 正式 LINE 與 TestUI 對話泡泡不顯示 token、paidCalls、`[AUTO_*]` 或內部來源標籤；LOG／所有紀錄保留完整稽核，客戶只看到自然來源與 `本次約 NT$...｜來源剩餘 N/上限` 簡版頁尾。
 - 服務範圍只含三星電腦螢幕、Smart Monitor 與外部裝置連接螢幕；純手機、純家電、電視與其他領域轉為範圍外。
 - 顯示／沒畫面題只保留影像協定、輸入來源與必要線材；未問供電或攝影機時不混入 65W、充電、Power Delivery 或攝影機資訊。
-- Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens。完整 PDF 先移除無關歷史並以含 `file_uri` 的 `countTokens` 預檢；20K 僅記錄成本警戒，100K 才拒絕送出，計數失敗仍 fail closed。100K input 依現行 Flash-Lite Standard 費率與匯率 32 約 NT$0.32，另加實際 output。
+- Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens。完整 PDF 先移除無關歷史並以含 `file_uri` 的 `countTokens` 預檢；20K 僅記錄成本警戒，100K 是絕對 token ceiling，而 2.5 Flash 的 NT$0.35 成本 ceiling 通常更早拒絕送出；計數失敗仍 fail closed。
 - PDF output 最多 1200 tokens；PDF 失敗不得拔掉手冊後改用 AI 內建知識回答。
 - `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；客戶版隱藏 token，只保留簡版 `本次約 NT$...｜今日提問剩餘 N/20`。
 - `CLASS_RULES` 既有「型號：尚無資訊」未完成列會在同步時排除，不注入正式 prompt/index；Product Finder 會把對應型號轉進待審核清單，不直接刪除商用 Sheet 資料。
@@ -226,7 +265,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.171）
+## ✅ 現行鐵律 SOP（v29.6.181）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責推薦；「查官方手冊確認」按鍵就是一次授權，按後仍先做免費 QA／RULE 預檢，未命中便直接進 PDF。只有缺完整型號才先選型，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

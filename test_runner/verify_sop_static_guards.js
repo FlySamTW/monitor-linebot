@@ -114,11 +114,7 @@ assertStep(
   "doGet maintenance helpers must require a real secret before sensitive operations",
 );
 
-const productionGeminiModels = [
-  "GEMINI_MODEL_FAST",
-  "GEMINI_MODEL_THINK",
-  "GEMINI_MODEL_POLISH",
-];
+const productionGeminiModels = ["GEMINI_MODEL_FAST", "GEMINI_MODEL_POLISH"];
 
 const providerMatch = linebot.match(/const\s+LLM_PROVIDER\s*=\s*"([^"]+)"/);
 assertStep(providerMatch, "LLM_PROVIDER must be defined");
@@ -144,6 +140,15 @@ for (const constantName of productionGeminiModels) {
     `${constantName} must be pinned to models/gemini-2.5-flash-lite, not a drifting latest alias`,
   );
 }
+
+const thinkModelMatch = linebot.match(
+  /const\s+GEMINI_MODEL_THINK\s*=\s*"([^"]+)"/,
+);
+assertStep(thinkModelMatch, "GEMINI_MODEL_THINK must be defined");
+assertStep(
+  thinkModelMatch[1] === "models/gemini-2.5-flash",
+  "full-PDF fallback must use the reviewed stable models/gemini-2.5-flash model",
+);
 
 const webModelMatch = linebot.match(
   /const\s+GEMINI_MODEL_WEB\s*=\s*"([^"]+)"/,
@@ -275,9 +280,8 @@ assertStep(
   /CONFIG\.MODEL_NAME_FAST/.test(testModelsSection) &&
     /CONFIG\.MODEL_NAME_THINK/.test(testModelsSection) &&
     /GEMINI_MODEL_POLISH/.test(testModelsSection) &&
-    !/models\/gemini-(?!2\.5-flash-lite)/i.test(stripNonExecutableComments(testModelsSection)) &&
     !/gemini-[^"']*(latest|exp)/i.test(stripNonExecutableComments(testModelsSection)),
-  "doGet testModels must only test the pinned production Flash Lite model constants",
+  "doGet testModels must only use pinned production model constants and no drifting aliases",
 );
 
 const batchTestStart = doGetSection.indexOf('e.parameter.batchTest === "1"');

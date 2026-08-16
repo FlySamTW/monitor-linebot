@@ -61,6 +61,17 @@ assert(
   "Web grounding 必須獨立使用 Gemini 2.5 Flash 並依官方費率估算",
 );
 assert(
+  /GEMINI_MODEL_THINK\s*=\s*"models\/gemini-2\.5-flash"/.test(linebot) &&
+    /PRICE_THINK_INPUT\s*=\s*0\.3/.test(linebot) &&
+    /PRICE_THINK_OUTPUT\s*=\s*2\.5/.test(linebot) &&
+    /useThinkModel[\s\S]{0,180}CONFIG\.MODEL_NAME_THINK/.test(linebot),
+  "整本 PDF fallback 使用 Gemini 2.5 Flash 與官方費率；免費 Evidence 與一般 Fast 仍留在低成本路徑",
+);
+assert(
+  /if \(attachPDFs\)[\s\S]{0,700}thinkingConfig\s*=\s*\{\s*thinkingBudget:\s*0\s*\}/.test(linebot),
+  "PDF Structured Output 必須關閉預設 Thinking，避免思考 token 截斷 JSON 並浪費成本",
+);
+assert(
   /MAX_FAST_INPUT_TOKENS:\s*12000/.test(linebot) &&
     /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
     /MAX_LEGACY_PDF_INPUT_TOKENS:\s*100000/.test(linebot) &&

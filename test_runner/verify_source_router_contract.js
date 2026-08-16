@@ -71,6 +71,7 @@ function extractFunction(source, name) {
 
 const aliasVmSource = [
   extractFunction(linebot, "toHalfWidth"),
+  extractFunction(linebot, "normalizeCommonMonitorInputTypos_"),
   extractFunction(linebot, "isShortAliasModelToken"),
   extractFunction(linebot, "extractShortAliasModelTokens"),
   extractFunction(linebot, "extractFullModelLikeTokens"),
@@ -79,13 +80,17 @@ const aliasVmSource = [
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  extractFunction(linebot, "isPureSeriesOverviewQuery_"),
+  extractFunction(linebot, "shouldPromptAliasModelSelection_"),
   extractFunction(linebot, "stripInternalRoutingHints_"),
   extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
   extractFunction(linebot, "normalizeAdvancedSourceTopicIdentity_"),
+  extractFunction(linebot, "isEllipticalEvidenceFollowUp_"),
   extractFunction(linebot, "isSameRecentSourceQuestion_"),
   extractFunction(linebot, "stripKnownModelFromSourceQuestion_"),
   extractFunction(linebot, "resolveManualSourceModel_"),
   `globalThis.__g8Candidates = getAliasOnlySelectionModelsFromQuery("G8 有耳機孔嗎？", 10, false);`,
+  `globalThis.__g806Candidates = getAliasOnlySelectionModelsFromQuery("G806 雙模怎麼開？", 10, false);`,
   `globalThis.__g8SelectedAgain = getAliasOnlySelectionModelsFromQuery("S27FG812SC G8 有耳機孔嗎？", 10, false);`,
   `globalThis.__sameQuestion = isSameRecentSourceQuestion_("G8 如何連接藍牙耳機?", "S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
   `globalThis.__differentQuestion = isSameRecentSourceQuestion_("G8 如何恢復原廠設定?", "S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
@@ -93,6 +98,12 @@ const aliasVmSource = [
   `globalThis.__differentQuestionModel = resolveManualSourceModel_("G8 如何恢復原廠設定?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
   `globalThis.__reselectQuestion = stripKnownModelFromSourceQuestion_("S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
   `globalThis.__sameWebTopic = normalizeAdvancedSourceTopicIdentity_("那你再幫我搜尋一下 S32FM803UC 如何播放 USB？ [System Hint: hidden]", "S32FM803UC") === normalizeAdvancedSourceTopicIdentity_("USB 隨身碟播放怎麼用", "S32FM803UC");`,
+  `globalThis.__normalizedTypo = normalizeCommonMonitorInputTypos_(toHalfWidth("Ｇ８有幾個 hdim？"));`,
+  `globalThis.__normalizedLowerLTypo = normalizeCommonMonitorInputTypos_("S32HG806ES 有幾個 HDMl？");`,
+  `globalThis.__typoNeedsSelection = shouldPromptAliasModelSelection_("G8有幾個 hdim？", __g8Candidates);`,
+  `globalThis.__overviewSkipsSelection = shouldPromptAliasModelSelection_("G8 有哪些型號？", __g8Candidates);`,
+  `globalThis.__ellipticalFollowUp = isEllipticalEvidenceFollowUp_("要怎麼切？ (型號: S32HG806ES)");`,
+  `globalThis.__standaloneFullModel = isEllipticalEvidenceFollowUp_("S32HG806ES 要怎麼切？");`,
 ].join("\n\n");
 const aliasVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -122,6 +133,12 @@ assert(
     !aliasVmContext.__g8Candidates.some((model) => /^M[5789]$/i.test(model)),
   "G8 功能題必須從 Odyssey CLASS_RULES 解析出全部完整型號候選",
 );
+assert(
+  aliasVmContext.__g806Candidates.includes("S27HG806EF") &&
+    aliasVmContext.__g806Candidates.includes("S32HG806ES") &&
+    aliasVmContext.__g806Candidates.length === 2,
+  "G806 等不完整型號必須從完整型號 token 列出精準候選，不能只要求手打完整型號",
+);
 assert.deepStrictEqual(
   Array.from(aliasVmContext.__g8SelectedAgain),
   [],
@@ -148,6 +165,28 @@ assert.strictEqual(
   aliasVmContext.__sameWebTopic,
   true,
   "同型號同意圖改寫不得重複送出 Web／PDF 供應商請求",
+);
+assert.strictEqual(aliasVmContext.__normalizedTypo, "G8有幾個 HDMI?");
+assert.strictEqual(
+  aliasVmContext.__normalizedLowerLTypo,
+  "S32HG806ES 有幾個 HDMI？",
+  "HDMl 最後小寫 L 也必須正規化成 HDMI，避免免費 RULE 題誤花 Fast 成本",
+);
+assert.strictEqual(
+  aliasVmContext.__typoNeedsSelection,
+  true,
+  "G8 加未知／錯字問法仍須先選完整型號，不能讓 intent regex 漏接",
+);
+assert.strictEqual(
+  aliasVmContext.__overviewSkipsSelection,
+  false,
+  "純系列介紹可直接列出產品線，不強迫先選單一型號",
+);
+assert.strictEqual(aliasVmContext.__ellipticalFollowUp, true);
+assert.strictEqual(
+  aliasVmContext.__standaloneFullModel,
+  false,
+  "含完整型號的獨立新題不得偷借上一題主題",
 );
 
 const exactRuleCache = new Map();
@@ -982,10 +1021,42 @@ assert(
 
 assert(
   /組裝/.test(extractFunction(linebot, "isOperationOrTroubleshootQuery")) &&
+    /更新/.test(extractFunction(linebot, "isOperationOrTroubleshootQuery")) &&
+    /插哪個孔/.test(extractFunction(linebot, "isOperationOrTroubleshootQuery")) &&
     /!isOperationOrTroubleshootQuery\(user\)/.test(
       extractFunction(linebot, "inferFastLocalSourceTag_"),
     ),
-  "組裝／拆裝／固定題不得因相鄰規格詞而被洗白成官方規格答案",
+  "組裝、韌體更新、插孔等操作題不得因相鄰規格詞而被洗白成官方規格答案",
+);
+assert(
+  /Operation Manual Gate v29\.6\.175/.test(handleMessageText) &&
+    /tryManualFreeLocalAnswer_\([\s\S]{0,260}operationModel[\s\S]{0,160}true/.test(
+      handleMessageText,
+    ) &&
+    /refundDailyQuestionUsage_\(userId, "operation_to_manual"\)/.test(
+      handleMessageText,
+    ) &&
+    /零 Fast 直接等手冊授權/.test(handleMessageText),
+  "完整型號操作題在免費 QA／RULE／Evidence 未命中時須零 Fast 直接等待手冊授權",
+);
+assert(
+  /getPreviousUserTopicForEvidence_\([\s\S]*contextId,[\s\S]*msg/.test(
+    handleMessageText,
+  ) &&
+    /evidenceLookupQuery = `\$\{previousEvidenceTopic\}\\n\$\{msg\}`/.test(
+      handleMessageText,
+    ) &&
+    /Evidence Continuation v29\.6\.173/.test(handleMessageText),
+  "短追問必須先拿上一輪使用者主題重查既有 Evidence，不得再花 Fast 費用後只回 CTA",
+);
+assert(
+  /!isShortAliasModelToken\(m\)/.test(
+    extractFunction(linebot, "inferFastLocalSourceTag_"),
+  ) &&
+    /extractFullModelLikeTokens\(m\)\.length > 0/.test(
+      extractFunction(linebot, "inferFastLocalSourceTag_"),
+    ),
+  "G8／M7 等系列別稱不得冒充完整型號，替模型概括答案補官方規格來源",
 );
 
 assert(
@@ -1000,9 +1071,18 @@ vm.createContext(manualUiContext);
 vm.runInContext(
   `${extractFunction(linebot, "buildManualConsentPrompt_")}
    ${extractFunction(linebot, "isManualEvidenceFailureReply_")}
+   ${extractFunction(linebot, "parseManualEvidenceMarker_")}
+   ${extractFunction(linebot, "getManualStructuredResponseSchema_")}
+   ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
+   ${extractFunction(linebot, "applyManualEvidenceGuard_")}
    globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
    globalThis.unsourcedRemoved = buildManualConsentPrompt_("請把支架鎖到 VESA 孔。", "問題", "S32FM902SC");
-   globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");`,
+   globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");
+   globalThis.structuredManual = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"請把隨身碟插到 SERVICE 埠，再到軟體更新。",operationPath:"Support → Software Update",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"將 USB 裝置連接至顯示器上的連接埠"}]}));
+   globalThis.structuredMultiple = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"先開 Dual Mode，再用 Aim Point。",operationPath:"Game → Dual Mode",evidence:[{pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]}));
+   globalThis.structuredDeduped = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"執行 Self Diagnosis。",operationPath:"Support → Self Diagnosis",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]}));
+   globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,answer:"手冊未記載第三方顯卡驅動衝突。",operationPath:"",evidence:[]})), "問題");
+   globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");`,
   manualUiContext,
 );
 assert(
@@ -1011,8 +1091,23 @@ assert(
     !/VESA 孔/.test(manualUiContext.unsourcedRemoved) &&
     /查官方手冊確認/.test(manualUiContext.unsourcedRemoved) &&
     !/不會再問一次/.test(manualUiContext.preserved) &&
-    manualUiContext.newFailureDetected === true,
-  "Fast 只保留有 QA/RULE 來源的已知部分；未驗證草稿不得先顯示，新版手冊失敗文案仍須補救",
+    manualUiContext.newFailureDetected === true &&
+    /第36頁/.test(manualUiContext.structuredManual) &&
+    /手冊重點/.test(manualUiContext.structuredManual) &&
+    /操作路徑：Support → Software Update/.test(manualUiContext.structuredManual) &&
+    /第27、28頁/.test(manualUiContext.structuredMultiple) &&
+    /第36、37頁/.test(manualUiContext.structuredDeduped) &&
+    /操作路徑：Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
+    !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
+    /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
+    !/AUTO_SEARCH_WEB/.test(manualUiContext.formatError),
+  "手冊 Structured Output 必須穩定產出 evidence；只有明確 NOT_FOUND 可轉 Web，格式錯誤不得跨來源",
+);
+assert(
+  /const manualEvidenceNotFound =/.test(linebot) &&
+    /manualEvidenceNotFound \|\|\s*recommendedWeb/.test(linebot) &&
+    !/recommendedWeb \|\|\s*manualEvidenceFailed/.test(linebot),
+  "PDF 格式／證據驗證失敗不得再被當成手冊無答案而自動跨 Web",
 );
 const exactComparisonText = extractFunction(
   linebot,
@@ -1057,6 +1152,30 @@ assert(
       extractFunction(linebot, "findLocalCampaignRuleForQuery"),
     ),
   "活動 RULE 必須以台北日期排除過期資料",
+);
+const manualDiscoveryVm = { writeLog: () => {} };
+vm.createContext(manualDiscoveryVm);
+vm.runInContext(
+  `${extractFunction(linebot, "extractEmbeddedJsonArrayByKey_")}
+   ${extractFunction(linebot, "isSafeSamsungTwManualDownload_")}
+   globalThis.manuals = extractEmbeddedJsonArrayByKey_('{"manuals":[{"contentsTypeCode":"UM","languageList":[{"orgCode":"ZH2"}],"areaList":[{"code":"TW"}],"downloadUrl":"https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&CDCttType=UM"}],"softwares":[]}', "manuals");
+   globalThis.safe = isSafeSamsungTwManualDownload_(manuals[0].downloadUrl);
+   globalThis.wrongMarket = isSafeSamsungTwManualDownload_("https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_UK&CDCttType=UM");
+   globalThis.wrongType = isSafeSamsungTwManualDownload_("https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&CDCttType=FM");`,
+  manualDiscoveryVm,
+);
+assert(
+  manualDiscoveryVm.manuals.length === 1 &&
+    manualDiscoveryVm.safe === true &&
+    manualDiscoveryVm.wrongMarket === false &&
+    manualDiscoveryVm.wrongType === false &&
+    /_PENDING_MANUAL_REVIEW/.test(
+      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
+    ) &&
+    /slice\(0, 2\)/.test(
+      extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
+    ),
+  "新手冊只可從台灣三星 UM 下載鏈進隔離 Drive 子資料夾，且每日限量避免 GAS 逾時",
 );
 const handleScopeOrderText = linebot.slice(
   linebot.indexOf("function handleMessage"),
@@ -1122,17 +1241,34 @@ assert(
 const deterministicRuleVm = {
   normalizeModelForDisplay: (model) => model,
   findExactModelRuleLine_: () =>
-    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間",
+    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
 };
 vm.createContext(deterministicRuleVm);
 vm.runInContext(
-  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");`,
+  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");`,
   deterministicRuleVm,
 );
 assert(
   deterministicRuleVm.operation === "" &&
     /雙模 6K 165Hz \/ 3K 330Hz/.test(deterministicRuleVm.fact),
   "操作步驟不得被 RULE 支援事實冒充；明載規格題仍可零成本回答",
+);
+assert(
+  /VESA 100x100mm/.test(deterministicRuleVm.mount) &&
+    /左右旋轉-30\.0°~30\.0°/.test(deterministicRuleVm.mount) &&
+    /垂直旋轉-92\.0°~92\.0°/.test(deterministicRuleVm.mount),
+  "同一 RULE 複合規格題必須逐項回答 VESA 與旋轉，不得只回第一個欄位",
+);
+const operationIntentVm = {};
+vm.createContext(operationIntentVm);
+vm.runInContext(
+  `${extractFunction(linebot, "isOperationOrTroubleshootQuery")}\nglobalThis.colorSymptom = isOperationOrTroubleshootQuery("S32HG806ES 開 Eye Saver 後畫面偏黃正常嗎？");`,
+  operationIntentVm,
+);
+assert.strictEqual(
+  operationIntentVm.colorSymptom,
+  true,
+  "偏色／偏黃等顯示故障必須走操作證據路由，不能由 Fast 無來源猜測",
 );
 
 console.log("三來源狀態、配額、postback 與 TestUI 契約通過。");
