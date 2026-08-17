@@ -1,4 +1,4 @@
-﻿// ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
+// ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
 // ⛔️ IRON RULE: DEPLOYMENT PROTOCOL (GOOGLE OFFICIAL STANDARD)
 // 1. PUSH CODE: `clasp push`
 // 2. VERSION: `clasp version "vxx.x.xx desc"` (Create immutable snapshot)
@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.193"; // 2026-08-16 無引用答案禁止消費性建議
+const GAS_VERSION = "v29.6.194"; // 2026-08-16 無引用答案禁止消費性建議
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2239,9 +2239,64 @@ function readAnswerEnvelope_(contextId) {
   }
 }
 
+/**
+ * 通識推理題偵測 v29.6.194
+ * 使用者問的不是「這款螢幕有沒有某功能」，而是「已知規格如何搭配使用或排版」
+ * 例：4K解析度→桌面排列、HDMI→接機上盒看第四台/接遊戲機、線材選購建議
+ * 這類題目不需要 QA/RULE 精確文字比對，允許 AI 結合規格庫數據與電腦螢幕常識進行推理回答。
+ */
+function isGeneralComputingReasoningQuestion_(question) {
+  const text = String(question || "").trim();
+  if (!text) return false;
+  // 排除：明確詢問型號能力/規格/支援（這些必須有 RULE 或手冊證據）
+  if (/(?:有沒有|是否有|支不支援|有嗎|內建|配備|規格|幾版)/i.test(text)) {
+    return false;
+  }
+  // 排除：操作/故障/設定/重置題（這些走手冊路徑）
+  if (isOperationOrTroubleshootQuery(text)) {
+    return false;
+  }
+  // 1. 物理連接 + 外接設備（第四台、機上盒、MOD、遊戲機、筆電）
+  if (
+    /(?:可以|能不能|能|怎麼|如何)(?:接|連接?|外接).{0,8}(?:第四台|有線電視|機上盒|MOD|PS[45]|SWITCH|XBOX|筆電|桌機|電腦|MAC|MACBOOK|遊戲機)/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // 2. 桌面/螢幕圖示與視窗排列推理（解析度搭配 Windows 圖示）
+  if (
+    /(?:桌面|螢幕|畫面).{0,12}(?:資料夾|圖示|ICON|視窗|分割|排列|放幾|幾個)/i.test(
+      text,
+    ) ||
+    /(?:資料夾|圖示|ICON).{0,12}(?:放得下|放幾|一列|一行|幾個|多少)/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // 3. 線材選購與長度常識
+  if (
+    /(?:線材|線|傳輸線|轉接).{0,8}(?:要買|哪種|推薦|多長|幾公尺)/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // 4. 外接當電視或看電視情境
+  if (/(?:可以|能).{0,6}(?:當電視|看電視|看第四台)/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function isFastEvidenceRequiredQuestion_(question) {
   const text = String(question || "").trim();
   if (!text || /^(?:謝謝|感謝|了解|好的|好喔|收到|掰掰|再見)[！!。\s]*$/i.test(text)) {
+    return false;
+  }
+  // v29.6.194: 通識推理題（如解析度排版、HDMI接機上盒）不強制 QA/RULE 精確比對
+  if (isGeneralComputingReasoningQuestion_(text)) {
     return false;
   }
   return Boolean(
@@ -12760,7 +12815,8 @@ function constructDynamicPromptLegacyV158_(
     dynamicPrompt += "- 必須老實回答「本機 QA庫與官方規格庫目前找不到」，並輸出 `[AUTO_SEARCH_WEB]` 或 `[AUTO_SEARCH_PDF]`，不要標註不存在的來源。\n";
     dynamicPrompt += "- 必須輸出 `[AUTO_SEARCH_PDF]` 或 `[AUTO_SEARCH_WEB]` 暗號\n";
     dynamicPrompt += "- **嚴禁**用「一般常見」「通常來說」「一般而言」這類暗示 LLM 知識的措辭\n";
-    dynamicPrompt += "- **嚴禁**用「我想」「我覺得」「通常」這類主觀判斷\n\n";
+    dynamicPrompt += "- **嚴禁**用「我想」「我覺得」「通常」這類主觀判斷\n";
+    dynamicPrompt += "- **例外：螢幕通識推理 (v29.6.194)** — 若使用者詢問「已知規格如何搭配使用」（如 HDMI 介面接機上盒看第四台、4K 解析度對應 Windows 桌面圖示排列、線材選購等），你可以結合規格庫中的硬體數據與電腦螢幕常識合理推導回答，不需輸出 [AUTO_SEARCH_PDF]。但仍禁止猜測第三方 App 可用性、業者服務內容、或該型號「有沒有」未記載的功能。\n\n";
     dynamicPrompt += "若你**主動**從官方規格庫整理了事實 (例如把「1000R」「Fast IPS」拼湊成回答), 必須在最後明確標記 `[來源:官方規格庫]`。\n";
 
     // 🆕 v29.5.227: 極速模式防幻覺與誠實來源鐵律 (徹底封鎖一般知識漏洞，不准瞎編展示據點與營業資訊)

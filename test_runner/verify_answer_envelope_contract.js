@@ -69,6 +69,7 @@ vm.createContext(context);
 vm.runInContext(
   [
     extractFunction(linebot, "normalizeAnswerEnvelope_"),
+    extractFunction(linebot, "isGeneralComputingReasoningQuestion_"),
     extractFunction(linebot, "isFastEvidenceRequiredQuestion_"),
     extractFunction(linebot, "hasUnverifiedExternalClaim_"),
     extractFunction(linebot, "sanitizeUnverifiedExternalClaims_"),
@@ -102,6 +103,19 @@ assert.strictEqual(unsupported.expandable, false);
 assert(unsupported.allowedActions.includes("manual"));
 assert(unsupported.allowedActions.includes("web"));
 assert.strictEqual(unsupported.evidenceRefs.length, 0);
+
+const generalReasoningClean = context.buildFastAnswerEnvelope_({
+  originalQuestion: "43吋 智慧聯網螢幕 M7 桌面的資料夾一列可以放幾個?一行可以放幾個?",
+  model: "S43FM703UC",
+  answerText:
+    "S43FM703UC 為 4K UHD 解析度，桌面資料夾數量主要取決於 Windows 系統圖示大小與縮放設定，在最小圖示下可容納數百個資料夾。",
+  sourceTag: "",
+  hasManual: true,
+  manualRecommended: false,
+  webRecommended: false,
+});
+assert.strictEqual(generalReasoningClean.status, "supported");
+assert.strictEqual(generalReasoningClean.expandable, true);
 
 const actions = context.buildEvidenceActionQuickReplies_(unsupported);
 assert.deepStrictEqual(
