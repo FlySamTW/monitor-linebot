@@ -1,5 +1,11 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.195 / 淨化 ScriptProperties 並解鎖 UI 唯讀狀態)
+
+- 移除 `writeAnswerEnvelope_` 向 `PropertiesService.getScriptProperties()` 寫入 `ANS_ENV_` 暫存資料的行為，全數收斂至 `CacheService`。
+- 新增 `purgeEphemeralScriptProperties_()` 自動清理既有數十個 `ANS_ENV_*` 殘留屬性，使總屬性數降回 10 筆內，立即解鎖 Google Apps Script 網頁介面的唯讀鎖定。
+- 自動初始化 `MAINTENANCE_SECRET = "sam2026"`，提供完整維護測試授權。
+
 ## 2026-08-17 (v29.6.194 / 通識推理放行優化)
 
 - 新增 `isGeneralComputingReasoningQuestion_()` 偵測通用情境題（4K 解析度對應桌面資料夾/圖示排列、HDMI 連接機上盒/遊戲機、線材選購、外接當電視等）。

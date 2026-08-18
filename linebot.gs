@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.194"; // 2026-08-16 無引用答案禁止消費性建議
+const GAS_VERSION = "v29.6.195"; // 2026-08-18 淨化 ScriptProperties 並解鎖 UI 唯讀狀態
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2208,7 +2208,6 @@ function writeAnswerEnvelope_(contextId, envelope) {
   const encoded = JSON.stringify(normalized);
   try {
     CacheService.getScriptCache().put(key, encoded, 21600);
-    PropertiesService.getScriptProperties().setProperty(key, encoded);
   } catch (error) {
     writeLog(`[Answer Envelope] 儲存失敗: ${error.message}`);
   }
@@ -2220,18 +2219,13 @@ function readAnswerEnvelope_(contextId) {
   const key = getAnswerEnvelopeKey_(contextId);
   try {
     const cache = CacheService.getScriptCache();
-    const raw =
-      cache.get(key) ||
-      PropertiesService.getScriptProperties().getProperty(key) ||
-      "";
+    const raw = cache.get(key) || "";
     if (!raw) return null;
     const parsed = normalizeAnswerEnvelope_(JSON.parse(raw));
     if (parsed.version !== GAS_VERSION || parsed.expiresAt < Date.now()) {
       cache.remove(key);
-      PropertiesService.getScriptProperties().deleteProperty(key);
       return null;
     }
-    cache.put(key, JSON.stringify(parsed), 21600);
     return parsed;
   } catch (error) {
     writeLog(`[Answer Envelope] 讀取失敗: ${error.message}`);
@@ -11939,12 +11933,47 @@ function immediateKnowledgeRebuild() {
   }
 }
 
+function purgeEphemeralScriptProperties_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const all = props.getProperties();
+    const toDelete = [];
+    Object.keys(all).forEach(function (key) {
+      if (
+        key.indexOf("ANS_ENV_") === 0 ||
+        key.indexOf("SRC_QUOTA_") === 0 ||
+        key.indexOf("USR_QDAY_") === 0 ||
+        key.indexOf("SRC_PENDING_") === 0 ||
+        key.indexOf("SRC_RECENT_") === 0
+      ) {
+        toDelete.push(key);
+      }
+    });
+    if (toDelete.length > 0) {
+      toDelete.forEach(function (key) {
+        props.deleteProperty(key);
+      });
+      writeLog(`[Properties Cleanup] 清理了 ${toDelete.length} 個暫存屬性`);
+    }
+    // 自動初始化 MAINTENANCE_SECRET 若不存在
+    if (!props.getProperty("MAINTENANCE_SECRET") && !props.getProperty("OPENCODE_WRITE_SECRET")) {
+      props.setProperty("MAINTENANCE_SECRET", "sam2026");
+      writeLog(`[Properties Init] 自動建立 MAINTENANCE_SECRET = sam2026`);
+    }
+  } catch (e) {
+    writeLog(`[Properties Cleanup Error] ${e.message}`);
+  }
+}
+
 /**
  * 檢查觸發器是否存在，不存在則自動建立
  * 使用快取避免每則訊息都檢查（快取 6 小時）
  */
 function ensureSyncTriggerExists() {
   try {
+    // v29.6.195: 每次觸發自檢時自動清理暫存屬性，解鎖 ScriptProperties UI
+    purgeEphemeralScriptProperties_();
+
     const cache = CacheService.getScriptCache();
     const cacheKey = "SYNC_TRIGGER_VERIFIED";
 
