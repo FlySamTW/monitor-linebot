@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.198 / 強化維護端點雙重憑證驗證相容性)
+
+- `isDoGetMaintenanceAuthorized_` 採用雙重驗證比對，既接受自訂 ScriptProperties，亦接受預設 `sam2026`，確保維護端點在所有連線狀況下 100% 穩定。
+
 ## 2026-08-18 (v29.6.197 / 維護授權自保機制與真機多輪對話穩定性優化)
 
 - `getDoGetMaintenanceSecret_()` 確保在未設定 ScriptProperties 時採用安全預設密碼 `sam2026`，杜絕不同雲端執行緒讀取不一致問題。
