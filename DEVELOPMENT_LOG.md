@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.196 / doGet 入口自動自檢清理與維護密碼保證)
+
+- 在 `doGet` 入口與 `getDoGetMaintenanceSecret_` 加入按需自檢與自愈初始化，確保維運與測試端點隨時具備有效授權與乾淨的 ScriptProperties。
+
 ## 2026-08-18 (v29.6.195 / 淨化 ScriptProperties 並解鎖 UI 唯讀狀態)
 
 - 移除 `writeAnswerEnvelope_` 向 `PropertiesService.getScriptProperties()` 寫入 `ANS_ENV_` 暫存資料的行為，全數收斂至 `CacheService`。

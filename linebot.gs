@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.195"; // 2026-08-18 淨化 ScriptProperties 並解鎖 UI 唯讀狀態
+const GAS_VERSION = "v29.6.196"; // 2026-08-18 doGet 入口自動自檢清理與維護密碼保證
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -23466,11 +23466,16 @@ function testDraftFunction(inputText) {
 // ==========================================
 
 function getDoGetMaintenanceSecret_() {
-  return (
-    PropertiesService.getScriptProperties().getProperty("MAINTENANCE_SECRET") ||
-    PropertiesService.getScriptProperties().getProperty("OPENCODE_WRITE_SECRET") ||
-    ""
-  );
+  const props = PropertiesService.getScriptProperties();
+  let secret =
+    props.getProperty("MAINTENANCE_SECRET") ||
+    props.getProperty("OPENCODE_WRITE_SECRET") ||
+    "";
+  if (!secret) {
+    purgeEphemeralScriptProperties_();
+    secret = props.getProperty("MAINTENANCE_SECRET") || "";
+  }
+  return secret;
 }
 
 function isDoGetMaintenanceAuthorized_(e) {
@@ -23532,6 +23537,9 @@ function assertTestUiAuthorized_(token) {
 // - 正式 /exec TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
 // - 編輯者 /dev TestUI: Google 已限制為專案編輯者，可直接取得短效 token
 function doGet(e) {
+  // v29.6.196: 網頁入口自動自檢清理過期屬性
+  purgeEphemeralScriptProperties_();
+
   // 若有 test 參數，顯示 TestUI
   if (e && e.parameter && e.parameter.test === "1") {
     if (
