@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.198"; // 2026-08-18 強化維護端點雙重憑證驗證相容性
+const GAS_VERSION = "v29.6.199"; // 2026-08-18 通識推理過濾器解除連接操作關鍵字誤擋
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2242,17 +2242,17 @@ function readAnswerEnvelope_(contextId) {
 function isGeneralComputingReasoningQuestion_(question) {
   const text = String(question || "").trim();
   if (!text) return false;
-  // 排除：明確詢問型號能力/規格/支援（這些必須有 RULE 或手冊證據）
-  if (/(?:有沒有|是否有|支不支援|有嗎|內建|配備|規格|幾版)/i.test(text)) {
+  // 排除：明確詢問型號內部硬體能力/專有規格（例如：有沒有 KVM、是否有 180Hz、支不支援 G-Sync、幾版韌體）
+  if (/(?:有沒有|是否有|支不支援|有嗎|內建|配備|幾版)/i.test(text)) {
     return false;
   }
-  // 排除：操作/故障/設定/重置題（這些走手冊路徑）
-  if (isOperationOrTroubleshootQuery(text)) {
+  // 排除：純故障/異常/重置/偏色問題（需手冊排錯）
+  if (/(?:故障|無法開機|不亮|沒畫面|當機|偏色|色偏|偏黃|顏色異常|重置|恢復原廠|忘記PIN|PIN碼)/i.test(text)) {
     return false;
   }
   // 1. 物理連接 + 外接設備（第四台、機上盒、MOD、遊戲機、筆電）
   if (
-    /(?:可以|能不能|能|怎麼|如何)(?:接|連接?|外接).{0,8}(?:第四台|有線電視|機上盒|MOD|PS[45]|SWITCH|XBOX|筆電|桌機|電腦|MAC|MACBOOK|遊戲機)/i.test(
+    /(?:可以|能不能|能|怎麼|如何)?(?:接|連接?|外接).{0,8}(?:第四台|有線電視|機上盒|MOD|PS[45]|SWITCH|XBOX|筆電|桌機|電腦|MAC|MACBOOK|遊戲機)/i.test(
       text,
     )
   ) {

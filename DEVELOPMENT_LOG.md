@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.199 / 通識推理過濾器解除連接操作關鍵字誤擋)
+
+- `isGeneralComputingReasoningQuestion_` 修正前置排除過濾器，精準鎖定純故障/異常/PIN碼，避免「接」關鍵字被 `isOperationOrTroubleshootQuery` 誤判而導致外接第四台情境被攔截。
+
 ## 2026-08-18 (v29.6.198 / 強化維護端點雙重憑證驗證相容性)
 
 - `isDoGetMaintenanceAuthorized_` 採用雙重驗證比對，既接受自訂 ScriptProperties，亦接受預設 `sam2026`，確保維護端點在所有連線狀況下 100% 穩定。
