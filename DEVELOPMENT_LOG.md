@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.200 / 通識推理與選單推薦條件相容性優化)
+
+- `buildFastAnswerEnvelope_` 將手冊與網搜建議狀態的降級判定綁定至 `evidenceRequired`，確保無須強制證據的通識推理題在包含建議選單時不會被 Answer Envelope 誤降為 `unsupported`。
+
 ## 2026-08-18 (v29.6.199 / 通識推理過濾器解除連接操作關鍵字誤擋)
 
 - `isGeneralComputingReasoningQuestion_` 修正前置排除過濾器，精準鎖定純故障/異常/PIN碼，避免「接」關鍵字被 `isOperationOrTroubleshootQuery` 誤判而導致外接第四台情境被攔截。

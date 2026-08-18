@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.199"; // 2026-08-18 通識推理過濾器解除連接操作關鍵字誤擋
+const GAS_VERSION = "v29.6.200"; // 2026-08-18 通識推理與選單推薦條件相容性優化
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2403,8 +2403,7 @@ function buildFastAnswerEnvelope_(options) {
     status = "unsupported";
   } else if (
     answerMissing ||
-    manualNeeded ||
-    webNeeded ||
+    ((manualNeeded || webNeeded) && evidenceRequired) ||
     hasUnverifiedExternalClaim
   ) {
     status = hasTrustedEvidence ? "partial" : "unsupported";
