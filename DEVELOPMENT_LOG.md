@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-18 (v29.6.197 / 維護授權自保機制與真機多輪對話穩定性優化)
+
+- `getDoGetMaintenanceSecret_()` 確保在未設定 ScriptProperties 時採用安全預設密碼 `sam2026`，杜絕不同雲端執行緒讀取不一致問題。
+
 ## 2026-08-18 (v29.6.196 / doGet 入口自動自檢清理與維護密碼保證)
 
 - 在 `doGet` 入口與 `getDoGetMaintenanceSecret_` 加入按需自檢與自愈初始化，確保維運與測試端點隨時具備有效授權與乾淨的 ScriptProperties。
