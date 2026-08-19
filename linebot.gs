@@ -6340,11 +6340,12 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   if (
     /(故障|異常|無法|不能用|沒反應|黑屏|閃爍|重置|恢復原廠|設定路徑|選單|怎麼操作|如何設定|更新韌體|驅動程式)/i.test(
       text,
-    )
+    ) &&
+    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY)/i.test(text)
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|安裝)/i.test(
     text,
   );
 }
