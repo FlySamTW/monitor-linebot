@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.215"; // 2026-08-20 精準區隔 FM5 無陀螺儀/固定底座與 M8/M9 旋轉直式投影規格事實
+const GAS_VERSION = "v29.6.216"; // 2026-08-20 全面支援手機橫式/直式畫面投影確鑿秒回，杜絕手冊按鈕阻礙
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6345,7 +6345,7 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|安裝)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播)/i.test(
     text,
   );
 }
@@ -6370,27 +6370,27 @@ function buildDeterministicExactRuleReply_(query, model) {
     }
   }
 
-  if (/(?:直式|直向|直立|垂直)/i.test(text) && /(?:投影|投屏|鏡像|鏡射|畫面|顯示)/i.test(text)) {
+  if (/(?:直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影)/i.test(text) && /(?:投影|投屏|鏡像|鏡射|畫面|顯示|播|看)/i.test(text)) {
     if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
       return [
-        `${normalizedModel}（M50F 系列）支援直式手機投影畫面顯示：`,
-        "1. 手機進行無線投影時，直立持握手機，螢幕中央即會以直式比例顯示（兩側自動保留黑邊維持比例）。",
-        "2. 手機旋轉為橫向時，螢幕畫面會自動隨之切換為全螢幕橫向滿版。",
+        `${normalizedModel}（M50F 系列）支援手機無線投影（橫式／直式畫面均可顯示）：`,
+        "1. 橫式播放：手機旋轉為橫向時，螢幕畫面會自動隨之切換為 16:9 全螢幕橫向滿版。",
+        "2. 直式播放：手機直立持握時，螢幕中央會以直式比例顯示（兩側自動保留黑邊維持正確比例）。",
         "⚠️ 硬體注意：FM5 原廠底座為固定式（無 HAS 升降與旋轉），且機身「無」內建陀螺儀感應器，螢幕本體無法隨實體旋轉而自動轉向。若需要螢幕隨機身旋轉自動切換直向滿版，請選購具備陀螺儀與旋轉支架的 M8 / M9 系列。",
         "[來源:官方規格庫]",
       ].join("\n");
     } else if (/(?:M8|M9|S32BM8|S32CM8|S32DM8|S32FM8|S32FM9)/i.test(normalizedModel)) {
       return [
-        `${normalizedModel} 支援直式手機投影與畫面自動旋轉：`,
+        `${normalizedModel} 支援手機投影與畫面自動旋轉（橫式／直式均支援）：`,
         "1. 內建陀螺儀與 HAS 升降旋轉支架，將螢幕旋轉為直立時，畫面會自動感應切換為直向滿版顯示。",
-        "2. 手機直向或橫向投影時，畫面均能完美配合螢幕方向滿版呈現。",
+        "2. 手機橫向或直向投影時，畫面均能完美配合螢幕方向滿版呈現。",
         "[來源:官方規格庫]",
       ].join("\n");
     } else {
       return [
-        `${normalizedModel} 支援直式手機投影顯示：`,
-        "1. 手機進行無線投影時，直立持握手機，螢幕中央即會以直式比例顯示（兩側保留黑邊維持比例）。",
-        "2. 手機旋轉為橫向時，螢幕畫面會自動隨之切換為全螢幕橫向滿版。",
+        `${normalizedModel} 支援手機無線投影（橫式／直式畫面均可顯示）：`,
+        "1. 手機旋轉為橫向時，螢幕畫面會自動切換為全螢幕橫向滿版。",
+        "2. 手機直立持握時，螢幕中央會以直式比例顯示（兩側保留黑邊維持比例）。",
         "[來源:官方規格庫]",
       ].join("\n");
     }
