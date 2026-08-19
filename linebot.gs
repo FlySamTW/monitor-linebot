@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.210"; // 2026-08-20 強化 M50F 與 M7/M8/M9 AirPlay 確鑿問答，並優化廣域搜尋與全球繁中解答
+const GAS_VERSION = "v29.6.211"; // 2026-08-20 全面支援 Smart Monitor (M5/M7/M8/M9) Netflix 與 App 安裝確鑿問答
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6390,6 +6390,19 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
   addPattern(/HAS|升降|支架/i, /HAS|升降|支架/i);
   addPattern(/旋轉|轉向|PIVOT/i, /左右旋轉|垂直旋轉|旋轉|PIVOT/i);
+
+  if (/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式)/i.test(text) && /(?:安裝|下載|開啟|怎麼看|如何看)/i.test(text)) {
+    if (/(?:M5|M7|M8|M9|SMART|S27FM50|S32FM50|S32FM8|S32FM9|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S27CM5|S32CM5)/i.test(normalizedModel) || /(?:TIZEN|SMART MONITOR|智慧聯網)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel}（Smart Monitor 系列）安裝 Netflix 或其他 App 的步驟如下：`,
+        "1. 先確認螢幕已連上 Wi-Fi 網路。",
+        "2. 用遙控器按「首頁 (Home)」鍵，進入「應用程式 (Apps)」。",
+        "3. 在搜尋欄輸入 Netflix（或其他想安裝的 App），選取後按「安裝」。",
+        "4. 安裝完成後選取「開啟」，依照畫面提示登入帳號即可開始觀看。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
 
   if (/(?:蘋果|IPHONE|IPAD|AIRPLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
     if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
