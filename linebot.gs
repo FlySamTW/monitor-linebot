@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.204"; // 2026-08-19 消除無情句號並引入適配貼圖機制
+const GAS_VERSION = "v29.6.210"; // 2026-08-20 強化 M50F 與 M7/M8/M9 AirPlay 確鑿問答，並優化廣域搜尋與全球繁中解答
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6390,6 +6390,25 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
   addPattern(/HAS|升降|支架/i, /HAS|升降|支架/i);
   addPattern(/旋轉|轉向|PIVOT/i, /左右旋轉|垂直旋轉|旋轉|PIVOT/i);
+
+  if (/(?:蘋果|IPHONE|IPAD|AIRPLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
+    if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel}（Smart Monitor M5 M50F 系列）沒有原生支援 Apple AirPlay 2 無線投影。`,
+        "",
+        "如果是 iPhone 或 iPad 想要無線投屏，建議選擇 Smart Monitor M7、M8 或 M9 系列；若要在這台投影 iPhone，可以透過 Lightning / USB-C 轉 HDMI 轉接線，或是外接 Apple TV / 支援 AirPlay 的電視盒連接。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else if (/(?:M7|M8|M9|M70|M80|M90|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S32FM9)/i.test(normalizedModel) || /(?:M7|M8|M9)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel} 支援 Apple AirPlay 2 無線投影。`,
+        "",
+        "只要將 iPhone / iPad 與螢幕連接在同一個 Wi-Fi 網路，從 iPhone 控制中心點選「螢幕鏡像輸出」並選擇這台螢幕，即可直接進行無線投影。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
+
   if (patterns.length === 0) return "";
 
   const selected = [];
@@ -13477,7 +13496,7 @@ ${recentOfficialManualAnswer}
       "Asia/Taipei",
       "yyyy年MM月dd日",
     );
-    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢網路上的實務解法。\n你必須立即使用 google_search 工具搜尋最新公開網頁！\n禁止僅用自身知識回答，必須引用可核對的公開網頁來源。\n這個來源模式只查非官方實務解法；禁止搜尋或讀取 Samsung 官網作為答案內容。官方規格只能採用系統已提供的 RULE／QA／手冊錨點，外部做法必須標明「非官方，請斟酌參考」。`;
+    dynamicPrompt += `\n\n【🚨 系統強制指令 - 最高優先級】\n今天是 ${today}。用戶要求查詢網路上的實務解法、評測或最新公開討論。\n你必須立即使用 google_search 工具搜尋公開網頁！\n若完整精確型號查無資料，請務必使用簡化通用型號（如去除尾端英文字與最後一碼數字，例如 S27FM501EC 簡化為 S27FM50、M5 等）與全球/海外網站（Reddit、各國評測等）擴展搜尋，並統一以清晰流暢的「繁體中文」提供實質具體步驟與解答。`;
 
     // v29.5.110: 修改 user message - 加入時效性關鍵詞觸發搜尋
     // Gemini 會判斷「最新」「今天」這類詞彙為需要即時資訊，從而強制搜尋
@@ -13489,9 +13508,10 @@ ${recentOfficialManualAnswer}
         lastContent.parts.length > 0
       ) {
         const textPart = lastContent.parts.find((p) => p.text);
-        if (textPart && !textPart.text.includes("最新")) {
-          // 在問題前加上時效性詞彙
-          textPart.text = `【請搜尋最新非官方公開網頁】禁止只給開頭引言，必須根據搜尋結果提供完整的解決細節與步驟；禁止搜尋 Samsung 官網，且必須標明非官方。${textPart.text}`;
+        if (textPart && !textPart.text.includes("最新公開網頁")) {
+          const rawTokens = getSearchFriendlyModelTokens_(query);
+          const aliasHint = rawTokens.length > 0 ? `（可搜尋別名/通用型號：${rawTokens.join(", ")}）` : "";
+          textPart.text = `【請搜尋最新公開網頁與全球實務討論${aliasHint}】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。${textPart.text}`;
           writeLog(
             `[Search Query Inject] 已加入時效性關鍵詞: ${textPart.text.substring(0, 100)}`,
           );
