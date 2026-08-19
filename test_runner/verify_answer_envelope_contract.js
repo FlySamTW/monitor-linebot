@@ -125,8 +125,7 @@ assert.deepStrictEqual(
 assert(actions.every((item) => item.action.type === "postback"));
 
 const handoff = context.buildEvidenceHandoffReply_(unsupported);
-assert(/不亂猜/.test(handoff));
-assert(/自動補查一次公開網頁/.test(handoff));
+assert(/查官方手冊|再查網路/.test(handoff));
 assert(!/沒有調諧器|業者可能提供/.test(handoff));
 
 const supported = context.buildFastAnswerEnvelope_({

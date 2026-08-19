@@ -1,0 +1,332 @@
+[
+  {
+    "journey": "Smart Monitor M8 遙控器配對與按鍵無反應 (PDF 深度操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "M8 智慧螢幕遙控器沒反應怎麼辦",
+        "reply": "你只提供「M8」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 M8 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "我換了新電池還是完全連不上",
+        "reply": "M8 智慧螢幕的遙控器沒反應，可以試試看以下方法：\n• 重新配對遙控器： 拔掉電視電源線，等待 30 秒後再重新插上。然後同時按住遙控器上的「返回」鍵和「播放/暫停」鍵約 10-15 秒，直到遙控器上的指示燈閃爍，表示已進入配對模式。\n• 確認遙控器與螢幕距離： 確保遙控器與螢幕之間的距離在有效範圍內，並且沒有障礙物阻擋。\n• 檢查遙控器是否損壞： 如果以上方法都無法解決問題，可能需要考慮遙控器本身是否損壞，可以嘗試聯繫三星客服尋求協助。\n\n本次約 NT$0.0133｜直接問 19/20",
+        "stats": "[10:46:28.046] [General] [AI Stats] 1.03s | In: 3451 / Out: 174 | Cost: NT$0.0133",
+        "envelope": "[10:46:28.323] [General] [Answer Envelope v29.6.189] status=supported evidence=none"
+      },
+      {
+        "level": 3,
+        "question": "要怎麼重新配對藍牙遙控器？要同時按哪兩個鍵？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 4,
+        "question": "配對成功了，那如果我想用手機當遙控器要下載什麼 App？",
+        "reply": "這題不在我的服務範圍內，我先不亂答。\n\n我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "Odyssey OLED G6 (G60SD) 烙印防護與防反光 (深度排錯)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "G60SD 會不會容易烙印？",
+        "reply": "這題牽涉 S27FG606EC的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「查官方手冊」或「再查網路」；手冊若沒有明確答案，我會自動補查一次公開網頁，不另扣網搜次數。\n\n本次約 NT$0.0136｜直接問 20/20",
+        "stats": "[10:46:53.060] [General] [AI Stats] 0.59s | In: 4025 / Out: 60 | Cost: NT$0.0136",
+        "envelope": "[10:46:53.828] [General] [Answer Envelope v29.6.189] status=unsupported manual=true web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 2,
+        "question": "它有什麼防烙印功能？會自動執行嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0115｜直接問 20/20",
+        "stats": "[10:47:04.829] [General] [AI Stats] 0.47s | In: 3498 / Out: 24 | Cost: NT$0.0115",
+        "envelope": "[10:47:05.087] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 3,
+        "question": "螢幕暗下來或突然跳出清理是正常的嗎？多久一次？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0122｜直接問 20/20",
+        "stats": "[10:47:14.752] [General] [AI Stats] 0.56s | In: 3575 / Out: 57 | Cost: NT$0.0122",
+        "envelope": "[10:47:15.133] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 4,
+        "question": "我想調整面板保養的設定要去哪裡開？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "ViewFinity S9 5K (S27C900) Mac 連接與色彩校色 (深度操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "ViewFinity S9 5K 接 Mac 畫面出不來",
+        "reply": "你只提供「S9」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 S9 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "我是用 Thunderbolt 4 線接在後面的 Type-C 孔",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0245｜直接問 20/20",
+        "stats": "[10:47:41.775] [General] [AI Stats] 0.62s | In: 7469 / Out: 48 | Cost: NT$0.0245",
+        "envelope": "[10:47:42.110] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 3,
+        "question": "要插哪一個孔才對？後面的孔有分充電瓦數嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0126｜直接問 20/20",
+        "stats": "[10:47:56.469] [General] [AI Stats] 0.96s | In: 3537 / Out: 98 | Cost: NT$0.0126",
+        "envelope": "[10:47:56.816] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 4,
+        "question": "可以用手機幫這台螢幕校色嗎？Smart Calibration 怎麼用？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "Odyssey Ark 55吋 (G97NC) 旋轉直立座艙與多重視窗 (PDF 手冊操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "55吋 Ark 旋轉成直立模式 (座艙模式) 畫面沒有自動轉向",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0191｜直接問 20/20",
+        "stats": "[10:48:16.968] [General] [AI Stats] 1.43s | In: 4950 / Out: 256 | Cost: NT$0.0191",
+        "envelope": "[10:48:17.221] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 2,
+        "question": "要手動去哪裡設定旋轉？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 3,
+        "question": "Ark Dial 旋鈕遙控器要怎麼配對跟充電？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 4,
+        "question": "直立座艙模式下最多可以分割幾個視窗？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0115｜直接問 20/20",
+        "stats": "[10:48:45.204] [General] [AI Stats] 0.42s | In: 3485 / Out: 26 | Cost: NT$0.0115",
+        "envelope": "[10:48:45.468] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      }
+    ]
+  },
+  {
+    "journey": "Smart Monitor M7 忘記 PIN 碼與重置原廠 (PDF 手冊)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "M7 智慧螢幕忘記 PIN 碼怎麼辦",
+        "reply": "你只提供「M7」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 M7 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "我按遙控器重置 PIN 碼的組合鍵是什麼？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 3,
+        "question": "如果我想整台恢復原廠預設值要去哪裡選？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 4,
+        "question": "重設後裡面的 App 需要重新登入嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0175｜直接問 20/20",
+        "stats": "[10:49:30.054] [General] [AI Stats] 0.99s | In: 4949 / Out: 131 | Cost: NT$0.0175",
+        "envelope": "[10:49:30.330] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      }
+    ]
+  },
+  {
+    "journey": "Odyssey G9 OLED (G95SC) 240Hz 開不上去 (深度排錯)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "49吋 G95SC 接電腦只有 60Hz 跑不到 240Hz",
+        "reply": "你遇到的問題，是電腦輸出訊號的頻率沒有達到螢幕的最高支援，這通常跟你的電腦顯示卡、連接線材或設定有關。\n• 顯示卡驅動程式：請確認你的電腦顯示卡驅動程式是最新版本，有時候舊的驅動程式會限制螢幕的刷新率。\n• 連接線材：請確認你使用的線材是 DisplayPort 1.4 或 HDMI 2.1 版本，並且線材長度適中，太長的線材或版本不對都可能影響訊號傳輸。\n• 電腦設定：在電腦的顯示設定中，確認螢幕的刷新率是否已手動設定為 240Hz。\n\n資料來源：已驗證問答資料\n\n本次約 NT$0.0232｜直接問 19/20",
+        "stats": "[10:49:42.286] [General] [AI Stats] 1.05s | In: 6606 / Out: 161 | Cost: NT$0.0232",
+        "envelope": "[10:49:43.021] [General] [Answer Envelope v29.6.189] status=supported evidence=QA_ROW_13:1818b6f6165a"
+      },
+      {
+        "level": 2,
+        "question": "我的顯卡是 RTX 4080，是用 HDMI 線接的",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0261｜直接問 20/20",
+        "stats": "[10:49:54.982] [General] [AI Stats] 1.54s | In: 7157 / Out: 250 | Cost: NT$0.0261",
+        "envelope": "[10:49:55.235] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 3,
+        "question": "是要插 Micro HDMI 還是 HDMI 2.1？要在 OSD 裡面開 Game Mode 嗎？",
+        "reply": "關於你的 49 吋 G95SC 接電腦的問題，你提到使用 HDMI 線，但這款螢幕的規格中，HDMI 接口是 HDMI 2.1，而 DisplayPort 是 DP 1.4。\n• 接口選擇： 為了達到最高的刷新率（240Hz），建議你使用 DisplayPort 1.4 連接線，因為它通常能提供比 HDMI 2.1 更高的頻寬來支援高解析度和高刷新率。如果你的電腦顯示卡有 DP 1.4 接口，請優先考慮使用 DP 線。\n• OSD 設定： 在螢幕的 OSD (On-Screen Display) 選單中，開啟「遊戲模式」或類似的選項（例如 Game Mode、Game Bar 等），通常可以優化螢幕的反應時間和刷新率，以提供更好的遊戲體驗。\n\n請確認你的電腦顯示卡有 DP 1.4 輸出接口，並使用對應的線材連接。\n\n資料來源：已驗證問答資料\n\n本次約 NT$0.0290｜直接問 19/20",
+        "stats": "[10:50:06.769] [General] [AI Stats] 1.37s | In: 8203 / Out: 218 | Cost: NT$0.0290",
+        "envelope": "[10:50:07.065] [General] [Answer Envelope v29.6.189] status=supported evidence=QA_ROW_13:1818b6f6165a"
+      },
+      {
+        "level": 4,
+        "question": "開了 240Hz 之後 HDR 要怎麼開？Windows 裡面會變灰色的嗎？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "Odyssey Neo G8 (G85NB) 4K 240Hz 區域控光 (深度操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "Neo G8 畫面看起來有點偏亮、黑底有光暈",
+        "reply": "你只提供「G8」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 G8 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "要怎麼開啟局部調光 (Local Dimming)？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 3,
+        "question": "選 Auto、Standard 還是 High 比較好？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0254｜直接問 20/20",
+        "stats": "[10:50:42.207] [General] [AI Stats] 0.80s | In: 7521 / Out: 108 | Cost: NT$0.0254",
+        "envelope": "[10:50:42.543] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 4,
+        "question": "玩 PS5 的時候 Local Dimming 可以跟 VRR 同時開嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0116｜直接問 20/20",
+        "stats": "[10:50:54.969] [General] [AI Stats] 0.80s | In: 3533 / Out: 22 | Cost: NT$0.0116",
+        "envelope": "[10:50:55.370] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      }
+    ]
+  },
+  {
+    "journey": "Smart Monitor M5 藍牙耳機連線與聲音延遲 (PDF 操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "M5 螢幕可以連藍牙耳機聽聲音嗎？",
+        "reply": "你只提供「M5」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 M5 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "要從哪裡進去配對藍牙耳機？",
+        "reply": "這題不在我的服務範圍內，我先不亂答。\n\n我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 3,
+        "question": "連上之後看影片聲音跟嘴型不同步怎麼調整？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 4,
+        "question": "可以同時連兩支藍牙耳機一起聽嗎？",
+        "reply": "這題不在我的服務範圍內，我先不亂答。\n\n我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "ViewFinity S8 (S27B800) Type-C 90W 與 USB Hub (深度排錯)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "S27B800 螢幕後面的 USB 孔插隨身碟電腦讀不到",
+        "reply": "我在目前的 QA、三星官方規格與手冊索引裡找不到這個完整型號：S27B800。\n\n請先確認型號是否有打錯，或補上產品背貼/外盒上的完整型號；確認後我再依 QA/三星官方規格先查，仍不足才接著查官方手冊或官方頁面。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "我是用 HDMI 接電腦的",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0253｜直接問 20/20",
+        "stats": "[10:51:51.651] [General] [AI Stats] 1.69s | In: 7065 / Out: 213 | Cost: NT$0.0253",
+        "envelope": "[10:51:51.895] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 3,
+        "question": "如果要用螢幕上的 USB 孔，需要另外接 USB Upstream 線或 Type-C 嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0251｜直接問 20/20",
+        "stats": "[10:52:02.466] [General] [AI Stats] 0.65s | In: 7586 / Out: 67 | Cost: NT$0.0251",
+        "envelope": "[10:52:02.584] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 4,
+        "question": "如果換成 Type-C 線一線連接筆電，可以同時 4K 畫面 + 充電 90W + 上網孔 (LAN) 嗎？",
+        "reply": "這題不在我的服務範圍內，我先不亂答。\n\n我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  },
+  {
+    "journey": "Odyssey G5 (G55C) 165Hz 畫面撕裂與 FreeSync (深度操作)",
+    "turns": [
+      {
+        "level": 1,
+        "question": "G55C 玩遊戲畫面會撕裂卡頓怎麼辦",
+        "reply": "你只提供「G55C」這個系列別稱，這會對應多個完整型號。\n\n請先選完整型號，我再依該型號回答。\n\n本次約 NT$0.0000｜直接問 19/20\n\n請選擇 G55C 完整型號",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 2,
+        "question": "要在螢幕按鈕選單裡把 FreeSync Premium 打開嗎？",
+        "reply": "這題牽涉這款螢幕的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。\n\n我先不亂猜。\n你可以直接選「再查網路」，我會找公開網頁中可核對的做法。\n\n本次約 NT$0.0239｜直接問 20/20",
+        "stats": "[10:52:33.374] [General] [AI Stats] 0.58s | In: 7409 / Out: 18 | Cost: NT$0.0239",
+        "envelope": "[10:52:33.831] [General] [Answer Envelope v29.6.189] status=unsupported manual=false web=true，移除無來源產品草稿"
+      },
+      {
+        "level": 3,
+        "question": "打開 FreeSync 之後反應時間 (Response Time) 為什麼變成反灰不能調？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      },
+      {
+        "level": 4,
+        "question": "那電腦顯卡是 NVIDIA 的話，可以在驅動裡開啟 G-Sync 相容嗎？",
+        "reply": "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。\n\n請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。\n\n收到型號後，我會依 QA/三星官方規格先查；如果仍不足，再接著查官方手冊。\n\n本次約 NT$0.0000｜直接問 19/20",
+        "stats": "無 Stats 日誌",
+        "envelope": "無 Envelope 日誌"
+      }
+    ]
+  }
+]

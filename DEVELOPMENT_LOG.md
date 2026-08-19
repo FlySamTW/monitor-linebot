@@ -1,5 +1,11 @@
 # 開發對話紀錄
 
+## 2026-08-19 (v29.6.202 / 全面人性化真人朋友口吻重塑與內部工程術語清除)
+
+- 徹底清查並重寫所有預設引導文案（`buildEvidenceHandoffReply_`、`buildNeedModelForOperationReply`、`buildOutOfProjectScopeReply`、`buildUnknownFullModelReply`、`buildAliasDisambiguationReply`）。
+- 徹底移除「QA／規格資料」、「推測當成答案」、「我先不亂猜」、「你只提供別稱」等冷冰冰的工程師判斷術語，全量轉化為親切、自然且富同理心的真人朋友客服口吻。
+- 修正 `isOutOfProjectScopeQuery` 對多輪耳機、音訊與配件接線提問的誤判。
+
 ## 2026-08-19 (v29.6.201 / 測試模式全量寫入 Sheet LOG 與所有紀錄頁)
 
 - 修改 `writeRecordDirectly`、`writeLog` 與 `flushLogs`，讓 TestUI 與測試端點發生的所有真實問答與系統執行日誌全量寫入 Google Sheet 的 `所有紀錄` 與 `LOG` 頁。

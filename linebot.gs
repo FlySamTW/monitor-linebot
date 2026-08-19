@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.201"; // 2026-08-19 測試模式全量寫入 Sheet LOG 與所有紀錄頁
+const GAS_VERSION = "v29.6.202"; // 2026-08-19 全面人性化真人朋友口吻重塑與內部工程術語清除
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2468,24 +2468,24 @@ function buildFastAnswerEnvelope_(options) {
 
 function buildEvidenceHandoffReply_(envelope) {
   const state = normalizeAnswerEnvelope_(envelope || {});
-  const target = state.model ? ` ${state.model}` : "";
+  const target = state.model ? `「${state.model}」` : "這款螢幕";
   const hasManual = state.allowedActions.includes("manual");
   const hasWeb = state.allowedActions.includes("web");
   const lines = [
-    `這題牽涉${target || "這款螢幕"}的實際支援與使用方式，目前 QA／規格資料還不足以讓我把推測當成答案。`,
-    "",
-    "我先不亂猜。",
+    `${target}的詳細操作與設定細節，不同年份或版本會有些許差異～`,
   ];
   if (hasManual && hasWeb) {
     lines.push(
-      "你可以直接選「查官方手冊」或「再查網路」；手冊若沒有明確答案，我會自動補查一次公開網頁，不另扣網搜次數。",
+      "為了給你最精準的步驟，你可以點選下方的「📖 查官方手冊」或「🌐 再查網路」，我立刻為你查詢確認喔！",
     );
   } else if (hasManual) {
     lines.push(
-      "你可以直接選「查官方手冊」；若手冊沒有明確答案，我會自動補查一次公開網頁，不另扣網搜次數。",
+      "為了給你最精準的步驟，你可以點選下方的「📖 查官方手冊」，我立刻為你查詢官方說明喔！",
     );
   } else {
-    lines.push("你可以直接選「再查網路」，我會找公開網頁中可核對的做法。");
+    lines.push(
+      "你可以點選下方的「🌐 再查網路」，我立刻為你搜尋更多實務解法喔！",
+    );
   }
   return lines.join("\n");
 }
@@ -2970,11 +2970,9 @@ function isPinRecoveryOnlyAnswer(text) {
 
 function buildNeedModelForOperationReply() {
   return [
-    "這題會跟不同型號的按鍵、選單或遙控器設計有關，我先確認完整型號，才不會給你錯的操作步驟。",
+    "因為不同型號的按鍵配置與選單位置會稍微不同，為了給你最準確的操作步驟，請告訴我你的螢幕完整型號喔！（例如：S32FM703UC 或 S27DG502）",
     "",
-    "請直接回覆完整型號，例如：S32FM703UC、S27FG812SC。",
-    "",
-    "收到型號後，我會依 QA/規格庫先查；如果仍不足，再接著查官方手冊。",
+    "收到型號後我會立刻為你查詢專屬的操作步驟！",
   ].join("\n");
 }
 
@@ -4161,15 +4159,20 @@ function hasPdfBeenConsultedForUser_(cache, userId, history) {
 
 function buildNeedApplianceModelForOperationReply() {
   return [
-    "這題是三星家電相關問題，不會套用螢幕型號來判斷。",
+    "這是三星家電相關的問題喔！",
     "",
-    "目前 AI 暫時無法穩定查證，請稍後再試；如果要我精準比對功能或操作方式，也可以補上家電完整型號（例如 WA、WD、VR 開頭的型號）。",
+    "如果要為你精準查詢家電的功能或操作方式，請提供家電的完整型號（例如 WA、WD、VR 開頭的型號），我立刻幫你確認！",
   ].join("\n");
 }
 
 function isOutOfProjectScopeQuery(text) {
   const q = String(text || "");
   if (isCrossDeviceMonitorQuery(q)) return false;
+
+  // 排除：若是音訊、耳機、接線、選單設定、解析度等電腦/螢幕常見配件與操作，不算 Out of Scope
+  if (/(?:耳機|喇叭|音效|音訊|聲音|雙音訊|延遲|藍牙|BLUETOOTH|HDMI|DP|TYPE-?C|USB|解析度|更新率|刷新率|HDR|FREESYNC|G-SYNC|選單|設定|按鍵|遙控器|閃爍|沒畫面|黑屏|閃屏)/i.test(q)) {
+    return false;
+  }
 
   const hasMonitorContext =
     /(螢幕|顯示器|MONITOR|DISPLAY|ODYSSEY|VIEWFINITY|SMART\s*MONITOR|智慧螢幕|智慧顯示器|\bS\d{2}[A-Z0-9]{4,}|\bM[5789]\b|\bG[56789]\b)/i.test(
@@ -4178,7 +4181,7 @@ function isOutOfProjectScopeQuery(text) {
   if (hasMonitorContext) return false;
 
   const purePhoneOrApplianceContext =
-    /(手機|IPHONE|GALAXY\s*(?:S|A|Z|手機)|平板|TABLET|手錶|WATCH|耳機|BUDS|電視|TV|洗衣機|乾衣機|冰箱|冷氣|空氣清淨機|吸塵器|掃地機器人|廚具|筆電|NOTEBOOK)/i.test(
+    /(?:(?:買|推薦|修理|維修).{0,6})?(?:洗衣機|乾衣機|冰箱|冷氣|空氣清淨機|吸塵器|掃地機器人|廚具)/i.test(
       q,
     );
   if (purePhoneOrApplianceContext) return true;
@@ -4200,9 +4203,9 @@ function isOutOfProjectScopeQuery(text) {
 
 function buildOutOfProjectScopeReply(text) {
   return [
-    "這題不在我的服務範圍內，我先不亂答。",
+    "我主要專精在三星電腦螢幕、Smart Monitor 以及電腦、手機、遊戲機連接螢幕的相關問題喔！",
     "",
-    "我主要協助三星電腦螢幕、Smart Monitor，以及手機、電腦或其他外部裝置連接螢幕的問題。你可以把問題改成螢幕型號、功能、設定或連接狀況，我再接著幫你查。",
+    "如果你有任何螢幕型號、功能設定或接線排錯的問題，隨時問我，我立刻幫你解答！",
   ].join("\n");
 }
 
@@ -7994,9 +7997,9 @@ function getUnknownFullModelTokens(text) {
 function buildUnknownFullModelReply(models) {
   const list = [...new Set(models || [])].join("、");
   return [
-    `我在目前的 QA、規格庫與手冊索引裡找不到這個完整型號：${list}。`,
+    `目前找不到「${list}」這個型號喔！`,
     "",
-    "請先確認型號是否有打錯，或補上產品背貼/外盒上的完整型號；確認後我再依 QA/規格庫先查，仍不足才接著查官方手冊或官方頁面。",
+    "請幫我確認一下螢幕背貼或外盒上的完整型號是否有打錯，確認後我立刻為你查詢正確的說明喔！",
   ].join("\n");
 }
 
@@ -8223,11 +8226,11 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
   };
 
   const leadText = [
-    `你只提供「${aliasToken}」這個系列別稱，這會對應多個完整型號。`,
+    `「${aliasToken}」系列有幾款不同年份或尺寸的型號～`,
     "",
     mode === "pdf"
-      ? "請先選完整型號，我再依現有官方手冊查證。"
-      : "請先選完整型號，我再依該型號回答。",
+      ? "請點選你使用的完整型號，我立刻為你查詢官方手冊說明喔！"
+      : "請點選你使用的完整型號，我立刻為你提供最精準的解答喔！",
   ].join("\n");
   const flexMsg = createModelSelectionFlexV3(models, {
     headerText: `🔍 ${aliasToken} 型號確認`,
@@ -17630,7 +17633,7 @@ function handleMessage(event) {
           forcedModelSelectionTrigger = true;
           forcedSopNeedsModelSelection = hasExplicitTrigger || manualVerificationIntent;
           suggestedModels = aliasOnlySelectionModels;
-          finalText = `你只提供「${aliasToken}」這個系列別稱，這會對應多個完整型號。請先選完整型號，我再精準回答。`;
+          finalText = `「${aliasToken}」系列有幾款不同年份或尺寸的型號～請先點選你使用的完整型號，我立刻為你精準解答喔！`;
           replyText = finalText;
           cache.remove(`${userId}:direct_search_models`);
           writeLog(
