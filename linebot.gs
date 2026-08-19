@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.202"; // 2026-08-19 全面人性化真人朋友口吻重塑與內部工程術語清除
+const GAS_VERSION = "v29.6.203"; // 2026-08-19 徹底去除客服腔與句尾語助詞驚嘆號
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -1601,7 +1601,7 @@ function handlePdfSelectionReply(msg, userId, replyToken, contextId) {
 
         if (response) {
           if (response === "[KB_EXPIRED]") {
-            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！";
+            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試。";
             replyMessage(replyToken, expiredText);
             writeRecordDirectly(userId, queryText, contextId, "user", "");
             writeRecordDirectly(userId, expiredText, contextId, "assistant", "");
@@ -2472,19 +2472,19 @@ function buildEvidenceHandoffReply_(envelope) {
   const hasManual = state.allowedActions.includes("manual");
   const hasWeb = state.allowedActions.includes("web");
   const lines = [
-    `${target}的詳細操作與設定細節，不同年份或版本會有些許差異～`,
+    `${target}的詳細設定與操作，不同年份或版本會有些許差異。`,
   ];
   if (hasManual && hasWeb) {
     lines.push(
-      "為了給你最精準的步驟，你可以點選下方的「📖 查官方手冊」或「🌐 再查網路」，我立刻為你查詢確認喔！",
+      "你可以點選下方的「📖 查官方手冊」或「🌐 再查網路」，我直接為你核對步驟。",
     );
   } else if (hasManual) {
     lines.push(
-      "為了給你最精準的步驟，你可以點選下方的「📖 查官方手冊」，我立刻為你查詢官方說明喔！",
+      "你可以點選下方的「📖 查官方手冊」，我直接為你查詢手冊說明。",
     );
   } else {
     lines.push(
-      "你可以點選下方的「🌐 再查網路」，我立刻為你搜尋更多實務解法喔！",
+      "你可以點選下方的「🌐 再查網路」，我直接為你搜尋相關實務做法。",
     );
   }
   return lines.join("\n");
@@ -2970,9 +2970,7 @@ function isPinRecoveryOnlyAnswer(text) {
 
 function buildNeedModelForOperationReply() {
   return [
-    "因為不同型號的按鍵配置與選單位置會稍微不同，為了給你最準確的操作步驟，請告訴我你的螢幕完整型號喔！（例如：S32FM703UC 或 S27DG502）",
-    "",
-    "收到型號後我會立刻為你查詢專屬的操作步驟！",
+    "不同型號的按鍵配置與選單位置會有些許差異。請提供螢幕完整型號（例如：S32FM703UC 或 S27DG502），我直接為你查詢對應的操作步驟。",
   ].join("\n");
 }
 
@@ -4159,9 +4157,7 @@ function hasPdfBeenConsultedForUser_(cache, userId, history) {
 
 function buildNeedApplianceModelForOperationReply() {
   return [
-    "這是三星家電相關的問題喔！",
-    "",
-    "如果要為你精準查詢家電的功能或操作方式，請提供家電的完整型號（例如 WA、WD、VR 開頭的型號），我立刻幫你確認！",
+    "這是三星家電的相關問題。如果要查詢家電功能或操作方式，請提供家電完整型號（例如 WA、WD、VR 開頭的型號）。",
   ].join("\n");
 }
 
@@ -4203,9 +4199,7 @@ function isOutOfProjectScopeQuery(text) {
 
 function buildOutOfProjectScopeReply(text) {
   return [
-    "我主要專精在三星電腦螢幕、Smart Monitor 以及電腦、手機、遊戲機連接螢幕的相關問題喔！",
-    "",
-    "如果你有任何螢幕型號、功能設定或接線排錯的問題，隨時問我，我立刻幫你解答！",
+    "我主要協助三星電腦螢幕、Smart Monitor，以及外接電腦、手機、遊戲機的連線與設定問題。如果有螢幕相關疑問，歡迎隨時提出。",
   ].join("\n");
 }
 
@@ -7997,9 +7991,7 @@ function getUnknownFullModelTokens(text) {
 function buildUnknownFullModelReply(models) {
   const list = [...new Set(models || [])].join("、");
   return [
-    `目前找不到「${list}」這個型號喔！`,
-    "",
-    "請幫我確認一下螢幕背貼或外盒上的完整型號是否有打錯，確認後我立刻為你查詢正確的說明喔！",
+    `目前找不到「${list}」這個型號。請確認螢幕背貼或外盒上的完整型號是否正確。`,
   ].join("\n");
 }
 
@@ -8226,11 +8218,11 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
   };
 
   const leadText = [
-    `「${aliasToken}」系列有幾款不同年份或尺寸的型號～`,
+    `「${aliasToken}」系列包含多款不同年份或尺寸的型號。`,
     "",
     mode === "pdf"
-      ? "請點選你使用的完整型號，我立刻為你查詢官方手冊說明喔！"
-      : "請點選你使用的完整型號，我立刻為你提供最精準的解答喔！",
+      ? "請點選你使用的完整型號，我會為你查詢官方手冊說明。"
+      : "請點選你使用的完整型號，我會為你提供對應解答。",
   ].join("\n");
   const flexMsg = createModelSelectionFlexV3(models, {
     headerText: `🔍 ${aliasToken} 型號確認`,
@@ -12648,7 +12640,8 @@ function constructLeanDynamicPromptV159_(
   }
 
   dynamicPrompt += `\n【共同輸出規則】
-使用台灣繁體中文與「你」，像熟悉產品的朋友：先回答重點，語氣自然、有溫度，但不油腔、不硬塞笑話。只回答本題需要的內容，避免客服套話、內部術語、成本或系統流程。
+使用台灣繁體中文與「你」，像懂電腦硬體的專業朋友：平實、乾脆、講重點，句子正常以句點或分行結尾。
+嚴禁每句結尾都加「喔！」、「喔～」、「啦！」或驚嘆號「！」，嚴禁假親切的制式客服腔（如「好的喔」、「為您確認喔」、「沒問題喔」），避免客服套話、內部術語、成本或系統流程。
 只用本輪提供且可對應目前型號的證據；資料沒寫只能說「目前資料未記載」，不能推成「沒有／不支援」。不要跨型號套規格，不評論或貶低競品，不自行標示 QA／RULE／手冊／網路來源。`;
   dynamicPrompt += buildCrossDeviceMonitorPromptRule(query);
   return dynamicPrompt;
@@ -16208,7 +16201,7 @@ function handleMessage(event) {
 
         if (response) {
           if (response === "[KB_EXPIRED]") {
-            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！";
+            const expiredText = "⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試。";
             replyMessage(replyToken, expiredText);
             writeRecordDirectly(userId, queryText, contextId, "user", "");
             writeRecordDirectly(userId, expiredText, contextId, "assistant", "");
@@ -16539,7 +16532,7 @@ function handleMessage(event) {
         writeRecordDirectly(userId, msg, contextId, "user", "");
         writeRecordDirectly(userId, replyText, contextId, "assistant", "");
       } else {
-        const expiredText = (response === '[KB_EXPIRED]') ? '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！' : '⚠️ 查詢手冊時發生錯誤，請稍後再試';
+        const expiredText = (response === '[KB_EXPIRED]') ? '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試。' : '⚠️ 查詢手冊時發生錯誤，請稍後再試';
         replyMessage(replyToken, expiredText);
       }
       return;
@@ -17633,7 +17626,7 @@ function handleMessage(event) {
           forcedModelSelectionTrigger = true;
           forcedSopNeedsModelSelection = hasExplicitTrigger || manualVerificationIntent;
           suggestedModels = aliasOnlySelectionModels;
-          finalText = `「${aliasToken}」系列有幾款不同年份或尺寸的型號～請先點選你使用的完整型號，我立刻為你精準解答喔！`;
+          finalText = `「${aliasToken}」系列包含多款不同年份或尺寸的型號，請點選你使用的完整型號。`;
           replyText = finalText;
           cache.remove(`${userId}:direct_search_models`);
           writeLog(
@@ -19745,7 +19738,7 @@ function handleCommand(c, u, cid) {
       return result;
     } else {
       if (searchResponse === '[KB_EXPIRED]') {
-        return '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試喔！';
+        return '⚠️ 系統偵測到產品手冊需要更新，正在背景自動重新整理中。大約 1 分鐘後即可恢復正常，請稍後再試。';
       }
       return '抱歉，網路搜尋連線逾時，請稍後再試。';
     }

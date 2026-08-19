@@ -1,5 +1,11 @@
 # 開發對話紀錄
 
+## 2026-08-19 (v29.6.203 / 徹底去除客服腔、假熱情與句尾語助詞驚嘆號)
+
+- 全面修正所有引導與範例文案，全面移除「喔！」、「喔～」、「啦！」、「唷！」及氾濫的驚嘆號「！」。
+- 改採平實、沉穩、乾脆的專業朋友對話風格，以正常句點「。」與分行結尾，禁止制式客服腔。
+- 在 `Prompt.csv` 與動態 Prompt 中加入嚴格禁令，全面杜絕句尾贅字與客服套話。
+
 ## 2026-08-19 (v29.6.202 / 全面人性化真人朋友口吻重塑與內部工程術語清除)
 
 - 徹底清查並重寫所有預設引導文案（`buildEvidenceHandoffReply_`、`buildNeedModelForOperationReply`、`buildOutOfProjectScopeReply`、`buildUnknownFullModelReply`、`buildAliasDisambiguationReply`）。
