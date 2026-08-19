@@ -1,6 +1,9 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.217 / 架構重構：全面打通自動直進 PDF 手冊直出解答)
+## 2026-08-20 (v29.6.218 / 型號選單後精準找回原始問題與手冊入口本機 QA 優先)
+
+- 在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
+- 在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。
 
 - 徹底拆除手冊中斷按鈕閘門：重構 `Operation Manual Gate`、`AnswerEnvelope unsupported` 與 `[AUTO_SEARCH_PDF]` 觸發邏輯，當本機 QA 查無資料但型號有官方手冊時，系統不再停頓輸出按鈕提示，而是自動在後端調用 Gemini Files API 讀取 PDF 手冊直出解答（`[來源:官方手冊]`）。
 

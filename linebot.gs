@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.217"; // 2026-08-20 架構重構：全面打通 Fast/Operation 無 QA 時自動直進 PDF 手冊直出解答，徹底拆除按鈕中斷閘門
+const GAS_VERSION = "v29.6.218"; // 2026-08-20 型號選單後精準找回原始問題，並在手冊入口優先執行本機確鑿規格回答
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6091,6 +6091,31 @@ function executeLegacyManualModelSelectionViaSourceRouter_(
     cache.get(`${userId}:pending_topic`) ||
     (recent && recent.question) ||
     "";
+  if (!originalQuestion) {
+    const historyForTopic = getHistoryFromCacheOrSheet(contextId);
+    const MODEL_ONLY_RE = /^[A-Z0-9\-]{3,30}$/i;
+    for (let i = historyForTopic.length - 1; i >= 0; i--) {
+      if (historyForTopic[i].role === "user") {
+        let content = historyForTopic[i].content || "";
+        content = content.replace(/\[System Hint:.*?\]/gs, "").trim();
+        if (
+          content.length >= 2 &&
+          !content.startsWith("#") &&
+          !content.includes("不滿意") &&
+          !content.includes("繼續問") &&
+          !content.match(/^\d$/) &&
+          !MODEL_ONLY_RE.test(content) &&
+          !content.includes("(型號:")
+        ) {
+          originalQuestion = content;
+          writeLog(
+            `[Legacy Model Select Router] 從對話歷史找回原始問題: ${originalQuestion}`,
+          );
+          break;
+        }
+      }
+    }
+  }
   if (previousModel) {
     originalQuestion = stripKnownModelFromSourceQuestion_(
       originalQuestion,
@@ -7353,6 +7378,23 @@ function executeAdvancedSourceQuery_(
 
   clearLegacyAdvancedRouteState_(cache, userId, contextId);
   if (normalizedSource === "manual") {
+    if (
+      tryManualFreeLocalAnswer_(
+        normalizedQuery,
+        contextId,
+        userId,
+        replyToken,
+        primaryModel || selectedModel,
+        true,
+      )
+    ) {
+      finishAdvancedSourceOperation_(
+        sourceOperation,
+        "Free Local Answer",
+        primaryModel || selectedModel,
+      );
+      return true;
+    }
     const kbList = JSON.parse(
       PropertiesService.getScriptProperties().getProperty(
         CACHE_KEYS.KB_URI_LIST,
