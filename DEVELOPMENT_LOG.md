@@ -1,6 +1,8 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.211 / 全面支援 Smart Monitor Netflix 與 App 安裝確鑿問答)
+## 2026-08-20 (v29.6.212 / 完善歷代 Smart Monitor M5 AirPlay 確鑿問答區隔)
+
+- 在 `buildDeterministicExactRuleReply_` 中將 2024 款 M50D (`S27DM502EC`、`DM5`) 及舊款 M50C/B/A 明確納入 Apple AirPlay 2 支援機型名單，與 2026 款 M50F (`FM5`) 無原生 AirPlay 2 進行精確區隔。
 
 - 在 `buildDeterministicExactRuleReply_` 與 `QA.csv` 中全面納入 Smart Monitor 系列（M5/M7/M8/M9 各型號），秒回「首頁 → 應用程式 → 搜尋 → 安裝」標準操作步驟。
 - 針對 M50F (`S27FM500EC`, `S27FM501EC`, `S32FM500EC`, `S32FM501EC`) 強化 Apple AirPlay 2 無線投影確鑿規格問答，明確標記無原生支援並提供實質外接替代方案；針對 M7/M8/M9 明確標記支援並提供控制中心鏡像步驟。

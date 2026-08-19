@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.211"; // 2026-08-20 全面支援 Smart Monitor (M5/M7/M8/M9) Netflix 與 App 安裝確鑿問答
+const GAS_VERSION = "v29.6.212"; // 2026-08-20 完善歷代 Smart Monitor M5 (DM5/CM5/BM5/AM5 vs FM5) AirPlay 確鑿問答區隔
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6378,7 +6378,7 @@ function buildDeterministicExactRuleReply_(query, model) {
         "如果是 iPhone 或 iPad 想要無線投屏，建議選擇 Smart Monitor M7、M8 或 M9 系列；若要在這台投影 iPhone，可以透過 Lightning / USB-C 轉 HDMI 轉接線，或是外接 Apple TV / 支援 AirPlay 的電視盒連接。",
         "[來源:官方規格庫]",
       ].join("\n");
-    } else if (/(?:M7|M8|M9|M70|M80|M90|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S32FM9)/i.test(normalizedModel) || /(?:M7|M8|M9)/i.test(ruleLine)) {
+    } else if (/(?:M7|M8|M9|M70|M80|M90|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S32FM9|S27DM5|S32DM5|S27CM5|S32CM5|S27BM5|S32BM5|S27AM5|S32AM5|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(normalizedModel) || /(?:M7|M8|M9|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(ruleLine)) {
       return [
         `${normalizedModel} 支援 Apple AirPlay 2 無線投影。`,
         "",
