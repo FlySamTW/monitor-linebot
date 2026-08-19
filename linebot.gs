@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.214"; // 2026-08-20 修正型號選單 Flex 卡片底部文案為「點選型號後立即為你解答」
+const GAS_VERSION = "v29.6.215"; // 2026-08-20 精準區隔 FM5 無陀螺儀/固定底座與 M8/M9 旋轉直式投影規格事實
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6371,13 +6371,29 @@ function buildDeterministicExactRuleReply_(query, model) {
   }
 
   if (/(?:直式|直向|直立|垂直)/i.test(text) && /(?:投影|投屏|鏡像|鏡射|畫面|顯示)/i.test(text)) {
-    return [
-      `${normalizedModel} 支援直式手機投影顯示：`,
-      "1. 當手機進行無線投影時，手機直立拿著，螢幕即會以直式比例顯示（畫面兩側會保留黑邊以維持正確比例）。",
-      "2. 當手機旋轉為橫向時，螢幕畫面會自動隨之切換為橫向寬螢幕滿版。",
-      "3. 若螢幕配備旋轉支架（Pivot）或外接旋轉壁掛架將螢幕轉為垂直，觀看直式內容會更加清楚滿版。",
-      "[來源:官方規格庫]",
-    ].join("\n");
+    if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel}（M50F 系列）支援直式手機投影畫面顯示：`,
+        "1. 手機進行無線投影時，直立持握手機，螢幕中央即會以直式比例顯示（兩側自動保留黑邊維持比例）。",
+        "2. 手機旋轉為橫向時，螢幕畫面會自動隨之切換為全螢幕橫向滿版。",
+        "⚠️ 硬體注意：FM5 原廠底座為固定式（無 HAS 升降與旋轉），且機身「無」內建陀螺儀感應器，螢幕本體無法隨實體旋轉而自動轉向。若需要螢幕隨機身旋轉自動切換直向滿版，請選購具備陀螺儀與旋轉支架的 M8 / M9 系列。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else if (/(?:M8|M9|S32BM8|S32CM8|S32DM8|S32FM8|S32FM9)/i.test(normalizedModel)) {
+      return [
+        `${normalizedModel} 支援直式手機投影與畫面自動旋轉：`,
+        "1. 內建陀螺儀與 HAS 升降旋轉支架，將螢幕旋轉為直立時，畫面會自動感應切換為直向滿版顯示。",
+        "2. 手機直向或橫向投影時，畫面均能完美配合螢幕方向滿版呈現。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else {
+      return [
+        `${normalizedModel} 支援直式手機投影顯示：`,
+        "1. 手機進行無線投影時，直立持握手機，螢幕中央即會以直式比例顯示（兩側保留黑邊維持比例）。",
+        "2. 手機旋轉為橫向時，螢幕畫面會自動隨之切換為全螢幕橫向滿版。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
   }
 
   if (/(?:蘋果|IPHONE|IPAD|AIRPLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
