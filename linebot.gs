@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.218"; // 2026-08-20 型號選單後精準找回原始問題，並在手冊入口優先執行本機確鑿規格回答
+const GAS_VERSION = "v29.6.219"; // 2026-08-20 支援 air play 帶空格正則匹配，確鑿秒回 AirPlay 支援性與外接替代方案
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6366,11 +6366,11 @@ function isLikelyLocalSpecRuleQuestion_(query) {
     /(故障|異常|無法|不能用|沒反應|黑屏|閃爍|重置|恢復原廠|設定路徑|選單|怎麼操作|如何設定|更新韌體|驅動程式)/i.test(
       text,
     ) &&
-    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY)/i.test(text)
+    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY)/i.test(text)
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播)/i.test(
     text,
   );
 }
@@ -6421,7 +6421,7 @@ function buildDeterministicExactRuleReply_(query, model) {
     }
   }
 
-  if (/(?:蘋果|IPHONE|IPAD|AIRPLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
+  if (/(?:蘋果|IPHONE|IPAD|AIR[\s-]*PLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
     if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
       return [
         `${normalizedModel}（Smart Monitor M5 M50F 系列）沒有原生支援 Apple AirPlay 2 無線投影。`,

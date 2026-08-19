@@ -1,6 +1,8 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.218 / 型號選單後精準找回原始問題與手冊入口本機 QA 優先)
+## 2026-08-20 (v29.6.219 / 支援 air play 帶空格正則匹配)
+
+- 在 `isLikelyLocalSpecRuleQuestion_`、`buildDeterministicExactRuleReply_` 與 `QA.csv` 中採用 `AIR[\s-]*PLAY`，確保「M5支援air play嗎」完全命中確鑿秒回。
 
 - 在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
 - 在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。
