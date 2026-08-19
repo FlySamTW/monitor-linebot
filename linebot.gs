@@ -4195,6 +4195,37 @@ function buildNeedApplianceModelForOperationReply() {
   ].join("\n");
 }
 
+/**
+ * 網搜友善型號修剪器 (v29.6.205)
+ * 將如 S27FM501EC / LS27FM501ECXZW 轉為網路常見搜尋型號與系列別稱
+ * 例如：S27FM501EC -> S27FM50 -> M5 / Smart Monitor M5
+ */
+function getSearchFriendlyModelTokens_(rawModel) {
+  let m = String(rawModel || "").trim().toUpperCase();
+  if (!m) return [];
+  if (m.startsWith("L") && m.length >= 10) {
+    m = m.substring(1);
+  }
+  m = m.replace(/(XZW|NC|UC|EC|AC|SC|GAC|NAC|NWC|UBC|UXC|UIC)$/i, "");
+
+  const results = [];
+  results.push(m);
+
+  if (m.length > 5 && /\d$/.test(m)) {
+    const trimmedOne = m.substring(0, m.length - 1);
+    results.push(trimmedOne);
+  }
+
+  const seriesMatch = m.match(/(M[5789]|G[356789]|S[6789])/i);
+  if (seriesMatch) {
+    results.push(seriesMatch[1]);
+    results.push(`Smart Monitor ${seriesMatch[1]}`);
+    results.push(`Odyssey ${seriesMatch[1]}`);
+  }
+
+  return Array.from(new Set(results));
+}
+
 function isOutOfProjectScopeQuery(text) {
   const q = String(text || "");
   if (isCrossDeviceMonitorQuery(q)) return false;
