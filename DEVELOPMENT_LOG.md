@@ -1,6 +1,8 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.216 / 全面支援手機橫式/直式畫面投影秒回)
+## 2026-08-20 (v29.6.217 / 架構重構：全面打通自動直進 PDF 手冊直出解答)
+
+- 徹底拆除手冊中斷按鈕閘門：重構 `Operation Manual Gate`、`AnswerEnvelope unsupported` 與 `[AUTO_SEARCH_PDF]` 觸發邏輯，當本機 QA 查無資料但型號有官方手冊時，系統不再停頓輸出按鈕提示，而是自動在後端調用 Gemini Files API 讀取 PDF 手冊直出解答（`[來源:官方手冊]`）。
 
 - 在 `buildDeterministicExactRuleReply_`、`isLikelyLocalSpecRuleQuestion_` 與 `QA.csv` 中擴充支援橫式播放（自動 16:9 全螢幕滿版）與直式顯示（中央直向留黑邊），杜絕「可以播橫式手機畫面嗎」等問句遭手冊按鈕阻礙。
 

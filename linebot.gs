@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.216"; // 2026-08-20 全面支援手機橫式/直式畫面投影確鑿秒回，杜絕手冊按鈕阻礙
+const GAS_VERSION = "v29.6.217"; // 2026-08-20 架構重構：全面打通 Fast/Operation 無 QA 時自動直進 PDF 手冊直出解答，徹底拆除按鈕中斷閘門
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -15281,8 +15281,7 @@ function handleMessage(event) {
       }
     }
 
-    // 精準 QA／RULE／已核對 Evidence 都未命中時，完整型號的操作題不再先讓
-    // Fast 模型猜一次再刪答案。直接顯示手冊授權，省延遲、費用與錯誤草稿。
+    // 精準 QA／RULE／已核對 Evidence 都未命中時，若有官方手冊，自動直進手冊查詢直出答案
     if (!msg.startsWith("#") && isOperationOrTroubleshootQuery(msg)) {
       const operationModels = dedupDisplayModels(
         extractFullModelLikeTokens(msg).concat(primaryModel ? [primaryModel] : []),
@@ -15304,42 +15303,20 @@ function handleMessage(event) {
         ) {
           return;
         }
-        if (dailyQuestionReservedThisMessage) {
-          refundDailyQuestionUsage_(userId, "operation_to_manual");
-          dailyQuestionReservedThisMessage = false;
-        }
-        rememberRecentSourceQuestion_(contextId, msg, operationModel);
-        const operationReply =
-          `這題要核對 ${operationModel} 的實際操作位置，我先不讓模型用規格文字猜步驟。點下方「查官方手冊」，會直接查這一題。`;
-        LAST_SOURCE_TEST_STATE = {
-          source: "spec",
-          outcome: "recommend_manual",
-          pending: false,
-          executed: "none",
-          reserved: false,
-        };
         writeLog(
-          `[Operation Manual Gate v29.6.175] ${operationModel} 無免費 evidence，零 Fast 直接等手冊授權`,
+          `[Operation Manual Gate v29.6.217] ${operationModel} 無本機 QA，自動直進官方手冊查詢`,
         );
-        replyMessage(replyToken, operationReply, {
-          quickReply: {
-            items: [
-              buildSourcePostbackQuickReply_(
-                "📖 查官方手冊",
-                "rm_action=select_source&source=manual&v=2",
-              ),
-            ],
-          },
-        });
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, operationReply, contextId, "assistant", "");
-        updateHistorySheetAndCache(
+        const autoManualSuccess = executeAdvancedSourceQuery_(
+          "manual",
+          msg,
           contextId,
-          getHistoryFromCacheOrSheet(contextId),
-          { role: "user", content: msg },
-          { role: "assistant", content: operationReply },
+          userId,
+          replyToken,
+          { previousModel: operationModel, draftQuery: msg, usePrevious: true },
         );
-        return;
+        if (autoManualSuccess) {
+          return;
+        }
       }
     }
 
@@ -17666,18 +17643,24 @@ function handleMessage(event) {
               .trim();
             finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
             finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-            // v29.6.094: LLM 的內部暗號只能提出建議，不能代表使用者同意付費讀 PDF。
             manualSourceRecommended = true;
-            finalText = buildManualConsentPrompt_(
-              finalText,
-              routingQuestion,
-              primaryModel,
-            );
-            replyText = finalText;
-            aiRequestedPdfSearch = false;
-            writeLog(
-              "[Manual Consent v29.6.094] Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF",
-            );
+            if (primaryModel || (suggestedModels && suggestedModels.length === 1)) {
+              writeLog(
+                `[Auto Deep Search v29.6.217] AI 請求查手冊，型號明確 (${primaryModel || suggestedModels[0]})，啟用自動 PDF 檢索`,
+              );
+              aiRequestedPdfSearch = true;
+            } else {
+              finalText = buildManualConsentPrompt_(
+                finalText,
+                routingQuestion,
+                primaryModel,
+              );
+              replyText = finalText;
+              aiRequestedPdfSearch = false;
+              writeLog(
+                "[Manual Consent v29.6.217] Fast Mode 資料不足且型號未定，提示選型號",
+              );
+            }
           }
         } else {
           // 若無 Explicit Trigger，仍必須清理內部溝通用的型號標籤，以免外洩 (詳見 #1)
@@ -19015,6 +18998,22 @@ function handleMessage(event) {
               activeAnswerEnvelope.allowedActions.includes("manual");
             webSourceRecommended =
               activeAnswerEnvelope.allowedActions.includes("web");
+            if (manualSourceRecommended && envelopeModel && hasOfficialManualForModel_(envelopeModel)) {
+              writeLog(
+                `[Auto Deep Escalate v29.6.217] Fast Mode 資料不足，型號 ${envelopeModel} 有官方手冊，自動直進手冊查詢`,
+              );
+              const autoManualSuccess = executeAdvancedSourceQuery_(
+                "manual",
+                routingQuestion,
+                contextId,
+                userId,
+                replyToken,
+                { previousModel: envelopeModel, draftQuery: routingQuestion, usePrevious: true },
+              );
+              if (autoManualSuccess) {
+                return;
+              }
+            }
             finalText = buildEvidenceHandoffReply_(activeAnswerEnvelope);
             replyText = finalText;
             if (incomingMessageWasElaboration && elaborationReplyAnchor) {

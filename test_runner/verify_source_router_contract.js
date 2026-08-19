@@ -1068,15 +1068,15 @@ assert(
   "組裝、韌體更新、插孔等操作題不得因相鄰規格詞而被洗白成官方規格答案",
 );
 assert(
-  /Operation Manual Gate v29\.6\.175/.test(handleMessageText) &&
+  /Operation Manual Gate v29\.6\.217/.test(handleMessageText) &&
     /tryManualFreeLocalAnswer_\([\s\S]{0,260}operationModel[\s\S]{0,160}true/.test(
       handleMessageText,
     ) &&
-    /refundDailyQuestionUsage_\(userId, "operation_to_manual"\)/.test(
+    /executeAdvancedSourceQuery_\([\s\S]{0,80}"manual"/.test(
       handleMessageText,
     ) &&
-    /零 Fast 直接等手冊授權/.test(handleMessageText),
-  "完整型號操作題在免費 QA／RULE／Evidence 未命中時須零 Fast 直接等待手冊授權",
+    /無本機 QA，自動直進官方手冊查詢/.test(handleMessageText),
+  "完整型號操作題在免費 QA／RULE／Evidence 未命中時自動直進手冊查詢直出答案",
 );
 assert(
   /getPreviousUserTopicForEvidence_\([\s\S]*contextId,[\s\S]*msg/.test(
