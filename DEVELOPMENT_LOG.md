@@ -1,5 +1,9 @@
 # 開發對話紀錄
 
+## 2026-08-19 (v29.6.201 / 測試模式全量寫入 Sheet LOG 與所有紀錄頁)
+
+- 修改 `writeRecordDirectly`、`writeLog` 與 `flushLogs`，讓 TestUI 與測試端點發生的所有真實問答與系統執行日誌全量寫入 Google Sheet 的 `所有紀錄` 與 `LOG` 頁。
+
 ## 2026-08-18 (v29.6.200 / 通識推理與選單推薦條件相容性優化)
 
 - `buildFastAnswerEnvelope_` 將手冊與網搜建議狀態的降級判定綁定至 `evidenceRequired`，確保無須強制證據的通識推理題在包含建議選單時不會被 Answer Envelope 誤降為 `unsupported`。

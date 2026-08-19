@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.200"; // 2026-08-18 通識推理與選單推薦條件相容性優化
+const GAS_VERSION = "v29.6.201"; // 2026-08-19 測試模式全量寫入 Sheet LOG 與所有紀錄頁
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -14763,22 +14763,21 @@ function enforceReplyAuditTrail_(txt) {
 }
 
 function writeRecordDirectly(u, t, c, r, f) {
-  // 🧪 TEST MODE: 不寫入「所有紀錄」Sheet (清除測試介面時請移除此判斷)
-  if (IS_TEST_MODE) {
-    writeLog("[TEST MODE] 跳過寫入所有紀錄 Sheet");
-    return;
-  }
-
   try {
-    ss.getSheetByName(SHEET_NAMES.RECORDS).appendRow([
-      new Date(),
-      c,
-      u,
-      formatForLineMobile(t),
-      r,
-      f,
-    ]);
-    SpreadsheetApp.flush();
+    if (ss) {
+      const recordSheet = ss.getSheetByName(SHEET_NAMES.RECORDS);
+      if (recordSheet) {
+        recordSheet.appendRow([
+          new Date(),
+          c,
+          u,
+          formatForLineMobile(t),
+          r,
+          f || (typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE ? "TestUI" : ""),
+        ]);
+        SpreadsheetApp.flush();
+      }
+    }
   } catch (e) {
     console.error("Record Error: " + e.message);
   }
@@ -21949,29 +21948,18 @@ function writeLog(a, b, c) {
   );
   var msgForLog = `[${type}] ${content}`;
 
-  // 🧪 TEST MODE: 預設只在頁面顯示，不寫 Sheet；但 UserRecord/Error 允許寫入
   if (typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE) {
     if (typeof TEST_LOGS !== "undefined") {
       TEST_LOGS.push(`[${timestamp}] ${msgForLog}`);
     }
-    console.log(msgForLog);
-
-    if (type !== "UserRecord" && type !== "Error") {
-      return; // 攔截一般 Log，保持 Sheet 乾淨
-    }
-
-    // 標記測試模式寫入
-    content = `[測試模式] ${content}`;
-    msgForLog = `[${type}] ${content}`;
   }
 
-  // v27.8.5 Performance: 改為寫入緩衝區，不直接寫 Sheet
-  // 解決 writeLog 阻塞導致回應變慢的問題
+  // 寫入緩衝區 (全模式包含 TestUI 均記錄)
   PENDING_LOGS.push([new Date(), msgForLog.replace(/[\r\n]+/g, " ")]);
   console.log(msgForLog);
 
-  // 安全機制：緩衝區過大時強制寫入 (避免 timeout 丟失太多)
-  if (PENDING_LOGS.length >= 50) {
+  // 安全機制：緩衝區大於等於 25 筆時強制寫入
+  if (PENDING_LOGS.length >= 25) {
     flushLogs();
   }
 }
@@ -21979,34 +21967,28 @@ function writeLog(a, b, c) {
 function flushLogs() {
   if (PENDING_LOGS.length === 0) return;
 
-  // 🧪 TEST MODE: 不寫入 Sheet
-  if (typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE) {
-    PENDING_LOGS = [];
-    return;
-  }
-
   try {
     if (ss) {
       const logSheet = ss.getSheetByName(SHEET_NAMES.LOG);
       if (logSheet) {
-        // 批量寫入 (Batch Write) - 效能關鍵點
+        // 批量寫入 (Batch Write)
         logSheet
           .getRange(logSheet.getLastRow() + 1, 1, PENDING_LOGS.length, 2)
           .setValues(PENDING_LOGS);
         SpreadsheetApp.flush();
 
-        // 自動清理：保留最新 500 筆
+        // 自動清理：保留最新 1000 筆
         const lastRow = logSheet.getLastRow();
-        if (lastRow > 600) {
-          const deleteCount = lastRow - 500;
-          logSheet.deleteRows(1, deleteCount);
+        if (lastRow > 1200) {
+          const deleteCount = lastRow - 1000;
+          logSheet.deleteRows(2, deleteCount);
         }
       }
     }
   } catch (e) {
-    console.error("Flush Logs Error: " + e.message);
+    console.error("Flush Log Error: " + e.message);
   } finally {
-    PENDING_LOGS = []; // 清空緩衝區
+    PENDING_LOGS = [];
   }
 }
 
@@ -23832,8 +23814,10 @@ function doGet(e) {
     };
     try {
       handleMessage(fakeEvent);
+      flushLogs();
     } catch (err) {
       TEST_LOGS.push(`[Fatal] ${err.message}`);
+      flushLogs();
     }
     // 抓正式 Reply；只有沒有正式出口紀錄時，才退回中間稿。
     let reply = "";
@@ -23991,6 +23975,7 @@ function testMessage(msg, userId, testUiAccessToken) {
   try {
     if (typeof handleMessage === "function") {
       handleMessage(fakeEvent);
+      flushLogs();
     } else {
       throw new Error("找不到 handleMessage 主函式");
     }
@@ -23998,6 +23983,7 @@ function testMessage(msg, userId, testUiAccessToken) {
     var errStr = e.toString();
     if (errStr.indexOf("ContentService") === -1) {
       TEST_LOGS.push(`[Fatal] 系統崩潰: ${errStr}`);
+      flushLogs();
     }
   }
 
