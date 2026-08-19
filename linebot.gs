@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.203"; // 2026-08-19 徹底去除客服腔與句尾語助詞驚嘆號
+const GAS_VERSION = "v29.6.204"; // 2026-08-19 消除無情句號並引入適配貼圖機制
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2466,25 +2466,58 @@ function buildFastAnswerEnvelope_(options) {
   });
 }
 
+const LINE_STICKERS = {
+  GREETING: { packageId: "446", stickerId: "1988", label: "熊大揮手" },
+  THANKS: { packageId: "446", stickerId: "1990", label: "熊大鞠躬" },
+  THUMBS_UP: { packageId: "446", stickerId: "1989", label: "比讚OK" },
+  HAPPY: { packageId: "446", stickerId: "1991", label: "拍手開心" },
+  THINKING: { packageId: "446", stickerId: "1993", label: "思考" },
+  SEARCHING: { packageId: "446", stickerId: "2003", label: "查手冊" },
+  CHEER: { packageId: "11537", stickerId: "52002747", label: "加油" },
+  SALUTE: { packageId: "789", stickerId: "10877", label: "敬禮" },
+};
+
+function detectOccasionalSticker(userMsg, replyText) {
+  const q = String(userMsg || "").trim();
+  const r = String(replyText || "").trim();
+
+  // 1. 問候情境
+  if (/^(?:嗨|哈囉|你好|您好|早安|午安|晚安|HI|HELLO|HEY)[！!。~\s]*$/i.test(q)) {
+    return LINE_STICKERS.GREETING;
+  }
+
+  // 2. 感謝 / 肯定情境
+  if (/(?:謝謝|感謝|多謝|感恩|太棒了|讚|辛苦了|OK|好的|了解)[！!。~\s]*$/i.test(q)) {
+    return LINE_STICKERS.THANKS;
+  }
+
+  // 3. 道別情境
+  if (/(?:掰掰|再見|掰|BYE|GOODBYE)[！!。~\s]*$/i.test(q)) {
+    return LINE_STICKERS.GREETING;
+  }
+
+  return null;
+}
+
 function buildEvidenceHandoffReply_(envelope) {
   const state = normalizeAnswerEnvelope_(envelope || {});
   const target = state.model ? `「${state.model}」` : "這款螢幕";
   const hasManual = state.allowedActions.includes("manual");
   const hasWeb = state.allowedActions.includes("web");
   const lines = [
-    `${target}的詳細設定與操作，不同年份或版本會有些許差異。`,
+    `${target}的詳細設定與操作，不同版本會有些許差異`,
   ];
   if (hasManual && hasWeb) {
     lines.push(
-      "你可以點選下方的「📖 查官方手冊」或「🌐 再查網路」，我直接為你核對步驟。",
+      "點選下方「📖 查官方手冊」或「🌐 再查網路」，我直接幫你核對步驟",
     );
   } else if (hasManual) {
     lines.push(
-      "你可以點選下方的「📖 查官方手冊」，我直接為你查詢手冊說明。",
+      "點選下方「📖 查官方手冊」，我直接幫你查手冊說明",
     );
   } else {
     lines.push(
-      "你可以點選下方的「🌐 再查網路」，我直接為你搜尋相關實務做法。",
+      "點選下方「🌐 再查網路」，我直接幫你搜尋相關做法",
     );
   }
   return lines.join("\n");
@@ -2970,7 +3003,8 @@ function isPinRecoveryOnlyAnswer(text) {
 
 function buildNeedModelForOperationReply() {
   return [
-    "不同型號的按鍵配置與選單位置會有些許差異。請提供螢幕完整型號（例如：S32FM703UC 或 S27DG502），我直接為你查詢對應的操作步驟。",
+    "不同型號的按鍵和選單位置會不太一樣，請給我螢幕完整型號（例如：S32FM703UC 或 S27DG502）",
+    "我直接幫你查對應步驟 🔍",
   ].join("\n");
 }
 
@@ -4157,7 +4191,7 @@ function hasPdfBeenConsultedForUser_(cache, userId, history) {
 
 function buildNeedApplianceModelForOperationReply() {
   return [
-    "這是三星家電的相關問題。如果要查詢家電功能或操作方式，請提供家電完整型號（例如 WA、WD、VR 開頭的型號）。",
+    "這是三星家電的相關問題，如果要查詢家電功能或操作方式，請提供家電完整型號（例如 WA、WD、VR 開頭的型號）",
   ].join("\n");
 }
 
@@ -4199,7 +4233,8 @@ function isOutOfProjectScopeQuery(text) {
 
 function buildOutOfProjectScopeReply(text) {
   return [
-    "我主要協助三星電腦螢幕、Smart Monitor，以及外接電腦、手機、遊戲機的連線與設定問題。如果有螢幕相關疑問，歡迎隨時提出。",
+    "我主要協助三星電腦螢幕、Smart Monitor，以及外接電腦、手機或遊戲機的連線與設定問題",
+    "如果有螢幕相關疑問，隨時提出 💡",
   ].join("\n");
 }
 
@@ -7991,7 +8026,7 @@ function getUnknownFullModelTokens(text) {
 function buildUnknownFullModelReply(models) {
   const list = [...new Set(models || [])].join("、");
   return [
-    `目前找不到「${list}」這個型號。請確認螢幕背貼或外盒上的完整型號是否正確。`,
+    `目前找不到「${list}」這個型號，可以幫忙看一下螢幕背貼或外盒上的完整型號有沒有打錯 👀`,
   ].join("\n");
 }
 
@@ -8218,11 +8253,11 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
   };
 
   const leadText = [
-    `「${aliasToken}」系列包含多款不同年份或尺寸的型號。`,
+    `「${aliasToken}」系列有好幾款不同年份或尺寸`,
     "",
     mode === "pdf"
-      ? "請點選你使用的完整型號，我會為你查詢官方手冊說明。"
-      : "請點選你使用的完整型號，我會為你提供對應解答。",
+      ? "請點選你使用的完整型號，我幫你查官方手冊 📖"
+      : "請點選你使用的完整型號，我幫你解答 👇",
   ].join("\n");
   const flexMsg = createModelSelectionFlexV3(models, {
     headerText: `🔍 ${aliasToken} 型號確認`,
@@ -12640,8 +12675,9 @@ function constructLeanDynamicPromptV159_(
   }
 
   dynamicPrompt += `\n【共同輸出規則】
-使用台灣繁體中文與「你」，像懂電腦硬體的專業朋友：平實、乾脆、講重點，句子正常以句點或分行結尾。
-嚴禁每句結尾都加「喔！」、「喔～」、「啦！」或驚嘆號「！」，嚴禁假親切的制式客服腔（如「好的喔」、「為您確認喔」、「沒問題喔」），避免客服套話、內部術語、成本或系統流程。
+使用台灣繁體中文與「你」，像懂電腦硬體的專業朋友：平實、乾脆、講重點，像在 LINE 聊天一樣自然換行斷句。
+不要在每句話、每個條目結尾都硬塞死板生硬的無情句號「。」。可適當搭配 1-2 個自然表情符號（如 💡、🔍、👍、👀、✨、📺），維持對話溫度。
+嚴禁假親切客服腔（好的喔、為您確認喔、請稍後喔），避免客服套話、內部術語、成本或系統流程。
 只用本輪提供且可對應目前型號的證據；資料沒寫只能說「目前資料未記載」，不能推成「沒有／不支援」。不要跨型號套規格，不評論或貶低競品，不自行標示 QA／RULE／手冊／網路來源。`;
   dynamicPrompt += buildCrossDeviceMonitorPromptRule(query);
   return dynamicPrompt;
@@ -17626,7 +17662,7 @@ function handleMessage(event) {
           forcedModelSelectionTrigger = true;
           forcedSopNeedsModelSelection = hasExplicitTrigger || manualVerificationIntent;
           suggestedModels = aliasOnlySelectionModels;
-          finalText = `「${aliasToken}」系列包含多款不同年份或尺寸的型號，請點選你使用的完整型號。`;
+          finalText = `「${aliasToken}」系列有好幾款不同年份或尺寸，請點選你使用的完整型號 👇`;
           replyText = finalText;
           cache.remove(`${userId}:direct_search_models`);
           writeLog(
@@ -19152,6 +19188,13 @@ function handleMessage(event) {
           activeAnswerEnvelope.model =
             resolvedRecentModel || activeAnswerEnvelope.model || "";
           writeAnswerEnvelope_(contextId, activeAnswerEnvelope);
+        }
+
+        if (!responseOptions.sticker) {
+          const occasionalSticker = detectOccasionalSticker(msg, replyText);
+          if (occasionalSticker) {
+            responseOptions.sticker = occasionalSticker;
+          }
         }
 
         replyMessage(replyToken, replyText, responseOptions);
@@ -23050,15 +23093,23 @@ function replyMessage(tk, txt, options = {}) {
             if (t && typeof t === "object" && t.type === "text") {
               return String(t.text || "");
             }
+            if (t && typeof t === "object" && t.type === "sticker") {
+              return `[貼圖: ${t.packageId}/${t.stickerId}]`;
+            }
             if (t && typeof t === "object")
               return t.altText || "[Flex Message]";
             return String(t || "");
           })
           .join("\n\n");
+      } else if (txt && typeof txt === "object" && txt.type === "sticker") {
+        preview = `[貼圖: ${txt.packageId}/${txt.stickerId}]`;
       } else if (txt && typeof txt === "object" && txt.type) {
         preview = txt.altText || "[Flex Message]";
       } else {
         preview = txt === null || txt === undefined ? "" : txt.toString();
+      }
+      if (options && options.sticker && options.sticker.packageId) {
+        preview += `\n\n[貼圖: ${options.sticker.packageId}/${options.sticker.stickerId}]`;
       }
 
       if (preview) {
@@ -23101,7 +23152,7 @@ function replyMessage(tk, txt, options = {}) {
       // 限制最多 5 個訊息 (LINE 回覆限制)
       messages = txt.slice(0, 5).map((t) => {
         if (typeof t === "object" && t.type) {
-          return t; // 已經是 Flex 或其他格式
+          return t; // 已經是 Flex 或 Sticker 或其他格式
         }
         return {
           type: "text",
@@ -23113,6 +23164,17 @@ function replyMessage(tk, txt, options = {}) {
         messages = [txt];
       } else {
         messages = [{ type: "text", text: txt.toString().substring(0, 4000) }];
+      }
+    }
+
+    // 支援附加 LINE 官方貼圖 (例如問候、感謝或道別)
+    if (options && options.sticker && options.sticker.packageId && options.sticker.stickerId) {
+      if (messages.length < 5) {
+        messages.push({
+          type: "sticker",
+          packageId: String(options.sticker.packageId),
+          stickerId: String(options.sticker.stickerId),
+        });
       }
     }
 
