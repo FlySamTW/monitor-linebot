@@ -1,6 +1,8 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.212 / 完善歷代 Smart Monitor M5 AirPlay 確鑿問答區隔)
+## 2026-08-20 (v29.6.213 / 支援 Smart Monitor 直式手機投影確鑿判定)
+
+- 在 `buildDeterministicExactRuleReply_`、`isLikelyLocalSpecRuleQuestion_` 與 `QA.csv` 中全面納入 Smart Monitor（M5/M7/M8/M9 系列）直式手機投影確鑿判定，秒回直式比例顯示與橫豎旋轉邏輯，杜絕等待手冊按鈕。
 
 - 在 `buildDeterministicExactRuleReply_` 中將 2024 款 M50D (`S27DM502EC`、`DM5`) 及舊款 M50C/B/A 明確納入 Apple AirPlay 2 支援機型名單，與 2026 款 M50F (`FM5`) 無原生 AirPlay 2 進行精確區隔。
 

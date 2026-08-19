@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.212"; // 2026-08-20 完善歷代 Smart Monitor M5 (DM5/CM5/BM5/AM5 vs FM5) AirPlay 確鑿問答區隔
+const GAS_VERSION = "v29.6.213"; // 2026-08-20 支援 Smart Monitor 直式手機投影確鑿判定，杜絕等待手冊按鈕阻礙
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -6345,7 +6345,7 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|安裝)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIRPLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|安裝)/i.test(
     text,
   );
 }
@@ -6368,6 +6368,16 @@ function buildDeterministicExactRuleReply_(query, model) {
         "[來源:官方規格庫]",
       ].join("\n");
     }
+  }
+
+  if (/(?:直式|直向|直立|垂直)/i.test(text) && /(?:投影|投屏|鏡像|鏡射|畫面|顯示)/i.test(text)) {
+    return [
+      `${normalizedModel} 支援直式手機投影顯示：`,
+      "1. 當手機進行無線投影時，手機直立拿著，螢幕即會以直式比例顯示（畫面兩側會保留黑邊以維持正確比例）。",
+      "2. 當手機旋轉為橫向時，螢幕畫面會自動隨之切換為橫向寬螢幕滿版。",
+      "3. 若螢幕配備旋轉支架（Pivot）或外接旋轉壁掛架將螢幕轉為垂直，觀看直式內容會更加清楚滿版。",
+      "[來源:官方規格庫]",
+    ].join("\n");
   }
 
   if (/(?:蘋果|IPHONE|IPAD|AIRPLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
