@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.213"; // 2026-08-20 支援 Smart Monitor 直式手機投影確鑿判定，杜絕等待手冊按鈕阻礙
+const GAS_VERSION = "v29.6.214"; // 2026-08-20 修正型號選單 Flex 卡片底部文案為「點選型號後立即為你解答」
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -25297,7 +25297,7 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
           type: "text",
           text: (intentConfig && intentConfig.footerText)
             ? intentConfig.footerText
-            : "點選型號後會載入手冊（約30秒）",
+            : "點選型號後立即為你解答",
           size: "xxs",
           color: "#888888",
           align: "center",

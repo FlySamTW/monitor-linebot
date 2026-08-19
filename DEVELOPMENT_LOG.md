@@ -1,6 +1,8 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.213 / 支援 Smart Monitor 直式手機投影確鑿判定)
+## 2026-08-20 (v29.6.214 / 修正型號選單 Flex 卡片底部文案)
+
+- 將 `createModelSelectionFlexV3` 卡片底部的舊版「點選型號後會載入手冊（約30秒）」全面修正為「點選型號後立即為你解答」，精準對齊 Fast-first / Brain-first 規格秒回架構。
 
 - 在 `buildDeterministicExactRuleReply_`、`isLikelyLocalSpecRuleQuestion_` 與 `QA.csv` 中全面納入 Smart Monitor（M5/M7/M8/M9 系列）直式手機投影確鑿判定，秒回直式比例顯示與橫豎旋轉邏輯，杜絕等待手冊按鈕。
 
