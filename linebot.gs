@@ -6351,47 +6351,12 @@ function isLikelyLocalSpecRuleQuestion_(query) {
 
 function buildDeterministicExactRuleReply_(query, model) {
   const text = String(query || "");
-  if (
-    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|黑屏|閃爍|重置|恢復原廠)/i.test(
-      text,
-    )
-  ) {
-    return "";
-  }
   const normalizedModel = normalizeModelForDisplay(model || "");
   if (!normalizedModel) return "";
   const ruleLine = findExactModelRuleLine_(normalizedModel);
   if (!ruleLine) return "";
-  const fields = ruleLine
-    .split(",")
-    .map((field) => field.trim())
-    .filter(Boolean);
-  const patterns = [];
-  const addPattern = (queryPattern, fieldPattern) => {
-    if (queryPattern.test(text)) patterns.push(fieldPattern);
-  };
-  addPattern(/規格|詳細資料/i, /(?:ODYSSEY|SMART MONITOR|VIEWFINITY|吋|面板|螢幕|解析度|更新頻率|反應時間|亮度|對比|HDR|介面[:：])/i);
-  addPattern(/解析度|4K|5K|6K|UHD|QHD|FHD/i, /解析度|雙模/i);
-  addPattern(/更新率|刷新率|HZ/i, /更新頻率|更新率|刷新率|雙模|\d+\s*HZ/i);
-  addPattern(/面板|IPS|VA|OLED/i, /IPS|VA|OLED/i);
-  addPattern(/反應時間|GTG|MPRT/i, /反應時間|GTG|MPRT/i);
-  addPattern(/亮度|NIT|CD\//i, /亮度|NIT|CD\//i);
-  addPattern(/對比/i, /對比/i);
-  addPattern(/HDR/i, /HDR/i);
-  addPattern(/HDMI/i, /HDMI/i);
-  addPattern(/DISPLAYPORT|\bDP\b/i, /DISPLAYPORT|\bDP\b/i);
-  addPattern(/USB[\s-]*C|TYPE[\s-]*C/i, /USB[\s-]*C|TYPE[\s-]*C/i);
-  addPattern(/喇叭|揚聲器/i, /喇叭|揚聲器/i);
-  addPattern(/藍牙|BLUETOOTH/i, /藍牙|BLUETOOTH/i);
-  addPattern(/WI[\s-]*FI|無線網路/i, /WI[\s-]*FI|無線網路/i);
-  addPattern(/耳機孔|3\.5\s*MM/i, /耳機孔|3\.5\s*MM/i);
-  addPattern(/VESA|壁掛/i, /VESA|壁掛/i);
-  addPattern(/重量/i, /重量|淨重/i);
-  addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
-  addPattern(/HAS|升降|支架/i, /HAS|升降|支架/i);
-  addPattern(/旋轉|轉向|PIVOT/i, /左右旋轉|垂直旋轉|旋轉|PIVOT/i);
 
-  if (/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式)/i.test(text) && /(?:安裝|下載|開啟|怎麼看|如何看)/i.test(text)) {
+  if (/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式)/i.test(text) && /(?:安裝|下載|開啟|怎麼看|如何看|怎麼用|如何用)/i.test(text)) {
     if (/(?:M5|M7|M8|M9|SMART|S27FM50|S32FM50|S32FM8|S32FM9|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S27CM5|S32CM5)/i.test(normalizedModel) || /(?:TIZEN|SMART MONITOR|智慧聯網)/i.test(ruleLine)) {
       return [
         `${normalizedModel}（Smart Monitor 系列）安裝 Netflix 或其他 App 的步驟如下：`,
@@ -6421,6 +6386,42 @@ function buildDeterministicExactRuleReply_(query, model) {
       ].join("\n");
     }
   }
+
+  if (
+    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|黑屏|閃爍|重置|恢復原廠)/i.test(
+      text,
+    )
+  ) {
+    return "";
+  }
+  const fields = ruleLine
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+  const patterns = [];
+  const addPattern = (queryPattern, fieldPattern) => {
+    if (queryPattern.test(text)) patterns.push(fieldPattern);
+  };
+  addPattern(/規格|詳細資料/i, /(?:ODYSSEY|SMART MONITOR|VIEWFINITY|吋|面板|螢幕|解析度|更新頻率|反應時間|亮度|對比|HDR|介面[:：])/i);
+  addPattern(/解析度|4K|5K|6K|UHD|QHD|FHD/i, /解析度|雙模/i);
+  addPattern(/更新率|刷新率|HZ/i, /更新頻率|更新率|刷新率|雙模|\d+\s*HZ/i);
+  addPattern(/面板|IPS|VA|OLED/i, /IPS|VA|OLED/i);
+  addPattern(/反應時間|GTG|MPRT/i, /反應時間|GTG|MPRT/i);
+  addPattern(/亮度|NIT|CD\//i, /亮度|NIT|CD\//i);
+  addPattern(/對比/i, /對比/i);
+  addPattern(/HDR/i, /HDR/i);
+  addPattern(/HDMI/i, /HDMI/i);
+  addPattern(/DISPLAYPORT|\bDP\b/i, /DISPLAYPORT|\bDP\b/i);
+  addPattern(/USB[\s-]*C|TYPE[\s-]*C/i, /USB[\s-]*C|TYPE[\s-]*C/i);
+  addPattern(/喇叭|揚聲器/i, /喇叭|揚聲器/i);
+  addPattern(/藍牙|BLUETOOTH/i, /藍牙|BLUETOOTH/i);
+  addPattern(/WI[\s-]*FI|無線網路/i, /WI[\s-]*FI|無線網路/i);
+  addPattern(/耳機孔|3\.5\s*MM/i, /耳機孔|3\.5\s*MM/i);
+  addPattern(/VESA|壁掛/i, /VESA|壁掛/i);
+  addPattern(/重量/i, /重量|淨重/i);
+  addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
+  addPattern(/HAS|升降|支架/i, /HAS|升降|支架/i);
+  addPattern(/旋轉|轉向|PIVOT/i, /左右旋轉|垂直旋轉|旋轉|PIVOT/i);
 
   if (patterns.length === 0) return "";
 
