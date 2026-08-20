@@ -6802,7 +6802,7 @@ function buildDeterministicExactRuleReply_(query, model) {
       return [
         `${normalizedModel} 這款有 ${match[2]} 個 ${portIntent.label}${versionText} 連接埠。`,
         "",
-        "如果你要接電腦、遊戲機或機上盒，也可以告訴我設備，我再幫你看怎麼接比較順。",
+        "如果你想連接電腦、遊戲機或特定播放設備，隨時告訴我你的裝置，我來幫你規劃最順暢的接線方式喔！💡",
         "[來源:官方規格庫]",
       ].join("\n");
     }
@@ -6811,7 +6811,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   return [
     `${normalizedModel} 我幫你確認到的規格是：${selected.join("；")}。`,
     "",
-    "如果你還想確認實際接法或設定位置，直接接著問就好。",
+    "如果還想確認實際接線方式、或是特定功能的設定路徑，隨時跟我說，我很樂意繼續為你說明喔！😊",
     "[來源:官方規格庫]",
   ].join("\n");
 }
@@ -13106,8 +13106,10 @@ function constructLeanDynamicPromptV159_(
   }
 
   dynamicPrompt += `\n【共同輸出規則】
-使用台灣繁體中文與「你」，像懂電腦硬體的專業朋友：平實、乾脆、講重點，像在 LINE 聊天一樣自然換行斷句。
-不要在每句話、每個條目結尾都硬塞死板生硬的無情句號「。」。可適當搭配 1-2 個自然表情符號（如 💡、🔍、👍、👀、✨、📺），維持對話溫度。
+使用台灣繁體中文與「你」，像懂電腦硬體的熱心朋友：平實、乾脆、講重點，像在 LINE 聊天一樣自然換行斷句。
+態度熱情、親切、尊重、體貼，有溫度的朋友口吻。
+不要在每句話、每個條目結尾都硬塞死板生硬的無情句號「。」。可適當搭配 1-2 個自然表情符號（如 💡、🔍、👍、👀、✨、📺、😊），維持對話溫度。
+嚴禁冷冰冰的指令式或打發人的語尾（例如嚴禁使用「直接接著問就好」、「再傳一次就好」等生硬說法，若需要引導請使用「隨時告訴我喔，我很樂意幫你確認！」、「如果還有想了解的細節隨時問我喔！」等熱情親切表達）。
 嚴禁假親切客服腔（好的喔、為您確認喔、請稍後喔），避免客服套話、內部術語、成本或系統流程。
 只用本輪提供且可對應目前型號的證據；資料沒寫只能說「目前資料未記載」，不能推成「沒有／不支援」。不要跨型號套規格，不評論或貶低競品，不自行標示 QA／RULE／手冊／網路來源。`;
   dynamicPrompt += buildCrossDeviceMonitorPromptRule(query);
@@ -17048,7 +17050,7 @@ function handleMessage(event) {
       if (!previousQuestionForElaboration) {
         replyMessage(
           replyToken,
-          "我這邊沒有上一題可以接著補充，你把問題再傳一次就好。",
+          "上一題的對話紀錄好像暫時斷開了，可以麻煩你再傳一次想了解的問題嗎？我馬上幫你確認！✨",
         );
         return;
       }
@@ -17126,7 +17128,7 @@ function handleMessage(event) {
       }
       if (!reserveElaborationOnce_(cache, userId, replyAnchor)) {
         const alreadyExpandedText =
-          "這題我已經補充過一次了。你還想確認哪個部分，直接告訴我就好。";
+          "這部分如果還有哪個細節想深入了解，隨時跟我說，我很樂意為你一步一步解說喔！😊";
         replyMessage(replyToken, alreadyExpandedText);
         writeLog(
           "[Quick Reply v29.6.158] 一次性再詳細說明已使用；零 LLM、零額度",
