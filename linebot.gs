@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.220"; // 2026-08-21 實裝專屬特徵反查推翻舊型號、相容性守衛與 Odyssey 3D 確鑿秒回
-const BUILD_TIMESTAMP = "2026-08-16 21:22";
+const GAS_VERSION = "v29.6.230"; // 2026-08-21 多輪追問狀態機、雙型號規格比較與故障排除秒回重構
+const BUILD_TIMESTAMP = "2026-08-16 21:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -6418,38 +6418,173 @@ function buildAdvancedSourceQuickReplies_(
 function isLikelyLocalSpecRuleQuestion_(query) {
   const text = String(query || "");
   if (
-    /(故障|異常|無法|不能用|沒反應|黑屏|閃爍|重置|恢復原廠|設定路徑|選單|怎麼操作|如何設定|更新韌體|驅動程式)/i.test(
-      text,
-    ) &&
-    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(text)
+    /(故障|異常|無法|不能用|沒反應|更新韌體|驅動程式)/i.test(text) &&
+    !/(?:NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB|閃爍|黑屏|無畫面|沒畫面|無訊號|護眼|低藍光|重設|恢復原廠)/i.test(text)
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|差在哪|哪一台|比一比|NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB|閃爍|黑屏|無畫面|沒畫面|無訊號|護眼|低藍光|EYE SAVER|重設|恢復原廠|出廠設定|重置|防烙印|SAFEGUARD)/i.test(
     text,
   );
 }
 
+function buildDeterministicComparisonReply_(query) {
+  const text = String(query || "");
+  const models = extractFullModelLikeTokens(text);
+  if (models.length < 2) return "";
+  const m1 = normalizeModelForDisplay(models[0]);
+  const m2 = normalizeModelForDisplay(models[1]);
+  if (!m1 || !m2 || m1 === m2) return "";
+  const line1 = findExactModelRuleLine_(m1);
+  const line2 = findExactModelRuleLine_(m2);
+  if (!line1 || !line2) return "";
+
+  const diffs = [];
+  // 解析度
+  const res1 = (line1.match(/(?:4K\s*UHD|5K|QHD|FHD|\d{3,4}x\d{3,4})/i) || [""])[0];
+  const res2 = (line2.match(/(?:4K\s*UHD|5K|QHD|FHD|\d{3,4}x\d{3,4})/i) || [""])[0];
+  if (res1 && res2 && res1 !== res2) {
+    diffs.push(`• 解析度：${m1} 為 ${res1}；${m2} 為 ${res2}`);
+  }
+
+  // 亮度
+  const bri1 = (line1.match(/\d{3}\/?\d{0,3}\s*cd㎡/i) || [""])[0];
+  const bri2 = (line2.match(/\d{3}\/?\d{0,3}\s*cd㎡/i) || [""])[0];
+  if (bri1 && bri2 && bri1 !== bri2) {
+    diffs.push(`• 亮度：${m1}（${bri1}）vs ${m2}（${bri2}）`);
+  }
+
+  // 支架調整
+  const has1 = /(?:HAS|升降|旋轉|直立)/i.test(line1);
+  const has2 = /(?:HAS|升降|旋轉|直立)/i.test(line2);
+  if (has1 !== has2) {
+    diffs.push(`• 支架調整：${has1 ? m1 : m2} 具備 HAS 升降與旋轉支架（支援直立旋轉）；${!has1 ? m1 : m2} 為固定底座僅支援前後傾斜`);
+  }
+
+  // 鏡頭
+  const cam1 = /(?:SlimFit|攝影機|鏡頭)/i.test(line1);
+  const cam2 = /(?:SlimFit|攝影機|鏡頭)/i.test(line2);
+  if (cam1 !== cam2) {
+    diffs.push(`• 視訊鏡頭：${cam1 ? m1 : m2} 隨附 SlimFit 磁吸式攝影機；${!cam1 ? m1 : m2} 無內建鏡頭`);
+  }
+
+  // 陀螺儀
+  const gyro1 = /(?:陀螺儀|自動旋轉)/i.test(line1) || /(?:M8|M9|S32BM8|S32CM8|S32DM8|S32FM8|S32FM9)/i.test(m1);
+  const gyro2 = /(?:陀螺儀|自動旋轉)/i.test(line2) || /(?:M8|M9|S32BM8|S32CM8|S32DM8|S32FM8|S32FM9)/i.test(m2);
+  if (gyro1 !== gyro2) {
+    diffs.push(`• 陀螺儀：${gyro1 ? m1 : m2} 內建陀螺儀支援畫面自動旋轉；${!gyro1 ? m1 : m2} 無陀螺儀`);
+  }
+
+  // AirPlay
+  const ap1 = (/(?:AirPlay|M7|M8|M9|DM50|CM50|BM50)/i.test(line1) || /(?:M7|M8|M9|DM50|CM50|BM50)/i.test(m1)) && !/(?:FM50|M50F)/i.test(m1);
+  const ap2 = (/(?:AirPlay|M7|M8|M9|DM50|CM50|BM50)/i.test(line2) || /(?:M7|M8|M9|DM50|CM50|BM50)/i.test(m2)) && !/(?:FM50|M50F)/i.test(m2);
+  if (ap1 !== ap2) {
+    diffs.push(`• Apple AirPlay：${ap1 ? m1 : m2} 支援 AirPlay 2；${!ap1 ? m1 : m2} 無原生 AirPlay 2`);
+  }
+
+  // Type-C
+  const tc1 = /(?:USB-C|Type-C)/i.test(line1);
+  const tc2 = /(?:USB-C|Type-C)/i.test(line2);
+  if (tc1 !== tc2) {
+    diffs.push(`• Type-C 連接：${tc1 ? m1 : m2} 配備 Type-C 支援視訊與充電；${!tc1 ? m1 : m2} 無 Type-C 連接埠`);
+  }
+
+  if (diffs.length === 0) {
+    diffs.push(`• 系列與定位：${m1} 與 ${m2} 在規格上有不同年份與尺寸配置。`);
+  }
+
+  return [
+    `${m1} 與 ${m2} 的規格差異如下：`,
+    ...diffs,
+    "[來源:官方規格庫]"
+  ].join("\n");
+}
+
 function buildDeterministicExactRuleReply_(query, model) {
   const text = String(query || "");
+
+  // 優先處理雙型號比較
+  if (typeof buildDeterministicComparisonReply_ === "function") {
+    const comparisonReply = buildDeterministicComparisonReply_(text);
+    if (comparisonReply) return comparisonReply;
+  }
+
   const normalizedModel = normalizeModelForDisplay(model || "");
   if (!normalizedModel) return "";
   const ruleLine = findExactModelRuleLine_(normalizedModel);
   if (!ruleLine) return "";
 
-  if (/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式)/i.test(text) && /(?:安裝|下載|開啟|怎麼看|如何看|怎麼用|如何用)/i.test(text)) {
+  // 1. 動態 App 安裝（支援 Netflix, Disney+, YouTube, Spotify 等）
+  if (/(?:NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|愛奇藝|LINE\s*TV)/i.test(text) && /(?:安裝|下載|開啟|怎麼看|如何看|怎麼用|如何用|支援|播)/i.test(text)) {
+    let appName = "Netflix";
+    if (/DISNEY/i.test(text)) appName = "Disney+";
+    else if (/YOUTUBE/i.test(text)) appName = "YouTube";
+    else if (/SPOTIFY/i.test(text)) appName = "Spotify";
+    else if (/愛奇藝/i.test(text)) appName = "愛奇藝";
+    else if (/LINE\s*TV/i.test(text)) appName = "LINE TV";
+
     if (/(?:M5|M7|M8|M9|SMART|S27FM50|S32FM50|S32FM8|S32FM9|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S27CM5|S32CM5)/i.test(normalizedModel) || /(?:TIZEN|SMART MONITOR|智慧聯網)/i.test(ruleLine)) {
       return [
-        `${normalizedModel}（Smart Monitor 系列）安裝 Netflix 或其他 App 的步驟如下：`,
+        `${normalizedModel}（Smart Monitor 系列）安裝 ${appName} 或其他 App 的步驟如下：`,
         "1. 先確認螢幕已連上 Wi-Fi 網路。",
         "2. 用遙控器按「首頁 (Home)」鍵，進入「應用程式 (Apps)」。",
-        "3. 在搜尋欄輸入 Netflix（或其他想安裝的 App），選取後按「安裝」。",
+        `3. 在搜尋欄輸入「${appName}」，選取後按「安裝」。`,
         "4. 安裝完成後選取「開啟」，依照畫面提示登入帳號即可開始觀看。",
         "[來源:官方規格庫]",
       ].join("\n");
     }
   }
 
+  // 2. 螢幕畫面閃爍、黑屏、無訊號故障排查 SOP
+  if (/(?:閃爍|黑屏|無畫面|沒畫面|黑畫面|無訊號|沒有訊號|螢幕不亮|一直閃)/i.test(text)) {
+    return [
+      `${normalizedModel} 畫面閃爍或黑屏的標準排查步驟如下：`,
+      "1. 檢查線材連接：確認 DisplayPort 1.4 或 HDMI 連接線兩端皆已牢固插緊，無鬆脫或接觸不良（建議暫時拔除轉接器直接連接）。",
+      "2. 檢查更新率與解析度：確認電腦顯示卡輸出解析度設為螢幕推薦最佳值，更新率設定在螢幕原生支援範圍內。",
+      "3. 顯卡驅動與 FreeSync：至顯示卡控制面板更新最新版本驅動程式；若開啟 G-Sync 相容或 FreeSync 後發生閃爍，可嘗試暫時關閉測試。",
+      "4. 恢復原廠設定：透過螢幕後方 JOG 按鈕或遙控器進入 OSD 選單 →「設定」→ 執行「重設 / 恢復出廠設定」。",
+      "[來源:官方規格庫]",
+    ].join("\n");
+  }
+
+  // 3. 護眼模式 / 低藍光設定 SOP
+  if (/(?:護眼模式|低藍光|EYE SAVER|護眼)/i.test(text) && /(?:開啟|設定|怎麼|如何|在哪|開|位置|支援)/i.test(text)) {
+    if (/(?:M5|M7|M8|M9|SMART|S27FM50|S32FM50|S32FM8|S32FM9|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S27CM5|S32CM5)/i.test(normalizedModel) || /(?:TIZEN|SMART MONITOR|智慧聯網)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel} 開啟「護眼模式 (Eye Saver Mode)」步驟如下：`,
+        "1. 使用遙控器按「首頁 (Home)」鍵進入「設定」選單。",
+        "2. 進入「所有設定」→ 選取「影像 (Picture)」。",
+        "3. 找到「護眼模式 (Eye Saver Mode)」並將其切換為【開啟】。",
+        "註：護眼模式即為低藍光護眼技術，開啟後會自動過濾藍光並減輕眼睛疲勞。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else {
+      return [
+        `${normalizedModel} 開啟「護眼模式 (Eye Saver Mode)」步驟如下：`,
+        "1. 按下螢幕正下方或後方的 JOG 按鈕呼叫功能選單。",
+        "2. 向上推進入「選單 (Menu)」→ 選取「影像 (Picture)」或「系統 (System)」。",
+        "3. 找到「護眼模式 (Eye Saver Mode)」並選取【開啟】。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
+
+  // 4. OLED 防烙印 Safeguard 專屬功能
+  if (/(?:防烙印|SAFEGUARD|烙印)/i.test(text)) {
+    if (/(?:OLED|G60SD|G80SD|G93SD|G95SD|S32DG8|S27DG6|S49DG9|S34DG8)/i.test(normalizedModel) || /OLED/i.test(ruleLine)) {
+      return [
+        `${normalizedModel}（Odyssey OLED 系列）配備專屬 OLED Safeguard+ 防烙印機制，內建動態冷卻系統 (Dynamic Cooling System) 與熱調節演算法，有效預防面板烙印。`,
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else {
+      return [
+        `${normalizedModel} 採用 LCD/VA/IPS 面板，液晶螢幕本身無 OLED 面板之烙印風險，因此未搭載也不需要 OLED Safeguard+ 防烙印功能。`,
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
+
+  // 5. 手機無線投影（橫式/直式）
   if (/(?:直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影)/i.test(text) && /(?:投影|投屏|鏡像|鏡射|畫面|顯示|播|看)/i.test(text)) {
     if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
       return [
@@ -6476,7 +6611,8 @@ function buildDeterministicExactRuleReply_(query, model) {
     }
   }
 
-  if (/(?:蘋果|IPHONE|IPAD|AIR[\s-]*PLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援)/i.test(text)) {
+  // 6. Apple AirPlay 2 支援
+  if (/(?:蘋果|IPHONE|IPAD|AIR[\s-]*PLAY|APPLE)/i.test(text) && /(?:投影|投屏|鏡像|無線|連接|連線|支援|有)/i.test(text)) {
     if (/(?:M50F|S27FM50|S32FM50|LS27FM50|LS32FM50)/i.test(normalizedModel) || /(?:M50F|S27FM50|S32FM50)/i.test(ruleLine)) {
       return [
         `${normalizedModel}（Smart Monitor M5 M50F 系列）沒有原生支援 Apple AirPlay 2 無線投影。`,
@@ -6484,7 +6620,7 @@ function buildDeterministicExactRuleReply_(query, model) {
         "如果是 iPhone 或 iPad 想要無線投屏，建議選擇 Smart Monitor M7、M8 或 M9 系列；若要在這台投影 iPhone，可以透過 Lightning / USB-C 轉 HDMI 轉接線，或是外接 Apple TV / 支援 AirPlay 的電視盒連接。",
         "[來源:官方規格庫]",
       ].join("\n");
-    } else if (/(?:M7|M8|M9|M70|M80|M90|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S32FM9|S27DM5|S32DM5|S27CM5|S32CM5|S27BM5|S32BM5|S27AM5|S32AM5|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(normalizedModel) || /(?:M7|M8|M9|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(ruleLine)) {
+    } else if (/(?:M7|M8|M9|M70|M80|M90|S32BM8|S32CM8|S32DM8|S27CM7|S32CM7|S32DM7|S32FM9|S27DM5|S32DM5|S27CM5|S32CM5|S27BM5|S32BM5|S27AM5|S32AM5|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(normalizedModel) || /(?:M7|M8|M9|M50D|M50C|M50B|M50A|DM50|CM50|BM50|AM50)/i.test(ruleLine)) {
       return [
         `${normalizedModel} 支援 Apple AirPlay 2 無線投影。`,
         "",
@@ -6494,6 +6630,7 @@ function buildDeterministicExactRuleReply_(query, model) {
     }
   }
 
+  // 7. 3D 裸視專屬
   if (/(?:3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(text)) {
     if (/(?:S27FG90|G90XF|G90XH|ODYSSEY\s*3D)/i.test(normalizedModel) || /(?:S27FG90|G90XF|G90XH|ODYSSEY 3D)/i.test(ruleLine)) {
       return [
@@ -6522,7 +6659,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   }
 
   if (
-    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|黑屏|閃爍|重置|恢復原廠)/i.test(
+    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|重置|恢復原廠)/i.test(
       text,
     )
   ) {
@@ -12862,7 +12999,8 @@ function constructLeanDynamicPromptV159_(
 查證對象：${modelLabel}
 問題：${query}
 
-直接給最可能解決問題的答案，最多 5 點、450 個中文字。非官方做法要清楚提醒「非官方，請斟酌參考」。只採搜尋證據直接支持的內容，不用內建知識補空白；沒有可核對結果就誠實說明，不要假裝搜到。`;
+直接給最可能解決問題的答案，最多 5 點、450 個中文字。非官方做法要清楚提醒「非官方，請斟酌參考」。只採搜尋證據直接支持的內容，不用內建知識補空白；沒有可核對結果就誠實說明，不要假裝搜到。
+【硬性隔離守衛】本機官方規格庫與 QA 優先級高於網路搜尋。嚴禁採納與官方規格衝突的外部農場文（例如 Smart Monitor M5 絕無原生 AirPlay 2，若外部網頁聲稱支援，必須以官方規格為準明確指正）。`;
   } else if (kbFiles.length > 0) {
     dynamicPrompt = `【PDF 模式】
 唯一資料來源是本輪掛載的三星官方手冊 PDF。
@@ -12870,6 +13008,7 @@ function constructLeanDynamicPromptV159_(
 問題：${query}
 
 先直接回答，再列必要步驟或條件。不得引用 QA、RULE、網路或內建知識。規格、操作與故障題都必須提供 PDF 顯示頁碼。
+【故障與操作題嚴格匹配】若問題為故障排除（如閃爍、黑屏、無畫面、無訊號），必須尋找手冊中的「故障排除 (Troubleshooting)」章節；嚴禁將無關之「支架安裝與高度調整」等無關章節當作故障排除回答！若手冊無該問題之排查段落，誠實說明手冊未記載該故障。
 回答結尾固定兩行，兩行都不得省略：
 證據摘錄：不超過 25 字、直接支持答案的該頁文字
 [手冊證據:第N頁|範圍:型號明確]

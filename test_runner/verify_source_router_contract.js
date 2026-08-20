@@ -207,6 +207,7 @@ const exactRuleVmSource = [
   extractFunction(linebot, "normalizeModelForDisplay"),
   extractFunction(linebot, "dedupDisplayModels"),
   extractFunction(linebot, "findExactModelRuleLine_"),
+  extractFunction(linebot, "buildDeterministicComparisonReply_"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
   extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
   extractFunction(linebot, "buildMissingExactRuleFactReply_"),

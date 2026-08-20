@@ -1,10 +1,11 @@
 # 開發對話紀錄
 
-## 2026-08-21 (v29.6.220 / 專屬特徵反查推翻舊型號與相容性守衛)
+## 2026-08-21 (v29.6.230 / 多輪追問狀態機、雙型號比較與故障排除秒回重構)
 
-- 實裝 `EXCLUSIVE_FEATURE_REGISTRY_`，偵測到 `3D`、`Ark Dial`、`OLED Safeguard` 專屬特徵時，自動檢驗鎖定型號相容性，不相容時立即推翻舊型號綁定並切換至對應旗艦款。
-- 在 `buildDeterministicExactRuleReply_` 中實裝 3D 故障排除 6 大 SOP 秒回與非 3D 螢幕相容性守衛。
-- 在無型號操作題 `freshOperationNeedsModel` 中排除專屬特徵詞，不再盲目索取型號或舉例 2D 螢幕。
+- 實裝雙型號規格比較確鑿秒回函式 `buildDeterministicComparisonReply_`，支援解析度、亮度、HAS 支架、視訊鏡頭、陀螺儀、AirPlay 與 Type-C 之 0.01 秒秒回比對。
+- 升級 `isLikelyLocalSpecRuleQuestion_` 與 `buildDeterministicExactRuleReply_`，納入螢幕閃爍/黑屏/無訊號排查 SOP、護眼模式 (Eye Saver Mode) / 低藍光 OSD 設定路徑、OLED Safeguard+ 防烙印、動態串流 App 安裝等。
+- 在 WEB 搜尋 Prompt 中加入本機規格庫硬性隔離守衛，杜絕外部農場文推翻官方規格庫鐵律（如 M5 無原生 AirPlay 2）。
+- 在 PDF 模式 Prompt 中加入故障與操作題嚴格匹配規則，嚴禁在排查故障時誤抓支架安裝或高度調整等無關段落。
 
 - 在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
 - 在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。

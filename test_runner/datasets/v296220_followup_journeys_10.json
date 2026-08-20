@@ -1,0 +1,102 @@
+[
+  {
+    "id": 1,
+    "category": "別稱選型與追問",
+    "description": "測試 M7 短別稱先列完整型號候選，選定 S32DM702UC 後追問 AirPlay，不得把 M50F 無 AirPlay 結論套到 M7。",
+    "dialogue": [
+      { "round": 1, "input": "M7有哪些尺寸" },
+      { "round": 2, "input": "#型號:S32DM702UC" },
+      { "round": 3, "input": "它支援air play嗎" }
+    ]
+  },
+  {
+    "id": 2,
+    "category": "鎖定舊型號後專屬特徵反查",
+    "description": "先鎖定普通 Smart Monitor S32FM501EC，再突發詢問 3D 無法顯示；應推翻舊型號並切到 Odyssey 3D（S27FG900XC），禁止在 M5 上手冊排查 3D。",
+    "dialogue": [
+      { "round": 1, "input": "S32FM501EC 解析度跟更新率是多少" },
+      { "round": 2, "input": "為什麼3D無法顯示" },
+      { "round": 3, "input": "那要怎麼接到電腦才會有3D" }
+    ]
+  },
+  {
+    "id": 3,
+    "category": "非3D螢幕詢問3D相容性",
+    "description": "非 3D 的 Odyssey G5（S27DG502）明確詢問 3D；應直接否定並引導至 Odyssey 3D，禁止是非題進 PDF 或網搜。",
+    "dialogue": [
+      { "round": 1, "input": "S27DG502 有 3D 嗎" },
+      { "round": 2, "input": "那哪一台才有裸視3D" },
+      { "round": 3, "input": "S27FG900XC 要怎麼開3D" }
+    ]
+  },
+  {
+    "id": 4,
+    "category": "OLED防烙印Safeguard跨產品特徵",
+    "description": "先鎖定 VA 面板的 M8 S32DM803UC，再問 OLED Safeguard 防烙印；應判定不相容並切到 Odyssey OLED（S32DG802SC），再回答動態冷卻／熱調節。",
+    "dialogue": [
+      { "round": 1, "input": "S32DM803UC 亮度跟面板是什麼" },
+      { "round": 2, "input": "有 OLED Safeguard 防烙印嗎" },
+      { "round": 3, "input": "動態冷卻系統會自動執行嗎？畫面突然變暗正常嗎" }
+    ]
+  },
+  {
+    "id": 5,
+    "category": "操作題自動翻手冊",
+    "description": "完整型號操作題「開啟護眼模式」應走官方手冊路徑；選定後按 #查手冊 取出低藍光／Eye Saver 步驟，不得用其他系列手冊。",
+    "dialogue": [
+      { "round": 1, "input": "S32FM501EC 怎麼開啟護眼模式" },
+      { "round": 2, "input": "#查手冊" },
+      { "round": 3, "input": "低藍光開了畫面會變黃嗎" }
+    ]
+  },
+  {
+    "id": 6,
+    "category": "App安裝本機SOP",
+    "description": "Smart Monitor M8 安裝 Netflix 應命中本機 SOP（首頁 → 應用程式 → 搜尋 → 安裝），零 PDF、不扣手冊次數；追問其他 App 仍沿用同一鎖定型號。",
+    "dialogue": [
+      { "round": 1, "input": "S32DM803UC 怎麼安裝 Netflix" },
+      { "round": 2, "input": "找不到Netflix要去哪裡搜尋" },
+      { "round": 3, "input": "YouTube也是一樣的步驟嗎" }
+    ]
+  },
+  {
+    "id": 7,
+    "category": "直式與橫式手機投影",
+    "description": "M50F（S27FM500EC）手機投影：橫式應 16:9 滿版、直式兩側黑邊；並正確說明無陀螺儀、實體旋轉不會自動直立滿版。",
+    "dialogue": [
+      { "round": 1, "input": "S27FM500EC 可以播橫式手機畫面嗎" },
+      { "round": 2, "input": "那直式會自動轉成直式滿版嗎" },
+      { "round": 3, "input": "這台有陀螺儀嗎" }
+    ]
+  },
+  {
+    "id": 8,
+    "category": "精確規格比較",
+    "description": "比較 S32DM803UC（M8 4K／USB-C 65W／HAS／攝影機）與 S32FM501EC（M5 FHD／無 USB-C 充電／固定底座），必須分型號列差異，不得混用系列規格。",
+    "dialogue": [
+      { "round": 1, "input": "S32DM803UC 與 S32FM501EC 差在哪裡" },
+      { "round": 2, "input": "哪一台比較適合看Netflix追劇" },
+      { "round": 3, "input": "USB-C可以充電筆電嗎" }
+    ]
+  },
+  {
+    "id": 9,
+    "category": "無型號操作題索型",
+    "description": "故障操作題未給型號時應先索取完整型號，不得猜 M7／G5；使用者補上 S32FM501EC 後才針對該機排查閃爍黑屏。",
+    "dialogue": [
+      { "round": 1, "input": "畫面一直閃爍黑屏" },
+      { "round": 2, "input": "#型號:S32FM501EC" },
+      { "round": 3, "input": "HDMI線換過還是一樣" }
+    ]
+  },
+  {
+    "id": 10,
+    "category": "管理員重啟與狀態清理",
+    "description": "/重啟 只清個人對話與鎖定型號，不重傳 PDF；重啟後問 Odyssey 3D 連接方式應走 QA／確鑿秒回（DP／HDMI 2.1 + USB-B、Windows Reality Hub），不得沿用重啟前舊型號。",
+    "dialogue": [
+      { "round": 1, "input": "/重啟" },
+      { "round": 2, "input": "Odyssey 3D 連接方式" },
+      { "round": 3, "input": "Mac可以用嗎" }
+    ]
+  }
+]
