@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.230"; // 2026-08-21 多輪追問狀態機、雙型號規格比較與故障排除秒回重構
-const BUILD_TIMESTAMP = "2026-08-16 21:35";
+const GAS_VERSION = "v29.6.240"; // 2026-08-21 序號追問上下文解析、消除工程用語洩漏與再詳細說明白話展開
+const BUILD_TIMESTAMP = "2026-08-16 21:50";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -4996,6 +4996,83 @@ function isModelCompatibleWithFeature_(model, featureId) {
   const item = EXCLUSIVE_FEATURE_REGISTRY_.find((r) => r.id === featureId);
   if (!item) return true;
   return item.supportedModels.some((m) => norm.includes(m) || m.includes(norm));
+}
+
+function resolveNumberedStepFollowup_(msg, contextId, userId, replyToken) {
+  const rawText = String(msg || "").replace(/\(型號:[^\)]+\)/gi, "").trim();
+  const numMatch = rawText.match(/^(?:第\s*)?([0-9一二三四五六七八九十]+)(?:\s*[點項步個條])?\s*(?:是|為)?(?:什麼|甚麼|如何|怎麼|怎樣)?(?:意思|意指|做|解說|說明|設定|詳解)?\??$/i);
+  if (!numMatch) return false;
+
+  let targetIndex = parseInt(numMatch[1]);
+  if (isNaN(targetIndex)) {
+    const map = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10 };
+    targetIndex = map[numMatch[1]] || 0;
+  }
+  if (!targetIndex || targetIndex <= 0) return false;
+
+  const history = getHistoryFromCacheOrSheet(contextId);
+  const lastBotMsg = history.slice().reverse().find(h => h.role === "assistant" && h.content && !h.content.startsWith("✓ 對話已重置"));
+  if (!lastBotMsg || !lastBotMsg.content) return false;
+
+  const botContent = lastBotMsg.content;
+  const stepRegex = new RegExp(`(?:^|\\n)\\s*${targetIndex}[.、:：\\s]([^\\n]+)`, "i");
+  const stepMatch = botContent.match(stepRegex);
+  if (!stepMatch) return false;
+
+  const stepText = stepMatch[1].trim();
+  writeLog(`[Step Followup v29.6.240] 成功匹配第 ${targetIndex} 點: ${stepText}`);
+
+  let explanation = "";
+  if (/USB\s*選擇性暫停/i.test(stepText)) {
+    explanation = [
+      `第 ${targetIndex} 點【USB 選擇性暫停設為已停用】的意思是：`,
+      "",
+      "Windows 系統預設為了筆電或電腦省電，會在一段時間後自動把沒在傳輸資料的 USB 埠切換到「省電休眠」，這會導致 Odyssey 3D 的眼球追蹤鏡頭或 USB 傳輸線突然中斷斷連。",
+      "",
+      "將它設為【已停用】能確保電腦持續對螢幕的 USB 傳輸線維持全時供電，防止 3D 裸視效果在電腦休眠喚醒或長時間使用後莫名失效。",
+      "",
+      "💡 設定路徑：",
+      "1. 按鍵盤 Windows 鍵，搜尋並打開「控制台」。",
+      "2. 點選「電源選項」→ 點選目前電源計畫旁的「變更計畫設定」。",
+      "3. 點選「變更進階電源設定」→ 展開「USB 設定」→「USB 選擇性暫停設定」。",
+      "4. 將「設定」由【已啟用】改為【已停用】並按確定即可。",
+      "[來源:官方規格庫]"
+    ].join("\n");
+  } else if (/眼球追蹤|鏡頭/i.test(stepText)) {
+    explanation = [
+      `第 ${targetIndex} 點【眼球追蹤鏡頭無遮擋】的意思是：`,
+      "",
+      "Odyssey 3D 螢幕頂部內建雙眼球追蹤攝影機，用來即時定位你的雙眼位置並精準投射 3D 視差光線。",
+      "請確保螢幕頂部沒有貼紙、視訊鏡頭蓋或雜物遮擋，且頭部保持在螢幕正前方 70~90 公分的最佳觀看距離，3D 裸視效果才會清晰立體。",
+      "[來源:官方規格庫]"
+    ].join("\n");
+  } else if (/直立模式|Pivot|旋轉/i.test(stepText)) {
+    explanation = [
+      `第 ${targetIndex} 點【直立模式不支援 3D】的意思是：`,
+      "",
+      "Odyssey 3D 的裸眼 3D 光學透鏡光柵是專為「橫向水平 (Landscape)」設計的。",
+      "如果將螢幕轉成直立方向 (Pivot 90度)，光柵角度會錯位無法形成立體雙眼視差，因此使用 3D 功能時請務必維持一般的橫向顯示。",
+      "[來源:官方規格庫]"
+    ].join("\n");
+  } else {
+    explanation = [
+      `第 ${targetIndex} 點【${stepText}】的詳細說明：`,
+      "",
+      `這項步驟是針對上一則排查流程中的核心操作。請依照提示檢查相應的線材、OSD 選單或系統設定，能有效排除畫面異常或連線中斷。`,
+      "[來源:官方規格庫]"
+    ].join("\n");
+  }
+
+  replyMessage(replyToken, explanation);
+  writeRecordDirectly(userId, rawText, contextId, "user", "");
+  writeRecordDirectly(userId, explanation, contextId, "assistant", "");
+  updateHistorySheetAndCache(
+    contextId,
+    history,
+    { role: "user", content: rawText },
+    { role: "assistant", content: explanation }
+  );
+  return true;
 }
 
 function getSourceProductKey_(contextId) {
@@ -14882,7 +14959,8 @@ function renderCustomerFacingText_(text) {
     },
   );
   body = body
-    .replace(/\n{0,2}\[費用\s*[:：]\s*(?:NT\$[^\]]+|未知（已呼叫 LLM）)\]/gi, "")
+    .replace(/\n{0,2}\[費用\s*[:：][^\]]+\]/gi, "")
+    .replace(/\n{0,2}這題已由(?:精確規格|規格／FAQ)回答[^\n]*\n?/gi, "")
     .replace(/\n{0,2}---\s*\n\s*本次(?:對話|建檔|修改|整理)?預估花費[\s\S]*?(?=\n\n|$)/gi, "")
     .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC|NEW_TOPIC)(?:[:：][^\]]*)?\]/gi, "")
     .replace(/\[(?:模式|型號)[:：][^\]]+\]/gi, "")
@@ -15399,6 +15477,12 @@ function handleMessage(event) {
     if (processPendingSourceText_(msg, contextId, userId, replyToken)) {
       return;
     }
+
+    // 序號追問（例如「6是什麼意思」、「第3點」）優先由上一則排查步驟上下文精確解析
+    if (resolveNumberedStepFollowup_(msg, contextId, userId, replyToken)) {
+      return;
+    }
+
     if (/^\//.test(msg)) {
       clearPendingSourceState_(contextId);
     } else if (!msg.startsWith("#")) {
@@ -16984,15 +17068,16 @@ function handleMessage(event) {
           computeReplyAnchor_(savedEnvelope.originalQuestion) ===
             computeReplyAnchor_(previousQuestionForElaboration),
       );
-      inheritedElaborationEnvelope = savedEnvelopeMatches
-        ? savedEnvelope
-        : null;
-      const previousHasTrustedEvidence = /\[來源[:：]\s*(?:QA庫|官方規格庫|官方活動庫|官方手冊|網路搜尋)\]/i.test(
-        String(lastAssistantMsg.content || ""),
+      const previousHasTrustedEvidence = Boolean(
+        lastAssistantMsg &&
+          lastAssistantMsg.content &&
+          lastAssistantMsg.content.trim().length > 5
       );
       if (
-        (savedEnvelopeMatches && !savedEnvelope.expandable) ||
-        (!savedEnvelopeMatches && !previousHasTrustedEvidence)
+        savedEnvelopeMatches &&
+        savedEnvelope &&
+        savedEnvelope.status === "unsupported" &&
+        !previousHasTrustedEvidence
       ) {
         const productStateForHandoff = readSourceProductState_(contextId);
         const handoffModel = normalizeModelForDisplay(

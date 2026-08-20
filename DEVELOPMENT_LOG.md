@@ -1,11 +1,10 @@
 # 開發對話紀錄
 
-## 2026-08-21 (v29.6.230 / 多輪追問狀態機、雙型號比較與故障排除秒回重構)
+## 2026-08-21 (v29.6.240 / 序號追問上下文解析、消除工程用語洩漏與再詳細說明白話展開)
 
-- 實裝雙型號規格比較確鑿秒回函式 `buildDeterministicComparisonReply_`，支援解析度、亮度、HAS 支架、視訊鏡頭、陀螺儀、AirPlay 與 Type-C 之 0.01 秒秒回比對。
-- 升級 `isLikelyLocalSpecRuleQuestion_` 與 `buildDeterministicExactRuleReply_`，納入螢幕閃爍/黑屏/無訊號排查 SOP、護眼模式 (Eye Saver Mode) / 低藍光 OSD 設定路徑、OLED Safeguard+ 防烙印、動態串流 App 安裝等。
-- 在 WEB 搜尋 Prompt 中加入本機規格庫硬性隔離守衛，杜絕外部農場文推翻官方規格庫鐵律（如 M5 無原生 AirPlay 2）。
-- 在 PDF 模式 Prompt 中加入故障與操作題嚴格匹配規則，嚴禁在排查故障時誤抓支架安裝或高度調整等無關段落。
+- 實裝 `resolveNumberedStepFollowup_` 函式，解析「6是什麼意思」、「第3點」等序號追問，精確匹配上一則排查步驟並輸出白話解說與詳細設定路徑。
+- 升級輸出過濾器 `renderCustomerFacingText_`，地毯式消除 `[費用:...]`、`（合計 N 次生成請求）` 與後端配額提示行。
+- 重構 `#再詳細說明`，消除甩鍋式罐頭卡片，確保帶著前 5 輪對話進行實質白話深入解說。
 
 - 在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
 - 在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。
