@@ -1,8 +1,10 @@
 # 開發對話紀錄
 
-## 2026-08-20 (v29.6.219 / 支援 air play 帶空格正則匹配)
+## 2026-08-21 (v29.6.220 / 專屬特徵反查推翻舊型號與相容性守衛)
 
-- 在 `isLikelyLocalSpecRuleQuestion_`、`buildDeterministicExactRuleReply_` 與 `QA.csv` 中採用 `AIR[\s-]*PLAY`，確保「M5支援air play嗎」完全命中確鑿秒回。
+- 實裝 `EXCLUSIVE_FEATURE_REGISTRY_`，偵測到 `3D`、`Ark Dial`、`OLED Safeguard` 專屬特徵時，自動檢驗鎖定型號相容性，不相容時立即推翻舊型號綁定並切換至對應旗艦款。
+- 在 `buildDeterministicExactRuleReply_` 中實裝 3D 故障排除 6 大 SOP 秒回與非 3D 螢幕相容性守衛。
+- 在無型號操作題 `freshOperationNeedsModel` 中排除專屬特徵詞，不再盲目索取型號或舉例 2D 螢幕。
 
 - 在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
 - 在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。

@@ -1,8 +1,10 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.219)
+# Samsung LINE Bot 完整流程解析 (v29.6.220)
 
-## 2026-08-20 (v29.6.219 / 支援 air play 帶空格正則匹配)
+## 2026-08-21 (v29.6.220 / 專屬特徵反查推翻舊型號與相容性守衛)
 
-1. **支援 air play 帶空格正則匹配**：在 `isLikelyLocalSpecRuleQuestion_`、`buildDeterministicExactRuleReply_` 與 `QA.csv` 中採用 `AIR[\s-]*PLAY`，確保「M5支援air play嗎」完全命中確鑿秒回。
+1. **專屬特徵反查與舊型號推翻 (Exclusive Feature Override)**：在 `EXCLUSIVE_FEATURE_REGISTRY_` 定義 `3D`、`Ark Dial`、`OLED Safeguard` 專屬功能詞。當使用者發問專屬功能時，系統自動檢驗鎖定型號是否相容；若不相容（如在 M5 問 3D），立即自動解除舊型號鎖定並切換至 Odyssey 3D (S27FG900XC)，杜絕跨產品功能幻覺。
+2. **能力相容性守衛與 Odyssey 3D 確鑿秒回**：在 `buildDeterministicExactRuleReply_` 中實裝 3D 故障排除與設定 6 大 SOP 秒回；對非 3D 螢幕明確斷言無 3D 功能並引導至 Odyssey 3D，禁止是非題進入 PDF 或網搜。
+3. **無型號操作題排除專屬特徵詞**：問 3D 操作/故障時不再索取型號或彈出「請提供型號例如 M7 或 G5」，直出 6 大 3D 排查解答。
 
 1. **型號選單後精準找回原始問題**：在 `executeLegacyManualModelSelectionViaSourceRouter_` 中加入從對話歷史回溯原始問題邏輯，確保點選型號後絕對帶上原始問句（如「支援 AirPlay 嗎」），杜絕因問句遺失而盲目總結手冊第一頁規格表。
 2. **手冊查詢入口優先執行本機確鑿規格**：在 `executeAdvancedSourceQuery_` 手冊查詢開頭調用 `tryManualFreeLocalAnswer_`，命中 AirPlay、直式/橫式投影等確鑿規格時立即 0 秒秒回（NT$0.0000），避免進入手冊後因手冊未寫而產生誤判。
@@ -392,7 +394,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.219）
+## ✅ 現行鐵律 SOP（v29.6.220）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責推薦；「查官方手冊」按鍵就是一次授權，按後仍先做免費 QA／RULE 預檢，未命中便直接進 PDF。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

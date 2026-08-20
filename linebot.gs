@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.219"; // 2026-08-20 支援 air play 帶空格正則匹配，確鑿秒回 AirPlay 支援性與外接替代方案
+const GAS_VERSION = "v29.6.220"; // 2026-08-21 實裝專屬特徵反查推翻舊型號、相容性守衛與 Odyssey 3D 確鑿秒回
 const BUILD_TIMESTAMP = "2026-08-16 21:22";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -4943,6 +4943,61 @@ function getSourceRecentKey_(contextId) {
   return `SRC_RECENT_${getSourceContextHash_(contextId)}`;
 }
 
+const EXCLUSIVE_FEATURE_REGISTRY_ = [
+  {
+    id: "3D",
+    regex: /(?:3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i,
+    supportedModels: ["S27FG900XC", "G90XF", "G90XH"],
+    exclusive: true,
+    family: "Odyssey 3D",
+    primaryModel: "S27FG900XC",
+  },
+  {
+    id: "ARK_DIAL",
+    regex: /(?:ARK\s*DIAL|方舟旋鈕|ARK旋鈕)/i,
+    supportedModels: ["S55BG970NC", "G97NC"],
+    exclusive: true,
+    family: "Odyssey Ark",
+    primaryModel: "S55BG970NC",
+  },
+  {
+    id: "OLED_SAFEGUARD",
+    regex: /(?:SAFEGUARD|防烙印|熱調節|動態冷卻系統)/i,
+    supportedModels: [
+      "S32DG802SC",
+      "G80SD",
+      "G60SD",
+      "G90SD",
+      "G95SC",
+      "G93SC",
+      "S27DG602SC",
+      "S49CG954SC",
+    ],
+    exclusive: true,
+    family: "Odyssey OLED",
+    primaryModel: "S32DG802SC",
+  },
+];
+
+function findExclusiveFeatureInQuery_(query) {
+  const text = String(query || "");
+  for (let i = 0; i < EXCLUSIVE_FEATURE_REGISTRY_.length; i++) {
+    const item = EXCLUSIVE_FEATURE_REGISTRY_[i];
+    if (item.regex.test(text)) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function isModelCompatibleWithFeature_(model, featureId) {
+  const norm = normalizeModelForDisplay(model || "");
+  if (!norm) return false;
+  const item = EXCLUSIVE_FEATURE_REGISTRY_.find((r) => r.id === featureId);
+  if (!item) return true;
+  return item.supportedModels.some((m) => norm.includes(m) || m.includes(norm));
+}
+
 function getSourceProductKey_(contextId) {
   return `SRC_PRODUCT_${getSourceContextHash_(contextId)}`;
 }
@@ -6366,11 +6421,11 @@ function isLikelyLocalSpecRuleQuestion_(query) {
     /(故障|異常|無法|不能用|沒反應|黑屏|閃爍|重置|恢復原廠|設定路徑|選單|怎麼操作|如何設定|更新韌體|驅動程式)/i.test(
       text,
     ) &&
-    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY)/i.test(text)
+    !/(?:NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(text)
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播)/i.test(
+  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|比較|差異|差別|NETFLIX|YOUTUBE|DISNEY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(
     text,
   );
 }
@@ -6434,6 +6489,33 @@ function buildDeterministicExactRuleReply_(query, model) {
         `${normalizedModel} 支援 Apple AirPlay 2 無線投影。`,
         "",
         "只要將 iPhone / iPad 與螢幕連接在同一個 Wi-Fi 網路，從 iPhone 控制中心點選「螢幕鏡像輸出」並選擇這台螢幕，即可直接進行無線投影。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    }
+  }
+
+  if (/(?:3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB)/i.test(text)) {
+    if (/(?:S27FG90|G90XF|G90XH|ODYSSEY\s*3D)/i.test(normalizedModel) || /(?:S27FG90|G90XF|G90XH|ODYSSEY 3D)/i.test(ruleLine)) {
+      return [
+        `${normalizedModel}（Odyssey 3D 裸視3D電競螢幕）3D 連線設定與故障排除步驟如下：`,
+        "1. 傳輸線連接：電腦端需透過 DP 1.4 或 HDMI 2.1 加上原廠 USB B-to-A 傳輸線連接，並啟動專用 Odyssey Hub (Reality Hub) 軟體。",
+        "2. 眼球追蹤鏡頭：確認螢幕上方雙眼球追蹤鏡頭無遮擋，坐姿保持正對螢幕中央（最佳距離約 70~90 公分）。",
+        "3. 螢幕方向限制：螢幕旋轉至「直立模式 (Pivot)」時不支援 3D 裸視，請維持橫向水平顯示。",
+        "4. 休眠喚醒失效：電腦休眠喚醒後若 3D 中斷，請將 USB-B 線重新插拔。",
+        "5. 獨立顯卡設定：至 Windows「設定」→「系統」→「顯示器」→「圖形」將 Odyssey Hub 設為「高效能 (NVIDIA/AMD 獨立顯卡)」，並於 NVIDIA 控制面板開啟「RTX 視訊增強」。",
+        "6. USB 電源防中斷：至「控制台」→「電源選項」→「變更進階電源設定」→「USB 設定」→ 將「USB 選擇性暫停」設為【已停用】。",
+        "[來源:官方規格庫]",
+      ].join("\n");
+    } else {
+      return [
+        `${normalizedModel} 為標準 2D 螢幕，硬體上無裸視 3D 顯示功能。`,
+        "",
+        "全三星電腦螢幕中，唯一具備裸視 3D 功能的機種為 Odyssey 3D (G90XF / S27FG900XC)。",
+        "若你使用的是 Odyssey 3D，排查步驟如下：",
+        "1. 電腦端需連接 DP/HDMI 2.1 加上原廠 USB B-to-A 傳輸線，並執行 Odyssey Hub 軟體。",
+        "2. 確保頂部雙眼球追蹤鏡頭未被遮擋且正對螢幕，螢幕不可處於直立 Pivot 旋轉狀態。",
+        "3. 電腦休眠喚醒後若 3D 中斷，請重新插拔 USB-B 線材。",
+        "4. 控制台電源選項中將「USB 選擇性暫停」設為【已停用】。",
         "[來源:官方規格庫]",
       ].join("\n");
     }
@@ -15192,8 +15274,28 @@ function handleMessage(event) {
         rememberedModels.length === 0 &&
         extractShortAliasModelTokens(msg).length === 0
       ) {
+        const exclusiveFeature = findExclusiveFeatureInQuery_(msg);
         const persistentProduct = readSourceProductState_(contextId);
-        if (persistentProduct && persistentProduct.model) {
+        if (exclusiveFeature) {
+          if (
+            persistentProduct &&
+            persistentProduct.model &&
+            !isModelCompatibleWithFeature_(persistentProduct.model, exclusiveFeature.id)
+          ) {
+            writeLog(
+              `[Identity Override v29.6.220] 專屬特徵 ${exclusiveFeature.id} 與舊型號 ${persistentProduct.model} 衝突，解除舊綁定並切換至 ${exclusiveFeature.primaryModel}`,
+            );
+            clearSourceProductState_(contextId);
+            primaryModel = exclusiveFeature.primaryModel;
+          } else if (!persistentProduct || !persistentProduct.model) {
+            primaryModel = exclusiveFeature.primaryModel;
+            writeLog(
+              `[Identity Resolve v29.6.220] 偵測到專屬特徵 ${exclusiveFeature.id}，自動綁定至 ${exclusiveFeature.primaryModel}`,
+            );
+          } else {
+            primaryModel = persistentProduct.model;
+          }
+        } else if (persistentProduct && persistentProduct.model) {
           primaryModel = persistentProduct.model;
           msg = `${msg} (型號: ${persistentProduct.model})`;
           userMessage = msg;
@@ -17125,8 +17227,10 @@ function handleMessage(event) {
 
     // 精準 QA 未命中後，無完整型號的操作／故障／相容性題先補型號。
     // 不把泛用主機設定、線材或其他型號步驟送給 Fast 模型猜，也不浪費一次 LLM。
+    const isExclusiveFeatureQuery = findExclusiveFeatureInQuery_(routingQuestion) !== null;
     const freshOperationNeedsModel =
       !incomingMessageWasElaboration &&
+      !isExclusiveFeatureQuery &&
       isOperationOrTroubleshootQuery(routingQuestion) &&
       extractFullModelLikeTokens(routingQuestion).length === 0 &&
       extractShortAliasModelTokens(routingQuestion).length === 0;
