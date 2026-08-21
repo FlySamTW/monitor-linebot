@@ -1,5 +1,27 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.246 完整手冊優先、候選自癒與檢索升級判準
+
+- 當同型號有快速指南與完整手冊時，所有已授權手冊查詢一律依「完整型號命中 → 涵蓋型號較少 → 檔案較完整」排序；禁止以問題關鍵字或新增單題 regex 才決定選完整手冊。
+- 正式雲端 LOG 已證實 S32FM803 睡眠計時題掛到 41 頁多型號快速指南，而答案實際在 245 頁完整手冊第 157 頁。這類問題修文件選擇與 Evidence，不把每個新題寫成 QA 或 route 特例。
+- 使用者已授權 manual 且 URI 清單缺較聚焦文件時，可由 Drive 自癒補傳排序第一的完整手冊；一般 QA／RULE、未授權訊號與 presence check 禁止因此掃 Drive、上傳或扣次。
+- Files API 是 Google 官方支援的 PDF 長文件提示，不是頁級 RAG；File Search 才會 chunk／embedding／semantic retrieval／citation。目前 File Search 僅支援 Gemini 3.x，且不能與 Google Search／URL Context 同請求，正式 2.5 路徑不可直接替換。
+- 下一階段只做固定代表題 shadow A/B：正確文件 100%、錯來源 0、引用有效答案至少 95%、P95 不惡化超過 20%，並以每個有效答案成本決策。未達門檻維持「Evidence／頁級索引優先＋整本 PDF fallback」。
+
+## v29.6.245 結構化 QA、零成本缺口守門、來源授權與規格邊界
+
+- 精準 QA 必須先於 RULE 回覆完整主張；同句有兩個以上規格面向時，禁止單一 RULE 欄位提前終止。
+- 數值規格正規式必須使用獨立邊界，禁止讓機身尺寸中的 `263.5mm` 冒充 `3.5mm` 耳機孔。
+- 所有未授權自動 PDF 旁路已封閉；免費資料不足時提供 manual＋web，只有手冊 postback 才能送 PDF。
+- capability evidence 與 RULE 抽取使用同一數字邊界；缺口題不得先花 Fast 費用再只回來源按鈕。
+
+- `qa_knowledge.gs` 是唯一 QA knowledge layer。新資料用 `QA2:` JSON 存在 `QA!A:A`；舊 `[標籤] 問題 / A：答案` 僅作讀取相容。新 `/紀錄` 不再寫整段白話格式。
+- `answer` 只保存 `conclusion/facts/steps/cautions/alternatives`，LINE 口吻與排版由 renderer 統一處理。產品特例放 QA2，不得在 `handleMessage`、Prompt 或新的 query regex 補題目。
+- 同步時建立 record shards＋16 桶倒排索引；Fast 每題最多注入 6 筆候選。完整型號不相符即拒絕，短別稱與系列 scope 不相符也不得借答案。
+- 原 `getVerifiedManualChunks_()` 的硬編碼片段已搬到 `QA.csv` 的 `evidence.type=manual_chunk`；執行時以型號＋題意＋排除詞查索引。手冊來源仍顯示頁碼／HTML 位置，命中為零 PDF、零扣次。
+- `[AUTO_SEARCH_PDF]` 只能推薦來源，不能直接執行；使用者按「查官方手冊」才算授權。
+- Gemini Files API 仍是官方對重複使用大型 PDF 的建議；File Search 雖能語意切塊與回傳頁碼引用，但目前只支援 Gemini 3.x、不能同次混用 Google Search。先做代表題 shadow A/B，不可直接替換正式 2.5 路徑。
+
 ## v29.6.193 AnswerEnvelope、完整引用與可逆終點
 
 - 正式回答、來源建議與 Quick Reply 以 `AnswerEnvelope` 為唯一完成狀態：原題、完整型號、claims、實際 evidence refs、supported/partial/unsupported、未解主張與允許動作必須一致。模型來源標籤不是證據。

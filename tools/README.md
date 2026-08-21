@@ -8,6 +8,7 @@
 | `deploy.bat` | 一鍵推送程式碼 + 建立新版本 + 更新既有 Webhook |
 | `release_existing_webhook.ps1` | 發布總控：先跑守門測試，再推送 GAS、更新既有 Webhook、驗證正式版本 |
 | `download_log.bat` | 下載 LOG + 對話紀錄 |
+| `sync_qa2_evidence.ps1` | 以 `id` 將 `QA.csv` 的 QA2 結構化 QA／手冊證據安全 upsert 到正式 QA Sheet；先 `-DryRun`，寫入需 `-ConfirmWrite` 與維護密鑰 |
 | `pdf_keyword_extractor.py` | PDF 關鍵字擷取 |
 | `sheet_sync.py` | Sheet 讀寫工具 |
 | `download_log.py` | LOG 下載核心程式 |

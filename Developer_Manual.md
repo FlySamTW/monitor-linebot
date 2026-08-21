@@ -1,4 +1,79 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.240)
+# Samsung LINE Bot 完整流程解析 (v29.6.246)
+
+## 2026-08-21（v29.6.246 / 完整手冊優先、PDF 候選自癒與檢索升級門檻）
+
+### 這次不是補「睡眠計時器」特例
+
+- 正式雲端 LOG 證實，`S32FM803UC 睡眠計時器要在哪裡設定？` 確實送出 `pdfCalls=1`，但掛到 41 頁、涵蓋 17 個型號的快速指南；Drive 另有 245 頁、只涵蓋 `S32FM702／703／803` 的完整手冊，且第 157 頁明載睡眠計時器。根因是同型號 PDF 排序錯誤，不是手冊沒有答案，也不是先補一條 QA 就能治本。
+- 所有「已由使用者授權」的手冊查詢改採同一文件品質排序：完整型號命中優先，其次涵蓋型號較少，最後才以檔案大小判斷完整度；不得再用 HEVC、USB、睡眠計時等題目關鍵字決定要不要選完整手冊。
+- 若 URI 清單只有快速指南，正式手冊操作會掃描 Drive 的同型號 PDF、只補傳排序第一的較聚焦文件並持久合併索引；六小時保存最佳候選，已有完整手冊時零上傳、零重複供應商動作。一般 QA／RULE 與未授權自動判斷不執行這個 Drive／PDF 動作。
+- `config/manual_lexicon.json` 與 `manual_golden_cases.json` 新增睡眠計時器的跨問法黃金題，只用於驗證頁級檢索；正式答案沒有寫入 runtime QA，也沒有新增題型 route。離線索引目前 12 個情境、60 個自然改寫，Recall@5、改寫 Recall@5、negative pass 皆為 100%。
+- 正式 TestUI 驗收已回讀 Google Sheet `LOG`：正確掛載 `S32FM702,S32FM703,S32FM803.pdf`，過期 URI 自動單檔更新，`pdfCalls=1 / webCalls=0`，第 154、157 頁證據通過；2.5 Flash 本題成本 NT$0.1827。這證明選對文件後現行模型可完成本題，日常不需 `/重啟`。
+
+### Google 官方能力邊界（2026-08-21 查核）
+
+- [Document understanding](https://ai.google.dev/gemini-api/docs/document-processing) 說明 Files API 適合大型或重複使用文件，PDF 上限 50 MB／1,000 頁，檔案保留 48 小時；這條路徑會把文件交給模型理解，並不等於先做頁級語意檢索。
+- [File Search](https://ai.google.dev/gemini-api/docs/file-search) 才會 import、chunk、embedding、semantic retrieval 並提供 citation；目前支援 Gemini 3.x（含 3.5 Flash／Flash-Lite），不含正式仍使用的 2.5，且同一請求不能和 Google Search 或 URL Context 併用。
+- [官方價格](https://ai.google.dev/gemini-api/docs/pricing) 顯示 File Search 建索引 embedding 為 US$0.15／百萬 tokens，儲存與查詢 embedding 免費，實際取回片段仍按所選模型 input tokens 計費。它可能降低每題輸入量，但不能只看索引便宜就推論總成本一定下降。
+- 結論：現行 Files API 是受支援但不具檢索保證的長文件 fallback，不能稱為最佳 RAG。近期正式方案是「正確文件選擇＋既有人工 Evidence／頁級索引＋整本 PDF fallback」；File Search 與自管頁級索引先做 shadow A/B，不直接換正式流量。
+
+### 下一階段影子評估門檻
+
+以至少 20 題、涵蓋快速指南／完整手冊並存、不同型號、選單路徑、規格表、故障排除與自然追問的固定題集，比較現行 Files API、自管頁級索引與 File Search：
+
+1. 正確文件召回率必須 100%，錯型號／錯文件回答為 0。
+2. 有效答案須含可核對頁碼與片段，成功率至少 95%；找不到不得把模型推測冒充手冊事實。
+3. P95 延遲不得比「已選對文件」的現行基準惡化超過 20%。
+4. 以「每個可核對有效答案」計算總成本，不以單次 token 或單次 API 價格決定；成本較高須有明確成功率收益並另行核准。
+5. File Search 若通過，仍維持手冊與 Web 分成兩次 SourceOperation，不能因工具限制把來源混在同一請求。
+
+## 2026-08-21（v29.6.245 / 結構化 QA、零成本缺口守門與來源授權）
+
+- 正式 TestUI 實測發現「繁體中文介面與雙喇叭」被單一喇叭 RULE 提前截斷。現在精準 QA 先答完整；同一句有兩個以上規格面向且沒有精準 QA 時，不讓單一 RULE 欄位終止，改由既有 QA/RULE context 一次整合。
+- 這是通用的多主張完整性守門，不是針對 S27FM501EC 寫死答案；產品事實已轉成 QA2 資料。
+- G8 真人選型抓到 `263.5mm` 被舊正規式誤當 `3.5mm` 耳機孔；已改成獨立數值邊界判斷。這是所有尺寸／端子共用的單位解析修正，不是 G8 型號特例。
+- 真人測試也抓到兩條 v29.6.217 遺留的自動 PDF 旁路。現已統一為：免費 QA／RULE／已核對片段先答；不足時同時提供手冊與網路，只有使用者按手冊才產生 PDF 請求。
+- `getExplicitCapabilityCheck_` 與 RULE 欄位抽取現共用相同的 3.5mm 數字邊界；缺口題可在送 Gemini 前零成本停止，避免花錢只換到另一個 CTA。
+
+### 為什麼重構
+
+- 舊 QA 是「標籤＋自然問句 / A：整段白話」，每次 Fast 問答仍可能把整份 QA 放進 Prompt；資料越多，延遲、token 與錯誤借題機率都一起增加。
+- 已人工核對的 PDF 片段原本以 `queryPatterns`、型號與事實陣列硬寫在 `linebot.gs`。這能救單題，卻會讓每個新問法都變成新的程式分支，長期必然回歸。
+- v29.6.240 另曾讓模型的 `[AUTO_SEARCH_PDF]` 在型號明確時直接執行 PDF；這違反來源授權與成本守門。v29.6.241 恢復為只顯示手冊入口，必須由使用者按下才執行。
+
+### 唯一 QA2 資料契約
+
+- `qa_knowledge.gs` 是 QA 與人工核對手冊片段的唯一知識層。新資料以 `QA2:{...}` 單列 JSON 寫入 Google Sheet `QA!A:A`，仍符合既有 A 欄大字串架構。
+- 必要欄位：`id`、`question`、`scope(models/aliases/families)`、`terms`、`answer`、`evidence`；`answer` 分為 `conclusion/facts/steps/cautions/alternatives`，不保存客服口吻或整段 Prompt。
+- `evidence.type=qa` 代表精選 QA；`evidence.type=manual_chunk` 代表已人工核對的官方手冊頁面。手冊記錄另保存 `sourceFile/pages` 或 HTML `location`。
+- 舊版 `[標籤] 問題 / A：答案` 不需一次性破壞遷移，讀取時會轉成相同 record；新的 `/紀錄`、`handleAutoQA` 與 `writeQA` 一律存 QA2。
+- LINE 回覆由共用 renderer 白話化：先講結論，再列操作步驟、事實與提醒；資料列不需要也不得重複塞聊天口吻。
+
+### 大量資料的檢索方式
+
+1. 同步 QA 時先建立固定大小 record shards，並以詞彙、型號、系列與別稱建立 16 桶倒排索引。
+2. 每題只讀取命中的索引桶與必要 shards，再用完整型號硬隔離、別稱／系列、關鍵詞與題意重疊加權排名。
+3. 精準 QA 可直接零 LLM 回覆；需要 Fast 模型時最多只注入前 6 筆相關 QA，不再隨 QA 總量放大 Prompt。
+4. `G8` 等模糊系列如果 QA scope 不相符，不得借用 Smart Monitor 或其他系列答案；多候選仍交由既有 CLASS_RULES 型號選單。
+5. 人工核對手冊片段也走同一索引；型號與題意同時命中才可零成本回覆，錯型號、故障題與排除詞不得借用。
+
+### 建檔與維運
+
+- `/紀錄` 的管理者預覽仍顯示可讀問題與答案；正式寫入才轉成 QA2，不把 JSON 顯示給一般使用者。
+- `tools/sync_qa2_evidence.ps1 -DryRun` 先列出本機 `QA.csv` 內的 QA2 IDs；發布後以 `-ConfirmWrite` 透過受維護密鑰保護的 `upsert_qa2` 端點依 `id` 新增或更新，不重複堆資料。
+- 新特例的正確處理是：若為穩定產品事實或已核對手冊頁面，新增 QA2 資料與契約案例；只有跨題通用的來源、授權、型號隔離、證據與成本規則才可改路由。
+
+### Gemini PDF / File Search 官方查核與決策
+
+- Google 的 [Document understanding](https://ai.google.dev/gemini-api/docs/document-processing) 仍建議大型或重複使用 PDF 採 Files API；目前專案的「Drive 每日同步 → Files API URI → 單次掛一份完整 PDF」因此仍是官方支援路徑，不是錯誤 API。
+- Google 2026-08-18 更新的 [File Search](https://ai.google.dev/gemini-api/docs/file-search) 會自動切塊、embedding 與語意檢索，並可回傳 PDF `page_number` citation；索引 embedding 為 US$0.15／百萬 tokens、儲存與查詢 embedding 免費，取回內容仍按模型 input token 計費。
+- File Search 目前只支援 Gemini 3.x，且不能在同一請求與 Google Search／URL Context 併用。正式服務仍以 Gemini 2.5 Flash-Lite／Flash 為主，所以本版不直接切換供應路徑。
+- 後續採「同一批代表性手冊題 shadow A/B」決策：比較可核對答案率、頁碼引用正確率、P95 延遲與每個有效答案成本；只有 File Search 明顯勝出且 PDF→Web 兩階段仍能保持來源隔離，才另案升級。不得以單次成功或模型較新直接換正式架構。
+
+### 回歸守門
+
+- `verify_structured_qa_contract.js` 驗證：舊 QA 相容、QA2 寫入、精確型號隔離、G8 不借錯系列、未知型號不借答案、Prompt 最多 6 筆、手冊頁面命中與排除詞。
+- 既有 human/source/cost/AnswerEnvelope 契約仍必須全綠；正式 TestUI 只需重走受影響的 QA、模糊型號、手冊授權與自然追問，不做無關的多解析度版面測試。
 
 ## 2026-08-21 (v29.6.240 / 序號追問上下文解析、消除工程用語洩漏與再詳細說明白話展開)
 
@@ -394,7 +469,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.240）
+## ✅ 現行鐵律 SOP（v29.6.246）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：Fast Mode 不足只負責推薦；「查官方手冊」按鍵就是一次授權，按後仍先做免費 QA／RULE 預檢，未命中便直接進 PDF。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限先降解析度重算。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

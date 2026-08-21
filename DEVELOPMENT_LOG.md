@@ -1,5 +1,30 @@
 # 開發對話紀錄
 
+## 2026-08-21（v29.6.246 / 完整手冊優先、PDF 候選自癒與檢索評估）
+
+- 先讀正式雲端 LOG：睡眠計時器查詢確實 `pdfCalls=1`，但選到 41 頁、17 型號的快速指南；同型號 245 頁完整手冊第 157 頁已有答案。確認為選錯文件，不是模型未掛 PDF。
+- 移除 `prioritizeDetailedManualCandidates_` 的題目特例閘門；所有已授權手冊題統一依完整型號、涵蓋型號數、檔案完整度排序。
+- `recoverRelevantPdfUrisFromDrive` 改為同一排序，能在 URI 清單只有快速指南時補回較聚焦手冊；候選快取六小時，已存在完整手冊不重傳。只有 manual 授權路徑開啟 focused recovery。
+- 補可執行契約：一般睡眠計時問法仍選完整手冊、Drive broad→focused 自癒只上傳一次、focused 已存在零重傳。
+- 頁級黃金題新增睡眠計時 5 種自然問法；離線 BM25 影子索引 12 情境／60 改寫，Recall@5、改寫 Recall@5、negative pass 均為 100%，median 1.219ms、P95 1.626ms。
+- 重新查核 Google 官方 Document understanding、File Search 與 pricing：現行 Files API 受支援但屬長文件提示；File Search 才是 managed RAG，但須換 Gemini 3.x 且不能同請求混用 Search／URL Context。本版不直接遷移，改以 20 題固定題集做 shadow A/B 後決策。
+- 正式 Webhook 已更新到 Apps Script `@1428`；正式 TestUI 依原題重走後，雲端 `LOG` 證實先自動單檔更新過期 URI，再掛正確完整手冊，`Files=1 / pdfCalls=1 / webCalls=0`，Structured Output `found=true / evidence=2/2 / pages=154,157`。2.5 Flash 輸入 16,950、輸出 250、成本 NT$0.1827，正確回答設定路徑與最長 180 分鐘。
+
+## 2026-08-21（v29.6.245 / 結構化 QA、零成本缺口守門與手冊授權）
+
+- 正式 TestUI 首題抓到早期 RULE 只回答一個欄位的真回歸；新增通用 multi-claim guard，且把 5 筆只存在本機、尚未同步正式 Sheet 的代表性 QA 轉成 QA2。
+- G8 選型後的原題其實有保留；錯答尺寸的根因是 `3.5mm` regex 誤中 `263.5mm`。已用數字邊界修正並補正反例／正例契約。
+- 移除 v29.6.217 的 `Operation Manual Gate` 與 `Auto Deep Escalate` 自動 PDF 執行；改成 AnswerEnvelope handoff，退回一般題額度並等待來源按鍵。
+- 修正第二個 `3.5mm` 證據比對點；規格缺口現在零 Gemini 呼叫，同時提供 manual／web。
+
+- 新增 `qa_knowledge.gs`：相容舊 QA、支援 `QA2:` schema、共用白話 renderer、record shards 與 16 桶倒排索引。
+- Fast 動態上下文改為最多 6 筆相關 QA，不再注入 QA 全文；精準命中仍維持零 LLM。
+- 將 12 筆已核對官方手冊 Evidence 從 `linebot.gs` 硬編碼陣列搬到 `QA.csv` QA2 資料，並新增受權限保護的 `upsert_qa2` 與 `tools/sync_qa2_evidence.ps1`。
+- `/紀錄`、AutoQA、`writeQA` 的新寫入統一轉為 QA2；管理者看到的是可讀預覽，不是 JSON。
+- 新增 `verify_structured_qa_contract.js`，涵蓋精確型號、G8 系列隔離、未知型號、索引候選上限、手冊命中與排除詞。
+- 回歸修正 v29.6.240 的自動 PDF 旁路：Fast 的手冊訊號只推薦，不執行；型號明確也必須等使用者按鍵授權。
+- 依 Google 2026-08-18 官方文件評估：現行 Files API 仍受支援；File Search 的語意檢索／頁碼 citation 值得 shadow A/B，但因僅支援 Gemini 3.x 且與 Search grounding 不相容，本版不直接切正式路徑。
+
 ## 2026-08-21 (v29.6.240 / 序號追問上下文解析、消除工程用語洩漏與再詳細說明白話展開)
 
 - 實裝 `resolveNumberedStepFollowup_` 函式，解析「6是什麼意思」、「第3點」等序號追問，精確匹配上一則排查步驟並輸出白話解說與詳細設定路徑。

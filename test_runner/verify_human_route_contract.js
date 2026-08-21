@@ -5,6 +5,12 @@ const vm = require("vm");
 
 const root = path.join(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const qaKnowledge = fs.readFileSync(path.join(root, "qa_knowledge.gs"), "utf8");
+const qaRows = fs
+  .readFileSync(path.join(root, "QA.csv"), "utf8")
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean);
 const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
 const prompt = fs.readFileSync(path.join(root, "Prompt.csv"), "utf8");
 const authHelper = fs.readFileSync(path.join(__dirname, "testui_auth.js"), "utf8");
@@ -108,8 +114,6 @@ assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M8 沒畫面")
 assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
 
 const detailedManualContext = {
-  isManualVerificationRequiredQuery: (query) =>
-    /HEVC|編解碼|零售模式|USB\s*播放|播放\s*USB/i.test(query),
   pdfFileNameMatchesModelToken_: (name, model) =>
     String(name).toUpperCase().split(/[,\.]/).includes(String(model).toUpperCase()),
 };
@@ -134,23 +138,144 @@ assert.strictEqual(
 );
 const normalOrder = detailedManualContext.prioritizeDetailedManualCandidates_(
   [broadQuickGuide, focusedFullManual],
-  "S32FM703 如何接上腳架",
+  "S32FM803UC 睡眠計時器要在哪裡設定？",
   "S32FM703",
 );
-assert.strictEqual(normalOrder[0].name, broadQuickGuide.name, "一般題不應被詳細手冊排序改寫");
+assert.strictEqual(
+  normalOrder[0].name,
+  focusedFullManual.name,
+  "一般手冊題仍因沒有特例關鍵字而選到多型號快速指南",
+);
 
+const driveCacheStore = new Map();
+const uploadedDriveFiles = [];
+const driveFiles = [
+  {
+    name: broadQuickGuide.name,
+    id: "drive-broad",
+    size: 2102317,
+    updatedAt: "2026-08-01T00:00:00.000Z",
+  },
+  {
+    name: focusedFullManual.name,
+    id: "drive-focused",
+    size: 5894057,
+    updatedAt: "2026-08-02T00:00:00.000Z",
+  },
+].map((metadata) => ({
+  getName: () => metadata.name,
+  getId: () => metadata.id,
+  getSize: () => metadata.size,
+  getLastUpdated: () => new Date(metadata.updatedAt),
+  getBlob: () => ({ getBytes: () => [1, 2, 3] }),
+}));
+const driveIterator = () => {
+  let index = 0;
+  return {
+    hasNext: () => index < driveFiles.length,
+    next: () => driveFiles[index++],
+  };
+};
+const recoveryProperties = new Map([
+  ["GEMINI_API_KEY", "test-key"],
+  ["KB_URI_LIST", JSON.stringify([broadQuickGuide])],
+]);
+const recoveryContext = {
+  CONFIG: { DRIVE_FOLDER_ID: "drive-folder" },
+  CACHE_KEYS: {
+    KB_URI_LIST: "KB_URI_LIST",
+    KB_URI_LIST_BACKUP: "KB_URI_LIST_BACKUP",
+    PDF_MODEL_INDEX_BACKUP: "PDF_MODEL_INDEX_BACKUP",
+  },
+  INLINE_PDF_FALLBACK_MAX_BYTES: 8 * 1024 * 1024,
+  MimeType: { PDF: "application/pdf" },
+  CacheService: {
+    getScriptCache: () => ({
+      get: (key) => driveCacheStore.get(key) || null,
+      put: (key, value) => driveCacheStore.set(key, String(value)),
+      remove: (key) => driveCacheStore.delete(key),
+    }),
+  },
+  PropertiesService: {
+    getScriptProperties: () => ({
+      getProperty: (key) => recoveryProperties.get(key) || null,
+      setProperty: (key, value) => recoveryProperties.set(key, String(value)),
+    }),
+  },
+  DriveApp: {
+    getFolderById: () => ({ getFilesByType: driveIterator }),
+    getFileById: (id) => driveFiles.find((file) => file.getId() === id),
+  },
+  Utilities: { base64Encode: () => "AQID" },
+  uploadFileToGemini: (_key, _blob, _size, _type) => {
+    uploadedDriveFiles.push(_size);
+    return "https://generativelanguage.googleapis.com/files/focused";
+  },
+  writeLog: () => {},
+};
+vm.createContext(recoveryContext);
+vm.runInContext(
+  [
+    extractFunction(linebot, "normalizePdfModelToken_"),
+    extractFunction(linebot, "isPdfSalesSuffix_"),
+    extractFunction(linebot, "isPdfModelTokenMatch_"),
+    extractFunction(linebot, "getPdfFileModelTokens_"),
+    extractFunction(linebot, "pdfFileNameMatchesModelToken_"),
+    extractFunction(linebot, "pdfFileNameMatchesModels"),
+    extractFunction(linebot, "isPdfKbFile"),
+    extractFunction(linebot, "extractPdfModelIndexFromKbList"),
+    extractFunction(linebot, "persistPdfKbState"),
+    extractFunction(linebot, "prioritizeDetailedManualCandidates_"),
+    extractFunction(linebot, "recoverRelevantPdfUrisFromDrive"),
+  ].join("\n\n"),
+  recoveryContext,
+);
+const recoveredFocused = recoveryContext.recoverRelevantPdfUrisFromDrive(
+  ["S32FM803UC", "S32FM803"],
+  "S32FM803UC",
+  1,
+  [broadQuickGuide],
+);
+assert.strictEqual(recoveredFocused.length, 1, "Drive 有完整手冊時沒有自癒補回");
+assert.strictEqual(
+  recoveredFocused[0].name,
+  focusedFullManual.name,
+  "自癒補回仍選到多型號快速指南",
+);
+assert.strictEqual(uploadedDriveFiles.length, 1, "自癒補回不應上傳多本同型號手冊");
+const noDuplicateRecovery = recoveryContext.recoverRelevantPdfUrisFromDrive(
+  ["S32FM803UC", "S32FM803"],
+  "S32FM803UC",
+  1,
+  [focusedFullManual],
+);
+assert.strictEqual(noDuplicateRecovery.length, 0, "完整手冊已存在仍重複上傳");
+assert.strictEqual(uploadedDriveFiles.length, 1, "完整手冊已存在仍產生供應商上傳");
+
+const manualChunkCacheStore = new Map();
 const manualChunkContext = {
+  QA_KNOWLEDGE_TEST_ROWS_: qaRows,
+  CacheService: {
+    getScriptCache: () => ({
+      get: (key) => manualChunkCacheStore.get(key) || null,
+      put: (key, value) => manualChunkCacheStore.set(key, String(value)),
+      remove: (key) => manualChunkCacheStore.delete(key),
+    }),
+  },
+  writeLog: () => {},
+  normalizeModelForDisplay: (model) => String(model || "").toUpperCase().replace(/^LS/, "S"),
+  extractFullModelLikeTokens: (text) =>
+    String(text || "").toUpperCase().match(/\b(?:LS)?S\d{2}[A-Z0-9]{5,16}\b/g) || [],
+  extractShortAliasModelTokens: (text) =>
+    [...new Set(String(text || "").toUpperCase().match(/\b[SGM]\d{1,5}[A-Z]{0,3}\b/g) || [])],
+  isQaQuestionDirectMatch_: () => false,
   isPdfModelTokenMatch_: (base, model) =>
     String(model || "").toUpperCase().startsWith(String(base || "").toUpperCase()),
 };
 vm.createContext(manualChunkContext);
 vm.runInContext(
   [
-    extractFunction(linebot, "isMediaCodecSupportQuery"),
-    extractFunction(linebot, "isRetailModeManualQuery_"),
-    extractFunction(linebot, "isUsbMediaPlaybackManualQuery_"),
-    extractFunction(linebot, "isBluetoothAudioManualQuery_"),
-    extractFunction(linebot, "isBluetoothAudioOperationQuery_"),
+    qaKnowledge,
     extractFunction(linebot, "getVerifiedManualChunks_"),
     extractFunction(linebot, "isVerifiedManualEvidenceQuery_"),
     extractFunction(linebot, "findVerifiedManualChunk_"),

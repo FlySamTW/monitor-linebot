@@ -38,6 +38,7 @@ function stripNonExecutableComments(source) {
 }
 
 const linebot = read("linebot.gs");
+const qaKnowledge = read("qa_knowledge.gs");
 const promptCsv = read("Prompt.csv");
 const qaCsv = read("QA.csv");
 
@@ -609,7 +610,8 @@ const qaSourceInferenceCode = [
       const store = {};
       return {
         get: (key) => store[key] || null,
-        put: (key, value) => { store[key] = value; }
+        put: (key, value) => { store[key] = value; },
+        remove: (key) => { delete store[key]; }
       };
     }
   };`,
@@ -625,6 +627,12 @@ const qaSourceInferenceCode = [
       };
     }
   };`,
+  `const normalizeModelForDisplay = (model) => String(model || "").toUpperCase().replace(/^LS/, "S");
+   const extractFullModelLikeTokens = (text) => String(text || "").toUpperCase().match(/\\b(?:LS)?S\\d{2}[A-Z0-9]{5,16}\\b/g) || [];
+   const extractShortAliasModelTokens = (text) => [...new Set(String(text || "").toUpperCase().match(/\\b[SGM]\\d{1,5}[A-Z]{0,3}\\b/g) || [])];
+   const isPdfModelTokenMatch_ = (left, right) => String(right || "").toUpperCase().startsWith(String(left || "").toUpperCase());
+   const isQaQuestionDirectMatch_ = () => false;`,
+  qaKnowledge,
   extractFunction(linebot, "tokenizeForSourceInference"),
   extractFunction(linebot, "loadQaRowsForSourceInference"),
   extractFunction(linebot, "inferQaSourceTagFromFastReply"),
@@ -1672,9 +1680,12 @@ assertStep(
 );
 
 assertStep(
-  /isCrossDeviceMonitorQuery\(latestUserMsg\)[\s\S]{0,160}isExternalDeviceCompatibilityQa_\(item\)/.test(
+  /qaKnowledgeSelectPromptContext_[\s\S]{0,160}isPDFMode/.test(
     extractFunction(linebot, "buildDynamicContext"),
-  ),
+  ) &&
+    /isPdfMode[\s\S]{0,300}isExternalDeviceCompatibilityQa_/.test(
+      qaKnowledge,
+    ),
   "cross-device PDF mode must not relabel external-device QA facts as Samsung manual evidence",
 );
 

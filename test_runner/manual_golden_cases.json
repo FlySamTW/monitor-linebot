@@ -10,6 +10,7 @@
     {"id":"M8_APPS","model":"S32FM803UC","expectedPages":[68,69,70,71,72],"anchor":"應用程式設定","queries":["M8 如何安裝 App","應用程式去哪裡下載","怎麼移除不要的 App","如何重新安裝應用程式","App 要在哪裡更新"]},
     {"id":"M8_UPDATE","model":"S32FM803UC","expectedPages":[158,159],"anchor":"軟體更新","queries":["M8 韌體怎麼更新","軟體更新的選單在哪","可以用 USB 升級 Firmware 嗎","如何檢查最新版本","更新時可以關機嗎"]},
     {"id":"M8_RESET","model":"S32FM803UC","expectedPages":[171],"anchor":"出廠資料重設","queries":["M8 如何恢復原廠設定","怎麼做出廠重置","我要把所有設定初始化","原廠資料重設在哪裡","要如何回復剛買來的設定"]},
+    {"id":"M8_SLEEP_TIMER","model":"S32FM803UC","expectedPages":[157],"anchor":"睡眠計時器","queries":["M8 睡眠計時器在哪裡設定","可以設定幾分鐘後自動關機嗎","晚上看完想讓螢幕定時關閉","睡眠定時器最多能設多久","時間設定裡哪裡可以自動關機"]},
     {"id":"M8_HEVC","model":"S32FM703UC","expectedPages":[180,187],"anchor":"HEVC","queries":["M7 能播放 HEVC 嗎","支援 H.265 Main10 嗎","HEVC 可以放在哪些檔案格式","MKV 的 H265 能不能播放","支援的視訊編解碼器有 HEVC 嗎"]},
     {"id":"G8_DUAL_MODE","model":"S32HG806ES","expectedPages":[27,35,43],"anchor":"Dual Mode","queries":["G8 雙模要怎麼切換","S32HG806ES 如何開 Dual Mode","6K 165Hz 跟 3K 330Hz 怎麼切","可以把雙模設成自訂鍵嗎","最佳解析度使用時要關閉 Dual Mode 嗎"]}
   ],

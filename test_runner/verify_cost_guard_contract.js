@@ -3,6 +3,8 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const qaKnowledge = fs.readFileSync(path.join(root, "qa_knowledge.gs"), "utf8");
+const qaCsv = fs.readFileSync(path.join(root, "QA.csv"), "utf8");
 const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
 const paidRunner = fs.readFileSync(
   path.join(__dirname, "verify_10_questions_5_rounds.js"),
@@ -147,9 +149,11 @@ assert(
     /藍牙揚聲器清單/.test(linebot) &&
     /Bluetooth Speaker List/.test(linebot) &&
     /PDF Query Rewrite v29\.6\.124/.test(linebot) &&
-    /intent:\s*"BLUETOOTH_AUDIO"/.test(linebot) &&
-    /pages:\s*"151"/.test(linebot) &&
-    /isBluetoothAudioOperationQuery_\(text\)/.test(linebot),
+    /"id":"manual-s32fm70x80x-bluetooth-audio"/.test(qaCsv) &&
+    /"BLUETOOTH_AUDIO"/.test(qaCsv) &&
+    /"pages":"151"/.test(qaCsv) &&
+    /qaKnowledgeFindManualEvidence_/.test(qaKnowledge) &&
+    /qaKnowledgeGetManualEvidenceRecords_/.test(linebot),
   "M8 藍牙音訊操作題須優先命中已核對第 151 頁；其他型號才使用正式標題與選單同義詞擴查",
 );
 assert(

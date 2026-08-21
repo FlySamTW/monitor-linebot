@@ -6,6 +6,12 @@ const vm = require("vm");
 
 const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const qaKnowledge = fs.readFileSync(path.join(root, "qa_knowledge.gs"), "utf8");
+const qaRows = fs
+  .readFileSync(path.join(root, "QA.csv"), "utf8")
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean);
 const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
 const prompt = fs.readFileSync(path.join(root, "Prompt.csv"), "utf8");
 const classRules = fs.readFileSync(path.join(root, "CLASS_RULES.csv"), "utf8");
@@ -260,8 +266,9 @@ assert(
     /不想拿其他同系列型號套過來猜/.test(
       exactRuleVmContext.__m7HdmiMissing,
     ) &&
-    /查手冊/.test(exactRuleVmContext.__m7HdmiMissing),
-  "精確型號 RULE 未明載 HDMI 時必須零模型停止猜測並建議手冊",
+    /查官方手冊/.test(exactRuleVmContext.__m7HdmiMissing) &&
+    /再查網路/.test(exactRuleVmContext.__m7HdmiMissing),
+  "精確型號 RULE 未明載 HDMI 時必須零模型停止猜測並提供手冊與網路",
 );
 
 assert(
@@ -880,7 +887,23 @@ assert(
   ) && /executed === "verified_manual_chunk"/.test(linebot),
   "人工核對手冊片段也必須走統一來源／NT$0.0000／剩餘額度尾註",
 );
+const verifiedManualCacheStore = new Map();
 const verifiedManualVm = {
+  QA_KNOWLEDGE_TEST_ROWS_: qaRows,
+  CacheService: {
+    getScriptCache: () => ({
+      get: (key) => verifiedManualCacheStore.get(key) || null,
+      put: (key, value) => verifiedManualCacheStore.set(key, String(value)),
+      remove: (key) => verifiedManualCacheStore.delete(key),
+    }),
+  },
+  writeLog: () => {},
+  normalizeModelForDisplay: (model) => String(model || "").toUpperCase().replace(/^LS/, "S"),
+  extractFullModelLikeTokens: (text) =>
+    String(text || "").toUpperCase().match(/\b(?:LS)?S\d{2}[A-Z0-9]{5,16}\b/g) || [],
+  extractShortAliasModelTokens: (text) =>
+    [...new Set(String(text || "").toUpperCase().match(/\b[SGM]\d{1,5}[A-Z]{0,3}\b/g) || [])],
+  isQaQuestionDirectMatch_: () => false,
   isPdfModelTokenMatch_: (item, model) =>
     String(model).toUpperCase().startsWith(String(item).toUpperCase()),
   isRetailModeManualQuery_: () => false,
@@ -892,7 +915,7 @@ const verifiedManualVm = {
 };
 vm.createContext(verifiedManualVm);
 vm.runInContext(
-  `${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "isVerifiedManualEvidenceQuery_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n${extractFunction(linebot, "buildVerifiedManualChunkReply_")}\n` +
+  `${qaKnowledge}\n${extractFunction(linebot, "getVerifiedManualChunks_")}\n${extractFunction(linebot, "isVerifiedManualEvidenceQuery_")}\n${extractFunction(linebot, "findVerifiedManualChunk_")}\n${extractFunction(linebot, "buildVerifiedManualChunkReply_")}\n` +
     `globalThis.hit = findVerifiedManualChunk_("S32HG806ES 如何切換 6K 165Hz 和 3K 330Hz 雙模？", "S32HG806ES");\n` +
     `globalThis.wrongModel = findVerifiedManualChunk_("如何切換 Dual Mode？", "S32HG802SC");\n` +
     `globalThis.usbHowTo = findVerifiedManualChunk_("如何播放 USB？", "S32FM803UC");\n` +
@@ -1069,15 +1092,25 @@ assert(
   "組裝、韌體更新、插孔等操作題不得因相鄰規格詞而被洗白成官方規格答案",
 );
 assert(
-  /Operation Manual Gate v29\.6\.217/.test(handleMessageText) &&
+  /Operation Source Gate v29\.6\.244/.test(handleMessageText) &&
     /tryManualFreeLocalAnswer_\([\s\S]{0,260}operationModel[\s\S]{0,160}true/.test(
       handleMessageText,
     ) &&
-    /executeAdvancedSourceQuery_\([\s\S]{0,80}"manual"/.test(
-      handleMessageText,
+    /buildEvidenceActionQuickReplies_\(operationEnvelope\)/.test(handleMessageText) &&
+    /operation_source_handoff/.test(handleMessageText) &&
+    !/Auto Deep Escalate v29\.6\.217/.test(handleMessageText) &&
+    !/無本機 QA，自動直進官方手冊查詢/.test(handleMessageText),
+  "完整型號操作題先免費查 QA／RULE／Evidence；未命中只顯示手冊與網路入口，不得未授權自動讀 PDF",
+);
+assert(
+  /buildMissingFactSourceQuickReplies_\(\)/.test(handleMessageText) &&
+    /rm_action=select_source&source=manual&v=2/.test(
+      extractFunction(linebot, "buildMissingFactSourceQuickReplies_"),
     ) &&
-    /無本機 QA，自動直進官方手冊查詢/.test(handleMessageText),
-  "完整型號操作題在免費 QA／RULE／Evidence 未命中時自動直進手冊查詢直出答案",
+    /rm_action=select_source&source=web&v=2/.test(
+      extractFunction(linebot, "buildMissingFactSourceQuickReplies_"),
+    ),
+  "零成本缺口守門必須同時提供手冊與網路，不得只把使用者卡在單一路徑",
 );
 assert(
   /getPreviousUserTopicForEvidence_\([\s\S]*contextId,[\s\S]*msg/.test(
