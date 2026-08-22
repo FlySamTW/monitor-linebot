@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.253"; // 2026-08-23 空 Quick Reply 防線與跨版防重複付費
-const BUILD_TIMESTAMP = "2026-08-23 00:33";
+const GAS_VERSION = "v29.6.254"; // 2026-08-23 自然追問沿用型號與 HDMI 接頭證據直答
+const BUILD_TIMESTAMP = "2026-08-23 01:19";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -6354,6 +6354,48 @@ function buildDeterministicExactRuleReply_(query, model) {
   if (!normalizedModel) return "";
   const ruleLine = findExactModelRuleLine_(normalizedModel);
   if (!ruleLine) return "";
+
+  // 標準 HDMI 與 Micro HDMI 是不同尺寸接頭。若使用者問能否直接互插，
+  // 先以本型號 RULE 的實際端子與配件欄作零成本回答；不讓 Fast 已答對後
+  // 又因自然追問原句沒有重複型號而被 AnswerEnvelope 當成無證據刪除。
+  const asksHdmiConnectorFit =
+    /MICRO\s*HDMI/i.test(text) &&
+    /(?:一般|標準|普通|全尺寸|大頭)?\s*HDMI(?:\s*(?:線|纜線|接頭|插頭))?/i.test(text) &&
+    /(?:直接\s*(?:插|接)|插得進|插入|共用|通用|一樣|相同|轉接)/i.test(text);
+  if (asksHdmiConnectorFit) {
+    const ruleFields = ruleLine
+      .split(",")
+      .map(function (field) {
+        return String(field || "").trim();
+      })
+      .filter(Boolean);
+    const hasMicroHdmiPort = ruleFields.some(function (field) {
+      return /MICRO\s*HDMI(?:\s*[0-9.]+)?\s*[X×]\s*\d+/i.test(field);
+    });
+    if (hasMicroHdmiPort) {
+      const bundledAdapterCable = ruleFields.find(function (field) {
+        return (
+          /(?:配件|隨附|附有|包含|含)/i.test(field) &&
+          /HDMI\s*(?:轉|TO|[-–—>→])\s*MICRO\s*HDMI/i.test(field) &&
+          /(?:線|纜線)/i.test(field)
+        );
+      });
+      const lines = [
+        "不能直接插。一般（標準尺寸）HDMI 插頭和 Micro HDMI 插孔的尺寸不同。",
+      ];
+      if (bundledAdapterCable) {
+        lines.push(
+          `${normalizedModel} 的官方配件規格列有 HDMI 轉 Micro HDMI 連接線，可以直接使用隨附線材。`,
+        );
+      } else {
+        lines.push(
+          "要連接 Micro HDMI 插孔，需要 HDMI 轉 Micro HDMI 連接線或轉接頭。",
+        );
+      }
+      lines.push("[來源:官方規格庫]");
+      return lines.join("\n");
+    }
+  }
 
   // RULE 直答只能逐字擷取目前型號已有的規格欄位。App 可用性、選單
   // 步驟、故障排除、投影／AirPlay／3D 等必須先命中精準 QA；否則交
@@ -17503,7 +17545,9 @@ function handleMessage(event) {
     // 完整型號＋明確規格欄位先由該型號自己的 RULE 終止回答。
     // RULE 已能回答時，不得再建立 history、Top-K 或 Gemini payload。
     const exactRuleModels = dedupDisplayModels(
-      extractFullModelLikeTokens(routingQuestion),
+      extractFullModelLikeTokens(routingQuestion).concat(
+        primaryModel ? [primaryModel] : [],
+      ),
       2,
     ).map(normalizeModelForDisplay);
     if (

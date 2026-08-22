@@ -1,5 +1,11 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.254 自然追問的型號與 RULE 證據不得斷鏈
+
+- 自然追問即使沒有重打完整型號，精確 RULE 路由仍須使用已鎖定的 `primaryModel`；能由本型號規格回答時，必須在 Fast／PDF 前零模型完成。
+- 標準 HDMI 與 Micro HDMI 接頭互插題採資料驅動：先確認本型號實際有 Micro HDMI，再讀同列配件欄；只有欄位明載 HDMI 轉 Micro HDMI 線時，才可說盒內隨附。
+- 不可讓 Fast 已答對後因原句缺型號而被 AnswerEnvelope 刪除，也不可把沒有配件證據的線材說成隨附。
+
 ## v29.6.253 LINE 回覆封裝與跨版冪等
 
 - `quickReply.items` 為空時必須完全省略 `quickReply`；builder 與 `replyMessage()` 最後出口都要 fail closed。TestUI 不呼叫 LINE API，故必須有獨立契約測試，不能以 TestUI 顯示正常取代正式 payload 驗證。

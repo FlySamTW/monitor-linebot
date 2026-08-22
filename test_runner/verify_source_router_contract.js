@@ -234,6 +234,7 @@ const exactRuleVmSource = [
   `globalThis.__m7HdmiExact = buildDeterministicExactRuleReply_("M7 有幾個 HDMI 埠？", "S32FM703UC");`,
   `globalThis.__m7HdmiConnector = buildDeterministicExactRuleReply_("S32FM703UC 有幾個 HDMI 連接埠？", "S32FM703UC");`,
   `globalThis.__g932HdmiExact = buildDeterministicExactRuleReply_("S49DG932SC 有幾個 HDMI？", "S49DG932SC");`,
+  `globalThis.__g932MicroHdmiFit = buildDeterministicExactRuleReply_("我只有一般 HDMI 線，Micro HDMI 孔可以直接插嗎？", "S49DG932SC");`,
 ].join("\n\n");
 const exactRuleVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -281,6 +282,21 @@ assert(
     /HDMI 2\.1 x1/.test(exactRuleVmContext.__g932HdmiExact) &&
     /Micro HDMI 2\.1 x1/.test(exactRuleVmContext.__g932HdmiExact),
   "同一型號的標準 HDMI 與 Micro HDMI 必須逐欄彙總，不能只回第一個介面",
+);
+assert(
+  /不能直接插/.test(exactRuleVmContext.__g932MicroHdmiFit) &&
+    /尺寸不同/.test(exactRuleVmContext.__g932MicroHdmiFit) &&
+    /官方配件規格列有 HDMI 轉 Micro HDMI 連接線/.test(
+      exactRuleVmContext.__g932MicroHdmiFit,
+    ) &&
+    /\[來源:官方規格庫\]/.test(exactRuleVmContext.__g932MicroHdmiFit),
+  "標準 HDMI 與 Micro HDMI 的接頭追問必須依實際端子／配件 RULE 零模型回答",
+);
+assert(
+  /extractFullModelLikeTokens\(routingQuestion\)\.concat\([\s\S]{0,100}primaryModel \? \[primaryModel\] : \[\]/.test(
+    linebot,
+  ),
+  "自然追問的精確 RULE 路由必須沿用已鎖定型號，不能只從原句重新抽型號",
 );
 const automaticManualFallbackText = extractFunction(
   linebot,

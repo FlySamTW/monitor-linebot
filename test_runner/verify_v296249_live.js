@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 const { openAuthorizedTestUi } = require("./testui_auth");
 
-const VERSION = "v29.6.253";
+const VERSION = "v29.6.254";
 
 function assertStep(condition, message, details = "") {
   if (!condition) {

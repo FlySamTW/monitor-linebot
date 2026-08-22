@@ -1,5 +1,14 @@
 # 開發對話紀錄
 
+## 2026-08-23（v29.6.254 / 四輪真人式追問與 HDMI 證據斷鏈）
+
+- 親自在正式 `/dev?test=1` 依序輸入：`G932如何開啟PBP？` → `我左邊接筆電，右邊接PS5可以嗎？要接哪兩個孔？` → `我的筆電只有HDMI，沒有DisplayPort，怎麼接？` → `我只有一般HDMI線，Micro HDMI孔可以直接插嗎？`。
+- 前三輪分別花 NT$0.1980、NT$0.0090、NT$0.1947；第 4 輪 Fast 花 NT$0.0188 並已正確生成「不能直接插，需要 HDMI 轉 Micro HDMI」，卻因自然追問原句沒有完整型號而得到 `AnswerEnvelope evidence=none`，正答被改成再次查手冊／網路。四輪合計 NT$0.4205。
+- 修正精確 RULE 路由沿用 `primaryModel`，並以實際 Micro HDMI 端子及配件欄決定接頭／隨附線材回答；不得靠模型或型號特例補答案。
+- 模型、Prompt 本文、溫度、配額與費率不變；修後只重驗失敗分支，總測試預算守在 NT$2 內。
+- 正式 Webhook 已更新至 Apps Script version `1436`，health、HEAD 與 Formal TestUI guard 均為 `v29.6.254 [2026-08-23 01:19]`；`Prompt!C3` 讀回 v29.6.254／782 字。
+- 升版會隔離上一版 TestUI 型號狀態，因此第一次無型號重驗不具有效力，額外 Fast 成本 NT$0.0173。於 v29.6.254 先以 `S49DG932SC 有幾個 HDMI？` 零模型建立型號狀態，再自然追問原失敗題；兩輪 LOG 均為 `stage=deterministic / paidCalls=0 / pdfCalls=0 / webCalls=0`，回答正確且沒有來源按鈕。整次驗收實際總成本 NT$0.4378。
+
 ## 2026-08-23（v29.6.253 / G932 PBP 正確答案被空 Quick Reply 吞掉）
 
 - 先讀正式雲端 LOG：`G932如何開啟PBP` 已解析 `S49DG932SC`、掛載 `S49DG932.pdf`，`paidCalls=1 / pdfCalls=1 / webCalls=0`，2.5 Flash 6.06 秒、NT$0.1964，Structured Output `found=true`、第 35／2 頁。
