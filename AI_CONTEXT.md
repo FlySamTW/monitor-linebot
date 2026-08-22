@@ -1,5 +1,10 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.253 LINE 回覆封裝與跨版冪等
+
+- `quickReply.items` 為空時必須完全省略 `quickReply`；builder 與 `replyMessage()` 最後出口都要 fail closed。TestUI 不呼叫 LINE API，故必須有獨立契約測試，不能以 TestUI 顯示正常取代正式 payload 驗證。
+- 已完成的 PDF／Web operation 在原 10 分鐘 TTL 內只可沿用前一 patch，避免純回覆修復部署後重複付費；版本跨度更大或 TTL 到期不得沿用。
+
 ## v29.6.252 PDF 選檔熱路徑禁止死快取
 
 - `getRelevantKBFiles()` 的回傳值會在同一請求直接交給 PDF 階段；不得另把整份清單寫入沒有消費者的 `last_kb_files`。新增快取前必須先有實際讀取者與失效契約。

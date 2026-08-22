@@ -14,6 +14,7 @@
 > v29.6.251 只移除手冊路徑的重複免費預檢並加固 Prompt UTF-8 發布；Rich Menu 圖片、三格 action、`selected: true` 與全體 default 均不得改動。
 > v29.6.252 只移除 PDF 選檔後沒有讀取者的同步快取；Rich Menu 與所有 postback 契約完全不變。
 > v29.6.252 發布後唯讀回查：全體 default 與記錄值均為 `richmenu-e138f06c8c221915fef20ce16958d709`，管理者沒有 per-user 覆蓋；本機正式資產仍為 `selected: true`、3 個 areas，因此不需重建或重綁。
+> v29.6.253 修正的是回答訊息的空 Quick Reply，不改 Rich Menu；情境按鈕為零時必須完全省略 quickReply，不能送空陣列。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 

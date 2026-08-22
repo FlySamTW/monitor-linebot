@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.252"; // 2026-08-23 移除無讀取者的 PDF 清單同步快取
-const BUILD_TIMESTAMP = "2026-08-23 00:14";
+const GAS_VERSION = "v29.6.253"; // 2026-08-23 空 Quick Reply 防線與跨版防重複付費
+const BUILD_TIMESTAMP = "2026-08-23 00:33";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -5274,9 +5274,21 @@ function refundAdvancedSourceUsage_(grant, reason) {
   }
 }
 
-function getAdvancedSourceOperationKey_(contextId, source, query, model) {
+function getPreviousGasPatchVersion_(version) {
+  const match = String(version || "").match(/^v(\d+)\.(\d+)\.(\d+)$/);
+  if (!match || Number(match[3]) <= 0) return "";
+  return `v${match[1]}.${match[2]}.${Number(match[3]) - 1}`;
+}
+
+function getAdvancedSourceOperationKey_(
+  contextId,
+  source,
+  query,
+  model,
+  versionOverride,
+) {
   const identity = [
-    GAS_VERSION,
+    String(versionOverride || GAS_VERSION),
     String(source || ""),
     normalizeModelForDisplay(model || ""),
     normalizeAdvancedSourceTopicIdentity_(query, model),
@@ -5300,7 +5312,34 @@ function beginAdvancedSourceOperation_(contextId, source, query, model) {
     return { allowed: false, busy: true, key: key };
   }
   try {
-    const existing = parseSourceStateJson_(cache.get(key));
+    const now = Date.now();
+    let existing = parseSourceStateJson_(cache.get(key));
+    // 部署只修回覆封裝時，上一版已完成／執行中的同題不能因版本鍵改變
+    // 再次扣費。只沿用前一 patch 且仍在原 10 分鐘 TTL 內的 operation。
+    if (!existing || Number(existing.expiresAt || 0) < now) {
+      const previousVersion = getPreviousGasPatchVersion_(GAS_VERSION);
+      if (previousVersion) {
+        const previousKey = getAdvancedSourceOperationKey_(
+          contextId,
+          source,
+          query,
+          model,
+          previousVersion,
+        );
+        const previous = parseSourceStateJson_(cache.get(previousKey));
+        if (previous && Number(previous.expiresAt || 0) >= now) {
+          const remainingTtl = Math.max(
+            1,
+            Math.ceil((Number(previous.expiresAt) - now) / 1000),
+          );
+          cache.put(key, JSON.stringify(previous), remainingTtl);
+          existing = previous;
+          writeLog(
+            `[Source Operation v29.6.253] 沿用 ${previousVersion} 同題結果，避免部署後重複扣費`,
+          );
+        }
+      }
+    }
     if (existing && Number(existing.expiresAt || 0) >= Date.now()) {
       return Object.assign({ allowed: false, key: key }, existing);
     }
@@ -6172,7 +6211,12 @@ function buildAdvancedSourceQuickReplies_(
     const officialItem = buildSamsungOfficialPageQuickReply_(page);
     if (officialItem) items.push(officialItem);
   }
-  return { quickReply: { items: items.slice(0, 3) } };
+  const visibleItems = items.slice(0, 3);
+  // LINE 不接受 quickReply.items=[]；沒有真正下一步時必須完全省略欄位，
+  // 否則正確答案會在最後送出階段被 400 擋掉。
+  return visibleItems.length > 0
+    ? { quickReply: { items: visibleItems } }
+    : {};
 }
 
 function isLikelyLocalSpecRuleQuestion_(query) {
@@ -23872,7 +23916,12 @@ function replyMessage(tk, txt, options = {}) {
     // v29.3.36: 優先使用顯式傳遞的 options.quickReply，其次才是全域變數 (相容性)
     let qrItems = null;
 
-    if (options && options.quickReply && options.quickReply.items) {
+    if (
+      options &&
+      options.quickReply &&
+      Array.isArray(options.quickReply.items) &&
+      options.quickReply.items.length > 0
+    ) {
       qrItems = options.quickReply.items;
       writeLog(`[Reply] 使用顯式 Quick Reply: ${qrItems.length} 個選項`);
     } else if (quickReplyOptions && quickReplyOptions.length > 0) {
@@ -23888,7 +23937,7 @@ function replyMessage(tk, txt, options = {}) {
       quickReplyOptions = []; // Clear global
     }
 
-    if (qrItems) {
+    if (Array.isArray(qrItems) && qrItems.length > 0) {
       const lastMsg = messages[messages.length - 1];
       lastMsg.quickReply = { items: qrItems };
     }

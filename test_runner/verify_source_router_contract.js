@@ -647,7 +647,7 @@ const props = {
   getProperties: () => Object.fromEntries(propertyValues.entries()),
 };
 const context = {
-  GAS_VERSION: "v29.6.171-test",
+  GAS_VERSION: "v29.6.253",
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_OPERATION_CACHE_TTL_SECONDS: 600,
@@ -696,6 +696,7 @@ vm.runInContext(
     extractFunction(linebot, "getSourceRemaining_"),
     extractFunction(linebot, "reserveAdvancedSourceUsage_"),
     extractFunction(linebot, "refundAdvancedSourceUsage_"),
+    extractFunction(linebot, "getPreviousGasPatchVersion_"),
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
     extractFunction(linebot, "beginAdvancedSourceOperation_"),
     extractFunction(linebot, "finishAdvancedSourceOperation_"),
@@ -790,6 +791,32 @@ const duplicateOperation = context.beginAdvancedSourceOperation_(
 assert.strictEqual(duplicateOperation.allowed, false);
 assert.strictEqual(duplicateOperation.status, "done");
 assert.strictEqual(duplicateOperation.finalText, "已核對第 97 頁");
+context.GAS_VERSION = "v29.6.252";
+const previousVersionOperation = context.beginAdvancedSourceOperation_(
+  "C4",
+  "manual",
+  "如何開啟 PBP？",
+  "S49DG932SC",
+);
+context.finishAdvancedSourceOperation_(
+  previousVersionOperation,
+  "已核對第 35 頁",
+  "S49DG932SC",
+);
+context.GAS_VERSION = "v29.6.253";
+const migratedOperation = context.beginAdvancedSourceOperation_(
+  "C4",
+  "manual",
+  "如何開啟PBP",
+  "S49DG932SC",
+);
+assert.strictEqual(migratedOperation.allowed, false);
+assert.strictEqual(migratedOperation.finalText, "已核對第 35 頁");
+assert.strictEqual(
+  migratedOperation.status,
+  "done",
+  "發布後 10 分鐘內的同題必須沿用上一 patch 結果，不可重查 PDF／重扣費",
+);
 context.clearSourceProductState_("C3");
 assert.strictEqual(context.readSourceProductState_("C3"), null);
 
@@ -1227,10 +1254,38 @@ assert(
 );
 
 assert(
-  /const identity = \[\s*GAS_VERSION,/.test(
+  /versionOverride \|\| GAS_VERSION/.test(
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
-  ),
-  "PDF／Web 結果快取鍵必須包含 GAS_VERSION，證據規則更新後不得沿用舊答案",
+  ) &&
+    /getPreviousGasPatchVersion_\(GAS_VERSION\)/.test(
+      extractFunction(linebot, "beginAdvancedSourceOperation_"),
+    ),
+  "PDF／Web 快取鍵須版本化，且只可在原 TTL 內沿用前一 patch 防止部署後重扣",
+);
+
+const emptyQuickReplyContext = {
+  shouldOfferSamsungOfficialPage_: () => false,
+  getSamsungOfficialModelPage_: () => "",
+  buildSamsungOfficialPageQuickReply_: () => null,
+  buildSourcePostbackQuickReply_: () => ({ type: "action" }),
+};
+vm.createContext(emptyQuickReplyContext);
+vm.runInContext(
+  `${extractFunction(linebot, "buildAdvancedSourceQuickReplies_")}
+   globalThis.emptyResult = buildAdvancedSourceQuickReplies_("manual", "S49DG932SC", "答案", {skipSameSource:true,skipAlternateSource:true,allowElaborate:false,forceOfficial:false});`,
+  emptyQuickReplyContext,
+);
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(emptyQuickReplyContext.emptyResult)),
+  {},
+  "沒有任何選項時必須完全省略 quickReply，禁止送 items=[] 給 LINE",
+);
+assert(
+  /Array\.isArray\(options\.quickReply\.items\)\s*&&\s*options\.quickReply\.items\.length > 0/.test(
+    linebot,
+  ) &&
+    /Array\.isArray\(qrItems\) && qrItems\.length > 0/.test(linebot),
+  "LINE 最後出口必須再次拒絕空 Quick Reply 陣列",
 );
 
 const manualUiContext = { writeLog: () => {} };

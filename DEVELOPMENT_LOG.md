@@ -1,5 +1,12 @@
 # 開發對話紀錄
 
+## 2026-08-23（v29.6.253 / G932 PBP 正確答案被空 Quick Reply 吞掉）
+
+- 先讀正式雲端 LOG：`G932如何開啟PBP` 已解析 `S49DG932SC`、掛載 `S49DG932.pdf`，`paidCalls=1 / pdfCalls=1 / webCalls=0`，2.5 Flash 6.06 秒、NT$0.1964，Structured Output `found=true`、第 35／2 頁。
+- 正確答案已完成，但 `buildAdvancedSourceQuickReplies_()` 回傳空 items；`replyMessage()` 仍附加，LINE API 400：`must be non-empty array / messages[0].quickReply.items`。因此客戶沒有收到任何內容。
+- 修正為 builder 無選項回 `{}`，LINE 最後出口只接受非空陣列；同時在原 10 分鐘 TTL 內沿用相鄰 patch 的已完成 operation，避免使用者因我方部署再次付費。
+- 正式 Webhook 已更新為 Apps Script version `1435`；health、HEAD 與 Formal TestUI guard 均為 `v29.6.253 [2026-08-23 00:33]`。`Prompt!C3` 讀回 v29.6.253／782 字；模型與費率未變。
+
 ## 2026-08-23（v29.6.252 / 移除 PDF 選檔死快取）
 
 - v29.6.251 正式真人題正確完成，LOG 為 `paidCalls=1 / pdfCalls=1 / webCalls=0`，Gemini 2.5 Flash 輸入 11,256、輸出 402、成本 NT$0.1402；同題只有一筆 `Manual Free Precheck`，確認 v29.6.251 修復有效。
