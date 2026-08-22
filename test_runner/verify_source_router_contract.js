@@ -216,12 +216,11 @@ const exactRuleVmSource = [
   extractFunction(linebot, "buildDeterministicComparisonReply_"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
   extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
-  extractFunction(linebot, "buildMissingExactRuleFactReply_"),
   extractFunction(linebot, "buildDeterministicExactRuleReply_"),
   `globalThis.__kvmGuarded = enforceExactModelCapabilityEvidence_("G8 有 KVM 嗎？ (型號: S32HG806ES)", "有，S32HG806ES 內建 KVM Switch。");`,
   `globalThis.__headphonePreserved = enforceExactModelCapabilityEvidence_("那它有耳機孔嗎？ (型號: S32HG806ES)", "有，S32HG806ES 具備耳機孔。");`,
   `globalThis.__m7HdmiExact = buildDeterministicExactRuleReply_("M7 有幾個 HDMI 埠？", "S32FM703UC");`,
-  `globalThis.__m7HdmiMissing = buildMissingExactRuleFactReply_("M7 有幾個 HDMI 埠？", "S27CM703UC");`,
+  `globalThis.__g932HdmiExact = buildDeterministicExactRuleReply_("S49DG932SC 有幾個 HDMI？", "S49DG932SC");`,
 ].join("\n\n");
 const exactRuleVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -262,13 +261,29 @@ assert(
   "M7 選定 S32FM703UC 後必須由精確 RULE 零模型回答 HDMI 數量",
 );
 assert(
-  /S27CM703UC/.test(exactRuleVmContext.__m7HdmiMissing) &&
-    /不想拿其他同系列型號套過來猜/.test(
-      exactRuleVmContext.__m7HdmiMissing,
-    ) &&
-    /查官方手冊/.test(exactRuleVmContext.__m7HdmiMissing) &&
-    /再查網路/.test(exactRuleVmContext.__m7HdmiMissing),
-  "精確型號 RULE 未明載 HDMI 時必須零模型停止猜測並提供手冊與網路",
+  /共有 2 個 HDMI 類連接埠/.test(exactRuleVmContext.__g932HdmiExact) &&
+    /HDMI 2\.1 x1/.test(exactRuleVmContext.__g932HdmiExact) &&
+    /Micro HDMI 2\.1 x1/.test(exactRuleVmContext.__g932HdmiExact),
+  "同一型號的標準 HDMI 與 Micro HDMI 必須逐欄彙總，不能只回第一個介面",
+);
+const automaticManualFallbackText = extractFunction(
+  linebot,
+  "executeAutomaticManualFallback_",
+);
+assert(
+  /executeAdvancedSourceQuery_\(\s*"manual"/.test(
+    automaticManualFallbackText,
+  ),
+  "QA／RULE 缺證據的操作題必須統一自動進手冊",
+);
+assert(
+  /selectedMissingFactReply[\s\S]{0,600}refundDailyQuestionUsage_[\s\S]{0,600}executeAutomaticManualFallback_/.test(
+    linebot,
+  ) &&
+    /missingExactFactReply[\s\S]{0,800}refundDailyQuestionUsage_[\s\S]{0,800}executeAutomaticManualFallback_/.test(
+      linebot,
+    ),
+  "精確型號與選型後的 RULE 缺項不得停在 CTA；退回一般題額度後必須直接查對應手冊",
 );
 
 assert(
@@ -485,11 +500,11 @@ assert(
     ) &&
     /\^#型號:/.test(dailyQuestionClassifierText) &&
     /refundDailyQuestionUsage_/.test(linebot) &&
-    /fast_to_\$\{manualSourceRecommended \? "manual" : "web"\}/.test(linebot) &&
+    /executeAutomaticManualFallback_/.test(linebot) &&
     !/const dailyQuota = reserveDailyQuestionOrReply_/.test(
       extractFunction(linebot, "handleRichMenuPostback_"),
     ),
-  "手冊／網路不得重複扣一般 20 題；只引導手冊時必須退回一般額度",
+  "手冊／網路不得重複扣一般 20 題；自動轉手冊時必須退回一般額度",
 );
 assert(
   /function getSourceProductKey_/.test(linebot) &&
@@ -511,9 +526,11 @@ assert(
 assert(
   /function tryManualFreeLocalAnswer_/.test(linebot) &&
     /findLocalMatchInQA/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")) &&
-    /未讀取手冊/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")) &&
+    !/這題已由[^\n]*(?:未讀取手冊|未呼叫 LLM|供應商請求)/.test(
+      extractFunction(linebot, "tryManualFreeLocalAnswer_"),
+    ) &&
     /reserved:\s*false/.test(extractFunction(linebot, "tryManualFreeLocalAnswer_")),
-  "手冊模式必須先做高信心 QA/RULE 預檢，命中時零 PDF、零手冊扣點",
+  "手冊模式必須先做高信心 QA/RULE 預檢，命中時零 PDF、零扣點，且不可對客戶解釋內部流程",
 );
 assert(
   /本次約 \$\{customerCost\}/.test(linebot) &&
@@ -533,10 +550,11 @@ assert(
   "pending 10 分鐘、上一題 30 分鐘，已確認型號另以持久狀態跨日保存",
 );
 assert(
-  /if \(manualSourceRecommended\) \{[\s\S]*?forcedModelSelectionTrigger = false;[\s\S]*?forcedSopNeedsModelSelection = false;[\s\S]*?buildManualConsentPrompt_/.test(
-    linebot,
-  ),
-  "完整型號已鎖定時必須清除缺型號旗標並恢復手冊推薦",
+  /forcedModelSelectionTrigger\s*=\s*false/.test(linebot) &&
+    /forcedSopNeedsModelSelection\s*=\s*false/.test(linebot) &&
+    /executeAutomaticManualFallback_/.test(linebot) &&
+    !/已改為詢問使用者，不呼叫 PDF/.test(linebot),
+  "完整型號已鎖定且 QA／RULE 不足時，必須直接進手冊，不可再詢問是否要查",
 );
 
 const propertyValues = new Map();
@@ -742,20 +760,17 @@ assert(
 const modelHoldOccurrences = (
   linebot.match(/markDailyQuestionModelSelectionHold_\(userId\)/g) || []
 ).length;
-const smartRouterSelectionStart = linebot.indexOf(
-  '// 系列選型本身不是手冊授權。',
-);
-const smartRouterSelectionText = linebot.slice(
-  smartRouterSelectionStart,
-  smartRouterSelectionStart + 1200,
-);
 assert(
   modelHoldOccurrences >= 2 &&
-    /const modelSelectMode = "fast";/.test(smartRouterSelectionText) &&
-    !/"consent"/.test(smartRouterSelectionText) &&
+    /const modelSelectMode\s*=\s*\(?\s*hasExplicitTrigger\s*\|\|\s*forcedSopNeedsModelSelection\s*\)?\s*\?\s*"pdf"\s*:\s*"fast"/.test(
+      linebot,
+    ) &&
+    /\} else \{\s*executeLegacyManualModelSelectionViaSourceRouter_/.test(
+      linebot,
+    ) &&
     /舊授權旁路已停用/.test(extractFunction(linebot, "grantManualSearchConsent_")) &&
     /return false;/.test(extractFunction(linebot, "consumeManualSearchConsent_")),
-  "系列選型只鎖定實體，不得自行成為 PDF 授權；舊 manual consent 旁路必須 fail closed",
+  "Fast 已判定需手冊時，多型號選型 mode 必須是 pdf，點完型號直接查手冊；舊 consent 旁路仍 fail closed",
 );
 assert.strictEqual(menu.size.width, 2500);
 assert.strictEqual(menu.size.height, 843);
@@ -829,8 +844,12 @@ assert(
 assert(
   !/一次受控的非官方 Web 補救|補救不扣使用者網搜額度|不得再次重試或跨回 PDF/.test(
     prompt,
-  ) && /標記只代表建議下一來源，不代表已執行/.test(prompt),
-  "Prompt 不得承擔 PDF/Web 補救狀態機；只可輸出來源建議",
+  ) &&
+    /需要手冊證據時，只輸出 \[AUTO_SEARCH_PDF\]/.test(prompt) &&
+    /不要先寫「資料不足」或詢問是否要查；程式會自動接續/.test(
+      prompt,
+    ),
+  "Prompt 只可輸出簡單來源訊號；PDF/Web 補救與扣點狀態機仍由程式負責",
 );
 
 const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
@@ -1092,25 +1111,17 @@ assert(
   "組裝、韌體更新、插孔等操作題不得因相鄰規格詞而被洗白成官方規格答案",
 );
 assert(
-  /Operation Source Gate v29\.6\.244/.test(handleMessageText) &&
-    /tryManualFreeLocalAnswer_\([\s\S]{0,260}operationModel[\s\S]{0,160}true/.test(
+  /Operation Source Gate v29\.6\.247/.test(handleMessageText) &&
+    /tryManualFreeLocalAnswer_\(/.test(advancedRouteText) &&
+    /normalizedSource === "manual"/.test(advancedRouteText) &&
+    /refundDailyQuestionUsage_\(userId, "operation_auto_manual"\)/.test(
       handleMessageText,
     ) &&
-    /buildEvidenceActionQuickReplies_\(operationEnvelope\)/.test(handleMessageText) &&
-    /operation_source_handoff/.test(handleMessageText) &&
-    !/Auto Deep Escalate v29\.6\.217/.test(handleMessageText) &&
-    !/無本機 QA，自動直進官方手冊查詢/.test(handleMessageText),
-  "完整型號操作題先免費查 QA／RULE／Evidence；未命中只顯示手冊與網路入口，不得未授權自動讀 PDF",
-);
-assert(
-  /buildMissingFactSourceQuickReplies_\(\)/.test(handleMessageText) &&
-    /rm_action=select_source&source=manual&v=2/.test(
-      extractFunction(linebot, "buildMissingFactSourceQuickReplies_"),
+    /executeAutomaticManualFallback_\([\s\S]{0,260}operationModel/.test(
+      handleMessageText,
     ) &&
-    /rm_action=select_source&source=web&v=2/.test(
-      extractFunction(linebot, "buildMissingFactSourceQuickReplies_"),
-    ),
-  "零成本缺口守門必須同時提供手冊與網路，不得只把使用者卡在單一路徑",
+    !/operation_source_handoff/.test(handleMessageText),
+  "完整型號操作題先免費查 QA／RULE／Evidence；未命中退回一般題額度並直接讀 PDF，不可停在來源 CTA",
 );
 assert(
   /getPreviousUserTopicForEvidence_\([\s\S]*contextId,[\s\S]*msg/.test(
@@ -1151,9 +1162,9 @@ vm.runInContext(
    globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
    globalThis.unsourcedRemoved = buildManualConsentPrompt_("請把支架鎖到 VESA 孔。", "問題", "S32FM902SC");
    globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");
-   globalThis.structuredManual = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"請把隨身碟插到 SERVICE 埠，再到軟體更新。",operationPath:"Support → Software Update",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"將 USB 裝置連接至顯示器上的連接埠"}]}));
-   globalThis.structuredMultiple = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"先開 Dual Mode，再用 Aim Point。",operationPath:"Game → Dual Mode",evidence:[{pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]}));
-   globalThis.structuredDeduped = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"執行 Self Diagnosis。",operationPath:"Support → Self Diagnosis",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]}));
+   globalThis.structuredManual = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"請把隨身碟插到 SERVICE 埠，再到軟體更新。",operationPath:"Support → Software Update",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"將 USB 裝置連接至顯示器上的連接埠"}]})), "問題");
+   globalThis.structuredMultiple = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"先開 Dual Mode，再用 Aim Point。",operationPath:"Game → Dual Mode",evidence:[{pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]})), "問題");
+   globalThis.structuredDeduped = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"執行 Self Diagnosis。",operationPath:"Support → Self Diagnosis",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]})), "問題");
    globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,answer:"手冊未記載第三方顯卡驅動衝突。",operationPath:"",evidence:[]})), "問題");
    globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");`,
   manualUiContext,
@@ -1166,20 +1177,38 @@ assert(
     !/不會再問一次/.test(manualUiContext.preserved) &&
     manualUiContext.newFailureDetected === true &&
     /第36頁/.test(manualUiContext.structuredManual) &&
-    /手冊重點/.test(manualUiContext.structuredManual) &&
+    !/(?:手冊重點|證據摘錄)/.test(manualUiContext.structuredManual) &&
     /操作路徑：Support → Software Update/.test(manualUiContext.structuredManual) &&
+    (manualUiContext.structuredManual.match(/Support → Software Update/g) || []).length === 1 &&
     /第27、28頁/.test(manualUiContext.structuredMultiple) &&
     /第36、37頁/.test(manualUiContext.structuredDeduped) &&
     /操作路徑：Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
     /補查一次公開網頁/.test(manualUiContext.formatError),
-  "手冊 Structured Output 必須穩定產出 evidence；NOT_FOUND 與格式驗證失敗都要進受控 Web 補救",
+  "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
 assert(
   /const manualEvidenceNotFound =/.test(linebot) &&
     /manualEvidenceNotFound \|\|\s*manualEvidenceFailed \|\|\s*recommendedWeb/.test(linebot),
   "PDF NOT_FOUND、格式或證據驗證失敗都必須進同一次受控 Web 補救",
+);
+const finalAdvancedQuickReplyStart = advancedRouteText.lastIndexOf(
+  "buildAdvancedSourceQuickReplies_(",
+);
+const finalAdvancedQuickReplyText = advancedRouteText.slice(
+  finalAdvancedQuickReplyStart,
+  finalAdvancedQuickReplyStart + 1800,
+);
+assert(
+  /skipSameSource:\s*true/.test(finalAdvancedQuickReplyText) &&
+    !/skipAlternateSource:\s*Boolean\([\s\S]{0,120}manualWebRescue/.test(
+      finalAdvancedQuickReplyText,
+    ) &&
+    /forceOfficial/.test(finalAdvancedQuickReplyText) &&
+    /🌐 網路解答/.test(extractFunction(linebot, "buildAdvancedSourceQuickReplies_")) &&
+    /🔗 到這款官網/.test(linebot),
+  "PDF 無證據或自動補救後必須保留網路或官網終點，且不得再跑同一手冊來源",
 );
 const exactComparisonText = extractFunction(
   linebot,

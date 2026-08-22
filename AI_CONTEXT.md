@@ -1,5 +1,19 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.248 同類介面欄位彙總
+
+- 精確 RULE 回答 HDMI／DisplayPort／USB-C 數量時，必須逐欄彙總所有同類介面，不能只取第一個 regex 命中。一般問 HDMI 要包含 Micro HDMI；明確問 Micro HDMI 則只回答該子類。
+- 這是通用資料解析契約，不得為單一型號建立硬編碼答案。
+
+## v29.6.247 自動手冊完成鏈、單次客戶答案與 Rich Menu 資產守門
+
+- 本節取代 v29.6.245「資料不足只推薦手冊、等待使用者再次授權」：一般使用者已送出問題，就應走到可交付答案。先查精準 QA／CLASS_RULES／已核對片段；型號操作、故障排除或其他缺證據的產品題直接進對應 PDF，不得先花 Fast 後只回「要不要查手冊」。
+- 已有唯一完整型號就直接查 PDF；模糊系列／前段型號只列 `PDF_MODEL_INDEX` 目前實際涵蓋的候選，使用者選定後以原題立即執行，不再確認、不重問型號。不得從 RULE 候選冒充有手冊的候選。
+- 從一般題轉手冊時退回該次 20 題額度；真正送出 PDF 才計手冊 5 次。PDF `no_evidence` 或 pipeline error 自動做一次系統 Web rescue，不扣使用者 10 次 Web 額度；救援後仍不足可給「再查網路」與官網連結，但不能回到同一手冊來源迴圈。
+- LINE 客戶輸出只保留一次結論、必要操作路徑、頁碼及簡潔來源／費用。Evidence excerpt、模型、token、provider calls、route／state／refund 等工程資訊只寫 LOG／TestUI；不得把自然答案、操作路徑與摘錄換標題重複三次。
+- Rich Menu JSON 維持 `selected: true`；鍵盤會暫時取代選單，PC LINE 不顯示，均屬 LINE 平台行為。Rich Menu default 是獨立發布資產，Webhook release 不會自動建立或綁定；故障排查固定為 inspect default → publish → readback。per-user 綁定優先於全體 default，特定帳號異常要先查個別覆蓋。
+- 模型與成本契約不變：Fast 使用 Gemini 2.5 Flash-Lite，PDF／Web 使用 Gemini 2.5 Flash；不得藉本次流程修正引入較貴模型、第二次潤飾或額外供應商階段。
+
 ## v29.6.246 完整手冊優先、候選自癒與檢索升級判準
 
 - 當同型號有快速指南與完整手冊時，所有已授權手冊查詢一律依「完整型號命中 → 涵蓋型號較少 → 檔案較完整」排序；禁止以問題關鍵字或新增單題 regex 才決定選完整手冊。
@@ -166,7 +180,7 @@
 
 - 手冊 URI 過期時，只更新本題實際選中的 1～2 份 PDF 並重跑 token 預檢；成功後才送出生成請求與扣除手冊額度。單檔更新仍失敗才使用既有背景整庫重建，禁止因一份手冊過期就先同步全部 PDF。
 
-- 正式 TestUI 真人提問驗收新增守門：完整型號操作題不得誤判為缺型號，必須只推薦「官方手冊」，且按鍵前不得讀 PDF 或扣次。
+- 正式 TestUI 真人提問驗收守門：完整型號操作題不得誤判為缺型號；QA／RULE／已核對片段不足時要直接執行手冊完成鏈，不能只推薦「官方手冊」。真正送出 PDF 前才扣手冊次數。
 - 使用者直接輸入文字是新問題，但在沒有新完整型號前仍沿用持久產品型號。手冊可輸入系列別稱或型號前段；多個候選時顯示可點選型號，選型均零扣次。
 - 使用者雖選官方手冊，仍須先做高信心 QA／CLASS_RULES 預檢；本機答案足夠時直接回答，零 PDF、零手冊扣點。只有不足時才進已授權 PDF。
 - 實驗期每位 LINE 使用者每天 20 次有效提問；來源 postback、取消、補型號與型號選擇不重複計次。群組內仍按 userId 個別計算。
@@ -174,9 +188,9 @@
 - 每人 20 題使用短 UserLock，不得與 PDF 索引同步共用 ScriptLock；鎖忙碌時 fail closed，必須零計次、零供應商呼叫並顯示友善重試訊息。
 
 - 一般訊息永遠先走 `規格＆FAQ`；精準 QA、CLASS_RULES 與人工驗證片段優先回答，但實驗期間每位使用者每天最多送出 20 題。
-- `官方手冊` 與 `網路解答` 只能由本輪 Rich Menu postback 或相容舊指令授權；該按鍵即授權與執行。pending 10 分鐘只用於等待題目或型號，查完、失敗或取消後來源回到規格＆FAQ，但持久型號保留。
+- `官方手冊` 可由一般提問的自動完成鏈、Rich Menu postback 或相容舊指令建立一次性 SourceOperation；`網路解答` 除 PDF 的一次系統 rescue 外，仍由網路按鍵或相容指令啟動。pending 10 分鐘只用於等待題目或型號，查完、失敗或取消後回到可直接提問狀態，但持久型號保留。
 - 每聊天室每日（Asia/Taipei）手冊 5 次、網路 10 次；只有 token／檔案等預檢通過、第一個生成請求送出前才原子扣次。
-- `[AUTO_SEARCH_PDF]`／`[AUTO_SEARCH_WEB]` 平常只能轉成來源建議；唯一例外是使用者已確認 PDF、PDF 已付費但證據守門失敗時的一次性 Web 補救，不扣使用者網搜額度且禁止再跨回 PDF。
+- `[AUTO_SEARCH_PDF]` 在 QA／RULE／已核對片段不足且型號可解析時，必須匯入一次性 manual SourceOperation；缺型號只列正式 PDF 候選，選完即查。`[AUTO_SEARCH_WEB]` 不得讓 PDF 自行聯網，只能由 PDF 終點觸發一次系統 rescue，或顯示可由使用者啟動的 Web 選項。
 - 手冊模式不得開 `google_search`，網路模式不得掛 PDF。任何新增的 PDF／Web 呼叫都必須通過 `assertAdvancedSourceGrant_()`。
 - 正式 Rich Menu 資產在 `docs/rich_menu/`；業主於 2026-08-14 明確改為直接設定全體 default，不再使用 `ADMIN_USER_ID` pilot。發布必須保存舊 default ID、讀回新 ID，並保留 rollback 工具。
 - Rich Menu 必須 `selected: true`；資訊層級是「①直接問問題 → 回答不足才②手冊重查／需要現況才③網路重查」，不得再呈現成三個平行來源。

@@ -7,6 +7,7 @@
 > v29.6.190 起，來源按鈕的成功終點還必須通過「完整回答」守門：有 Web 引用但只剩半句時不得標成成功，也不得再顯示同來源重試造成迴圈。
 > v29.6.191 起，Web 沒有可核對引用但同次回應存在低風險、可逆的具體動作時，會以「未證實的可能方向」完成本輪；沒有安全動作才停在官網／真人下一步，兩種終點都不再要求重按來源。
 > v29.6.193 起，未引用的可能方向禁止包含購買、付費、通常、可能、不一定或其他型號等建議；只保留連接、切換、檢查、確認與詢問等可逆動作，避免使用者因未證實內容花錯錢。
+> v29.6.247 起，一般提問在 QA／RULE／已核對片段不足時會自動完成 PDF 查證，不再把 Rich Menu 當成第二次同意閘門；模糊型號選完即查。PDF 不足會自動做一次系統 Web rescue，仍未完成時保留「再查網路／到這款官網」終點。客戶不顯示 Evidence 摘錄或路由術語。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
@@ -74,16 +75,16 @@
 | 位置 | 建議主標 | 建議副標 | Postback data | 點擊後只做什麼 |
 |---|---|---|---|---|
 | 左 | `直接問` | `20題/日` | `rm_action=select_source&source=spec&v=2` | 清除來源 pending、保留型號、切回預設來源並開啟鍵盤 |
-| 中 | `查手冊` | `5次/日` | `rm_action=select_source&source=manual&v=2` | 顯示剩餘次數、目前問題／型號與「確認要查」 |
+| 中 | `查手冊` | `5次/日` | `rm_action=select_source&source=manual&v=2` | 有目前問題與型號就立即查；缺型號只列實際 PDF 候選，缺題目才要求輸入 |
 | 右 | `搜網路` | `10次/日` | `rm_action=select_source&source=web&v=2` | 有目前問題就直接搜尋；無問題才要求輸入 |
 
 重要限制：
 
-- 左鍵只切回直接問；手冊與網路鍵本身都是授權：有目前問題時直接建立對應來源操作，缺題目或手冊型號時才建立 10 分鐘 pending。手冊型號選定後不得再要求確認。
+- 左鍵只切回直接問；手冊與網路鍵本身都是授權：有目前問題時直接建立對應來源操作，缺題目或手冊型號時才建立 10 分鐘 pending。一般提問若 QA／RULE／已核對片段不足，也會自動進手冊完成鏈，不需要使用者再按中鍵。手冊型號選定後不得再要求確認。
 - 每位 userId 每日 20 次只在有效問題送出時原子保留；群組不共用。來源 postback、取消、型號提示與型號按鈕不得重複計次。
 - 手冊 pending 先做精準 QA 與高信心 CLASS_RULES 預檢；命中即回到規格／FAQ，PDF 配額維持不變。
 - `到這款官網` 只能是答案不足且本題已鎖定完整型號後的情境 Quick Reply，不得增為第四個常駐 Rich Menu。它使用 URI action，優先開 RULE 已記錄的 Samsung Taiwan PDP，否則開同列 XZW 完整料號支援頁；選型中、成功答案或只有上一題型號 Cache 時不顯示。
-- 手冊確認使用 `rm_action=confirm_manual&source=manual&v=2`；取消使用 `rm_action=cancel_source&v=2`。不再使用「查上一題」文案。
+- `rm_action=confirm_manual` 只保留舊按鈕相容，不得產生第二次確認；收到後直接匯入同一 manual SourceOperation。取消使用 `rm_action=cancel_source&v=2`，不再使用「查上一題」文案。
 - 已確認完整型號跨日保存；短系列名觸發候選。10 分鐘內相同來源＋型號＋問題回傳快取，不重新扣次。
 - 網路鍵只搜尋有可核對引用的非官方公開網頁，不讀 PDF，也不把 Samsung 官網送入模型；`到這款官網` 僅是回答不足後的 URI Quick Reply。供應商請求已送出即計 1 次，無引用也不退款；同題／同義改寫由 10 分鐘 operation cache 防重燒。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
@@ -95,6 +96,7 @@
 - 三個區域使用 `postback`，並**省略 `displayText`**，避免聊天室出現「使用者自己說了一句指令」的雜訊。
 - `data` 使用穩定、可版本化的英文 action；不要把顯示文字當路由條件。
 - `spec` 使用 `inputOption: openKeyboard`；`manual`、`web` 使用 `inputOption: openRichMenu`。鍵盤與 Rich Menu 不能同時顯示是 LINE 平台限制，不得宣稱真正永不消失。
+- `selected: true` 不代表 Rich Menu 永遠浮在鍵盤上方；手機輸入時由鍵盤暫時取代、收起鍵盤後才可展開。LINE 電腦版不顯示 Rich Menu，這兩種情況都不能靠重發 Webhook 修復。
 - 建立前先呼叫 `POST /v2/bot/richmenu/validate`。
 
 參考：`docs/reference_rich_menu/REFERENCE_ONLY_three_panel_template.json`。
@@ -187,8 +189,10 @@ function doPost(e) {
 
 業主已明確要求所有使用者直接看到，因此不再要求 `ADMIN_USER_ID`。
 
-1. 讀取並保存目前全體預設 Rich Menu ID，沒有預設時保存空值。
-2. 建立新 Rich Menu、上傳 PNG。
+Rich Menu 是 LINE 平台上的獨立發布資產；GAS Webhook 的 `clasp push／version／deploy` 或 `release_existing_webhook.ps1` 都不會順便建立、上傳圖片或綁定 default。選單消失時先檢查 LINE 綁定狀態，不得用重發程式碰運氣。
+
+1. 先 inspect 並保存目前全體預設 Rich Menu ID，沒有預設時保存空值；同時確認待發布 JSON 為 `selected: true`。
+2. JSON／圖片或 action 有變更才建立新 Rich Menu、上傳 PNG；資產未變可重綁既有有效 ID。
 3. 設定全體預設：
 
    `POST /v2/bot/user/all/richmenu/{richMenuId}`
@@ -202,8 +206,9 @@ function doPost(e) {
    `GET /v2/bot/user/all/richmenu`
 
 6. 保留舊 default ID 與 `tools/rollback_rich_menu_default.ps1`；手機 LINE App 實機目視列為發布後驗收，不得以桌面版冒充。
+7. 全體 default 讀回正確但只有特定帳號看不到或看到舊版時，查 `GET /v2/bot/user/{userId}/richmenu`。per-user 綁定優先於 default；失效或過期的個別覆蓋要先解除，再確認該帳號回到全體 default。
 
-全體 default 設定後會對沒有個別 Rich Menu 的使用者生效；LINE API 回傳成功仍不等於手機真人旅程已驗收。
+全體 default 設定後只對沒有個別 Rich Menu 的使用者生效；LINE API 回傳成功仍不等於手機真人旅程已驗收。
 
 ## 八、最小充分驗收清單
 
@@ -217,6 +222,7 @@ function doPost(e) {
 - [ ] 連點同一區不會重複 Reply 或造成重型任務併發。
 - [ ] 正式執行紀錄符合中位數與 P95 延遲門檻。
 - [ ] Default Rich Menu ID 綁定與回讀正確，所有未個別綁定選單的使用者都能看到三格選單。
+- [ ] 特定帳號異常時已排除 per-user Rich Menu 覆蓋；不把鍵盤展開或 PC LINE 不支援誤判成 default 遺失。
 - [ ] 實作完成後依 `AGENTS.md` 使用唯一正式發布入口：`tools\release_existing_webhook.ps1`；不得只執行 `clasp push`。
 
 ## 九、明確禁止事項

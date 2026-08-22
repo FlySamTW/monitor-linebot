@@ -372,11 +372,16 @@ assert(
 );
 
 assert(
-  /Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF/.test(linebot) &&
-    /aiRequestedPdfSearch = false;/.test(linebot) &&
-    /const modelSelectMode = "fast";/.test(linebot) &&
+  /function executeAutomaticManualFallback_/.test(linebot) &&
+    /executeAdvancedSourceQuery_\(\s*"manual"/.test(
+      extractFunction(linebot, "executeAutomaticManualFallback_"),
+    ) &&
+    /const modelSelectMode\s*=\s*\(?\s*hasExplicitTrigger\s*\|\|\s*forcedSopNeedsModelSelection\s*\)?\s*\?\s*"pdf"\s*:\s*"fast"/.test(
+      linebot,
+    ) &&
+    !/Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF/.test(linebot) &&
     /function buildFastAnswerEnvelope_/.test(linebot),
-  "Fast Mode 的 PDF 暗號仍可能代表直接查手冊",
+  "Fast 判定 QA／RULE 證據不足時必須直接進統一手冊路由；若有多型號，選完後直接查手冊",
 );
 assert(
   /const explicitSourceCommand = parseExplicitSourceCommand_\(msg\)[\s\S]{0,1500}executeAdvancedSourceQuery_/.test(
@@ -445,13 +450,16 @@ assert(
       /const\s+GAS_VERSION\s*=\s*"(v\d+\.\d+\.\d+)"/,
     );
     return version && prompt.includes(`Prompt ${version[1]}`);
-  })() &&
+    })() &&
     prompt.length < 1600 &&
     /只使用本輪提供的 QA 與 RULE/.test(prompt) &&
-    /標記只代表建議下一來源，不代表已執行/.test(prompt) &&
+    /需要手冊證據時，只輸出 \[AUTO_SEARCH_PDF\]/.test(prompt) &&
+    /不要先寫「資料不足」或詢問是否要查；程式會自動接續/.test(
+      prompt,
+    ) &&
     !/一次受控的非官方 Web 補救|不得再次重試或跨回 PDF/.test(prompt) &&
     !/建議[^\n]{0,20}(?:問|聯絡)\s*Sam|問問\s*Sam|必須使用表情|智慧家電（/.test(prompt),
-  "Prompt 必須保持精簡、只負責 FAST 證據與回答規則，不承擔來源狀態機",
+  "Prompt 必須保持精簡、只負責 FAST 證據與來源訊號，不承擔補救或扣點狀態機",
 );
 
 const scenarioCoverage = [

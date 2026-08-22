@@ -105,6 +105,18 @@ npm run check:webhook-version
 - 若版本不同，拒絕繼續跑線上 TestUI 測試
 - 避免用舊部署結果誤判新版回答邏輯
 
+### Rich Menu 正式綁定檢查與修復
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\check_rich_menu_default.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\publish_rich_menu_default.ps1
+```
+
+- 第一支只讀取 LINE 目前全體 default、Script Properties 記錄值與既有管理者 per-user 覆蓋，不改 LINE 狀態。
+- `currentDefaultMenuId` 必須等於 `recordedMenuId`；若不同或空白，才執行第二支發布／重綁工具，並再次讀回。
+- Webhook 發布與 Rich Menu 是兩套獨立資產；正式 Webhook health 綠燈不代表 Rich Menu 仍有綁定。
+- 兩支工具都需要 `GAS_MAINTENANCE_SECRET`，不得把密鑰寫進指令、檔案、LOG 或 Git。
+
 ### 17 題正式路由回歸
 ```
 cd test_runner

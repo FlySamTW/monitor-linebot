@@ -1,5 +1,23 @@
 # 開發對話紀錄
 
+## 2026-08-22（v29.6.248 / 同類介面完整計數）
+
+- 正式 TestUI 發現 `S49DG932SC` 同時有 `HDMI 2.1 x1` 與 `Micro HDMI 2.1 x1`，舊精確 RULE 只回第一個命中。
+- 介面解析改為逐欄收集、依子類與版本分組後加總；新增 G932 合約測試，避免所有含標準／Micro HDMI 的型號再次少算。
+- 正式 Webhook 已更新到 Apps Script version `1430`，health 與 Formal TestUI guard 均讀回 `v29.6.248 [2026-08-22 21:37]`；`Prompt!C3` 同步為 v29.6.248（984 字）。
+- 正式 TestUI 實問 `G932如何開啟PBP`：直接進手冊完成鏈，沒有 Fast 空答；實際掛載 `S49DG932.pdf`，`pdfCalls=1 / webCalls=0`，回覆只保留一次步驟、操作路徑與第 2／17／35 頁，成本 NT$0.1772。隨後 v29.6.248 實問 HDMI 題，零 LLM／零 PDF／零 Web，正確回覆標準 HDMI x1 與 Micro HDMI x1。
+- 全體 Rich Menu 已重新發布並讀回 default `richmenu-e138f06c8c221915fef20ce16958d709`；記錄 ID 一致，管理者 per-user override 為空。舊 default `richmenu-3eda4246d33ad95b4cf2958cd968f662` 保留為 previous rollback ID。
+
+## 2026-08-22（v29.6.247 / 回答不中斷、PDF 自動完成與 Rich Menu 可見性）
+
+- 由正式雲端最新對話確認：完整型號操作題先花 Fast 後停在手冊 CTA，按手冊雖能取得正確 PDF 答案，客戶端卻又重複顯示自然答案、操作路徑及 Evidence 摘錄。根因是來源轉換被當成另一個需要同意的旅程，且內部證據文字滲入客戶 renderer。
+- 決策改為 QA／RULE／已核對片段先答；操作、故障或其他缺證據題直接進對應 PDF。模糊型號只列正式 PDF 索引候選，選完帶原題立即查，不再回「要不要查」或要求再輸入一次。
+- 一般題轉手冊時退回 20 題額度，只在 PDF 請求真正送出前計手冊 5 次；保留 operation cache 與原子扣次，避免同題連點、重按或同義改寫重複計費。
+- PDF 無證據或 pipeline error 統一自動執行一次系統 Web rescue，不扣使用者 10 次 Web 額度。救援後仍不足時提供「再查網路」與「到這款官網」作終點，不再顯示同一手冊重試。
+- 客戶端答案收斂為一次內容、必要操作路徑、頁碼與簡潔來源／費用；Evidence 摘錄、模型、token、供應商與路由／退款判斷只留稽核紀錄。
+- Rich Menu 維持三格與 `selected: true`。記錄其 default 綁定是 LINE 獨立資產：發布 Webhook 不等於選單存在，須 inspect、publish 後回讀 default ID；per-user 綁定優先。鍵盤暫時取代 Rich Menu、PC LINE 不顯示則屬平台行為。
+- 模型與費率設定未變：Fast 為 Gemini 2.5 Flash-Lite，PDF／Web 為 Gemini 2.5 Flash；本次不新增第二次潤飾、較貴模型或額外付費階段。
+
 ## 2026-08-21（v29.6.246 / 完整手冊優先、PDF 候選自癒與檢索評估）
 
 - 先讀正式雲端 LOG：睡眠計時器查詢確實 `pdfCalls=1`，但選到 41 頁、17 型號的快速指南；同型號 245 頁完整手冊第 157 頁已有答案。確認為選錯文件，不是模型未掛 PDF。

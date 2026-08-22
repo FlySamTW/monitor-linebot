@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.246"; // 2026-08-21 完整手冊優先、PDF 候選自癒與 QA2
-const BUILD_TIMESTAMP = "2026-08-21 22:00";
+const GAS_VERSION = "v29.6.248"; // 2026-08-22 QA/RULE 不足自動查手冊、精簡證據回覆與介面數量彙總
+const BUILD_TIMESTAMP = "2026-08-22 21:37";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -5537,7 +5537,7 @@ function buildSourceSelectionPrompt_(
   const title = source === "manual" ? "📖 官方手冊" : "🌐 網路解答";
   const description =
     source === "manual"
-      ? "會先用 QA／規格資料免費確認；仍需查證才讀官方手冊。手冊若沒有明確答案，會自動補查一次非三星公開網頁，不另扣網搜次數；送出 PDF 前會用官方 token 計數，單次費用上限約 NT$0.35。"
+      ? "我會先用現有規格與問答確認；仍不足就直接查官方手冊。手冊沒有明確答案時，會再補查一次公開網頁。"
       : "會搜尋公開網頁中的非官方實務解法；三星官方規格仍以規格／FAQ為準，非官方內容會清楚標示，請斟酌參考。";
   const lines = [`${title}｜今日剩餘 ${remaining}/${limit} 次`, description];
   if (previousQuestion) {
@@ -5545,9 +5545,7 @@ function buildSourceSelectionPrompt_(
     if (source === "manual" && previousModel) {
       lines.push(`目前沿用型號：${normalizeModelForDisplay(previousModel)}。若型號不對，可點「換型號」。`);
     }
-    lines.push(
-      "你剛才的按鍵就是授權；系統會直接查詢，不會再要求第二次確認。",
-    );
+    lines.push("我會直接接著處理這題，不會再多問一次。");
   } else {
     lines.push(
       source === "manual"
@@ -6504,17 +6502,69 @@ function buildDeterministicExactRuleReply_(query, model) {
   if (selected.length === 0) return "";
 
   const portIntent = [
+    { query: /MICRO\s*HDMI/i, label: "Micro HDMI", pattern: /MICRO\s*HDMI(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
     { query: /HDMI/i, label: "HDMI", pattern: /HDMI(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
     { query: /DISPLAYPORT|\bDP\b/i, label: "DisplayPort", pattern: /(?:DISPLAYPORT|\bDP\b)(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
     { query: /USB[\s-]*C|TYPE[\s-]*C/i, label: "USB-C", pattern: /(?:USB[\s-]*C|TYPE[\s-]*C)(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
   ].find((item) => item.query.test(text));
   if (portIntent) {
-    const joined = selected.join("；");
-    const match = joined.match(portIntent.pattern);
-    if (match) {
-      const versionText = match[1] ? ` ${match[1]}` : "";
+    // 同一介面可能拆成多個 RULE 欄位（例如 HDMI x1 + Micro HDMI x1）。
+    // 必須逐欄彙總，不能只取第一個 regex match 而少算其他同類輸入埠。
+    const matchedPorts = [];
+    selected.forEach(function (field) {
+      const flags = portIntent.pattern.flags.indexOf("g") >= 0
+        ? portIntent.pattern.flags
+        : `${portIntent.pattern.flags}g`;
+      const matcher = new RegExp(portIntent.pattern.source, flags);
+      let match;
+      while ((match = matcher.exec(field)) !== null) {
+        let variant = portIntent.label;
+        const nearbyText = field.substring(
+          Math.max(0, match.index - 10),
+          match.index + match[0].length,
+        );
+        if (portIntent.label === "HDMI" && /MICRO\s*HDMI/i.test(nearbyText)) {
+          variant = "Micro HDMI";
+        }
+        matchedPorts.push({
+          variant: variant,
+          version: match[1] || "",
+          count: Number(match[2]) || 0,
+        });
+        if (!match[0]) matcher.lastIndex += 1;
+      }
+    });
+    const validMatchedPorts = matchedPorts.filter(function (item) {
+      return item && item.count > 0;
+    });
+    if (validMatchedPorts.length > 0) {
+      const groupedPorts = {};
+      validMatchedPorts.forEach(function (item) {
+        const key = `${item.variant}|${item.version}`;
+        if (!groupedPorts[key]) {
+          groupedPorts[key] = {
+            variant: item.variant,
+            version: item.version,
+            count: 0,
+          };
+        }
+        groupedPorts[key].count += item.count;
+      });
+      const groups = Object.keys(groupedPorts).map(function (key) {
+        return groupedPorts[key];
+      });
+      const totalCount = groups.reduce(function (sum, item) {
+        return sum + item.count;
+      }, 0);
+      const portSummary = groups.map(function (item) {
+        const versionText = item.version ? ` ${item.version}` : "";
+        return `${item.variant}${versionText} x${item.count}`;
+      }).join("、");
+      const headline = groups.length === 1
+        ? `${normalizedModel} 這款有 ${totalCount} 個 ${groups[0].variant}${groups[0].version ? ` ${groups[0].version}` : ""} 連接埠。`
+        : `${normalizedModel} 共有 ${totalCount} 個 ${portIntent.label} 類連接埠：${portSummary}。`;
       return [
-        `${normalizedModel} 這款有 ${match[2]} 個 ${portIntent.label}${versionText} 連接埠。`,
+        headline,
         "",
         "如果你想連接電腦、遊戲機或特定播放設備，隨時告訴我你的裝置，我來幫你規劃最順暢的接線方式喔！💡",
         "[來源:官方規格庫]",
@@ -6557,9 +6607,10 @@ function tryManualFreeLocalAnswer_(
       reserved: false,
       remaining: remaining,
     };
-    const localMatch = Object.assign({}, directLocalQa, {
-      answer: `${directLocalQa.answer}\n\n這題已由規格／FAQ回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`,
-    });
+    const localMatch = Object.assign({}, directLocalQa);
+    LAST_SOURCE_TEST_STATE.source = "manual";
+    LAST_SOURCE_TEST_STATE.outcome = "local_qa";
+    LAST_SOURCE_TEST_STATE.refunded = true;
     writeLog(
       `[Manual Free Precheck v29.6.113] 精準 QA 命中，不讀 PDF、不扣手冊次數: ${directLocalQa.question.substring(0, 60)}`,
     );
@@ -6641,15 +6692,17 @@ function tryManualFreeLocalAnswer_(
     return false;
   }
   const remaining = getSourceRemaining_(contextId, "manual");
-  let finalText = `${deterministicRuleReply}\n\n這題已由精確規格回答，未讀取手冊；官方手冊今日仍剩 ${remaining}/${SOURCE_DAILY_LIMITS.manual} 次。`;
+  let finalText = deterministicRuleReply;
   finalText = enforceNiTone(finalText);
   clearPendingSourceState_(contextId);
   LAST_SOURCE_TEST_STATE = {
-    source: "spec",
+    source: "manual",
+    outcome: "local_rule",
     pending: false,
     executed: "local_rule",
     reserved: false,
     remaining: remaining,
+    refunded: true,
   };
   writeLog(
     "[Manual Free Precheck v29.6.147] deterministic RULE 回覆，不讀 PDF、不扣手冊次數",
@@ -7083,11 +7136,7 @@ function runManualWebRescue_(originalQuestion, model, contextId, userId) {
 function buildManualWebRescueReply_(rescue, manualResponse, model) {
   if (rescue && rescue.success) {
     return [
-      "【手冊結果】",
-      "官方手冊這次沒有找到能直接核對的答案。",
-      "",
-      "【網路補充】",
-      "我已接著查了一次非三星公開網頁；這次不扣你的網搜次數。",
+      "官方手冊沒有明確記載，我接著查到以下公開網頁做法：",
       "",
       rescue.text,
       "",
@@ -7098,11 +7147,7 @@ function buildManualWebRescueReply_(rescue, manualResponse, model) {
   }
   if (!rescue || !rescue.attempted) {
     return [
-      "【手冊結果】",
-      "官方手冊這次沒有取得可核對的答案。",
-      "",
-      "【網路補充】",
-      "非三星公開網頁補查也暫時無法完成。我先把最保守、可逆的排查方式整理給你。",
+      "官方手冊與公開網頁目前都沒有可核對的結論，我先整理最保守、可逆的排查方式：",
       "",
       buildTentativeManualFallback_(manualResponse, model),
     ].join("\n");
@@ -7113,24 +7158,59 @@ function buildManualWebRescueReply_(rescue, manualResponse, model) {
       "",
     );
     return [
-      "【手冊結果】",
-      "官方手冊沒有找到能直接核對的說明。",
-      "",
-      "【網路補充】",
-      "公開搜尋有產生可逆的可能做法，但 Google 這次沒有回傳可核對連結；以下不當成三星或外部網站已證實。這次補查不扣你的網搜次數。",
+      "官方手冊與公開網頁都沒有可核對的結論；以下只是不涉及風險的可能做法，不代表三星已證實：",
       "",
       practicalText,
     ].join("\n");
   }
   return [
-    "【手冊結果】",
-    "官方手冊沒有找到能直接核對的說明。",
-    "",
-    "【網路補充】",
-    "非三星公開網頁也沒有找到能直接核對的說明。我先整理最保守、可逆的排查方式給你；這次補查不扣你的網搜次數。",
+    "官方手冊與公開網頁都沒有可核對的結論，我先整理最保守、可逆的排查方式：",
     "",
     buildTentativeManualFallback_(manualResponse, model),
   ].join("\n");
+}
+
+/**
+ * QA／RULE 無法回答時的唯一自動手冊入口。
+ * 這裡只補齊已確認型號並交給單一來源狀態機；選型、PDF 額度、
+ * 檔案預檢、Web 補救與 operationId 冪等仍全部由 executeAdvancedSourceQuery_ 管理。
+ */
+function executeAutomaticManualFallback_(
+  query,
+  model,
+  contextId,
+  userId,
+  replyToken,
+) {
+  const originalQuestion = stripInternalRoutingHints_(query);
+  const selectedModel = normalizeModelForDisplay(model || "");
+  const queryWithModel =
+    selectedModel &&
+    extractFullModelLikeTokens(originalQuestion).map(normalizeModelForDisplay).indexOf(selectedModel) < 0
+      ? `${selectedModel} ${originalQuestion}`.trim()
+      : originalQuestion;
+  const automaticState = {
+    source: "manual",
+    contextId: contextId,
+    userIdHash: getSourceContextHash_(userId),
+    previousQuestion: originalQuestion,
+    previousModel: selectedModel,
+    draftQuery: originalQuestion,
+    usePrevious: Boolean(selectedModel),
+    automaticFallback: true,
+    dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
+  };
+  writeLog(
+    `[Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=${selectedModel || "待選"}`,
+  );
+  return executeAdvancedSourceQuery_(
+    "manual",
+    queryWithModel,
+    contextId,
+    userId,
+    replyToken,
+    automaticState,
+  );
 }
 
 function executeAdvancedSourceQuery_(
@@ -7357,7 +7437,9 @@ function executeAdvancedSourceQuery_(
   if (!sourceOperation.allowed) {
     clearPendingSourceState_(contextId);
     if (sourceOperation.status === "done" && sourceOperation.finalText) {
-      const cachedReply = `${sourceOperation.finalText}\n\n這是 10 分鐘內相同查詢的結果，未重新呼叫，也沒有再次扣次。`;
+      const cachedReply = `${String(sourceOperation.finalText || "")
+        .replace(/\n{0,2}\[費用\s*[:：][^\]]+\]/gi, "")
+        .trim()}\n[費用:NT$0.0000]`;
       LAST_SOURCE_TEST_STATE = {
         source: normalizedSource,
         outcome: "cached",
@@ -7762,9 +7844,9 @@ function executeAdvancedSourceQuery_(
           (normalizedSource === "web" && !lastWebEvidenceValid) ||
           isManualEvidenceFailureReply_(finalText),
         skipSameSource: true,
-        skipAlternateSource: Boolean(
-          manualWebRescue && manualWebRescue.attempted,
-        ),
+        // 手冊不足時，即使系統已做一次免費補救，仍保留使用者主動
+        // 「再查網路」與官網入口，不能把旅程停在無答案終點。
+        skipAlternateSource: false,
         allowElaborate:
           LAST_SOURCE_TEST_STATE.outcome === "success" ||
           LAST_SOURCE_TEST_STATE.outcome === "rescued_web",
@@ -8627,7 +8709,8 @@ function parseManualEvidenceMarker_(text) {
         /\[手冊證據\s*[:：]\s*(?:第\s*\d+(?:\s*[、,，/]\s*\d+)*\s*頁|未找到)\s*\|\s*範圍\s*[:：]\s*(?:型號明確|型號共通|全檔共通|依型號而異|未找到)\s*\]/gi,
         "",
       )
-      .replace(/^\s*證據摘錄\s*[:：]\s*[^\n\[\]]{6,80}\s*$/gim, "")
+      // 摘錄只供 Evidence Guard 驗證，不是第二份客戶答案。
+      .replace(/^\s*(?:證據摘錄|手冊重點)\s*[:：]\s*[^\n\[\]]{6,80}\s*$/gim, "")
       .trim(),
   };
 }
@@ -8647,7 +8730,7 @@ function getManualStructuredResponseSchema_() {
       answer: {
         type: "STRING",
         description:
-          "給台灣使用者的自然繁中短答，須回答問題中的每個子項；操作題必須把手冊章節／功能表入口整理成『入口分類 → 功能名稱』並寫出必要步驟，不能只回注意事項；找不到時說明手冊未記載",
+          "給台灣使用者的自然繁中短答，須回答問題中的每個子項；操作題只寫結論與必要步驟，功能表入口由 operationPath 單獨提供，answer 不得再重複同一路徑；找不到時說明手冊未記載",
       },
       operationPath: {
         type: "STRING",
@@ -13067,7 +13150,7 @@ function constructDynamicPromptLegacyV158_(
     dynamicPrompt += "2. 官方產品手冊 (PDF, 透過 Files API)\n";
     dynamicPrompt += "3. 網路搜尋結果 (用戶明確要求井號搜尋網路 才用)\n\n";
     dynamicPrompt += "若上述三個來源都**沒有答案**:\n";
-    dynamicPrompt += "- 必須老實回答「本機 QA庫與官方規格庫目前找不到」，並輸出 `[AUTO_SEARCH_WEB]` 或 `[AUTO_SEARCH_PDF]`，不要標註不存在的來源。\n";
+    dynamicPrompt += "- 只輸出 `[AUTO_SEARCH_WEB]` 或 `[AUTO_SEARCH_PDF]` 交由程式接續，不要先寫資料不足或詢問使用者是否查證，也不要標註不存在的來源。\n";
     dynamicPrompt += "- 必須輸出 `[AUTO_SEARCH_PDF]` 或 `[AUTO_SEARCH_WEB]` 暗號\n";
     dynamicPrompt += "- **嚴禁**用「一般常見」「通常來說」「一般而言」這類暗示 LLM 知識的措辭\n";
     dynamicPrompt += "- **嚴禁**用「我想」「我覺得」「通常」這類主觀判斷\n";
@@ -13078,7 +13161,7 @@ function constructDynamicPromptLegacyV158_(
     dynamicPrompt += `\n⚠️【極速模式防幻覺與誠實來源鐵律 (嚴格執行)】
 1. **無 QA 與規格資料時，嚴禁瞎編回答**：當前為「極速模式（未加載 PDF 手冊）」。若用戶詢問具體的設定步驟、故障排除、展示據點、台中展示店、服務時間、電話號碼、產品規格等任何具體資訊，且當前的【精選 QA & 規格】中**沒有**現成的答案，你**絕對、100% 嚴格禁止**憑藉你自己的通用常識/一般知識瞎編任何地址、電話、營業時間或設定步驟！
 2. **誠實引導與自動升級**：
-   - 針對**操作設定、故障排除**等深度問題，且資料庫無記載：你必須老實回答資料庫無記載，並**在回答最後輸出 \`[AUTO_SEARCH_PDF]\` 暗號**，引導用戶查手冊。
+   - 針對**操作設定、故障排除**等深度問題，且資料庫無記載：只輸出 \`[AUTO_SEARCH_PDF]\` 暗號，由程式直接接續官方手冊；不要先寫資料不足，也不要詢問是否要查。
    - 針對**展示店、據點、服務時間、新品規格、其他一般客服**等非操作問題，且資料庫無記載：你**絕對不准瞎編任何據點或地址**，你必須老實表示目前資料庫中沒有相關資訊，並**在回答最後輸出 \`[AUTO_SEARCH_WEB]\` 暗號**！系統會自動強行攔截，提示並詢問用戶是否要擴大搜尋網路，用戶點擊同意後才會啟動聯網搜尋。
 3. **來源標記真實誠實原則**：回答最末尾的來源標記必須與你的參考來源 100% 實事求是：
    - 僅當引用了 QA 資料庫的內容時，標註 \`[來源:QA庫]\`。
@@ -14725,6 +14808,7 @@ function renderCustomerFacingText_(text) {
   body = body
     .replace(/\n{0,2}\[費用\s*[:：][^\]]+\]/gi, "")
     .replace(/\n{0,2}這題已由(?:精確規格|規格／FAQ)回答[^\n]*\n?/gi, "")
+    .replace(/^\s*(?:你剛才的按鍵就是授權[^\n]*|這次未送出供應商請求[^\n]*|這次屬系統因素[^\n]*|供應商請求已送出[^\n]*)\s*$/gim, "")
     .replace(/\n{0,2}---\s*\n\s*本次(?:對話|建檔|修改|整理)?預估花費[\s\S]*?(?=\n\n|$)/gi, "")
     .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC|NEW_TOPIC)(?:[:：][^\]]*)?\]/gi, "")
     .replace(/\[(?:模式|型號)[:：][^\]]+\]/gi, "")
@@ -14737,8 +14821,13 @@ function renderCustomerFacingText_(text) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  if (sourceLabels.length > 0) {
-    body = `${body}\n\n資料來源：${sourceLabels.join("、")}`.trim();
+  const visibleSourceLabels = sourceLabels.filter((label) => {
+    // 手冊成功回答已顯示精確頁碼；再列一次「資料來源：三星官方手冊」
+    // 只會增加重複，其他來源仍照常顯示。
+    return !(label === "三星官方手冊" && /官方手冊\s*[:：]\s*第\s*\d/.test(body));
+  });
+  if (visibleSourceLabels.length > 0) {
+    body = `${body}\n\n資料來源：${visibleSourceLabels.join("、")}`.trim();
   }
   if (!CURRENT_REPLY_FOOTER_APPENDED) {
     const costLabel = customerCost.indexOf("未知") >= 0
@@ -15412,9 +15501,15 @@ function handleMessage(event) {
       }
     }
 
-    // 精準 QA／RULE／已核對 Evidence 未命中時，只提供來源選擇。
-    // 未按手冊不得產生 PDF 請求；網路按鈕則一按即查，不再二次確認。
-    if (!msg.startsWith("#") && isOperationOrTroubleshootQuery(msg)) {
+    // 操作／故障題直接交給「QA/RULE 免費預檢 → 型號選擇 → PDF → Web 補救」
+    // 的單一狀態機。未知完整型號仍留給後方 Unknown Model Guard 攔截。
+    if (
+      !msg.startsWith("#") &&
+      isOperationOrTroubleshootQuery(msg) &&
+      !isServiceHoursQuery(msg) &&
+      !isPriceQueryIntent_(msg) &&
+      getUnknownFullModelTokens(msg).length === 0
+    ) {
       const operationModels = dedupDisplayModels(
         extractFullModelLikeTokens(msg).concat(primaryModel ? [primaryModel] : []),
         2,
@@ -15422,60 +15517,22 @@ function handleMessage(event) {
       const operationModel = operationModels.length === 1
         ? operationModels[0]
         : "";
-      if (operationModel && hasOfficialManualForModel_(operationModel)) {
-        if (
-          tryManualFreeLocalAnswer_(
-            msg,
-            contextId,
-            userId,
-            replyToken,
-            operationModel,
-            true,
-          )
-        ) {
-          return;
-        }
-        writeLog(
-          `[Operation Source Gate v29.6.244] ${operationModel} 無本機證據，等待使用者選擇手冊或網路`,
-        );
-        if (dailyQuestionReservedThisMessage) {
-          refundDailyQuestionUsage_(userId, "operation_source_handoff");
-          dailyQuestionReservedThisMessage = false;
-        }
-        const operationEnvelope = buildFastAnswerEnvelope_({
-          originalQuestion: msg,
-          model: operationModel,
-          answerText: "",
-          sourceTag: "",
-          hasManual: true,
-          manualRecommended: true,
-          webRecommended: true,
-        });
-        writeAnswerEnvelope_(contextId, operationEnvelope);
-        LAST_SOURCE_TEST_STATE = {
-          source: "spec",
-          outcome: "source_handoff",
-          pending: false,
-          executed: "none",
-          model: operationModel,
-        };
-        rememberRecentSourceQuestion_(contextId, msg, operationModel);
-        const operationHandoffReply = buildEvidenceHandoffReply_(operationEnvelope);
-        replyMessage(replyToken, operationHandoffReply, {
-          quickReply: {
-            items: buildEvidenceActionQuickReplies_(operationEnvelope),
-          },
-        });
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, operationHandoffReply, contextId, "assistant", "");
-        updateHistorySheetAndCache(
-          contextId,
-          getHistoryFromCacheOrSheet(contextId),
-          { role: "user", content: msg },
-          { role: "assistant", content: operationHandoffReply },
-        );
-        return;
+      writeLog(
+        `[Operation Source Gate v29.6.247] ${operationModel || "待確認型號"} 直接進單一手冊狀態機`,
+      );
+      if (dailyQuestionReservedThisMessage) {
+        refundDailyQuestionUsage_(userId, "operation_auto_manual");
+        dailyQuestionReservedThisMessage = false;
       }
+      rememberRecentSourceQuestion_(contextId, msg, operationModel);
+      executeAutomaticManualFallback_(
+        msg,
+        operationModel,
+        contextId,
+        userId,
+        replyToken,
+      );
+      return;
     }
 
     if (!msg.startsWith("#") && isServiceHoursQuery(msg)) {
@@ -16210,33 +16267,14 @@ function handleMessage(event) {
           if (consumeDailyQuestionModelSelectionHold_(userId)) {
             refundDailyQuestionUsage_(userId, "model_selection_to_manual_missing_fact");
           }
-          LAST_SOURCE_TEST_STATE = {
-            source: "spec",
-            outcome: "missing_exact_rule_fact",
-            pending: false,
-            executed: "model_selected_missing_fact",
-            model: selectedModel,
-          };
           rememberSourceProductModel_(contextId, selectedModel, "model_selection");
           rememberRecentSourceQuestion_(contextId, normalizedTopic, selectedModel);
-          replyMessage(replyToken, selectedMissingFactReply, {
-            quickReply: {
-              items: buildMissingFactSourceQuickReplies_(),
-            },
-          });
-          writeRecordDirectly(userId, normalizedTopic, contextId, "user", "");
-          writeRecordDirectly(
+          executeAutomaticManualFallback_(
+            normalizedTopic,
+            selectedModel,
+            contextId,
             userId,
-            selectedMissingFactReply,
-            contextId,
-            "assistant",
-            "",
-          );
-          updateHistorySheetAndCache(
-            contextId,
-            getHistoryFromCacheOrSheet(contextId),
-            { role: "user", content: normalizedTopic },
-            { role: "assistant", content: selectedMissingFactReply },
+            replyToken,
           );
           return;
         }
@@ -17184,27 +17222,14 @@ function handleMessage(event) {
           refundDailyQuestionUsage_(userId, "exact_model_missing_fact_to_manual");
           dailyQuestionReservedThisMessage = false;
         }
-        LAST_SOURCE_TEST_STATE = {
-          source: "spec",
-          outcome: "missing_exact_rule_fact",
-          pending: false,
-          executed: "missing_fact_guard",
-          model: exactRuleModels[0],
-        };
         rememberSourceProductModel_(contextId, exactRuleModels[0], "exact_rule_missing");
         rememberRecentSourceQuestion_(contextId, routingQuestion, exactRuleModels[0]);
-        replyMessage(replyToken, missingExactFactReply, {
-          quickReply: {
-            items: buildMissingFactSourceQuickReplies_(),
-          },
-        });
-        writeRecordDirectly(userId, msg, contextId, "user", "");
-        writeRecordDirectly(userId, missingExactFactReply, contextId, "assistant", "");
-        updateHistorySheetAndCache(
+        executeAutomaticManualFallback_(
+          routingQuestion,
+          exactRuleModels[0],
           contextId,
-          getHistoryFromCacheOrSheet(contextId),
-          { role: "user", content: msg },
-          { role: "assistant", content: missingExactFactReply },
+          userId,
+          replyToken,
         );
         return;
       }
@@ -17761,56 +17786,23 @@ function handleMessage(event) {
         const hasExplicitTrigger =
           !!explicitTriggerMatch || finalText.includes("[NEED_DOC]");
 
-        // 清理 Trigger 標籤 (若有)
+        // QA／RULE 明確要求手冊時，直接交給統一手冊狀態機。
+        // 不再使用「本對話查過 PDF 就改 Web」的黏性旁路；每一題依自身證據需求決定來源。
         if (hasExplicitTrigger) {
-          // v29.5.0: Log Optimization
-          // writeLog("[Auto Search] 偵測到搜尋暗號 (Explicit Trigger)");
-
-          // v29.4.33: PDF 升級邏輯 - 追蹤是否已查過 PDF
-          // 如果本對話已經查過 PDF，則強制改為 Web Search
-          const pdfConsultedKey = `${userId}:pdf_consulted`;
-          const hasPdfConsulted = cache.get(pdfConsultedKey) === "true";
-
-          if (hasPdfConsulted) {
-            writeLog("[Auto Search v29.4.33] 本對話已查過 PDF，升級至網路搜尋");
-            // 將 [AUTO_SEARCH_PDF] 替換為 [AUTO_SEARCH_WEB]
-            finalText = finalText
-              .replace(
-                /\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi,
-                "[AUTO_SEARCH_WEB]",
-              )
-              .replace(/\[NEED_DOC\]/gi, "[AUTO_SEARCH_WEB]");
-            // v29.5.130: 同步 replyText，避免暗號外洩到最終回覆
-            replyText = finalText;
-            // 跳過 aiRequestedPdfSearch，讓後續 Web Search 邏輯接手
-          } else {
-            aiRequestedPdfSearch = true;
-
-            // Extract AI-specified search query
-            if (explicitTriggerMatch && explicitTriggerMatch[1]) {
-              aiSearchQuery = explicitTriggerMatch[1].trim();
-              // v29.5.0: Log Optimization
-              // writeLog(`[Auto Search] AI 指定搜尋字串: ${aiSearchQuery}`);
-            }
-
-            // Cleanup all variants of the tag
-            finalText = finalText
-              .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
-              .trim();
-            finalText = finalText.replace(/\[NEED_DOC\]/g, "").trim();
-            finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
-            manualSourceRecommended = true;
-            finalText = buildManualConsentPrompt_(
-              finalText,
-              routingQuestion,
-              primaryModel || (suggestedModels && suggestedModels.length === 1 ? suggestedModels[0] : ""),
-            );
-            replyText = finalText;
-            aiRequestedPdfSearch = false;
-            writeLog(
-              "[Manual Consent v29.6.241] Fast Mode 資料不足，已改為詢問使用者，不呼叫 PDF",
-            );
+          aiRequestedPdfSearch = true;
+          if (explicitTriggerMatch && explicitTriggerMatch[1]) {
+            aiSearchQuery = explicitTriggerMatch[1].trim();
           }
+          finalText = finalText
+            .replace(/\[AUTO_SEARCH_PDF(?:[:：]\s*.*?)?\]/gi, "")
+            .replace(/\[NEED_DOC\]/gi, "")
+            .replace(/\[型號[:：][^\]]+\]/g, "")
+            .trim();
+          replyText = finalText;
+          manualSourceRecommended = false;
+          writeLog(
+            "[Automatic Manual Fallback v29.6.247] Fast Mode 資料不足，直接交由統一手冊路由",
+          );
         } else {
           // 若無 Explicit Trigger，仍必須清理內部溝通用的型號標籤，以免外洩 (詳見 #1)
           finalText = finalText.replace(/\[型號[:：][^\]]+\]/g, "").trim();
@@ -18161,9 +18153,12 @@ function handleMessage(event) {
                 userMessage,
                 suggestedModels,
               );
-              // 系列選型本身不是手冊授權。無論模型是否建議 PDF，選完都先
-              // 回到統一 Fast／AnswerEnvelope；只有使用者按來源鍵才可進 PDF。
-              const modelSelectMode = "fast";
+              // QA／RULE 已明確不足時，型號選擇只是補齊 PDF 檢索必要條件；
+              // 選完立即查手冊，不再重跑一次 Fast 或再問是否查證。
+              const modelSelectMode =
+                hasExplicitTrigger || forcedSopNeedsModelSelection
+                  ? "pdf"
+                  : "fast";
               cache.put(`${userId}:model_select_mode`, modelSelectMode, 600);
               markDailyQuestionModelSelectionHold_(userId);
               LAST_SOURCE_TEST_STATE = {
@@ -18204,6 +18199,27 @@ function handleMessage(event) {
               return; // 結束
             }
           }
+        }
+
+        // 有單一型號或不需選型時，Fast 的 PDF 訊號在本輪直接完成手冊查詢。
+        // 多型號情境已於上方回傳選單，選完會由 pdf mode 接續同一題。
+        if (hasExplicitTrigger) {
+          if (dailyQuestionReservedThisMessage) {
+            refundDailyQuestionUsage_(userId, "fast_auto_manual");
+            dailyQuestionReservedThisMessage = false;
+          }
+          const automaticModel = normalizeModelForDisplay(
+            primaryModel || (cachedDirectModels.length === 1 ? cachedDirectModels[0] : ""),
+          );
+          rememberRecentSourceQuestion_(contextId, routingQuestion, automaticModel);
+          executeAutomaticManualFallback_(
+            aiSearchQuery || routingQuestion,
+            automaticModel,
+            contextId,
+            userId,
+            replyToken,
+          );
+          return;
         }
 
         // 🔥 v29.5.106: 詳細 LOG - 進入主要判斷邏輯
@@ -22813,9 +22829,16 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
   }
   if (!imageBase64) throw new Error("Rich menu image is missing");
 
+  const imageBytes = Utilities.base64Decode(imageBase64);
+  const imageDigest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    imageBytes,
+  ).map(function (value) {
+    return ((value + 256) % 256).toString(16).padStart(2, "0");
+  }).join("");
   const definitionSignature = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
-    JSON.stringify(menuDefinition),
+    `${JSON.stringify(menuDefinition)}|${imageDigest}`,
     Utilities.Charset.UTF_8,
   ).map(function (value) {
     return ((value + 256) % 256).toString(16).padStart(2, "0");
@@ -22838,6 +22861,36 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
     };
   }
 
+  // 發布內容未變、只是 LINE 的全體 default 綁定遺失時，優先重綁既有選單。
+  // 只有既有 ID 已被 LINE 刪除（404）才建立新選單，避免每次修復都製造重複資產。
+  if (
+    recordedMenuId &&
+    currentDefault !== recordedMenuId &&
+    recordedSignature === definitionSignature
+  ) {
+    const relinkResult = callLineRichMenuApi_(
+      `https://api.line.me/v2/bot/user/all/richmenu/${encodeURIComponent(recordedMenuId)}`,
+      "post",
+      token,
+      "",
+    );
+    if (relinkResult.code !== 404) {
+      requireLineRichMenuSuccess_(relinkResult, "relink recorded default rich menu", [200]);
+      const relinkedDefault = getDefaultRichMenuId_(token);
+      if (relinkedDefault !== recordedMenuId) {
+        throw new Error("Recorded default rich menu readback mismatch");
+      }
+      props.setProperty("RICH_MENU_GLOBAL_PREVIOUS_ID", currentDefault || "");
+      return {
+        richMenuId: recordedMenuId,
+        defaultMenuId: relinkedDefault,
+        previousDefaultMenuId: currentDefault,
+        reused: true,
+        relinked: true,
+      };
+    }
+  }
+
   const validateResult = callLineRichMenuApi_(
     "https://api.line.me/v2/bot/richmenu/validate",
     "post",
@@ -22858,7 +22911,6 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
   const richMenuId = createResult.json && createResult.json.richMenuId;
   if (!richMenuId) throw new Error("LINE did not return richMenuId");
 
-  const imageBytes = Utilities.base64Decode(imageBase64);
   const imageResult = callLineRichMenuApi_(
     `https://api-data.line.me/v2/bot/richmenu/${encodeURIComponent(richMenuId)}/content`,
     "post",
@@ -22888,6 +22940,63 @@ function provisionRichMenuDefault_(menuDefinition, imageBase64) {
     defaultMenuId: defaultAfter,
     previousDefaultMenuId: currentDefault,
     reused: false,
+  };
+}
+
+function inspectRichMenuDefault_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty("LINE_TOKEN") || "";
+  if (!token) throw new Error("LINE_TOKEN is not configured");
+  const adminUserId = props.getProperty("ADMIN_USER_ID") || "";
+  const currentDefault = getDefaultRichMenuId_(token);
+  const recordedMenuId = props.getProperty("RICH_MENU_GLOBAL_ID") || "";
+  return {
+    currentDefaultMenuId: currentDefault,
+    recordedMenuId: recordedMenuId,
+    previousDefaultMenuId:
+      props.getProperty("RICH_MENU_GLOBAL_PREVIOUS_ID") || "",
+    defaultMatchesRecorded: Boolean(
+      currentDefault && recordedMenuId && currentDefault === recordedMenuId,
+    ),
+    adminLinkedMenuId: adminUserId
+      ? getLinkedRichMenuId_(token, adminUserId)
+      : "",
+  };
+}
+
+function unlinkStoredAdminRichMenuOverride_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty("LINE_TOKEN") || "";
+  const adminUserId = props.getProperty("ADMIN_USER_ID") || "";
+  if (!token) throw new Error("LINE_TOKEN is not configured");
+  if (!adminUserId) {
+    return {
+      changed: false,
+      reason: "ADMIN_USER_ID_NOT_CONFIGURED",
+      defaultMenuId: getDefaultRichMenuId_(token),
+    };
+  }
+  const linkedBefore = getLinkedRichMenuId_(token, adminUserId);
+  if (!linkedBefore) {
+    return {
+      changed: false,
+      linkedMenuId: "",
+      defaultMenuId: getDefaultRichMenuId_(token),
+    };
+  }
+  const unlinkResult = callLineRichMenuApi_(
+    `https://api.line.me/v2/bot/user/${encodeURIComponent(adminUserId)}/richmenu`,
+    "delete",
+    token,
+  );
+  requireLineRichMenuSuccess_(unlinkResult, "unlink stored admin rich menu", [200, 404]);
+  const linkedAfter = getLinkedRichMenuId_(token, adminUserId);
+  if (linkedAfter) throw new Error("Stored admin rich menu unlink readback mismatch");
+  return {
+    changed: true,
+    unlinkedMenuId: linkedBefore,
+    linkedMenuId: linkedAfter,
+    defaultMenuId: getDefaultRichMenuId_(token),
   };
 }
 
@@ -23167,7 +23276,9 @@ function doPost(e) {
       json.action === "provision_rich_menu_pilot" ||
       json.action === "rollback_rich_menu_pilot" ||
       json.action === "provision_rich_menu_default" ||
-      json.action === "rollback_rich_menu_default"
+      json.action === "rollback_rich_menu_default" ||
+      json.action === "inspect_rich_menu_default" ||
+      json.action === "unlink_admin_rich_menu_override"
     ) {
       const authKey = getDoGetMaintenanceSecret_();
       if (!json.secret || json.secret !== authKey) {
@@ -23183,6 +23294,10 @@ function doPost(e) {
           result = rollbackRichMenuPilot_();
         } else if (json.action === "provision_rich_menu_default") {
           result = provisionRichMenuDefault_(json.menu, json.imageBase64);
+        } else if (json.action === "inspect_rich_menu_default") {
+          result = inspectRichMenuDefault_();
+        } else if (json.action === "unlink_admin_rich_menu_override") {
+          result = unlinkStoredAdminRichMenuOverride_();
         } else {
           result = rollbackRichMenuDefault_();
         }
