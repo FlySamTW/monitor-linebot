@@ -81,7 +81,9 @@ assertStep(
     /管理員重啟已清除聊天室型號、題目、來源與歷史狀態，不覆寫知識庫/.test(
       restartBranchMatch[0],
     ) &&
-    /QA、RULE 與官方手冊索引不會因此被變更/.test(linebot) &&
+    /return '✓ 對話已重置，下一題會重新開始。';/.test(
+      restartBranchMatch[0],
+    ) &&
     !/重置對話\+同步/.test(linebot),
   "/重啟 must only clear personal conversation state and must never sync or rebuild PDF knowledge",
 );
@@ -507,6 +509,16 @@ assertStep(
 assertStep(
   /PromptPath is required/.test(syncPrompt) && /ConfirmOverwrite/.test(syncPrompt),
   "sync_prompt_c3.ps1 must require explicit PromptPath and ConfirmOverwrite",
+);
+
+assertStep(
+  /PSVersionTable\.PSVersion\.Major -lt 7/.test(syncPrompt) &&
+    /PowerShell 7 is required for UTF-8 Prompt sync/.test(syncPrompt) &&
+    /System\.Text\.Encoding\]::UTF8\.GetBytes\(\$payload\)/.test(syncPrompt) &&
+    /Prompt!C3 read-back mismatch/.test(syncPrompt) &&
+    /expectedLength/.test(syncPrompt) &&
+    /expectedVersion/.test(syncPrompt),
+  "Prompt sync must send explicit UTF-8 bytes and reject truncated or wrong-version C3 writes",
 );
 
 assertStep(
@@ -1759,7 +1771,7 @@ assertStep(
     !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
     /lastWebEvidenceValid\s*&&[\s\S]{0,160}lastSearchSources/.test(linebot) &&
     !/url_context/.test(advancedLlmText) &&
-    /非官方內容，請斟酌參考/.test(linebot),
+    /參考：\$\{lastSearchSources\.join\("、"\)\}（非官方，請斟酌）/.test(linebot),
   "web answers must require auditable grounding chunks and supports before showing the web-search source",
 );
 

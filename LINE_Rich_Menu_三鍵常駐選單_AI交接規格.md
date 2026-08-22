@@ -8,6 +8,12 @@
 > v29.6.191 起，Web 沒有可核對引用但同次回應存在低風險、可逆的具體動作時，會以「未證實的可能方向」完成本輪；沒有安全動作才停在官網／真人下一步，兩種終點都不再要求重按來源。
 > v29.6.193 起，未引用的可能方向禁止包含購買、付費、通常、可能、不一定或其他型號等建議；只保留連接、切換、檢查、確認與詢問等可逆動作，避免使用者因未證實內容花錯錢。
 > v29.6.247 起，一般提問在 QA／RULE／已核對片段不足時會自動完成 PDF 查證，不再把 Rich Menu 當成第二次同意閘門；模糊型號選完即查。PDF 不足會自動做一次系統 Web rescue，仍未完成時保留「再查網路／到這款官網」終點。客戶不顯示 Evidence 摘錄或路由術語。
+> v29.6.249 起，來源成功即為終點：手冊／Web 已取得可信答案時不再追加「再詳細說明」或無關來源；只有 Web 無證據且實際存在對應手冊時，才保留一次手冊入口。Rich Menu 三格仍常駐作新問題入口，不因 Quick Reply 收斂而移除；`selected: true`、全體 default 與既有圖片 ID 的發布契約不變。
+>
+> v29.6.250 不改 Rich Menu 圖片、三格 action 或全體 default；只加快 TestUI 單題發送與收斂 RULE／PDF 重複回答。因此更新 GAS Webhook 後仍必須獨立回讀 default Rich Menu，不得以 TestUI Quick Reply 代替 LINE 常駐選單驗收。
+> v29.6.251 只移除手冊路徑的重複免費預檢並加固 Prompt UTF-8 發布；Rich Menu 圖片、三格 action、`selected: true` 與全體 default 均不得改動。
+> v29.6.252 只移除 PDF 選檔後沒有讀取者的同步快取；Rich Menu 與所有 postback 契約完全不變。
+> v29.6.252 發布後唯讀回查：全體 default 與記錄值均為 `richmenu-e138f06c8c221915fef20ce16958d709`，管理者沒有 per-user 覆蓋；本機正式資產仍為 `selected: true`、3 個 areas，因此不需重建或重綁。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 

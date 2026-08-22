@@ -34,7 +34,9 @@ function assertStep(condition, message) {
 });
 
 assertStep(
-  /MAINTENANCE_SECRET/.test(linebot) && !/getProperty\("GEMINI_API_KEY"\) \|\|\s*""/.test(linebot.slice(linebot.indexOf("function getDoGetMaintenanceSecret_"), linebot.indexOf("function buildUnauthorizedResponse_"))),
+  /MAINTENANCE_SECRET/.test(linebot) &&
+    !/getProperty\("GEMINI_API_KEY"\) \|\|\s*""/.test(linebot.slice(linebot.indexOf("function getDoGetMaintenanceSecret_"), linebot.indexOf("function buildUnauthorizedResponse_"))) &&
+    !/sam2026/.test(linebot),
   "maintenance authorization never falls back to the Gemini API key",
 );
 

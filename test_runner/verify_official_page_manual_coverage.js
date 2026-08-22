@@ -213,7 +213,10 @@ assert(
     syncFunction,
   ) &&
     /duplicateDrivePdfNames\.push\(fileName\)/.test(syncFunction) &&
-    /hasIncompleteDriveSync && hasPdfInFallback/.test(syncFunction) &&
+    /hasDriveScanFailure && hasPdfInFallback/.test(syncFunction) &&
+    /hasPartialDriveUploadFailure && hasPdfInNewKbList/.test(syncFunction) &&
+    /partial_merged_with_previous/.test(syncFunction) &&
+    /fallbackPdfByName\[upperName\]/.test(syncFunction) &&
     /driveScanSucceeded && drivePdfCatalog\.some\(isPdfKbFile\)/.test(
       syncFunction,
     ) &&
@@ -227,7 +230,7 @@ assert(
       syncFunction,
     ) &&
     /知識庫同步未完整，已保留前次狀態並排程重試/.test(syncFunction),
-  "部分 PDF 上傳失敗或 Drive 掃描未完整時，不得覆蓋正式狀態，且必須受控背景重試",
+  "PDF 部分失敗只沿用失敗檔舊 URI；Drive 掃描未完整才保留全舊狀態，且兩者都必須受控背景重試",
 );
 assert(
   /manualCoverage === "1"[\s\S]{0,220}isDoGetMaintenanceAuthorized_/.test(

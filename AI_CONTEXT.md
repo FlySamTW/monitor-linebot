@@ -1,5 +1,38 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.252 PDF 選檔熱路徑禁止死快取
+
+- `getRelevantKBFiles()` 的回傳值會在同一請求直接交給 PDF 階段；不得另把整份清單寫入沒有消費者的 `last_kb_files`。新增快取前必須先有實際讀取者與失效契約。
+- 本版只刪除同步 ScriptCache 死寫入，不更動手冊檔案排序、operation 快取、對話歷史、Prompt、模型或費用。
+- Prompt 本文保持不變；依版本一致契約只更新標頭為 v29.6.252，正式 `Prompt!C3` 仍須以 UTF-8 工具同步並讀回 782 字。
+
+## v29.6.251 手冊單次免費預檢與 Prompt UTF-8 守門
+
+- `executeAdvancedSourceQuery_` 的手冊路徑只可有兩個免費預檢呼叫點：一次供未解析型號情境、一次供完整型號解析後情境。完整型號預檢必須在額度與 `beginAdvancedSourceOperation_` 前，operation 後不得以相同參數重跑。
+- 免費預檢命中必須直接完成，零 operation、零扣次、零 PDF；未命中才開始付費 operation，既有冪等與配額鎖不可移除。
+- 正式 `Prompt!C3` 只能用 `tools/sync_prompt_c3.ps1` 同步；工具必須使用 PowerShell 7、UTF-8 bytes，並比對雲端回傳版號與字數。不可繞過讀回守門。
+- 模型與成本契約不變：2.5 Flash-Lite（Fast／Polish）、2.5 Flash（PDF／Web），不得因回應品質調整另加潤飾或評分呼叫。
+
+## v29.6.250 單題快路徑、混合證據收斂與 PDF 韌性
+
+- TestUI 直接單題不再先做 checkPdfCost RPC；批次仍保留，後端 PDF countTokens、NT$0.35 上限、額度與冪等守門不變。
+- 自動進手冊只可略過已由一般路由完成的第一次無型號預檢；解析出完整型號後的免費 QA／RULE 預檢仍要早於扣額與 PDF 呼叫。
+- RULE／PDF 合併以同型號、同介面、同數值／版本決定式去重；數值衝突採 RULE 並記錄 Evidence Conflict。客戶端只顯示一個「資料來源」頁尾，操作與頁碼不可被刪。
+- 過期 PDF 優先以 Drive ID 直取，舊索引才掃檔名，找齊即停。整庫同步部分失敗只沿用失敗檔舊 URI，其他新 URI 保留；欄位使用 expirationTime。
+- 模型、費率、額度與供應商不變：2.5 Flash-Lite（Fast／Polish）、2.5 Flash（PDF／Web）、LLM_PROVIDER=Gemini。
+
+## v29.6.249 回應熱路徑、證據邊界與真人化終點
+
+- 正式雲端 LOG 已定位：精確 RULE 題的主要等待並非 Gemini，而是每則訊息先掃描並刪除 ScriptProperties、重複讀取 `Prompt!B3:C3`、以及 TestUI 仍送出無效 LINE loading request。一般訊息不得再執行全域狀態 purge；過期配額、pending、recent、AnswerEnvelope 與 Web rescue 只由每日清理按日期／TTL 刪除。
+- Prompt 執行設定採同次記憶＋版本化 ScriptCache，Fast／PDF／Web 共用一次 Sheet 讀取；載入動畫只在真正送 Gemini／PDF／Web 前顯示，同一事件最多一次，TestUI 不呼叫 LINE loading API。QA／RULE 零供應商答案不等待外部 HTTP；Log 僅在 webhook `finally` 批次寫一次，刪除舊列移至每日排程。
+- deterministic RULE 僅能逐字整理該完整型號已有欄位。App 可用性、操作路徑、故障排除、投影、AirPlay、3D 與其他資料庫未證實主張一律交既有 PDF 路由；操作＋規格複合句先保留 RULE 已知事實，只把未解操作送 PDF，純「HDMI 連接埠數量」不得因含「連接」誤升級。HAS、升降、左右旋轉與 Pivot 分開判定，未列即寫「官方規格未列」，不得推論成沒有或支援。
+- Web 答案只保留 grounding 實際支持的句子，不得用固定 USB／重開機文字覆寫後仍掛原來源。無引用方向依 App／音訊／連接顯示等風險類別只給可逆檢查；無法分類就停止猜測。
+- 手冊或 Web 已完成即為終點，不再追加「再詳細說明」或無關的另一來源；手冊不足才由同次系統 Web rescue 完成，成功後不再提供同題 Web 重搜。Fast 的「再詳細」只有 AnswerEnvelope 為 `supported` 且有 evidence refs 才可使用一次。
+- 同題 operation 身分保留具體意圖；USB 格式與播放中斷、藍牙配對與已連線無聲不得共用快取。免費預檢不得把內部占位文字存成客戶答案。
+- 對話歷史只保留答案、型號、必要步驟與手冊頁碼；來源、費用、搜尋統計、provider／route 術語不餵回下一輪。Prompt 不要求固定邀請句、emoji 或與 Structured JSON 衝突的文字標記。
+- 無證據 App 題只有該完整型號 RULE 明載 Smart Monitor／Tizen 才可提供「首頁 → 應用程式」；非 Smart 型號不得借用此選單。
+- 模型與費率契約不變：Fast 仍為 Gemini 2.5 Flash-Lite，PDF／Web 仍為 Gemini 2.5 Flash；本版沒有新增模型呼叫、第二次潤飾、File Search、背景搜尋或其他付費機制。
+
 ## v29.6.248 同類介面欄位彙總
 
 - 精確 RULE 回答 HDMI／DisplayPort／USB-C 數量時，必須逐欄彙總所有同類介面，不能只取第一個 regex 命中。一般問 HDMI 要包含 Micro HDMI；明確問 Micro HDMI 則只回答該子類。

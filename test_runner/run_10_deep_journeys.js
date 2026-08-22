@@ -1,7 +1,10 @@
 const fs = require('fs');
 
 const BASE_URL = 'https://script.google.com/macros/s/AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA/exec';
-const SECRET = 'sam2026';
+const SECRET = String(process.env.GAS_MAINTENANCE_SECRET || '').trim();
+if (!SECRET) {
+  throw new Error('[BLOCKED] 缺少 GAS_MAINTENANCE_SECRET，未執行正式測試。');
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

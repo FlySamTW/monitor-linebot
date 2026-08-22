@@ -177,6 +177,27 @@ assert(
   "每日重建能正確偵測 PDF 上傳失敗並排程背景重試",
 );
 assert(
+  /partial_merged_with_previous/.test(linebot) &&
+    /fallbackPdfByName\[upperName\]/.test(linebot) &&
+    /Object\.assign\(\{\}, fallbackItem/.test(linebot) &&
+    /driveFileId: catalogItem\.driveFileId/.test(linebot) &&
+    /identity: catalogItem\.identity/.test(linebot),
+  "單檔上傳失敗時只沿用該檔舊 URI，其他成功的新 URI 不得整批丟棄",
+);
+assert(
+  /DriveApp\.getFileById\(item\.driveFileId\)/.test(linebot) &&
+    /if \(allWantedNamesAttempted\) break/.test(linebot) &&
+    /driveFileId: driveFileId[\s\S]{0,160}identity:/.test(linebot),
+  "本題 PDF 過期時先以 Drive ID 直接取檔，相容掃描找齊目標後立即停止",
+);
+assert(
+  /getManualPdfKbList_\(\)\.slice\(-2\)/.test(linebot) &&
+    /refreshStalePdfAttachmentsFromDrive_\(hotManualFiles\)/.test(linebot) &&
+    /expirationTime: f\.expirationTime/.test(linebot) &&
+    !/expireTime: f\.expireTime/.test(linebot),
+  "每日同步先續期最近自癒手冊且維護端使用 Gemini 正式 expirationTime 欄位",
+);
+assert(
   /單次上限約 NT\$0\.35/.test(testUi) &&
     !/即將讀取 PDF \(約 NT\$1\.5\)/.test(testUi),
   "TestUI PDF 成本提示與正式 NT$0.35 上限一致",
@@ -220,9 +241,9 @@ assert(
   /if \(forceWebSearch\)[\s\S]{0,100}thinkingBudget:\s*0/.test(linebot) &&
     /maxOutputTokens:\s*forceWebSearch\s*\?\s*450/.test(linebot) &&
     /numbered\.length < 3/.test(linebot) &&
-    /buildSafeUsbMediaWebAnswer_/.test(linebot) &&
-    /Web USB Media Guard v29\.6\.154/.test(linebot),
-  "Web 關閉動態思考並限制輸出；USB 媒體題以 grounded 來源產生固定安全摘要",
+    /buildGroundedSupportedAnswer_\(/.test(linebot) &&
+    !/isMonitorUsbMediaWebQuestion_\([^)]*\)[\s\S]{0,240}finalText\s*=\s*buildSafeUsbMediaWebAnswer_/.test(linebot),
+  "Web 關閉動態思考並限制輸出；USB 媒體題只能使用 grounded 支持句，不得用固定摘要冒充來源",
 );
 assert(
   /--paid-live/.test(paidRunner) &&

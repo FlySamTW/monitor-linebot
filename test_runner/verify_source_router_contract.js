@@ -114,6 +114,8 @@ const aliasVmSource = [
   `globalThis.__differentQuestionModel = resolveManualSourceModel_("G8 如何恢復原廠設定?", {previousQuestion:"S32DG802SC G8 如何連接藍牙耳機？", previousModel:"S32DG802SC"}, null, "U1");`,
   `globalThis.__reselectQuestion = stripKnownModelFromSourceQuestion_("S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
   `globalThis.__sameWebTopic = normalizeAdvancedSourceTopicIdentity_("那你再幫我搜尋一下 S32FM803UC 如何播放 USB？ [System Hint: hidden]", "S32FM803UC") === normalizeAdvancedSourceTopicIdentity_("USB 隨身碟播放怎麼用", "S32FM803UC");`,
+  `globalThis.__differentUsbTopic = normalizeAdvancedSourceTopicIdentity_("USB 支援哪些格式？", "S32FM803UC") !== normalizeAdvancedSourceTopicIdentity_("USB 播放會斷線？", "S32FM803UC");`,
+  `globalThis.__differentBluetoothTopic = normalizeAdvancedSourceTopicIdentity_("藍牙耳機如何配對？", "S32FM803UC") !== normalizeAdvancedSourceTopicIdentity_("藍牙耳機已連線但沒聲音？", "S32FM803UC");`,
   `globalThis.__normalizedTypo = normalizeCommonMonitorInputTypos_(toHalfWidth("Ｇ８有幾個 hdim？"));`,
   `globalThis.__normalizedLowerLTypo = normalizeCommonMonitorInputTypos_("S32HG806ES 有幾個 HDMl？");`,
   `globalThis.__typoNeedsSelection = shouldPromptAliasModelSelection_("G8有幾個 hdim？", __g8Candidates);`,
@@ -182,6 +184,16 @@ assert.strictEqual(
   true,
   "同型號同意圖改寫不得重複送出 Web／PDF 供應商請求",
 );
+assert.strictEqual(
+  aliasVmContext.__differentUsbTopic,
+  true,
+  "USB 格式與播放斷線是不同問題，不得誤用同一個付費結果快取",
+);
+assert.strictEqual(
+  aliasVmContext.__differentBluetoothTopic,
+  true,
+  "藍牙配對與已連線沒聲音是不同問題，不得誤用同一個付費結果快取",
+);
 assert.strictEqual(aliasVmContext.__normalizedTypo, "G8有幾個 HDMI?");
 assert.strictEqual(
   aliasVmContext.__normalizedLowerLTypo,
@@ -220,6 +232,7 @@ const exactRuleVmSource = [
   `globalThis.__kvmGuarded = enforceExactModelCapabilityEvidence_("G8 有 KVM 嗎？ (型號: S32HG806ES)", "有，S32HG806ES 內建 KVM Switch。");`,
   `globalThis.__headphonePreserved = enforceExactModelCapabilityEvidence_("那它有耳機孔嗎？ (型號: S32HG806ES)", "有，S32HG806ES 具備耳機孔。");`,
   `globalThis.__m7HdmiExact = buildDeterministicExactRuleReply_("M7 有幾個 HDMI 埠？", "S32FM703UC");`,
+  `globalThis.__m7HdmiConnector = buildDeterministicExactRuleReply_("S32FM703UC 有幾個 HDMI 連接埠？", "S32FM703UC");`,
   `globalThis.__g932HdmiExact = buildDeterministicExactRuleReply_("S49DG932SC 有幾個 HDMI？", "S49DG932SC");`,
 ].join("\n\n");
 const exactRuleVmContext = {
@@ -257,8 +270,11 @@ assert.strictEqual(
 assert(
   /S32FM703UC 這款有 2 個 HDMI 2\.0 連接埠/.test(
     exactRuleVmContext.__m7HdmiExact,
-  ),
-  "M7 選定 S32FM703UC 後必須由精確 RULE 零模型回答 HDMI 數量",
+  ) &&
+    /S32FM703UC 這款有 2 個 HDMI 2\.0 連接埠/.test(
+      exactRuleVmContext.__m7HdmiConnector,
+    ),
+  "M7 選定 S32FM703UC 後，HDMI 埠／HDMI 連接埠兩種問法都必須由精確 RULE 零模型回答",
 );
 assert(
   /共有 2 個 HDMI 類連接埠/.test(exactRuleVmContext.__g932HdmiExact) &&
@@ -275,6 +291,20 @@ assert(
     automaticManualFallbackText,
   ),
   "QA／RULE 缺證據的操作題必須統一自動進手冊",
+);
+assert(
+  /operationRuleOnlyReply[\s\S]{0,900}略過 PDF early gate/.test(linebot) &&
+    /knownRuleAnswer = buildKnownRuleAnchorForMixedOperation_/.test(linebot) &&
+    /const providerQuery =[\s\S]{0,500}只查原題尚未解答的操作或故障部分/.test(
+      linebot,
+    ) &&
+    /mergeKnownRuleAnchorWithAdvancedAnswer_\(\s*knownRuleAnswer,\s*finalText/.test(
+      linebot,
+    ) &&
+    /automaticFallback:\s*true,[\s\S]{0,100}priorFastChecked:\s*true/.test(
+      linebot,
+    ),
+  "純規格不得被操作 early gate 誤送 PDF；混合題須把已知 RULE 與待查操作拆開後合併",
 );
 assert(
   /selectedMissingFactReply[\s\S]{0,600}refundDailyQuestionUsage_[\s\S]{0,600}executeAutomaticManualFallback_/.test(
@@ -331,6 +361,16 @@ assert(
     !/!manualSourceRecommended &&\s*webSourceRecommended/.test(linebot),
   "部分／無證據回答必須可同時提供手冊與 Web，並將 Quick Reply 限制在三個內",
 );
+assert(
+  !/finalText\s*=\s*buildSafeUsbMediaWebAnswer_/.test(linebot),
+  "Web grounding 成功後不得用固定 USB 文案覆寫實際支持句",
+);
+assert(
+  /allowElaborate:\s*false/.test(linebot) &&
+    /LAST_SOURCE_TEST_STATE\.outcome === "no_evidence"/.test(linebot) &&
+    !/finishAdvancedSourceOperation_\([\s\S]{0,100}"Free Local Answer"/.test(linebot),
+  "來源成功後不得再誘導無意義生成；免費預檢也不得把內部佔位字串存成答案",
+);
 
 const doPostText = extractFunction(linebot, "doPost");
 assert(
@@ -341,6 +381,41 @@ assert(
 assert(
   /if \(FAST_POSTBACK_HANDLED\)[\s\S]{0,120}PENDING_LOGS = \[\]/.test(doPostText),
   "純提示 postback 不得在 finally 觸碰 Sheet log flush",
+);
+const triggerGuardText = extractFunction(linebot, "ensureSyncTriggerExists");
+assert(
+  !/purgeEphemeralScriptProperties_\(/.test(triggerGuardText) &&
+    triggerGuardText.indexOf("cache.get(cacheKey)") <
+      triggerGuardText.indexOf("ScriptApp.getProjectTriggers"),
+  "一般 webhook 不得掃描或刪除有效配額／上一題；Trigger 快取必須先行",
+);
+assert(
+  /SRC_RESCUE_/.test(extractFunction(linebot, "cleanupExpiredSourceRoutingProperties_")),
+  "每日清理必須一併移除舊日系統 Web rescue 計數",
+);
+assert(
+  /function getRuntimePromptConfig_/.test(linebot) &&
+    !/getRange\("B3:C3"\)/.test(extractFunction(linebot, "callLLMWithRetry")) &&
+    !/getRange\("C3"\)/.test(extractFunction(linebot, "constructLeanDynamicPromptV159_")),
+  "Fast/PDF/Web 呼叫前不得重複同步讀 Prompt Sheet",
+);
+const loadingText = extractFunction(linebot, "showLoadingAnimation");
+assert(
+  /IS_TEST_MODE/.test(loadingText) &&
+    /LOADING_ANIMATION_SHOWN/.test(loadingText) &&
+    /function handleMessage\(event\)[\s\S]{0,1800}LOADING_ANIMATION_SHOWN = false;/.test(linebot) &&
+    !/⭐ 立即顯示 Loading 動畫（去重後、處理前）/.test(linebot),
+  "零成本路由不得先呼叫 LINE 動畫；同一事件動畫最多一次且 TestUI 完全略過",
+);
+assert(
+  !/flushLogs\(\)/.test(extractFunction(linebot, "writeLog")) &&
+    !/SpreadsheetApp\.flush|deleteRows/.test(
+      extractFunction(linebot, "flushLogs"),
+    ) &&
+    /cleanupLogSheetRows_\(\)/.test(
+      extractFunction(linebot, "dailyKnowledgeRefresh"),
+    ),
+  "Log 只能在 webhook finally 批次寫一次；同步 flush 與刪舊列必須移出回答熱路徑",
 );
 
 const generalRouterStart = linebot.indexOf("// D. 一般對話");
@@ -854,6 +929,15 @@ assert(
 
 const webCanonicalText = extractFunction(linebot, "buildCanonicalWebQuery_");
 const advancedRouteText = extractFunction(linebot, "executeAdvancedSourceQuery_");
+assert(
+  !/last_kb_files/.test(linebot),
+  "PDF 選檔結果不得同步寫入沒有讀取者的 last_kb_files 死快取",
+);
+assert.strictEqual(
+  (advancedRouteText.match(/tryManualFreeLocalAnswer_\(/g) || []).length,
+  2,
+  "手冊狀態機只可保留一次無型號預檢與一次選型後預檢；禁止在建立 operation 後重跑相同免費查詢",
+);
 const handleMessageStart = linebot.indexOf("function handleMessage(event)");
 const handleMessageEnd = linebot.indexOf(
   "function handleDeepSearch(",
@@ -888,7 +972,7 @@ assert(
     advancedRouteText,
   ) &&
     /buildTentativeWebFallback_/.test(advancedRouteText) &&
-    /本次已啟動網路搜尋，但 Google 沒有回傳可核對連結/.test(linebot),
+    /這次公開網頁沒有足夠證據回答這題/.test(linebot),
   "Web 已送供應商但無引用時仍須計一次，且不得用退款繞過成本上限",
 );
 assert(
@@ -995,7 +1079,6 @@ assert(
     /replace\(\/\\s\*\\\[cite\[\\s\\S\]\*\$\/i/.test(
       extractFunction(linebot, "compactGroundedWebAnswer_"),
     ) &&
-    /回答結尾固定兩行，兩行都不得省略/.test(linebot) &&
     /Grounding Relevance v29\.6\.168/.test(advancedRouteText) &&
     extractFunction(linebot, "compactGroundedWebAnswer_").includes(
       "通常這類",
@@ -1095,7 +1178,7 @@ assert(
     /使用數位機上盒/.test(webFallbackContext.safeTerminal) &&
     /諮詢業者/.test(webFallbackContext.safeTerminal) &&
     !/其他型號可能/.test(webFallbackContext.safeTerminal) &&
-    /不代表三星或外部網頁已證實/.test(webFallbackContext.safeTerminal) &&
+    /並非已由三星手冊或公開來源證實/.test(webFallbackContext.safeTerminal) &&
     /HDMI 線連接/.test(webFallbackContext.noPurchase) &&
     !/購買|通常/.test(webFallbackContext.noPurchase),
   "Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者",
@@ -1415,11 +1498,15 @@ assert(
 const deterministicRuleVm = {
   normalizeModelForDisplay: (model) => model,
   findExactModelRuleLine_: () =>
-    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
+    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,HDMI 2.1 x2,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
 };
 vm.createContext(deterministicRuleVm);
 vm.runInContext(
-  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");`,
+  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\n${extractFunction(linebot, "buildKnownRuleAnchorForMixedOperation_")}\n${extractFunction(linebot, "mergeKnownRuleAnchorWithAdvancedAnswer_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");\nglobalThis.mixedAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼連接？有幾個 HDMI？", "S32HG806ES");\nglobalThis.operationOnlyAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼恢復原廠？", "S32HG806ES");\nglobalThis.mixedFinal = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");\nglobalThis.mixedConflict = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有 1 個 HDMI 2.0 連接埠，請切換到正確輸入來源。\\n官方手冊：第23頁\\n[來源:官方手冊]");`,
+  deterministicRuleVm,
+);
+vm.runInContext(
+  'globalThis.mixedPronoun = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");',
   deterministicRuleVm,
 );
 assert(
@@ -1432,6 +1519,59 @@ assert(
     /左右旋轉-30\.0°~30\.0°/.test(deterministicRuleVm.mount) &&
     /垂直旋轉-92\.0°~92\.0°/.test(deterministicRuleVm.mount),
   "同一 RULE 複合規格題必須逐項回答 VESA 與旋轉，不得只回第一個欄位",
+);
+assert(
+  /HDMI/.test(deterministicRuleVm.mixedAnchor) &&
+    deterministicRuleVm.operationOnlyAnchor === "" &&
+    /已確認規格/.test(deterministicRuleVm.mixedFinal) &&
+    /手冊補充/.test(deterministicRuleVm.mixedFinal) &&
+    (deterministicRuleVm.mixedFinal.match(/2 個 HDMI/g) || []).length === 1 &&
+    !/兩個 HDMI/.test(deterministicRuleVm.mixedPronoun) &&
+    /請用 HDMI 線接到訊號源/.test(
+      deterministicRuleVm.mixedPronoun,
+    ) &&
+    !/1 個 HDMI/.test(deterministicRuleVm.mixedConflict) &&
+    /以上方已確認規格為準/.test(deterministicRuleVm.mixedConflict),
+  "操作＋規格複合題必須保留 RULE 已知事實、去除 PDF 重複句，只把未解操作交手冊",
+);
+const unsafeRuleVm = {
+  normalizeModelForDisplay: (model) => model,
+  buildDeterministicComparisonReply_: () => "",
+  findExactModelRuleLine_: (model) =>
+    model === "S24D300GAC"
+      ? "LS24D300GACXZW,型號：S24D300GAC,24吋 IPS,FHD,HDMI x1"
+      : "LS32FM501ECXZW,型號：S32FM501EC,Smart Monitor,Tizen,HDMI x2",
+};
+vm.createContext(unsafeRuleVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.phoneCast = buildDeterministicExactRuleReply_("S24D300GAC 可以手機無線投影嗎？", "S24D300GAC");\nglobalThis.lineTv = buildDeterministicExactRuleReply_("S32FM501EC 可以安裝 LINE TV 嗎？", "S32FM501EC");\nglobalThis.blackScreen = buildDeterministicExactRuleReply_("S24D300GAC 黑屏怎麼排除？", "S24D300GAC");`,
+  unsafeRuleVm,
+);
+assert.strictEqual(unsafeRuleVm.phoneCast, "");
+assert.strictEqual(unsafeRuleVm.lineTv, "");
+assert.strictEqual(
+  unsafeRuleVm.blackScreen,
+  "",
+  "RULE 沒有直接證據的投影、App 與故障題必須交給 QA／手冊，不得硬編答案",
+);
+const safeNoEvidenceVm = {
+  findExactModelRuleLine_: (model) =>
+    model === "S32FM501EC"
+      ? "LS32FM501ECXZW,型號：S32FM501EC,Smart Monitor,Tizen,HDMI x2"
+      : "LS24D300GACXZW,型號：S24D300GAC,24吋 IPS,FHD,HDMI x1",
+};
+vm.createContext(safeNoEvidenceVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildSafeNoEvidenceNextStep_")}\nglobalThis.nonSmartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S24D300GAC");\nglobalThis.smartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S32FM501EC");`,
+  safeNoEvidenceVm,
+);
+assert(
+  !/首頁 → 應用程式/.test(safeNoEvidenceVm.nonSmartApp) &&
+    /沒有足夠證據確認這款具備內建 App 商店/.test(
+      safeNoEvidenceVm.nonSmartApp,
+    ) &&
+    /首頁 → 應用程式/.test(safeNoEvidenceVm.smartApp),
+  "無證據 App 終點只有 RULE 明載 Smart/Tizen 才可提供 Apps 選單，非 Smart 型號不得捏造路徑",
 );
 const operationIntentVm = {};
 vm.createContext(operationIntentVm);

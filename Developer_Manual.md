@@ -1,4 +1,61 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.248)
+# Samsung LINE Bot 完整流程解析 (v29.6.252)
+
+## 2026-08-23（v29.6.252 / 移除 PDF 選檔死快取）
+
+- v29.6.251 正式 LOG 顯示，混合手冊題後端約 17.3 秒，其中 Gemini 生成 5.03 秒；`KB Select` 到生成設定之間另有 3.37 秒空檔。
+- 程式在選好本題 PDF 後同步寫入 `${userId}:last_kb_files`，但全專案沒有任何讀取者；真正 PDF 呼叫一直直接使用 `getRelevantKBFiles()` 的回傳值。現已移除這個死寫入與不必要的序列化。
+- 這項修改不改選檔結果、歷史、來源狀態、配額、Prompt 或模型，也不增加任何供應商呼叫。靜態契約禁止 `last_kb_files` 再被加回。
+- Prompt 本文沒有變更；僅將版號對齊 v29.6.252，正式同步後仍須讀回 782 字，避免程式與 Prompt 契約版本分離。
+- 正式 TestUI 受影響旅程實測 17.35 秒；`KB Select` 到 `Generation Config` 為 0.87 秒（v29.6.251 當次為 3.37 秒）。只掛 1 份正確共用手冊，`pdfCalls=1 / webCalls=0`，2.5 Flash 生成 4.43 秒，成本 NT$0.1313；回答只出現一次 HDMI 規格並保留第 23、24 頁。
+
+## 2026-08-23（v29.6.251 / 手冊單次免費預檢與 Prompt 發布守門）
+
+### 正式 LOG 定位與決策
+
+- v29.6.250 正式混合題在選定完整型號後、建立付費 operation 前已做一次 QA／RULE 免費預檢；建立 operation 後又用相同問題與型號重跑一次。兩次之間沒有新增任何證據，第二次只增加本機查詢、LOG 與等待，不能改善答案。
+- 只移除 operation 後的重複預檢。保留「型號解析後、額度判斷與 operation 前」的第一次預檢，命中仍直接回覆、零扣次、零 PDF；未命中才建立 operation，防連點、快取與原子扣次契約不變。
+- `sync_prompt_c3.ps1` 在 Windows PowerShell 5 傳送中文時曾被靜默截短。發布工具現在會先轉入 PowerShell 7，以 UTF-8 bytes 傳送，並回讀比對 Prompt 版號與字數；不同即失敗，禁止把殘缺 Prompt 當成功。
+- 模型、費率、額度及來源順序不變：QA／RULE → PDF → 必要時 Web；Fast／Polish 仍為 Gemini 2.5 Flash-Lite，PDF／Web 仍為 Gemini 2.5 Flash，沒有新增模型呼叫。
+
+## 2026-08-22（v29.6.250 / 單題快路徑、證據去重與 PDF 續期韌性）
+
+### 正式實測後的決策原委
+
+- v29.6.249 正式 TestUI 顯示，精準 RULE 本體約 1.5 秒即完成，但 TestUI 單題發送前又做一次 checkPdfCost RPC，使使用者體感多等約 12 秒。這是測試介面重複工作，不是 QA／RULE 慢或模型變笨。
+- 「規格＋操作」複合題中，RULE 與官方手冊可能用「2 個」、「兩個」或省略版本號描述同一個介面。只比完整字串會重複；以模糊相似度刪文又可能誤刪操作步驟，因此採可稽核的「同型號＋同介面＋同數量／版本」決定式去重。
+- Gemini Files 為 48 小時檔案；過期手冊若以檔名掃全 Drive，會把不相干檔案的時間加在客戶請求上。每日整庫重傳若單檔失敗，也不得把其他成功的新 URI 一併丟棄。
+
+### v29.6.250 永久契約
+
+1. TestUI 直接單題不再額外呼叫 checkPdfCost；正式後端的 PDF countTokens、NT$0.35 上限、每日額度與冪等保留不變。批次／排隊測試仍保留前端費用提示。
+2. 一般問答已完成 QA／RULE 預檢後，自動進手冊不重跑第一次無型號預檢；解析出完整型號後的免費 QA／RULE 預檢仍必須早於扣額與 PDF 供應商請求。
+3. RULE 與手冊合併只做決定式事實比對，不增加 LLM 與模糊相似度階段。同事實只顯示一次，手冊獨有的步驟與頁碼必須保留；同介面數值衝突時以經結構化解析的 RULE 為準、記錄 Evidence Conflict，禁止將兩個矛盾結論同時給客戶。
+4. 客戶端只保留一個自然頁尾，例如「資料來源：三星官方規格、三星官方手冊（第 23、24 頁）」；不重複顯示內部證據段落或程式流程。
+5. PDF 過期自癒先用索引的 driveFileId 直接取本題檔案；只有舊索引無 ID 才用檔名搜尋，找齊目標立即停止。新索引必須保留 Drive ID、大小、更新時間與 identity。
+6. 每日同步單檔失敗時，只沿用該檔舊 URI，其他上傳成功的新 URI 立即生效；Drive 掃描本身不完整時才保留整份舊索引。維護稽核欄位使用 Gemini 正式 expirationTime，禁止使用不存在的 expireTime。
+7. 模型、費率、額度與供應商不變：Fast／Polish 仍為 Gemini 2.5 Flash-Lite；PDF／Web 仍為 Gemini 2.5 Flash；LLM_PROVIDER 仍固定 Gemini，不新增潤飾、評分或第二次生成。
+
+## 2026-08-22（v29.6.249 / 回應熱路徑、證據邊界與真人化終點）
+
+### 決策原委
+
+- 正式雲端 `LOG` 顯示，一題零 LLM 的精確 RULE 查詢從 webhook 收到到進入每日額度守門曾相隔約 35 秒；其間一般 webhook 會先掃描全部 ScriptProperties，且無條件刪除當日 20／5／10 額度、pending、上一題與 AnswerEnvelope。這同時造成慢、額度看似重置及追問狀態遺失，是本版 P0 根因。
+- 同一題進 Gemini 前，核心路徑會同步讀 `Prompt!B3:C3`，Fast 組 Prompt 又讀一次 `Prompt!C3`；精確 QA／RULE 尚未判斷前還先呼叫 LINE loading API。TestUI 因假 userId 固定收到 400，零成本回答也因此白等。
+- 正式回答雖正確，規格題固定追加「隨時告訴我」、完整 PDF／Web 成功後仍掛「再詳細＋另一來源」，歷史又保存費用、來源與搜尋統計；這會重複文字、增加下輪 token，並誘導沒有新增價值的付費查詢。
+- 舊 deterministic RULE 另把 Tizen、HAS 或型號系列推成 App 可安裝、手機投影、Pivot、AirPlay 等資料庫未明載的結論；Web grounding 成功後也曾被固定 USB 排查文覆寫。兩者都違反「證據只支持實際輸出主張」。
+
+### v29.6.249 永久契約
+
+1. 一般 webhook 不得清除有效的 `SRC_QUOTA_`、`USR_QDAY_`、`SRC_PENDING_`、`SRC_RECENT_` 或 `ANS_ENV_`。只在每日 04:00 排程清除舊日期／已逾時狀態；`SRC_RESCUE_` 舊日鍵亦一併清除。禁止保留可一鍵全刪上述狀態或自動建立固定維護密鑰的 helper。
+2. Prompt 溫度與 C3 採 `GAS_VERSION` 綁定的同次記憶＋5 分鐘 ScriptCache；一次 Sheet 讀取供 Fast/PDF/Web 與重試共用。同步 Prompt 後必須清掉此快取。
+3. 精準 QA、RULE、指令與選型等零模型路徑不得呼叫 loading API。只有真正送 Gemini／PDF／Web 前才顯示，單一事件最多一次；TestUI 完全略過 LINE API。`writeLog()` 只存記憶體，Webhook `finally` 最多批次寫 Sheet 一次；同步 `flush` 與刪除舊 LOG 列只能放每日排程。
+4. deterministic RULE 只逐字擷取目前型號明載欄位。App、操作、故障、投影、AirPlay、3D 等只有精準 QA 可免費回答；否則交既有 PDF。操作＋規格複合句必須先保留可確認的 RULE 事實，只把未解操作送 PDF；「HDMI 連接埠有幾個」等純規格不得因含「連接」誤進 PDF。HAS、高度、左右旋轉與 Pivot 分開判讀，沒有欄位只能說規格未列，不得推成「沒有」。
+5. Web 回覆只能使用 grounding 支持句，不得以固定題型文案覆寫後仍掛來源。同題 operation identity 保留完整子意圖；USB 格式與斷線、藍牙配對與無聲不得共用快取。
+6. 完整手冊／Web 成功即為終點，不再掛「再詳細」或無關來源；PDF 已自動 Web rescue 後不得再誘導同題 Web。只有 Web 無證據且型號確有手冊時，才提供一次反向手冊入口；終端失敗保留官網。
+7. `#再詳細說明` 的可信度只認 `AnswerEnvelope.status=supported` 且有 `evidenceRefs`；「資料不足／請查來源」即使文字很長也不得再花 Fast。
+8. 對話歷史只保存答案語意、型號、步驟與頁碼；來源、費用、配額、搜尋統計與補救流程頁尾必須移除。共同 Prompt 不提供固定客服尾語範例，PDF 只遵循既有 JSON Schema，不再同時要求文字證據標記。
+9. 模型與費率不變：Fast／Polish 仍為 Gemini 2.5 Flash-Lite；PDF／Web 仍為 Gemini 2.5 Flash；沒有新增模型、第二次潤飾或供應商階段。
+10. 無證據 App 終點只有該完整型號 RULE 明載 Smart Monitor／Tizen 時，才可提供「首頁 → 應用程式」；非 Smart 型號只說目前無法確認，禁止套用不存在的選單。
 
 ## 2026-08-22（v29.6.248 / 同類介面規格完整彙總）
 
@@ -162,23 +219,22 @@
 
 - `isGeneralComputingReasoningQuestion_` 修正前置排除過濾器，精準鎖定純故障/異常/PIN碼，避免「接」關鍵字被 `isOperationOrTroubleshootQuery` 誤判而導致外接第四台情境被攔截。
 
-### v29.6.198 強化維護端點雙重憑證驗證相容性
+### v29.6.198 強化維護端點雙重憑證驗證相容性（已由 v29.6.249 取代）
 
-- `isDoGetMaintenanceAuthorized_` 採用雙重驗證比對，既接受自訂 ScriptProperties，亦接受預設 `sam2026`，確保維護端點在所有連線狀況下 100% 穩定。
+- 歷史版本曾接受 ScriptProperties 與固定預設密鑰；v29.6.249 已移除此旁路，只接受明確設定的維護密鑰。
 
-### v29.6.197 維護授權自保機制與真機多輪對話穩定性優化
+### v29.6.197 維護授權自保機制與真機多輪對話穩定性優化（已由 v29.6.249 取代）
 
-- `getDoGetMaintenanceSecret_()` 確保在未設定 ScriptProperties 時採用安全預設密碼 `sam2026`，杜絕不同雲端執行緒讀取不一致問題。
+- 歷史版本曾在屬性缺失時使用固定預設密鑰；v29.6.249 改為 fail closed，未設定就不授權。
 
-### v29.6.196 doGet 入口自動自檢清理與維護密碼保證
+### v29.6.196 doGet 入口自動自檢清理與維護密碼保證（已由 v29.6.249 取代）
 
-- 在 `doGet` 入口與 `getDoGetMaintenanceSecret_` 加入按需自檢與自愈初始化，確保維運與測試端點隨時具備有效授權與乾淨的 ScriptProperties。
+- 歷史版本曾在每次 `doGet` 清理狀態並自動初始化授權；v29.6.249 已移除，健康檢查與 TestUI 不得碰有效聊天室狀態。
 
-### v29.6.195 淨化 ScriptProperties 並解鎖 UI 唯讀狀態
+### v29.6.195 淨化 ScriptProperties 並解鎖 UI 唯讀狀態（已由 v29.6.249 取代）
 
 - 移除 `writeAnswerEnvelope_` 向 `PropertiesService.getScriptProperties()` 寫入 `ANS_ENV_` 暫存資料的行為，改純由 `CacheService` 管理短效狀態。
-- 新增 `purgeEphemeralScriptProperties_()` 自動清理殘留屬性，避免屬性超過 50 筆導致 GAS 網頁介面被鎖定為唯讀。
-- 自動初始化 `MAINTENANCE_SECRET = "sam2026"`，提供完整維護測試授權。
+- 歷史版本曾新增全域 purge 與固定維護密鑰；兩者均已在 v29.6.249 刪除。現行只按日期／TTL 清舊狀態，維護密鑰必須由 ScriptProperties 明確設定。
 
 ### v29.6.194 通識推理放行
 
@@ -504,7 +560,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.248）
+## ✅ 現行鐵律 SOP（v29.6.252）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：QA／RULE／已核對片段不足時，自動建立一次性 manual SourceOperation；「查官方手冊」按鍵則是使用者主動指定同一路徑。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限依既有頁面收斂／成本守門處理。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

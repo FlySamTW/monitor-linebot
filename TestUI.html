@@ -1243,10 +1243,16 @@
         var input = document.getElementById("msg-input");
         var text = input.value.trim();
         if (!text) return;
-        addToQueue(text);
         addToHistory(text); // 存入歷史
         currentQuickReplies = []; // 清除舊快速回覆
         input.value = "";
+        // 真人單題直接送出。成本與配額已由正式路由在真正供應商呼叫前守門，
+        // 不必先多做一次 checkPdfCost RPC；批次／排隊題仍保留原成本檢查。
+        if (!isBotProcessing && messageQueue.length === 0) {
+          doSendMessage(text);
+        } else {
+          addToQueue(text);
+        }
       }
 
       function addToQueue(text) {

@@ -1,5 +1,39 @@
 # 開發對話紀錄
 
+## 2026-08-23（v29.6.252 / 移除 PDF 選檔死快取）
+
+- v29.6.251 正式真人題正確完成，LOG 為 `paidCalls=1 / pdfCalls=1 / webCalls=0`，Gemini 2.5 Flash 輸入 11,256、輸出 402、成本 NT$0.1402；同題只有一筆 `Manual Free Precheck`，確認 v29.6.251 修復有效。
+- 同一時間軸顯示後端從 Daily Guard 到 Reply 約 17.3 秒、Gemini 本身 5.03 秒；`KB Select` 到 `Generation Config` 約 3.37 秒。程式此段將 PDF 清單序列化後寫入 `${userId}:last_kb_files`，但全專案沒有讀取者。
+- v29.6.252 移除該死快取寫入，並新增靜態禁止回歸。PDF 選檔回傳、正確手冊、operation 冪等、對話歷史與成本守門不變；Prompt 本文未改，只將標頭對齊 v29.6.252，正式同步後仍應為 782 字。
+- 正式 Webhook 已更新為 Apps Script version `1434`；health、HEAD 與 Formal TestUI guard 均為 `v29.6.252 [2026-08-23 00:14]`。`Prompt!C3` 讀回 v29.6.252／782 字。
+- 只重走受影響的混合題：17.35 秒，`KB Select → Generation Config` 0.87 秒；正確掛載一份 M5 共用手冊，`paidCalls=1 / pdfCalls=1 / webCalls=0`，輸入 11,256、輸出 290、2.5 Flash 4.43 秒、NT$0.1313。LOG 只有一筆免費預檢，回覆只有一次 HDMI 規格及第 23、24 頁手冊補充。
+
+## 2026-08-23（v29.6.251 / 手冊單次免費預檢與 Prompt UTF-8 守門）
+
+- 由 v29.6.250 正式 TestUI 雲端 LOG 發現，同一個 `S32FM501EC` 混合題在選型完成後出現兩筆 `Manual Free Precheck`；兩次參數相同，中間只有額度檢查與 operation 建立，沒有新增 QA／RULE 證據。
+- 移除 operation 後的第二次預檢；保留扣額前的第一次，確保免費命中仍零扣次、零 PDF，未命中才進既有 PDF operation。新增靜態契約鎖定手冊函式只保留「無型號一次＋選型後一次」兩個呼叫點，正式真人驗證另檢查單題 LOG 僅一筆。
+- Prompt 發布工具補上 PowerShell 7 轉接、UTF-8 bytes 與雲端版號／字數回讀；即使由 Windows PowerShell 5 的官方 SOP 啟動，也不能再把中文截斷後誤報成功。
+- 模型、供應商、費率、20／5／10 額度與單次 NT$0.35 上限均未變；本版沒有增加 Gemini 呼叫。
+
+## 2026-08-22（v29.6.250 / 單題快路徑、混合證據去重與 PDF 續期韌性）
+
+- 依 v29.6.249 正式 TestUI 當次證據收斂：精準 RULE 伺服器核心約 1.5 秒，整體 13.737 秒中約 12 秒來自 TestUI 單題額外 checkPdfCost RPC。單題改直接送出；批次與後端成本守門保留。
+- 複合題以同型號＋同介面＋同數值／版本做零 LLM 去重；同值只留一次、操作與頁碼保留，衝突以 RULE 為準並寫 Evidence Conflict。來源合併為一個自然頁尾。
+- PDF 過期先用 driveFileId 直接取檔，只有舊索引才掃檔名且找齊立即停。每日同步部分失敗不再丟棄其他成功新 URI，維護欄位改用正式 expirationTime。
+- 本版沒有更換模型、供應商、費率、額度或單次 NT$0.35 上限，也沒有增加潤飾／評分 LLM。正式發布與付費真人驗證待守門全綠後回填。
+- 發布後實際發現舊 sync_prompt_c3.ps1 將 Unicode String 直接交給 Windows PowerShell -Body，雲端只收到 15 字。現改為明確 UTF-8 bytes，並強制比對本機／雲端字數與 Prompt 版號；任一不同立即失敗，不再把截斷寫入誤報成成功。正式 C3 已以 UTF-8 重寫並回傳 v29.6.250／782 字。
+
+## 2026-08-22（v29.6.249 / 回應速度、證據正確性與真人化收斂）
+
+- 先讀正式雲端 `所有紀錄`／`LOG`，確認 v29.6.248 的精確 RULE 題 `S49DG932SC 有幾個 HDMI?` 雖為零 Gemini、零 PDF、零 Web，卻在收到訊息約 35 秒後才進每日額度守門；同輪 TestUI 還送出 LINE loading request 而收到 400。根因是訊息熱路徑先全域掃除 ScriptProperties、重複讀 Prompt Sheet、同步寫入／flush 與不分路徑的 loading，不是模型太慢。
+- 移除一般 webhook 的全域狀態 purge，並刪除該會全刪有效狀態、還可能建立固定維護密鑰的危險 helper；每日清理才依日期／TTL 清除 quota、pending、recent、AnswerEnvelope 及 `SRC_RESCUE_`。Trigger 守門先查六小時快取，命中不再列舉 ScriptApp triggers。相同已鎖定型號不重寫狀態。
+- 新增版本化 Runtime Prompt 設定快取，Fast／PDF／Web 共用一次 `Prompt!B3:C3` 讀取；載入動畫只在真正進供應商前顯示一次，TestUI 完全略過。移除回答紀錄及 Log 批次的強制 `SpreadsheetApp.flush()`；Log 只在 webhook `finally` 寫一次，刪除舊列移至每日排程；歷史時間與內容合併單次寫入。
+- deterministic RULE 改為 fail closed：未經 QA／RULE 明示的 App、操作、故障、投影、AirPlay、3D 等不再硬編答案；HAS、升降、左右旋轉、Pivot 逐欄判斷。操作＋規格複合句先保留可確認的 RULE 事實，只把未解操作交 PDF；純「HDMI 連接埠」不會因含「連接」誤升級。非 Smart 型號的 App 終點不得借用「首頁 → 應用程式」。Web 不再用固定 USB 建議覆寫 grounding；無證據方向按問題類別只給低風險可逆步驟。
+- 「再詳細說明」改以 AnswerEnvelope 的 supported/evidence 判斷；手冊／Web 成功後停止追加展開或換來源按鈕。PDF→Web rescue 完成後不再誘導同題重搜；operation key 保留具體意圖，避免不同故障共用答案快取。
+- 客戶輸出與對話歷史移除成本、搜尋統計、供應商、資料庫與 route 術語；共同 Prompt 刪除固定客服尾句與 PDF 文字標記衝突，回覆維持直接、自然、最多一個必要下一步。
+- 模型與付費設定未變：Fast 使用 Gemini 2.5 Flash-Lite，PDF／Web 使用 Gemini 2.5 Flash；沒有新增第二次生成、File Search、背景搜尋或較貴模型。
+- 發布狀態：尚待本版靜態／契約測試、正式 TestUI 最小真人旅程與 guarded release 完成後補記 Apps Script version、實測耗時及成本。
+
 ## 2026-08-22（v29.6.248 / 同類介面完整計數）
 
 - 正式 TestUI 發現 `S49DG932SC` 同時有 `HDMI 2.1 x1` 與 `Micro HDMI 2.1 x1`，舊精確 RULE 只回第一個命中。
@@ -101,23 +135,22 @@
 
 - `isGeneralComputingReasoningQuestion_` 修正前置排除過濾器，精準鎖定純故障/異常/PIN碼，避免「接」關鍵字被 `isOperationOrTroubleshootQuery` 誤判而導致外接第四台情境被攔截。
 
-## 2026-08-18 (v29.6.198 / 強化維護端點雙重憑證驗證相容性)
+## 2026-08-18 (v29.6.198 / 強化維護端點雙重憑證驗證相容性，已由 v29.6.249 取代)
 
-- `isDoGetMaintenanceAuthorized_` 採用雙重驗證比對，既接受自訂 ScriptProperties，亦接受預設 `sam2026`，確保維護端點在所有連線狀況下 100% 穩定。
+- 歷史版本曾接受 ScriptProperties 與固定預設密鑰；v29.6.249 已移除此旁路，只接受明確設定的維護密鑰。
 
-## 2026-08-18 (v29.6.197 / 維護授權自保機制與真機多輪對話穩定性優化)
+## 2026-08-18 (v29.6.197 / 維護授權自保機制與真機多輪對話穩定性優化，已由 v29.6.249 取代)
 
-- `getDoGetMaintenanceSecret_()` 確保在未設定 ScriptProperties 時採用安全預設密碼 `sam2026`，杜絕不同雲端執行緒讀取不一致問題。
+- 歷史版本曾在屬性缺失時使用固定預設密鑰；v29.6.249 改為 fail closed，未設定就不授權。
 
-## 2026-08-18 (v29.6.196 / doGet 入口自動自檢清理與維護密碼保證)
+## 2026-08-18 (v29.6.196 / doGet 入口自動自檢清理與維護密碼保證，已由 v29.6.249 取代)
 
-- 在 `doGet` 入口與 `getDoGetMaintenanceSecret_` 加入按需自檢與自愈初始化，確保維運與測試端點隨時具備有效授權與乾淨的 ScriptProperties。
+- 歷史版本曾在每次 `doGet` 清理狀態並自動初始化授權；v29.6.249 已移除。
 
-## 2026-08-18 (v29.6.195 / 淨化 ScriptProperties 並解鎖 UI 唯讀狀態)
+## 2026-08-18 (v29.6.195 / 淨化 ScriptProperties 並解鎖 UI 唯讀狀態，已由 v29.6.249 取代)
 
 - 移除 `writeAnswerEnvelope_` 向 `PropertiesService.getScriptProperties()` 寫入 `ANS_ENV_` 暫存資料的行為，全數收斂至 `CacheService`。
-- 新增 `purgeEphemeralScriptProperties_()` 自動清理既有數十個 `ANS_ENV_*` 殘留屬性，使總屬性數降回 10 筆內，立即解鎖 Google Apps Script 網頁介面的唯讀鎖定。
-- 自動初始化 `MAINTENANCE_SECRET = "sam2026"`，提供完整維護測試授權。
+- 歷史版本曾加入全域 purge 與固定維護密鑰；v29.6.249 已刪除，改為按日期／TTL 清舊狀態且只接受明確設定的密鑰。
 
 ## 2026-08-17 (v29.6.194 / 通識推理放行優化)
 

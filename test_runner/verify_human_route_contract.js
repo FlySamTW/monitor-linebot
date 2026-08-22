@@ -63,6 +63,7 @@ vm.runInContext(
     extractFunction(linebot, "formatForLineMobile"),
     extractFunction(linebot, "getNaturalCustomerSourceLabel_"),
     extractFunction(linebot, "renderCustomerFacingText_"),
+    extractFunction(linebot, "sanitizeHistoryContent"),
   ].join("\n\n"),
   renderContext,
 );
@@ -78,6 +79,37 @@ const customerReply = renderContext.renderCustomerFacingText_(
 );
 assert(!/您|\[費用|In:|\[AUTO_|\[來源|QA庫|QA資料庫|CLASS_RULES|規格庫/.test(customerReply), "客戶回覆仍外洩內部資訊");
 assert(/資料來源：三星官方手冊/.test(customerReply), "手冊來源沒有轉成自然頁尾");
+
+const mergedSourceReply = renderContext.renderCustomerFacingText_(
+  "已確認規格：\n有 2 個 HDMI。\n[來源:官方規格庫]\n\n手冊補充：\n請用 HDMI 線連接訊號源。\n官方手冊：第23、24頁\n[來源:S32FM501.pdf]\n[費用:NT$0.1441]",
+);
+assert(
+  /資料來源：三星官方規格、三星官方手冊（第23、24頁）/.test(
+    mergedSourceReply,
+  ) &&
+    !/\n官方手冊：第23、24頁/.test(mergedSourceReply),
+  "RULE＋PDF 的來源與頁碼必須合併成單一自然頁尾，不能分散重複",
+);
+
+const cleanHistory = renderContext.sanitizeHistoryContent(
+  "請到設定頁操作。\n官方手冊：第154頁\n[來源:官方手冊]\n[費用:NT$0.1234（合計 1 次生成請求）]\n參考：example.com（非官方，請斟酌）\n本次約 NT$0.1234｜手冊 4/5",
+);
+assert(/官方手冊：第154頁/.test(cleanHistory), "歷史清理誤刪答案或手冊頁碼");
+assert(
+  !/\[來源|\[費用|參考：|本次約/.test(cleanHistory),
+  "歷史仍夾帶來源、費用或搜尋頁尾，會增加下一輪 token 與重複",
+);
+assert(
+  !/如果你想連接電腦|如果還想確認實際接線方式|隨時告訴我喔，我很樂意/.test(
+    linebot,
+  ),
+  "固定客服邀請語不得硬編進每一題回覆或共同 Prompt",
+);
+assert(
+  !/回答結尾固定兩行，兩行都不得省略/.test(linebot) &&
+    /JSON Schema 接收 answer 與 evidence/.test(linebot),
+  "PDF Prompt 不得同時要求文字標記與 Structured JSON",
+);
 
 const relevanceContext = { isCrossDeviceMonitorQuery: () => true };
 vm.createContext(relevanceContext);
@@ -435,8 +467,12 @@ assert(
   /TEST_USER_ID_KEY/.test(testUi) &&
     /crypto\.randomUUID/.test(testUi) &&
     /aria-label="送出訊息"/.test(testUi) &&
+    /if \(!isBotProcessing && messageQueue\.length === 0\)[\s\S]{0,120}doSendMessage\(text\)/.test(
+      testUi,
+    ) &&
+    /function processQueue\(\)[\s\S]{0,260}checkAndSend\(nextMsg\)/.test(testUi) &&
     !/transform:\s*scale\(0\.76\)/.test(testUi),
-  "TestUI 工作階段或 RWD／可存取性契約未完成",
+  "TestUI 真人單題快路徑、批次成本守門或工作階段契約未完成",
 );
 assert(
   /GAS_MAINTENANCE_SECRET/.test(authHelper) &&
