@@ -13,6 +13,21 @@ const qaRows = fs
   .map((line) => line.trim())
   .filter(Boolean);
 const testUi = fs.readFileSync(path.join(root, "TestUI.html"), "utf8");
+const testUiOnloadStart = testUi.indexOf("window.onload = function");
+const testUiOnloadEnd = testUi.indexOf(
+  "function loadManualCoverageStatus",
+  testUiOnloadStart,
+);
+const testUiOnload = testUi.slice(testUiOnloadStart, testUiOnloadEnd);
+assert(
+  testUiOnloadStart >= 0 &&
+    testUiOnloadEnd > testUiOnloadStart &&
+    !/clearTestSession\(/.test(testUiOnload) &&
+    /function clearSession\(\)[\s\S]*clearTestSession\(TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(
+      testUi,
+    ),
+  "TestUI 重新載入不得清除同聊天室狀態；只有明確按重置才可清除",
+);
 const prompt = fs.readFileSync(path.join(root, "Prompt.csv"), "utf8");
 const classRules = fs.readFileSync(path.join(root, "CLASS_RULES.csv"), "utf8");
 const menu = JSON.parse(
@@ -93,6 +108,11 @@ const aliasVmSource = [
   extractFunction(linebot, "extractFullModelLikeTokens"),
   extractFunction(linebot, "normalizeModelForDisplay"),
   extractFunction(linebot, "dedupDisplayModels"),
+  extractFunction(linebot, "normalizeManualModelDescriptorText_"),
+  extractFunction(linebot, "getMonitorModelGenerationYear_"),
+  extractFunction(linebot, "extractManualModelDescriptorSignals_"),
+  extractFunction(linebot, "getManualCandidateRuleLineMap_"),
+  extractFunction(linebot, "filterModelCandidatesByDescription_"),
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
@@ -106,6 +126,9 @@ const aliasVmSource = [
   extractFunction(linebot, "stripKnownModelFromSourceQuestion_"),
   extractFunction(linebot, "resolveManualSourceModel_"),
   `globalThis.__g8Candidates = getAliasOnlySelectionModelsFromQuery("G8 有耳機孔嗎？", 10, false);`,
+  `globalThis.__g5AllCandidates = getAliasCandidatesFromClassRules("G5", 50);`,
+  `globalThis.__g5FirstTurnDescriptorCandidates = getAliasOnlySelectionModelsFromQuery("Odyssey G5，27吋、QHD、180Hz、IPS那款，完整型號是哪個？", 10, false);`,
+  `globalThis.__m7YearCandidates = getAliasOnlySelectionModelsFromQuery("公司那台 M7，我只記得是32吋、2025、4K、USB-C 65W，完整型號是哪個？", 10, false);`,
   `globalThis.__g806Candidates = getAliasOnlySelectionModelsFromQuery("G806 雙模怎麼開？", 10, false);`,
   `globalThis.__g8SelectedAgain = getAliasOnlySelectionModelsFromQuery("S27FG812SC G8 有耳機孔嗎？", 10, false);`,
   `globalThis.__sameQuestion = isSameRecentSourceQuestion_("G8 如何連接藍牙耳機?", "S32DG802SC G8 如何連接藍牙耳機？", "S32DG802SC");`,
@@ -123,17 +146,41 @@ const aliasVmSource = [
   `globalThis.__ellipticalFollowUp = isEllipticalEvidenceFollowUp_("要怎麼切？ (型號: S32HG806ES)");`,
   `globalThis.__standaloneFullModel = isEllipticalEvidenceFollowUp_("S32HG806ES 要怎麼切？");`,
 ].join("\n\n");
+const aliasRuleCache = new Map();
 const aliasVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
   ss: {
     getSheetByName() {
+      const rows = classRules.split(/\r?\n/).filter(Boolean).map((line) => [line]);
       return {
+        getLastRow() {
+          return rows.length + 1;
+        },
+        getRange() {
+          return {
+            getValues() {
+              return rows;
+            },
+          };
+        },
         getDataRange() {
           return {
             getValues() {
-              return classRules.split(/\r?\n/).filter(Boolean).map((line) => [line]);
+              return rows;
             },
           };
+        },
+      };
+    },
+  },
+  CacheService: {
+    getScriptCache() {
+      return {
+        get(key) {
+          return aliasRuleCache.get(key) || null;
+        },
+        put(key, value) {
+          aliasRuleCache.set(key, String(value));
         },
       };
     },
@@ -150,6 +197,18 @@ assert(
       .every((model) => aliasVmContext.__g8Candidates.includes(model)) &&
     !aliasVmContext.__g8Candidates.some((model) => /^M[5789]$/i.test(model)),
   "G8 功能題必須從 Odyssey CLASS_RULES 解析出全部完整型號候選",
+);
+assert(
+  aliasVmContext.__g5AllCandidates.length > 10 &&
+    aliasVmContext.__g5FirstTurnDescriptorCandidates.length === 2 &&
+    aliasVmContext.__g5FirstTurnDescriptorCandidates.includes("S27DG502EC") &&
+    aliasVmContext.__g5FirstTurnDescriptorCandidates.includes("S27FG502EC"),
+  "G5 第一句已給 27 吋、QHD、180Hz、IPS 時，必須先掃完整系列再縮成 DG/FG 兩款，不得因前 10 款上限漏掉 S27FG502EC",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__m7YearCandidates).sort(),
+  ["S32FM702UC", "S32FM703UC"],
+  "M7 的 2025 年份描述只可保留 F 世代；不得混入明載 2022 的 BM 舊款",
 );
 assert(
   aliasVmContext.__g806Candidates.includes("S27HG806EF") &&
@@ -220,12 +279,17 @@ assert.strictEqual(
 const descriptorRuleCache = new Map();
 const descriptorVmSource = [
   extractFunction(linebot, "toHalfWidth"),
+  extractFunction(linebot, "isShortAliasModelToken"),
+  extractFunction(linebot, "extractShortAliasModelTokens"),
+  extractFunction(linebot, "extractFullModelLikeTokens"),
   extractFunction(linebot, "normalizeModelForDisplay"),
   extractFunction(linebot, "dedupDisplayModels"),
   extractFunction(linebot, "normalizeManualModelDescriptorText_"),
+  extractFunction(linebot, "getMonitorModelGenerationYear_"),
   extractFunction(linebot, "extractManualModelDescriptorSignals_"),
   extractFunction(linebot, "isManualModelDescriptorReply_"),
   extractFunction(linebot, "getManualCandidateRuleLineMap_"),
+  extractFunction(linebot, "filterModelCandidatesByDescription_"),
   extractFunction(linebot, "resolvePendingManualModelByDescription_"),
   `globalThis.__g8Descriptor = resolvePendingManualModelByDescription_("我看的是 32 吋 6K 那台。", {draftQuery:"我想用一條 USB-C 顯示又充電，哪款可以？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
   `globalThis.__g8Ambiguous = resolvePendingManualModelByDescription_("32 吋 4K 那台", {draftQuery:"耳機孔在哪裡？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
@@ -234,6 +298,7 @@ const descriptorVmSource = [
   `globalThis.__m7Size = resolvePendingManualModelByDescription_("我選 43 吋那台", {draftQuery:"怎麼連接 MacBook？", manualModelCandidates:["S32FM703UC","S43FM703UC"]}, false);`,
   `globalThis.__manualFiltersNoPdf = resolvePendingManualModelByDescription_("我看的是 32 吋 6K 那台。", {draftQuery:"怎麼連接？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}});`,
   `globalThis.__featureQuestionIsNotDescriptor = isManualModelDescriptorReply_("32 吋 4K 有幾個 HDMI？");`,
+  `globalThis.__newFeatureQuestionIsNotDescriptor = isManualModelDescriptorReply_("S32D806 那台 Type-C 幾瓦、還有 KVM 嗎？");`,
 ].join("\n\n");
 const descriptorVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -292,6 +357,11 @@ assert.strictEqual(
   descriptorVmContext.__featureQuestionIsNotDescriptor,
   false,
   "候選期間的新規格問句不得被誤當成型號描述",
+);
+assert.strictEqual(
+  descriptorVmContext.__newFeatureQuestionIsNotDescriptor,
+  false,
+  "帶「那台」的 Type-C 瓦數／KVM 新功能題仍是新題，不得沿用舊候選描述狀態",
 );
 const pendingSourceText = extractFunction(linebot, "processPendingSourceText_");
 assert(
@@ -632,12 +702,13 @@ const aliasCandidateText = extractFunction(
 );
 assert(
   /requirePdfCoverage\s*=\s*true/.test(aliasCandidateText) &&
-    /getAliasCandidatesFromExistingPdfs/.test(aliasCandidateText) &&
-    /getAliasCandidatesFromClassRules/.test(aliasCandidateText) &&
+    /getAliasCandidatesFromClassRules\(alias,\s*50\)/.test(aliasCandidateText) &&
+    /filterModelCandidatesByDescription_/.test(aliasCandidateText) &&
+    /isModelCoveredByExistingPdf/.test(aliasCandidateText) &&
     /extractFullModelLikeTokens\(text\)\.length\s*>\s*0/.test(
       aliasCandidateText,
     ),
-  "Fast Mode 必須從 CLASS_RULES 列系列候選；選完完整型號後不得再次進入選型迴圈",
+  "Fast Mode 必須先掃完整 CLASS_RULES 系列、依首句描述縮選，手冊模式再限定 PDF 覆蓋；選完完整型號後不得再進選型迴圈",
 );
 const postbackText = extractFunction(linebot, "handleRichMenuPostback_");
 const pendingManualSelectionText = extractFunction(
@@ -866,6 +937,8 @@ vm.runInContext(
     extractFunction(linebot, "getSourceQuotaKey_"),
     extractFunction(linebot, "getDailyQuestionQuotaKey_"),
     extractFunction(linebot, "getSourceProductKey_"),
+    extractFunction(linebot, "getComparisonContextKey_"),
+    extractFunction(linebot, "clearComparisonContext_"),
     extractFunction(linebot, "parseSourceStateJson_"),
     extractFunction(linebot, "readSourceProductState_"),
     extractFunction(linebot, "rememberSourceProductModel_"),
@@ -878,7 +951,6 @@ vm.runInContext(
     extractFunction(linebot, "getSourceRemaining_"),
     extractFunction(linebot, "reserveAdvancedSourceUsage_"),
     extractFunction(linebot, "refundAdvancedSourceUsage_"),
-    extractFunction(linebot, "getPreviousGasPatchVersion_"),
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
     extractFunction(linebot, "beginAdvancedSourceOperation_"),
     extractFunction(linebot, "finishAdvancedSourceOperation_"),
@@ -1008,12 +1080,10 @@ const migratedOperation = context.beginAdvancedSourceOperation_(
   "如何開啟PBP",
   "S49DG932SC",
 );
-assert.strictEqual(migratedOperation.allowed, false);
-assert.strictEqual(migratedOperation.finalText, "已核對第 35 頁");
 assert.strictEqual(
-  migratedOperation.status,
-  "done",
-  "發布後 10 分鐘內的同題必須沿用上一 patch 結果，不可重查 PDF／重扣費",
+  migratedOperation.allowed,
+  true,
+  "新版本代表回答／證據契約可能已修正，不得重播上一 patch 的舊答案",
 );
 context.clearSourceProductState_("C3");
 assert.strictEqual(context.readSourceProductState_("C3"), null);
@@ -1451,11 +1521,23 @@ assert(
     /refundDailyQuestionUsage_\(userId, "operation_auto_manual"\)/.test(
       handleMessageText,
     ) &&
+    /heldOperationSelectionCharge[\s\S]{0,240}consumeDailyQuestionModelSelectionHold_\(userId\)[\s\S]{0,260}operation_auto_manual/.test(
+      handleMessageText,
+    ) &&
     /executeAutomaticManualFallback_\([\s\S]{0,260}operationModel/.test(
       handleMessageText,
     ) &&
     !/operation_source_handoff/.test(handleMessageText),
   "完整型號操作題先免費查 QA／RULE／Evidence；未命中退回一般題額度並直接讀 PDF，不可停在來源 CTA",
+);
+assert(
+  /rememberRecentSourceQuestion_\(contextId, msg, directVerifiedModel\);[\s\S]{0,180}resumedFromPlainModelClarification[\s\S]{0,120}clearDailyQuestionModelSelectionHold_\(userId\)/.test(
+    handleMessageText,
+  ) &&
+    /replyWithLocalQaMatch_\([\s\S]{0,260}resumedFromPlainModelClarification[\s\S]{0,120}clearDailyQuestionModelSelectionHold_\(userId\)/.test(
+      handleMessageText,
+    ),
+  "描述／文字選型後若由免費 Evidence 或 QA 提前完成，必須清掉本題 hold，不能誤退下一題額度",
 );
 assert(
   /getPreviousUserTopicForEvidence_\([\s\S]*contextId,[\s\S]*msg/.test(
@@ -1481,10 +1563,45 @@ assert(
   /versionOverride \|\| GAS_VERSION/.test(
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
   ) &&
-    /getPreviousGasPatchVersion_\(GAS_VERSION\)/.test(
+    !/getPreviousGasPatchVersion_/.test(
       extractFunction(linebot, "beginAdvancedSourceOperation_"),
     ),
-  "PDF／Web 快取鍵須版本化，且只可在原 TTL 內沿用前一 patch 防止部署後重扣",
+  "PDF／Web 快取鍵須版本化；同版本可去重，新版本不得重播舊證據或錯答",
+);
+
+const operationClassifierContext = {};
+vm.createContext(operationClassifierContext);
+vm.runInContext(
+  `${extractFunction(linebot, "isOperationOrTroubleshootQuery")}
+   globalThis.reverseMenuPhrase = isOperationOrTroubleshootQuery("虛擬準心要從哪個選單打開？");
+   globalThis.settingPhrase = isOperationOrTroubleshootQuery("這個功能在什麼設定開啟？");
+   globalThis.binaryFeaturePhrase = isOperationOrTroubleshootQuery("哪款有虛擬準心？");
+   globalThis.comparisonPhrase = isOperationOrTroubleshootQuery("兩款虛擬準心功能有何差異？");`,
+  operationClassifierContext,
+);
+assert.strictEqual(
+  operationClassifierContext.reverseMenuPhrase,
+  true,
+  "自然語序「哪個選單打開」仍屬操作題，必須直接進手冊狀態機",
+);
+assert.strictEqual(operationClassifierContext.settingPhrase, true);
+assert.strictEqual(
+  operationClassifierContext.binaryFeaturePhrase,
+  false,
+  "單純問有沒有／哪款有某功能仍是規格題，不得誤升級 PDF",
+);
+assert.strictEqual(operationClassifierContext.comparisonPhrase, false);
+assert(
+  /resolvedConversationModel = persistentProduct\.model;[\s\S]{0,180}routingQuestion = msg;/.test(
+    handleMessageText,
+  ) &&
+    /recentFullModels\[0\] \|\|[\s\S]{0,80}resolvedConversationModel/.test(
+      handleMessageText,
+    ) &&
+    /resolvedRecentModel,[\s\S]{0,80}comparisonReference\.kind === "resolved"/.test(
+      handleMessageText,
+    ),
+  "自然追問沿用的完整型號必須同步進 routingQuestion 與上一題來源狀態，不能被舊候選覆寫",
 );
 
 const emptyQuickReplyContext = {
@@ -1522,21 +1639,34 @@ vm.runInContext(
    ${extractFunction(linebot, "normalizeManualEvidenceModel_")}
    ${extractFunction(linebot, "getManualEvidenceRegionalBase_")}
    ${extractFunction(linebot, "extractManualEvidenceModels_")}
+   ${extractFunction(linebot, "manualEvidenceModelMatchesTarget_")}
    ${extractFunction(linebot, "manualEvidenceSupportsTargetModel_")}
+   ${extractFunction(linebot, "manualSupportedAnswerTargetsModel_")}
+   ${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}
+   ${extractFunction(linebot, "selectManualEvidenceForQuestion_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
    ${extractFunction(linebot, "applyManualEvidenceGuard_")}
    globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
    globalThis.unsourcedRemoved = buildManualConsentPrompt_("請把支架鎖到 VESA 孔。", "問題", "S32FM902SC");
    globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");
-   globalThis.structuredManual = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"請把隨身碟插到 SERVICE 埠，再到軟體更新。",operationPath:"Support → Software Update",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"將 USB 裝置連接至顯示器上的連接埠"}]})), "問題");
-   globalThis.structuredMultiple = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"先開 Dual Mode，再用 Aim Point。",operationPath:"Game → Dual Mode",evidence:[{pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]})), "問題");
-   globalThis.structuredDeduped = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"執行 Self Diagnosis。",operationPath:"Support → Self Diagnosis",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]})), "問題");
-   globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,answer:"手冊未記載第三方顯卡驅動衝突。",operationPath:"",evidence:[]})), "問題");
+   globalThis.structuredManual = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"請把隨身碟插到連接埠，再到 Support → Software Update。",pageNumber:36,scope:"型號明確",evidenceExcerpt:"將 USB 裝置連接至顯示器上的連接埠，再選擇 Support → Software Update"}]})), "問題");
+   globalThis.structuredMultiple = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"先到 Game → Dual Mode。",pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{supportedAnswer:"再選擇 Aim Point。",pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]})), "問題");
+   globalThis.structuredDeduped = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"到 Support → Self Diagnosis。",pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{supportedAnswer:"自我診斷期間不要關閉電源。",pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{supportedAnswer:"最後依照畫面指示檢查畫面。",pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]})), "問題");
+   globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"手冊未記載第三方顯卡驅動衝突。",evidence:[]})), "問題");
    globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");
-   globalThis.wrongSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32HG806ES 支援 USB-C 98W。",operationPath:"",evidence:[{pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG802SC / S32HG802SC 可透過 USB Type-C 充電，最高 98W"}]}), "S32HG806ES");
-   globalThis.rightSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32HG806ES 沒有 USB-C 影像輸入。",operationPath:"",evidence:[{pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG806EF / S32HG806ES 連接埠為 HDMI、DP 與 USB Hub"}]}), "S32HG806ES");
-   globalThis.regionalBaseModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32FM803UC 適用。",operationPath:"",evidence:[{pageNumber:151,scope:"型號明確",evidenceExcerpt:"S32FM803 可使用藍牙揚聲器清單"}]}), "S32FM803UC");
-   globalThis.allFileCommon = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"所有型號使用前都要先斷電。",operationPath:"",evidence:[{pageNumber:4,scope:"全檔共通",evidenceExcerpt:"清潔產品前請先將電源線拔下"}]}), "S32HG806ES");`,
+   globalThis.wrongSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32HG806ES 支援 USB-C 98W。",pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG802SC / S32HG802SC 可透過 USB Type-C 充電，最高 98W"}]}), "S32HG806ES");
+   globalThis.rightSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32HG806ES 的連接埠沒有 USB-C 影像輸入。",pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG806EF / S32HG806ES 沒有 USB-C 影像輸入；連接埠為 HDMI、DP 與 USB Hub"}]}), "S32HG806ES");
+   globalThis.regionalBaseModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32FM803UC 可使用藍牙揚聲器清單。",pageNumber:151,scope:"型號明確",evidenceExcerpt:"S32FM803 可使用藍牙揚聲器清單"}]}), "S32FM803UC");
+   globalThis.bareCoreModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32D806UAC 可用 Switch USB 切換 USB 訊號源。",pageNumber:17,scope:"型號明確",evidenceExcerpt:"S27D806UAC / S32D806UAC：Switch USB；向右切換 USB 訊號源"}]}), "S32D806");
+   globalThis.allFileCommon = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"清潔前先拔下電源線。",pageNumber:4,scope:"全檔共通",evidenceExcerpt:"清潔產品前請先將電源線拔下"}]}), "S32HG806ES");
+   globalThis.varyingRightModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32FG502EC 可到 Game → Virtual Aim Point 開啟虛擬準心。",pageNumber:49,scope:"依型號而異",evidenceExcerpt:"S32FG502EC：Game → Virtual Aim Point"}]}), "S32FG502EC");
+   globalThis.varyingWrongModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32FG502EC 可開啟虛擬準心。",pageNumber:49,scope:"依型號而異",evidenceExcerpt:"S27FG502EC：Game → Virtual Aim Point"}]}), "S32FG502EC");
+   globalThis.mixedScopedEvidence = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"先用 JOG 按鈕開啟選單。",pageNumber:4,scope:"全檔共通",evidenceExcerpt:"使用 JOG 按鈕開啟選單"},{supportedAnswer:"再到 Game → Virtual Aim Point。",pageNumber:49,scope:"依型號而異",evidenceExcerpt:"S32FG502EC：Game → Virtual Aim Point"}]}), "S32FG502EC");
+   globalThis.partiallyValid = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",answer:"錯誤頂層答案：請開 AI Mode。",operationPath:"錯誤路徑 → AI Mode",evidence:[{supportedAnswer:"到 Game → Virtual Aim Point 開啟虛擬準心。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S27FG502EC / S32FG502EC 機型適用：Game → Virtual Aim Point"},{supportedAnswer:"可選擇偏好的瞄準點風格。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S32FG502EC 機型適用；選擇偏好的瞄準點風格"},{supportedAnswer:"可用 AI Mode 自動調整顏色。",pageNumber:35,scope:"依型號而異",evidenceExcerpt:"僅 S27FG502SC / S27FG706EC 機型適用：AI Mode"}]}), "S32FG502EC");
+   globalThis.menuLocationOnly = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"到 Game → Virtual Aim Point 開啟虛擬準心。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S27FG502EC / S32FG502EC 機型適用：Game → Virtual Aim Point"},{supportedAnswer:"可選擇偏好的瞄準點風格，例如 5:3、53、23、613。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S32FG502EC 機型適用；可選擇偏好的瞄準點風格，例如 5:3、53、23、613"}]}), "S32FG502EC", "要從哪個選單打開？");
+   globalThis.unsupportedNumber = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"USB-C 可供電 98W。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"USB-C 可供電 65W"}]}), "");
+   globalThis.unsupportedNegative = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"這款沒有耳機孔。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"連接埠列出 HDMI 與 DisplayPort"}]}), "");
+   globalThis.contradictoryNotFound = normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"沒有答案",evidence:[{supportedAnswer:"其實有答案。",pageNumber:1,scope:"全檔共通",evidenceExcerpt:"其實有答案"}]}), "");`,
   manualUiContext,
 );
 assert(
@@ -1548,22 +1678,56 @@ assert(
     manualUiContext.newFailureDetected === true &&
     /第36頁/.test(manualUiContext.structuredManual) &&
     !/(?:手冊重點|證據摘錄)/.test(manualUiContext.structuredManual) &&
-    /操作路徑：Support → Software Update/.test(manualUiContext.structuredManual) &&
+    /Support → Software Update/.test(manualUiContext.structuredManual) &&
     (manualUiContext.structuredManual.match(/Support → Software Update/g) || []).length === 1 &&
     /第27、28頁/.test(manualUiContext.structuredMultiple) &&
     /第36、37頁/.test(manualUiContext.structuredDeduped) &&
-    /操作路徑：Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
+    /Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
     /補查一次公開網頁/.test(manualUiContext.formatError) &&
     /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.wrongSharedModel) &&
     /第12頁/.test(manualUiContext.rightSharedModel) &&
     /第151頁/.test(manualUiContext.regionalBaseModel) &&
-    /第4頁/.test(manualUiContext.allFileCommon),
+    /第17頁/.test(manualUiContext.bareCoreModel) &&
+    /Switch USB/.test(manualUiContext.bareCoreModel) &&
+    /第4頁/.test(manualUiContext.allFileCommon) &&
+    /第49頁/.test(manualUiContext.varyingRightModel) &&
+    /範圍:型號明確/.test(manualUiContext.varyingRightModel) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.varyingWrongModel) &&
+    /第4、49頁/.test(manualUiContext.mixedScopedEvidence) &&
+    /範圍:型號明確/.test(manualUiContext.mixedScopedEvidence) &&
+    /Game → Virtual Aim Point/.test(manualUiContext.partiallyValid) &&
+    /偏好的瞄準點風格/.test(manualUiContext.partiallyValid) &&
+    !/AI Mode/.test(manualUiContext.partiallyValid) &&
+    !/錯誤頂層答案|錯誤路徑/.test(manualUiContext.partiallyValid) &&
+    /Game → Virtual Aim Point/.test(manualUiContext.menuLocationOnly) &&
+    !/5:3|613|瞄準點風格/.test(manualUiContext.menuLocationOnly) &&
+    /第34頁/.test(manualUiContext.partiallyValid) &&
+    !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.partiallyValid) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.unsupportedNumber) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.unsupportedNegative) &&
+    /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
+const manualContextVm = {};
+vm.createContext(manualContextVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildManualContextCompleteQuery_")}
+   globalThis.followup = buildManualContextCompleteQuery_("桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？", [{role:"user",content:"S32D806 Type-C 幾瓦，還有 RJ-45 和 KVM 嗎？"},{role:"assistant",content:"有 KVM"},{role:"user",content:"桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？"}]);
+   globalThis.standalone = buildManualContextCompleteQuery_("S32D806 如何切換 USB 訊號源？", [{role:"user",content:"昨天問的是別款螢幕"},{role:"user",content:"S32D806 如何切換 USB 訊號源？"}]);`,
+  manualContextVm,
+);
 assert(
-  /normalizeManualStructuredResponse_\(text, targetModelName\)/.test(linebot),
+  /KVM/.test(manualContextVm.followup) &&
+    /只用來補全本題/.test(manualContextVm.followup) &&
+    manualContextVm.standalone === "S32D806 如何切換 USB 訊號源？",
+  "PDF 只在自然省略追問帶一行前題主題；獨立新題不得混入舊歷史",
+);
+assert(
+  /normalizeManualStructuredResponse_\(\s*text,\s*targetModelName,\s*query,?\s*\)/.test(
+    linebot,
+  ),
   "PDF 結構化證據必須帶入當前鎖定型號，不得在共用手冊跨型號套用",
 );
 assert(
@@ -1592,28 +1756,45 @@ const exactComparisonText = extractFunction(
   linebot,
   "buildExactRuleComparisonReply_",
 );
+const deterministicComparisonText = extractFunction(
+  linebot,
+  "buildDeterministicComparisonReply_",
+);
 assert(
-  /models\.length !== 2/.test(exactComparisonText) &&
-    /findExactModelRuleLine_\(model\)/.test(exactComparisonText) &&
-    !/callLLMWithRetry|UrlFetchApp\.fetch/.test(exactComparisonText) &&
+  /buildDeterministicComparisonReply_\(text\)/.test(exactComparisonText) &&
+    /findExactModelRuleLine_\(m1\)/.test(deterministicComparisonText) &&
+    /findExactModelRuleLine_\(m2\)/.test(deterministicComparisonText) &&
+    !/callLLMWithRetry|UrlFetchApp\.fetch/.test(
+      `${exactComparisonText}\n${deterministicComparisonText}`,
+    ) &&
     /buildExactRuleComparisonReply_\(routingQuestion\)[\s\S]{0,700}replyMessage\(replyToken, exactRuleComparisonReply\)[\s\S]{0,500}return;/.test(
       linebot,
     ),
   "兩完整型號比較必須只讀各自精確 RULE 並在 Fast LLM 前零成本回覆",
 );
+const comparisonRuleLines = new Map(
+  ["S32HG806ES", "S32HG802SC", "S27FG502EC", "S32FG502EC", "S27H704EAC", "S32D707EAC"].map(
+    (model) => [
+      model,
+      classRules
+        .split(/\r?\n/)
+        .find((line) => new RegExp(`(?:^|,)型號[：:]${model}(?:,|$)`, "i").test(line)) || "",
+    ],
+  ),
+);
 const exactComparisonVm = {
   writeLog: () => {},
-  extractFullModelLikeTokens: () => ["S32HG806ES", "S32HG802SC"],
-  dedupDisplayModels: (models) => models,
+  extractFullModelLikeTokens: (text) =>
+    String(text || "").toUpperCase().match(/\bS\d{2}[A-Z0-9]{5,16}\b/g) || [],
   normalizeModelForDisplay: (model) => model,
-  findExactModelRuleLine_: (model) =>
-    model === "S32HG806ES"
-      ? "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8 雙模平面電競顯示器 G80HS,32吋16:9 IPS平面螢幕,雙模 6K 165Hz / 3K 330Hz,1ms(GtG)反應時間,HDR10+ Gaming,FreeSync Premium Pro"
-      : "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8 平面電競顯示器 G80SD,32吋16:9 OLED平面螢幕,4K UHD(3840x2160)解析度,最大240Hz更新頻率,0.03ms(GtG)反應時間,HDR10+ Gaming,AMD FreeSync Premium Pro",
+  findExactModelRuleLine_: (model) => comparisonRuleLines.get(model) || "",
 };
 vm.createContext(exactComparisonVm);
 vm.runInContext(
-  `${extractFunction(linebot, "pickExactComparisonFields_")}\n${exactComparisonText}\nglobalThis.result = buildExactRuleComparisonReply_("S32HG806ES 跟 S32HG802SC 哪一台比較適合打遊戲？");`,
+  `${deterministicComparisonText}\n${exactComparisonText}\n` +
+    `globalThis.result = buildExactRuleComparisonReply_("S32HG806ES 跟 S32HG802SC 哪一台比較適合打遊戲？");\n` +
+    `globalThis.q2 = buildExactRuleComparisonReply_("S27FG502EC 那跟 S32FG502EC 的面板、解析度、更新率和底座差在哪？");\n` +
+    `globalThis.q10 = buildExactRuleComparisonReply_("我做修圖，S27H704EAC 跟 S32D707EAC 怎麼選？只照官方規格比較面板、對比和人體工學支架。");`,
   exactComparisonVm,
 );
 assert(
@@ -1621,6 +1802,148 @@ assert(
     /最大240Hz更新頻率/.test(exactComparisonVm.result) &&
     !/600Hz|1040Hz/.test(exactComparisonVm.result),
   "比較回答必須完整保留兩台各自的更新頻率，且不得再出現跨型號幻覺數字",
+);
+assert(
+  ["面板", "解析度", "更新率", "支架調整"].every((label) =>
+    new RegExp(`• ${label}：`).test(exactComparisonVm.q2),
+  ) &&
+    /S27FG502EC｜IPS/.test(exactComparisonVm.q2) &&
+    /S32FG502EC｜Fast IPS/i.test(exactComparisonVm.q2) &&
+    /S27FG502EC｜官方規格未列此項/.test(exactComparisonVm.q2) &&
+    /S32FG502EC｜HAS升降底座\(105mm\)/.test(exactComparisonVm.q2) &&
+    /\[費用:NT\$0\.0000（未呼叫 LLM）\]/.test(exactComparisonVm.q2),
+  "Q2 自然補前款後，必須零費用完整比較兩款指定的面板、解析度、更新率與底座",
+);
+assert(
+  ["面板", "對比", "支架調整"].every((label) =>
+    new RegExp(`• ${label}：`).test(exactComparisonVm.q10),
+  ) &&
+    !/• (?:解析度|更新率|亮度)：/.test(exactComparisonVm.q10) &&
+    /S27H704EAC｜IPS/.test(exactComparisonVm.q10) &&
+    /S32D707EAC｜VA/.test(exactComparisonVm.q10) &&
+    /S27H704EAC｜原生對比1000:1/.test(exactComparisonVm.q10) &&
+    /S32D707EAC｜對比度 3000:1/.test(exactComparisonVm.q10) &&
+    /S27H704EAC｜HAS高度調整支架\(120mm\)/.test(exactComparisonVm.q10) &&
+    /S32D707EAC｜官方規格未列此項/.test(exactComparisonVm.q10) &&
+    /怎麼選：.*支架調整.*S27H704EAC.*官方有明列.*對比數值.*S32D707EAC.*較高/.test(
+      exactComparisonVm.q10,
+    ) &&
+    /\[費用:NT\$0\.0000（未呼叫 LLM）\]/.test(exactComparisonVm.q10),
+  "Q10 必須只依官方 RULE 零費用完整列出面板、對比與人體工學支架，並用已列差異給選擇摘要；未列欄位不得猜測",
+);
+
+const comparisonStateCacheData = new Map();
+const comparisonStatePropData = new Map();
+const comparisonStateCache = {
+  get: (key) => comparisonStateCacheData.get(key) || null,
+  put: (key, value) => comparisonStateCacheData.set(key, String(value)),
+  remove: (key) => comparisonStateCacheData.delete(key),
+};
+const comparisonStateProps = {
+  getProperty: (key) => comparisonStatePropData.get(key) || null,
+  setProperty: (key, value) => comparisonStatePropData.set(key, String(value)),
+  deleteProperty: (key) => comparisonStatePropData.delete(key),
+};
+const comparisonRows = ["S27H704EAC", "S32D707EAC"].map(
+  (model) => [comparisonRuleLines.get(model)],
+);
+const comparisonStateVm = {
+  SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
+  SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
+  CacheService: { getScriptCache: () => comparisonStateCache },
+  PropertiesService: { getScriptProperties: () => comparisonStateProps },
+  ss: {
+    getSheetByName: () => ({
+      getLastRow: () => comparisonRows.length + 1,
+      getRange: () => ({ getValues: () => comparisonRows }),
+    }),
+  },
+  getSourceContextHash_: (contextId) => `hash_${contextId}`,
+  isKnownFullModelToken: () => true,
+  hasOfficialManualForModel_: () => true,
+  writeLog: () => {},
+};
+vm.createContext(comparisonStateVm);
+vm.runInContext(
+  [
+    extractFunction(linebot, "toHalfWidth"),
+    extractFunction(linebot, "isShortAliasModelToken"),
+    extractFunction(linebot, "extractShortAliasModelTokens"),
+    extractFunction(linebot, "extractFullModelLikeTokens"),
+    extractFunction(linebot, "normalizeModelForDisplay"),
+    extractFunction(linebot, "dedupDisplayModels"),
+    extractFunction(linebot, "parseSourceStateJson_"),
+    extractFunction(linebot, "getComparisonContextKey_"),
+    extractFunction(linebot, "getOrderedKnownFullModels_"),
+    extractFunction(linebot, "rememberComparisonContext_"),
+    extractFunction(linebot, "readComparisonContext_"),
+    extractFunction(linebot, "clearComparisonContext_"),
+    extractFunction(linebot, "normalizeManualModelDescriptorText_"),
+    extractFunction(linebot, "getMonitorModelGenerationYear_"),
+    extractFunction(linebot, "extractManualModelDescriptorSignals_"),
+    extractFunction(linebot, "getManualCandidateRuleLineMap_"),
+    extractFunction(linebot, "filterModelCandidatesByDescription_"),
+    extractFunction(linebot, "resolveComparisonReference_"),
+    `globalThis.ordered = getOrderedKnownFullModels_("S32D707EAC 跟 S27H704EAC 比較", 3);`,
+    `rememberComparisonContext_("ORDER", globalThis.ordered, "S32D707EAC 跟 S27H704EAC 比較");`,
+    `globalThis.saved = readComparisonContext_("ORDER");`,
+    `rememberComparisonContext_("REF", ["S27H704EAC", "S32D707EAC"], "S27H704EAC 跟 S32D707EAC 比較");`,
+    `globalThis.size32 = resolveComparisonReference_("REF", "32吋那款底座呢？");`,
+    `globalThis.first = resolveComparisonReference_("REF", "前者底座能轉直嗎？");`,
+    `globalThis.second = resolveComparisonReference_("REF", "後者的升降是多少？");`,
+    `globalThis.choose = resolveComparisonReference_("REF", "這台底座能轉直嗎？");`,
+  ].join("\n\n"),
+  comparisonStateVm,
+);
+assert.deepStrictEqual(
+  Array.from(comparisonStateVm.saved.models),
+  ["S32D707EAC", "S27H704EAC"],
+  "比較 context 必須保存使用者原文的前後順序，不得依長度或字母重排",
+);
+assert(
+  comparisonStateVm.size32.kind === "resolved" &&
+    comparisonStateVm.size32.model === "S32D707EAC",
+  "比較後回覆「32吋那款」必須由兩款自身 RULE 唯一解析到 S32D707EAC",
+);
+assert(
+  comparisonStateVm.first.kind === "resolved" &&
+    comparisonStateVm.first.model === "S27H704EAC" &&
+    comparisonStateVm.first.query.startsWith("S27H704EAC ") &&
+    comparisonStateVm.second.kind === "resolved" &&
+    comparisonStateVm.second.model === "S32D707EAC" &&
+    comparisonStateVm.second.query.startsWith("S32D707EAC "),
+  "前者／後者追問必須依原文順序直接鎖定型號並保留追問題目",
+);
+assert(
+  comparisonStateVm.choose.kind === "choose" &&
+    Array.from(comparisonStateVm.choose.models).join("|") ===
+      "S27H704EAC|S32D707EAC" &&
+    comparisonStateVm.choose.query === "這台底座能轉直嗎？",
+  "無法唯一指涉的「這台／它」必須回兩款選單，且完整保留原追問題目",
+);
+assert(
+  /clearComparisonContext_\(contextId\)/.test(
+    extractFunction(linebot, "rememberSourceProductModel_"),
+  ) &&
+    /clearComparisonContext_\(cid\)/.test(
+      extractFunction(linebot, "handleCommand"),
+    ),
+  "使用者落到新單一型號與管理員 /重啟時，都必須清除舊比較 context",
+);
+assert(
+  /comparisonTarget:\s*preserveComparison === true/.test(
+    extractFunction(linebot, "rememberRecentSourceQuestion_"),
+  ) &&
+    /preserveComparison:\s*Boolean\(recent && recent\.comparisonTarget\)/.test(
+      extractFunction(linebot, "startSourceSelection_"),
+    ) &&
+    /"manual_query",[\s\S]{0,120}pendingState && pendingState\.preserveComparison/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
+    ) &&
+    /primaryModel \|\| selectedModel \|\| "",[\s\S]{0,120}pendingState && pendingState\.preserveComparison/.test(
+      extractFunction(linebot, "executeAdvancedSourceQuery_"),
+    ),
+  "比較代稱進入手冊／網搜後仍須保留兩款 context，才能繼續問前者／後者",
 );
 assert(
   /function isCampaignRuleCurrentlyActive_/.test(linebot) &&
@@ -1804,6 +2127,10 @@ vm.runInContext(
   'globalThis.mixedPronoun = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");',
   deterministicRuleVm,
 );
+vm.runInContext(
+  'globalThis.connectorOperationAnchor = buildKnownRuleAnchorForMixedOperation_("桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？", "S32HG806ES");',
+  deterministicRuleVm,
+);
 assert(
   deterministicRuleVm.operation === "" &&
     /雙模 6K 165Hz \/ 3K 330Hz/.test(deterministicRuleVm.fact),
@@ -1818,6 +2145,7 @@ assert(
 assert(
   /HDMI/.test(deterministicRuleVm.mixedAnchor) &&
     deterministicRuleVm.operationOnlyAnchor === "" &&
+    deterministicRuleVm.connectorOperationAnchor === "" &&
     /已確認規格/.test(deterministicRuleVm.mixedFinal) &&
     /手冊補充/.test(deterministicRuleVm.mixedFinal) &&
     (deterministicRuleVm.mixedFinal.match(/2 個 HDMI/g) || []).length === 1 &&

@@ -998,8 +998,9 @@
         loadCloudHistory();
         loadManualCoverageStatus();
 
-        // 2. 僅清除測試快取；不可執行正式 LINE 指令。
-        google.script.run.clearTestSession(TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
+        // 重新整理只重載畫面，不得清掉同一 TEST_USER_ID 的型號、配額與
+        // 來源狀態；否則 TestUI 無法模擬 LINE 使用者隔天回來自然追問。
+        // 需要乾淨狀態時，測試者應明確按「重置」或輸入管理指令 /重啟。
       };
 
       function loadManualCoverageStatus() {
