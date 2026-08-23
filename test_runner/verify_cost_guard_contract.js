@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const vm = require("vm");
 
 const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
@@ -27,6 +28,35 @@ function assert(condition, message) {
   } else {
     console.log(`PASS: ${message}`);
   }
+}
+
+function extractFunction(source, name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`找不到函式：${name}`);
+  const brace = source.indexOf("{", start);
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+  for (let i = brace; i < source.length; i++) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error(`函式未結束：${name}`);
 }
 
 const historicalCostTwd =
@@ -72,6 +102,79 @@ assert(
 assert(
   /if \(attachPDFs\)[\s\S]{0,700}thinkingConfig\s*=\s*\{\s*thinkingBudget:\s*0\s*\}/.test(linebot),
   "PDF Structured Output 必須關閉預設 Thinking，避免思考 token 截斷 JSON 並浪費成本",
+);
+
+const costContext = { EXCHANGE_RATE: 32, Math, Number };
+vm.createContext(costContext);
+vm.runInContext(
+  extractFunction(linebot, "calculateGeminiUsageCost_"),
+  costContext,
+);
+const thoughtUsageCost = costContext.calculateGeminiUsageCost_(
+  {
+    promptTokenCount: 1000000,
+    candidatesTokenCount: 1000000,
+    thoughtsTokenCount: 500000,
+    totalTokenCount: 2500000,
+  },
+  0.3,
+  2.5,
+);
+assert(
+  thoughtUsageCost.output === 1000000 &&
+    thoughtUsageCost.thoughts === 500000 &&
+    thoughtUsageCost.billedOutput === 1500000,
+  "Gemini 成本 helper 分開保留 candidate/thought token，並以兩者合計為計費 output",
+);
+assert(
+  Math.abs(thoughtUsageCost.costUSD - 4.05) < 1e-12 &&
+    Math.abs(thoughtUsageCost.costTWD - 129.6) < 1e-12,
+  "Gemini 2.5 Flash 思考 token 以官方 output 費率正確計入 USD/TWD",
+);
+const noThoughtUsageCost = costContext.calculateGeminiUsageCost_(
+  { promptTokenCount: 1000, candidatesTokenCount: 200 },
+  0.1,
+  0.4,
+);
+assert(
+  noThoughtUsageCost.thoughts === 0 &&
+    noThoughtUsageCost.billedOutput === 200 &&
+    Math.abs(noThoughtUsageCost.costTWD - 0.00576) < 1e-12,
+  "usageMetadata 沒有 thoughtsTokenCount 時維持原本 Flash-Lite 成本",
+);
+
+[
+  "callLLMWithRetry",
+  "callGeminiToPolishRule",
+  "callGeminiToModifyRule",
+  "findSimilarQA",
+  "callGeminiToMergeQA",
+  "callGeminiToRefineQA",
+  "callGeminiToPolish",
+  "callGeminiToModify",
+  "handleAutoQA",
+].forEach((functionName) => {
+  assert(
+    /calculateGeminiUsageCost_\s*\(/.test(
+      extractFunction(linebot, functionName),
+    ),
+    `${functionName} 的 Gemini usageMetadata 計價必須共用思考 token 完整成本 helper`,
+  );
+});
+assert(
+  /if \(result\.usageMetadata\) \{[\s\S]{0,250}calculateGeminiUsageCost_\([\s\S]{0,160}PRICE_FAST_INPUT,[\s\S]{0,80}PRICE_FAST_OUTPUT/.test(
+    linebot,
+  ),
+  "handleMessage 的文章整理 usageMetadata 計價必須共用思考 token 完整成本 helper",
+);
+assert(
+  /thoughtTokens\s*\+=\s*Number\(usage\.thoughtsTokenCount\)/.test(
+    extractFunction(linebot, "addGenerationUsageToAudit_"),
+  ) &&
+    /billedOutputTokens\s*\+=/.test(
+      extractFunction(linebot, "addGenerationUsageToAudit_"),
+    ),
+  "Request Audit 同時保留 candidate、thought 與 billed output token",
 );
 assert(
   /MAX_FAST_INPUT_TOKENS:\s*12000/.test(linebot) &&

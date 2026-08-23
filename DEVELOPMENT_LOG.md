@@ -1,5 +1,58 @@
 # 開發對話紀錄
 
+## 2026-08-23（v29.6.263 / 十題一致性稽核抓到共用手冊跨型號）
+
+- 十題真人 TestUI 旅程完成後反查 G8 MacBook 答案：本題確實送出 PDF，但共用手冊第 12 頁的 USB-C 98W 圖說只適用 S27HG802SC／S32HG802SC，S32HG806ES 端子圖並沒有 USB-C。舒服的自然語句不能補償型號證據錯置。
+- 新增共用 evidence model-scope guard：結構化手冊回應帶入 `targetModelName`；型號明確摘錄無法核對目前型號，或只列其他型號時，一律轉證據驗證失敗。契約測試同時覆蓋錯型號、正確型號、區域尾碼與全檔共通。
+- 人工實看官方 PDF 第 12 頁後，新增 `manual-hg806-no-usbc` 與 `manual-hg802-usbc-98w` 兩筆 QA2；正式 QA Sheet A49／A50 已依 ID 確認不存在後新增，再逐字讀回，並以 `scheduleImmediateRebuild` 排程背景重建。
+- 目前十題與必要錯誤重驗累計 Gemini 估算 NT$0.9695（未計共用 Google Search 每日 1,500 次免費額度用完後才會產生的 grounding 附加費）。不更換模型、不增加呼叫或 thinking。
+- 正式 v29.6.263 TestUI 重走：`G8 接 MacBook，希望一條 USB-C 顯示加充電` 先零呼叫列型號，再回「32 吋 6K 那台」唯一鎖定 `S32HG806ES` 並接回原題。終答明確說 HG806 沒有 USB-C 影像／PD，USB-C 98W 只屬 HG802；LOG 為 `stage=deterministic / paidCalls=0 / pdfCalls=0 / webCalls=0 / sources=[官方手冊]`，累計估算費維持 NT$0.9695。
+- 既有 Webhook 已更新為 Apps Script version `1445`；formal health、HEAD 與 Formal TestUI guard 均為 `v29.6.263 [2026-08-23 14:28]`。`Prompt!C3` 沒有修改，模型與費率維持不變。
+
+## 2026-08-23（v29.6.262 / 正式重測找到系列語序缺口）
+
+- v29.6.261 正式 Web 重測成本 NT$0.0477，`pdfCalls=0 / webCalls=1`，取得 5 個查詢、6 個 chunks、5 個 supports 與 4 個非官方來源；原始回答使用「S32FM803UC（M8 智慧螢幕）」而非「Smart Monitor M8」。
+- RULE 身分正確，但 v29.6.261 token 只涵蓋英文固定順序與「智慧聯網螢幕 M8」，因此仍被拒絕。v29.6.262 將家族詞與 alias 以同句近距離雙向比對，新增實際「M8 智慧螢幕」契約。
+- 不增加搜尋或模型呼叫；此次必要失敗重驗後十題累計估算為 NT$0.8800。
+
+## 2026-08-23（v29.6.261 / 第 8 題網搜已有引用卻被完整 SKU 驗證器誤擋）
+
+- 正式 TestUI 點常駐「搜網路」承接 M8 Wi-Fi 斷線題：`pdfCalls=0 / webCalls=1`，Google Search 回傳 6 個查詢、7 個非官方 chunks、10 個 supports，來源為 slashgear.com、youtube.com、whizz-experts.com，成本 NT$0.0798。
+- 原始回答已寫 `S32FM803UC (Smart Monitor M8)` 並提供重啟、重設網路與 DNS 等步驟；舊 `buildGroundedSupportedAnswer_()` 卻要求每個支持句段逐字含 `S32FM803UC`，所以最後錯回「沒有足夠證據」。
+- 新增共用產品身分 profile：從該完整型號自己的 CLASS_RULES 精確列建立正式系列別稱，完整型號／去地區尾碼仍優先。M8 對 Smart Monitor M8 可過，Odyssey G8、Smart Monitor M7 與明說其他系列必須失敗。
+- 只有低風險故障排查可在完整回應已核對正確系列時銜接 grounding 支持步驟；拆機、刷機、破解、非官方韌體一律封鎖。沒有增加模型或 Web 呼叫，2.5 Flash-Lite／2.5 Flash 分工與價格設定不變。
+
+## 2026-08-23（v29.6.260 / Anynet+ 問法揭露操作意圖漏接）
+
+- 十題真人旅程第 5 題「Anynet+ 要去哪裡開？」被當成 HDMI 規格題，只回「1 個 HDMI 2.0」；該輪零模型成本但漏答。
+- 將位置型問法併入通用操作意圖；精準 QA／RULE 未完成且完整型號已知時，零 Fast 直進手冊。
+- 自動手冊守門位於純規格 RULE 之後，保留 VESA／端子數量等零成本回答。
+
+## 2026-08-23（v29.6.259 / 手冊片段不再答非覆蓋主張）
+
+- v29.6.258 已將 HDMI×6K／165Hz 送入手冊路由，但先命中 Dual Mode 免費片段，只證明解析度／更新率與 Dual Mode 選單，仍未證明 HDMI 下的可用組合。
+- 介面訊號時序題現在跳過無關手冊片段，必須進完整 PDF 讀取；純 Dual Mode 操作題仍保留零成本片段。
+
+## 2026-08-23（v29.6.258 / 複合介面時序題不再漏答）
+
+- 十題真人旅程第 4 題「HDMI 2.1 能跑滿 6K 165Hz 嗎？」重現 RULE 快路徑只回「有 2 個 HDMI 2.1」，漏答使用者真正追問；該輪零模型成本。
+- 根因是端子、解析度、更新率三個獨立 RULE 欄位被當成同一個時序能力。新增通用「介面×顯示時序」意圖，精準 QA 未命中後直接查手冊訊號時序表。
+- 不增加 Fast 呼叫，退回一般題額度；純埠數題的零成本 RULE 直答保持不變。
+
+## 2026-08-23（v29.6.256 / G8 自然描述選型與原題延續）
+
+- 10 題真人追問第 3 題重現：G8 候選已列出後輸入「我看的是 32 吋 6K 那台」，舊路由仍回缺型號，並把描述覆蓋原本的 MacBook／USB-C 問題；該輪零 LLM、零成本。
+- 新增資料驅動描述選型：只在 pending PDF 候選內，將尺寸、解析度、面板、曲面／平面、更新率及雙模等條件與 CLASS_RULES 精確型號列做 AND 比對。唯一命中才選；零命中或多款符合一律不猜。
+- 候選規格採一次批量讀取並回填既有精確 RULE 快取；唯一命中後共用 postback 的選型執行函式，以完整型號接回原 draftQuery。Prompt 本文、模型與付費呼叫數都不變。
+
+## 2026-08-23（v29.6.255 / Gemini thoughts token 成本漏算修正）
+
+- 重新核對 Google 官方 Gemini API 定價：Standard 的 Gemini 2.5 Flash-Lite 為 US$0.10／百萬 input、US$0.40／百萬 output；Gemini 2.5 Flash 為 US$0.30／百萬 input、US$2.50／百萬 output。輸出計費包含可見回答與 thinking tokens；依據：[Gemini API Pricing](https://ai.google.dev/gemini-api/docs/pricing)。
+- 稽核發現 10 個 `usageMetadata` 計價點都只用 `candidatesTokenCount`，漏掉 `thoughtsTokenCount`。主要客服鏈目前關閉 thinking 或模型預設不思考，通常不影響；但 QA 合併／精修使用 2.5 Flash 且沒有關閉 thinking，會低估實際費用。
+- 新增 `calculateGeminiUsageCost_()`：`billedOutput = candidatesTokenCount + thoughtsTokenCount`，再依模型單價計算 USD 與固定匯率台幣。所有 10 個計價點、合併 usage 與 Request Audit 已統一，仍保留 candidate／thought／billed output 欄位供追查。
+- Prompt 本文、模型、溫度、`generationConfig` 與呼叫次數都沒有變更；本版沒有執行付費問答，也尚未發布、commit 或 push。正式十題真人測試必須等本版發布後再開始。
+- 離線驗證通過：`npm run test:contract`、`linebot.gs` JavaScript 語法檢查與 `git diff --check`；其中成本契約以合成 usage 驗證 100 萬 input、100 萬 candidate、50 萬 thoughts 的官方公式為 US$4.05／NT$129.60（固定匯率 32）。
+
 ## 2026-08-23（v29.6.254 / 四輪真人式追問與 HDMI 證據斷鏈）
 
 - 親自在正式 `/dev?test=1` 依序輸入：`G932如何開啟PBP？` → `我左邊接筆電，右邊接PS5可以嗎？要接哪兩個孔？` → `我的筆電只有HDMI，沒有DisplayPort，怎麼接？` → `我只有一般HDMI線，Micro HDMI孔可以直接插嗎？`。
@@ -2772,3 +2825,9 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 - 依 ChatGPT 高階版與 Gemini Flash 的共同檢視，停止把「模型回覆看似有步驟」當作已驗證事實；無 QA／RULE／已核對 evidence 的 Fast 操作答覆只能保留為部分提示，並提供單次手冊授權，避免以便利換取幻覺風險。
 - `查官方手冊確認` 的單次授權仍維持：按鍵後已有本題與完整型號即直接查 PDF，缺型號只選型、選完即查，禁止第二次確認。
 - 後續新增內容只准進既有 `Evidence[]` 資料索引（型號 scope、topic、頁碼、facts、同義錨點、排除條件）與回歸測試；禁止再以新題型 JavaScript 分支堆疊路由規則。
+## 2026-08-23（v29.6.257 / 一般 G8 描述選型不再遺失原題）
+
+- 正式 v29.6.256 真人旅程找到一般 Alias Selection Gate 仍沿用舊快取狀態：「G8→32 吋 6K 那台」會把後句當新題，花 NT$0.0156 仍無答案。
+- 修正為一般與手冊候選共用同一描述解析器；唯一命中接回原題，多解／無解保留原題與候選。
+- 一般候選解析明確不限 PDF 覆蓋，先允許 QA／RULE 回答；手冊候選仍只取實際有 PDF 的型號。
+- 描述選型輪零 LLM、不另外扣「直接問」次數。

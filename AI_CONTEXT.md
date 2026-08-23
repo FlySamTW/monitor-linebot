@@ -1,5 +1,54 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.263 共用 PDF 必須驗證目前型號適用範圍
+
+- 「正確掛載手冊」不等於手冊內每一圖表都適用目前型號；多型號共用 PDF 的每筆型號明確 evidence 必須在摘錄中可核對目前完整型號或去區域尾碼本體。
+- 摘錄出現其他型號而無目前型號時必須拒絕；封面型號清單不是功能證據。全檔共通只能用於無型號專屬限定的公用內容。
+- HG802／HG806 USB-C 差異已存成 QA2 `manual_chunk` 資料與頁碼；這是資料層證據，不得再增題型特例或放寬型號守門。
+- 修正不得變更 2.5 Flash-Lite／2.5 Flash 分工、呼叫次數、額度或價格公式。
+
+## v29.6.262 Web 系列身分不得綁死字詞順序
+
+- 外部內容的 `Smart Monitor M8`、`M8 Smart Monitor`、`智慧螢幕 M8`、`M8 智慧螢幕` 視為同一候選身分，但仍須由目前完整型號自己的 CLASS_RULES 精確列確認 M8。
+- 近距離正反語序相容不能放寬成單獨 `M8`；錯家族、M7 與其他型號仍拒絕。
+
+## v29.6.261 Web 外部系列名稱必須綁定精確 RULE
+
+- grounding 支持內容可用完整型號、去地區尾碼型號，或目前完整型號的 CLASS_RULES 精確列明載之正式系列身分。
+- `Smart Monitor M8` 只可對上 RULE 明載 M8 的型號；不得接受 `Odyssey G8`、M7 或其他相近系列。
+- 系列只出現在完整搜尋回應時，僅低風險故障排查可銜接引用步驟；拆機、刷機、破解及非官方韌體永遠拒絕。
+- 此為本機證據驗證修正，不得因此增加 Gemini／Web 呼叫、改模型或降低 grounding／focus 守門。
+
+## v29.6.260 已知型號的操作題不再先花 Fast
+
+- 操作問法覆蓋在哪、哪裡開、去哪、位置、怎麼開等說法。
+- 精準 QA 與精確 RULE 未完成，且完整型號已知時，操作題要退回一般額度，零 Fast 直接進手冊。
+- 規格 RULE 必須先有終止機會，否則 VESA 等純規格題會回歸成 PDF。
+
+## v29.6.259 介面時序題必須略過無關手冊片段
+
+- 已驗證的 Dual Mode 操作片段不能回答特定 HDMI／DP／USB-C 的最高輸入時序。
+- 介面×解析度／更新率題需要完整 PDF 訊號表；精準 QA 未命中時，禁止片段提前 terminal return。
+
+## v29.6.258 介面訊號時序不得用獨立 RULE 拼答
+
+- HDMI／DP／USB-C／Thunderbolt 的版本、最高解析度與最高更新率，不代表可在該介面下同時達成。
+- 精準 QA 未命中後，指定介面的解析度／更新率題必須零 Fast 直接查 PDF 訊號時序表，並退回一般題額度。
+- 純端子數量題仍由精確 RULE 零成本回答。
+
+## v29.6.256 手冊候選可用自然規格描述選型
+
+- pending 已有 `manualModelCandidates` 與 `draftQuery` 時，先辨識使用者是否在描述候選（尺寸、解析度、面板、平／曲面、更新率、雙模等），不得直接把描述覆蓋成新問題。
+- 只在實際有 PDF 的 pending 候選內，以 CLASS_RULES 精確列做 AND 交集；唯一命中才自動選型，零／多重命中保留原題與候選，不猜型號。
+- 描述選型零模型、零來源呼叫、零扣次；真正執行必須沿用共用 `executePendingManualModelSelection_()`，以「完整型號＋原 draftQuery」續跑。
+
+## v29.6.255 Gemini usage 費用必須包含思考 token
+
+- Gemini API 的計費輸出必須使用 `candidatesTokenCount + thoughtsTokenCount`；不得只用畫面可見的回答 token 估價。
+- 全專案 Gemini `usageMetadata` 計價統一呼叫 `calculateGeminiUsageCost_()`，並分開保留 candidate、thought 與 billed output，避免後續模型預設值改變時再次漏算。
+- Request Audit 同步記錄 `outputTokens`、`thoughtTokens`、`billedOutputTokens` 與估算台幣；固定匯率仍是估算，真正帳單以 Google Cloud Billing 為準。
+- 本版不換模型、不改 Prompt 本文、不改 `generationConfig`、不增加供應商呼叫；只是把既有呼叫的費用顯示算完整。
+
 ## v29.6.254 自然追問的型號與 RULE 證據不得斷鏈
 
 - 自然追問即使沒有重打完整型號，精確 RULE 路由仍須使用已鎖定的 `primaryModel`；能由本型號規格回答時，必須在 Fast／PDF 前零模型完成。
@@ -325,3 +374,8 @@
 - `PRIORITY_LOGIC_ARCHITECTURE.md`
 - `progress.md`
 - `v27.3.3_INTEGRATION.md`
+## v29.6.257 一般／手冊候選的自然描述選型統一
+
+- 一般 G8 候選的後續描述不得當成新問題。用當前候選 + CLASS_RULES 做 AND 比對，唯一命中後接回原題。
+- 這條路徑不扣第二次直接問額度，不呼叫 Gemini。多解／無解保留原題與候選。
+- 一般候選不要限於 PDF 機型；手冊候選仍要限於實際 PDF 索引。

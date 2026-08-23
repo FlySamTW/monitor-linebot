@@ -217,6 +217,91 @@ assert.strictEqual(
   "含完整型號的獨立新題不得偷借上一題主題",
 );
 
+const descriptorRuleCache = new Map();
+const descriptorVmSource = [
+  extractFunction(linebot, "toHalfWidth"),
+  extractFunction(linebot, "normalizeModelForDisplay"),
+  extractFunction(linebot, "dedupDisplayModels"),
+  extractFunction(linebot, "normalizeManualModelDescriptorText_"),
+  extractFunction(linebot, "extractManualModelDescriptorSignals_"),
+  extractFunction(linebot, "isManualModelDescriptorReply_"),
+  extractFunction(linebot, "getManualCandidateRuleLineMap_"),
+  extractFunction(linebot, "resolvePendingManualModelByDescription_"),
+  `globalThis.__g8Descriptor = resolvePendingManualModelByDescription_("我看的是 32 吋 6K 那台。", {draftQuery:"我想用一條 USB-C 顯示又充電，哪款可以？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
+  `globalThis.__g8Ambiguous = resolvePendingManualModelByDescription_("32 吋 4K 那台", {draftQuery:"耳機孔在哪裡？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
+  `globalThis.__g8NoMatch = resolvePendingManualModelByDescription_("49 吋 6K 那台", {draftQuery:"怎麼連接？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
+  `globalThis.__g8Oled = resolvePendingManualModelByDescription_("OLED 那台", {draftQuery:"怎麼連接？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}}, false);`,
+  `globalThis.__m7Size = resolvePendingManualModelByDescription_("我選 43 吋那台", {draftQuery:"怎麼連接 MacBook？", manualModelCandidates:["S32FM703UC","S43FM703UC"]}, false);`,
+  `globalThis.__manualFiltersNoPdf = resolvePendingManualModelByDescription_("我看的是 32 吋 6K 那台。", {draftQuery:"怎麼連接？", manualModelCandidates:${JSON.stringify(g8RuleModels.slice(0, 10))}});`,
+  `globalThis.__featureQuestionIsNotDescriptor = isManualModelDescriptorReply_("32 吋 4K 有幾個 HDMI？");`,
+].join("\n\n");
+const descriptorVmContext = {
+  SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
+  ss: {
+    getSheetByName() {
+      const rows = classRules.split(/\r?\n/).filter(Boolean).map((line) => [line]);
+      return {
+        getLastRow() { return rows.length + 1; },
+        getRange() { return { getValues() { return rows; } }; },
+      };
+    },
+  },
+  CacheService: {
+    getScriptCache() {
+      return {
+        get(key) { return descriptorRuleCache.get(key) || null; },
+        put(key, value) { descriptorRuleCache.set(key, String(value)); },
+      };
+    },
+  },
+  hasOfficialManualForModel_: (model) => model !== "S32HG806ES",
+  writeLog() {},
+};
+vm.runInNewContext(descriptorVmSource, descriptorVmContext);
+assert.strictEqual(
+  descriptorVmContext.__g8Descriptor.model,
+  "S32HG806ES",
+  "G8 候選中的 32 吋＋6K 描述必須唯一選到 S32HG806ES",
+);
+assert(
+  descriptorVmContext.__g8Ambiguous.model === "" &&
+    descriptorVmContext.__g8Ambiguous.candidates.length > 1,
+  "尺寸／解析度仍對應多款時不得用最高分猜型號",
+);
+assert(
+  descriptorVmContext.__g8NoMatch.model === "" &&
+    descriptorVmContext.__g8NoMatch.candidates.length === 0,
+  "描述與候選零交集時不得跳出候選範圍猜型號",
+);
+assert(
+  descriptorVmContext.__g8Oled.model === "" &&
+    descriptorVmContext.__g8Oled.candidates.length > 1,
+  "只有 OLED 等共同特徵時不得猜其中一款",
+);
+assert.strictEqual(
+  descriptorVmContext.__m7Size.model,
+  "S43FM703UC",
+  "描述選型必須適用其他系列，不得硬寫 G8 特例",
+);
+assert.strictEqual(
+  descriptorVmContext.__manualFiltersNoPdf.model,
+  "",
+  "手冊候選預設必須排除沒有 PDF 覆蓋的型號",
+);
+assert.strictEqual(
+  descriptorVmContext.__featureQuestionIsNotDescriptor,
+  false,
+  "候選期間的新規格問句不得被誤當成型號描述",
+);
+const pendingSourceText = extractFunction(linebot, "processPendingSourceText_");
+assert(
+  /resolvePendingManualModelByDescription_/.test(pendingSourceText) &&
+    /executePendingManualModelSelection_/.test(pendingSourceText) &&
+    /draftQuery:\s*state\.draftQuery/.test(pendingSourceText) &&
+    /manualModelCandidates:\s*remainingCandidates/.test(pendingSourceText),
+  "自然描述選型必須在 pending 文字入口接回原 draft，歧義時保留候選與原題",
+);
+
 const exactRuleCache = new Map();
 const exactRuleVmSource = [
   extractFunction(linebot, "toHalfWidth"),
@@ -226,7 +311,10 @@ const exactRuleVmSource = [
   extractFunction(linebot, "dedupDisplayModels"),
   extractFunction(linebot, "findExactModelRuleLine_"),
   extractFunction(linebot, "buildDeterministicComparisonReply_"),
+  extractFunction(linebot, "isInterfaceDisplayTimingQuery_"),
+  extractFunction(linebot, "isOperationOrTroubleshootQuery"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
+  extractFunction(linebot, "buildMissingExactRuleFactReply_"),
   extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
   extractFunction(linebot, "buildDeterministicExactRuleReply_"),
   `globalThis.__kvmGuarded = enforceExactModelCapabilityEvidence_("G8 有 KVM 嗎？ (型號: S32HG806ES)", "有，S32HG806ES 內建 KVM Switch。");`,
@@ -235,6 +323,10 @@ const exactRuleVmSource = [
   `globalThis.__m7HdmiConnector = buildDeterministicExactRuleReply_("S32FM703UC 有幾個 HDMI 連接埠？", "S32FM703UC");`,
   `globalThis.__g932HdmiExact = buildDeterministicExactRuleReply_("S49DG932SC 有幾個 HDMI？", "S49DG932SC");`,
   `globalThis.__g932MicroHdmiFit = buildDeterministicExactRuleReply_("我只有一般 HDMI 線，Micro HDMI 孔可以直接插嗎？", "S49DG932SC");`,
+  `globalThis.__g8TimingRule = buildDeterministicExactRuleReply_("那改接 HDMI 2.1，能跑滿 6K 165Hz 嗎？", "S32HG806ES");`,
+  `globalThis.__g8TimingMissing = buildMissingExactRuleFactReply_("那改接 HDMI 2.1，能跑滿 6K 165Hz 嗎？", "S32HG806ES");`,
+  `globalThis.__anynetRule = buildDeterministicExactRuleReply_("S32FM803UC 我想讓遙控器一起控制 HDMI 裝置，Anynet+ 要去哪裡開？", "S32FM803UC");`,
+  `globalThis.__anynetIsOperation = isOperationOrTroubleshootQuery("S32FM803UC 我想讓遙控器一起控制 HDMI 裝置，Anynet+ 要去哪裡開？");`,
 ].join("\n\n");
 const exactRuleVmContext = {
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
@@ -277,6 +369,25 @@ assert(
     ),
   "M7 選定 S32FM703UC 後，HDMI 埠／HDMI 連接埠兩種問法都必須由精確 RULE 零模型回答",
 );
+assert.strictEqual(
+  exactRuleVmContext.__g8TimingRule,
+  "",
+  "介面版本、解析度與更新率不得拆開拼成「可跑滿」結論",
+);
+assert(
+  /手冊的訊號時序表/.test(exactRuleVmContext.__g8TimingMissing),
+  "介面×解析度／更新率組合必須轉手冊時序表",
+);
+assert.strictEqual(
+  exactRuleVmContext.__anynetRule,
+  "",
+  "「去哪裡開」是選單操作題，不得只回 HDMI 埠數",
+);
+assert.strictEqual(
+  exactRuleVmContext.__anynetIsOperation,
+  true,
+  "操作意圖必須覆蓋在哪／哪裡開／位置等自然問法",
+);
 assert(
   /共有 2 個 HDMI 類連接埠/.test(exactRuleVmContext.__g932HdmiExact) &&
     /HDMI 2\.1 x1/.test(exactRuleVmContext.__g932HdmiExact) &&
@@ -302,11 +413,22 @@ const automaticManualFallbackText = extractFunction(
   linebot,
   "executeAutomaticManualFallback_",
 );
+const manualChunkPrecheckText = extractFunction(
+  linebot,
+  "tryManualFreeLocalAnswer_",
+);
 assert(
   /executeAdvancedSourceQuery_\(\s*"manual"/.test(
     automaticManualFallbackText,
   ),
   "QA／RULE 缺證據的操作題必須統一自動進手冊",
+);
+assert(
+  /requiresFullInterfaceTimingTable[\s\S]{0,500}verifiedManualChunk\s*=\s*requiresFullInterfaceTimingTable\s*\?\s*null/.test(
+    manualChunkPrecheckText,
+  ) &&
+    /Manual Chunk Guard v29\.6\.259/.test(manualChunkPrecheckText),
+  "介面訊號時序題不得被 Dual Mode 等無關免費手冊片段提前終止",
 );
 assert(
   /operationRuleOnlyReply[\s\S]{0,900}略過 PDF early gate/.test(linebot) &&
@@ -331,6 +453,21 @@ assert(
     ),
   "精確型號與選型後的 RULE 缺項不得停在 CTA；退回一般題額度後必須直接查對應手冊",
 );
+assert(
+  /Interface Timing Guard v29\.6\.258[\s\S]{0,500}executeAutomaticManualFallback_/.test(
+    linebot,
+  ) &&
+    /interface_timing_to_manual/.test(linebot),
+  "精準 QA 未命中後，介面訊號時序題要退回一般額度並零 Fast 直接查手冊",
+);
+assert(
+  /Exact Operation Guard v29\.6\.260[\s\S]{0,500}executeAutomaticManualFallback_/.test(
+    linebot,
+  ) &&
+    linebot.indexOf("[RULE Direct v29.6.158]") <
+      linebot.indexOf("[Exact Operation Guard v29.6.260]"),
+  "已知完整型號的操作題在精準 QA／RULE 未完成後要零 Fast 進手冊，但不得搶走純規格 RULE",
+);
 
 assert(
   /const MAX_ELABORATE_PER_ANSWER = 1;/.test(linebot) &&
@@ -346,10 +483,23 @@ assert(
 );
 assert(
   /const isPlainModelClarification = Boolean\(/.test(linebot) &&
-    /\[Model Clarification v29\.6\.158\]/.test(linebot) &&
+    /\[Model Clarification v29\.6\.257\]/.test(linebot) &&
     /cache\.put\(`\$\{userId\}:pending_topic`, msg, 600\);/.test(linebot) &&
     /resumedFromPlainModelClarification/.test(linebot),
   "系統請使用者補型號後，直接輸入完整型號也必須接回原題且不重複扣額度",
+);
+assert(
+  /pendingPlainDescriptorResolution[\s\S]{0,900}resolvePendingManualModelByDescription_\([\s\S]{0,300}false/.test(
+    linebot,
+  ) &&
+    /!pendingPlainDescriptorResolution\.recognized[\s\S]{0,160}shouldCountDailyQuestionText_/.test(
+      linebot,
+    ) &&
+    /plainModelTokens\[0\] \|\| pendingPlainDescriptorResolution\.model/.test(
+      linebot,
+    ) &&
+    /Fast Descriptor Model v29\.6\.257/.test(linebot),
+  "一般 G8 候選必須與手冊候選共用描述解析：唯一命中接回原題，歧義時保留原題且零計次",
 );
 
 const directDeepRouteText = linebot.slice(
@@ -490,10 +640,17 @@ assert(
   "Fast Mode 必須從 CLASS_RULES 列系列候選；選完完整型號後不得再次進入選型迴圈",
 );
 const postbackText = extractFunction(linebot, "handleRichMenuPostback_");
+const pendingManualSelectionText = extractFunction(
+  linebot,
+  "executePendingManualModelSelection_",
+);
 assert(
   /action === "select_manual_model"/.test(postbackText) &&
-    /`\$\{selectedModel\} \$\{state\.draftQuery\}`/.test(postbackText) &&
-    /executeAdvancedSourceQuery_/.test(postbackText),
+    /executePendingManualModelSelection_/.test(postbackText) &&
+    /`\$\{normalizedModel\} \$\{state\.draftQuery\}`/.test(
+      pendingManualSelectionText,
+    ) &&
+    /executeAdvancedSourceQuery_/.test(pendingManualSelectionText),
   "手冊型號選定後必須把完整型號鎖回原題並直接續跑同一手冊流程",
 );
 assert(
@@ -682,6 +839,12 @@ const context = {
     getUserLock: () => ({ tryLock: () => true, releaseLock: () => {} }),
   },
   writeLog: () => {},
+  findExactModelRuleLine_: (model) =>
+    String(model || "").toUpperCase() === "S32FM803UC"
+      ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
+      : String(model || "").toUpperCase() === "S32HG802SC"
+        ? "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8"
+        : "",
 };
 vm.createContext(context);
 vm.runInContext(
@@ -689,6 +852,9 @@ vm.runInContext(
     extractFunction(linebot, "toHalfWidth"),
     extractFunction(linebot, "isShortAliasModelToken"),
     extractFunction(linebot, "normalizeModelForDisplay"),
+    extractFunction(linebot, "normalizeGroundedModelIdentity_"),
+    extractFunction(linebot, "getGroundedModelIdentityProfile_"),
+    extractFunction(linebot, "matchGroundedModelIdentity_"),
     extractFunction(linebot, "isGroundedWebAnswerRelevant_"),
     extractFunction(linebot, "stripInternalRoutingHints_"),
     extractFunction(linebot, "normalizeSourceQuestionIdentity_"),
@@ -739,6 +905,22 @@ assert.strictEqual(
     "S32HG802SC",
   ),
   true,
+);
+assert.strictEqual(
+  context.isGroundedWebAnswerRelevant_(
+    "M8 智慧螢幕可先重設網路並重新連線 Wi-Fi。",
+    "S32FM803UC",
+  ),
+  true,
+  "外部文章只寫 RULE 已確認的正式系列別稱時仍可通過",
+);
+assert.strictEqual(
+  context.isGroundedWebAnswerRelevant_(
+    "Odyssey G8 可先重設網路並重新連線 Wi-Fi。",
+    "S32FM803UC",
+  ),
+  false,
+  "同為 G8/M8 短稱但產品家族不同時不得放行",
 );
 
 for (let index = 0; index < 5; index += 1) {
@@ -1122,7 +1304,7 @@ assert(
     /replace\(\/\\s\*\\\[cite\[\\s\\S\]\*\$\/i/.test(
       extractFunction(linebot, "compactGroundedWebAnswer_"),
     ) &&
-    /Grounding Relevance v29\.6\.168/.test(advancedRouteText) &&
+    /Grounding Relevance v29\.6\.262/.test(advancedRouteText) &&
     extractFunction(linebot, "compactGroundedWebAnswer_").includes(
       "通常這類",
     ) &&
@@ -1153,10 +1335,20 @@ const groundedSupportContext = {
   compactGroundedWebAnswer_: (value) => String(value || "").trim(),
   normalizeModelForDisplay: (value) => String(value || "").trim(),
   toHalfWidth: (value) => String(value || ""),
+  findExactModelRuleLine_: (model) =>
+    String(model || "").toUpperCase() === "S32FM803UC"
+      ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
+      : String(model || "").toUpperCase() === "S32HG802SC"
+        ? "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8"
+        : "",
 };
 vm.createContext(groundedSupportContext);
 vm.runInContext(
   `${extractFunction(linebot, "getGroundedQuestionFocusTokens_")}
+   ${extractFunction(linebot, "normalizeGroundedModelIdentity_")}
+   ${extractFunction(linebot, "getGroundedModelIdentityProfile_")}
+   ${extractFunction(linebot, "matchGroundedModelIdentity_")}
+   ${extractFunction(linebot, "isLowRiskGroundedTroubleshooting_")}
    ${extractFunction(linebot, "expandGroundedSupportToCompleteLine_")}
    ${extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_")}
    ${extractFunction(linebot, "buildGroundedSupportedAnswer_")}
@@ -1170,15 +1362,31 @@ vm.runInContext(
    globalThis.irrelevantExactModelRejected = buildGroundedSupportedAnswer_([
      "S32HG802SC 是 32 吋電競螢幕，支援旋轉。",
      "購物網站有販售 S32HG802SC。"
-   ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");`,
+   ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");
+   globalThis.m8FamilySupported = buildGroundedSupportedAnswer_([
+     "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
+   ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
+      "M8 智慧螢幕的 Wi-Fi 斷線可先依下列步驟排除。\\n針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。");
+   globalThis.wrongFamilyRejected = buildGroundedSupportedAnswer_([
+     "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
+   ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
+      "Odyssey G8 的 Wi-Fi 斷線可先依下列步驟排除。");
+   globalThis.neighborFamilyRejected = buildGroundedSupportedAnswer_([
+     "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
+   ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
+      "Smart Monitor M7 的 Wi-Fi 斷線可先依下列步驟排除。");`,
   groundedSupportContext,
 );
 assert(
   /S32HG802SC/.test(groundedSupportContext.exactSupported) &&
     !/通常|可能|螺絲起子/.test(groundedSupportContext.exactSupported) &&
     groundedSupportContext.otherModelRejected === "" &&
-    groundedSupportContext.irrelevantExactModelRejected === "",
-  `Web 最終回答只能使用 groundingSupports 同時支持完整型號與本題核心詞的句段: ${JSON.stringify({ exactSupported: groundedSupportContext.exactSupported, otherModelRejected: groundedSupportContext.otherModelRejected, irrelevantExactModelRejected: groundedSupportContext.irrelevantExactModelRejected })}`,
+    groundedSupportContext.irrelevantExactModelRejected === "" &&
+    /S32FM803UC（Smart Monitor M8）/.test(groundedSupportContext.m8FamilySupported) &&
+    /重新開機/.test(groundedSupportContext.m8FamilySupported) &&
+    groundedSupportContext.wrongFamilyRejected === "" &&
+    groundedSupportContext.neighborFamilyRejected === "",
+  `Web 最終回答只能使用 groundingSupports 同時支持目前型號（或 RULE 已確認系列）與本題核心詞的句段: ${JSON.stringify({ exactSupported: groundedSupportContext.exactSupported, otherModelRejected: groundedSupportContext.otherModelRejected, irrelevantExactModelRejected: groundedSupportContext.irrelevantExactModelRejected, m8FamilySupported: groundedSupportContext.m8FamilySupported, wrongFamilyRejected: groundedSupportContext.wrongFamilyRejected, neighborFamilyRejected: groundedSupportContext.neighborFamilyRejected })}`,
 );
 
 const webFallbackContext = {
@@ -1311,6 +1519,10 @@ vm.runInContext(
    ${extractFunction(linebot, "isManualEvidenceFailureReply_")}
    ${extractFunction(linebot, "parseManualEvidenceMarker_")}
    ${extractFunction(linebot, "getManualStructuredResponseSchema_")}
+   ${extractFunction(linebot, "normalizeManualEvidenceModel_")}
+   ${extractFunction(linebot, "getManualEvidenceRegionalBase_")}
+   ${extractFunction(linebot, "extractManualEvidenceModels_")}
+   ${extractFunction(linebot, "manualEvidenceSupportsTargetModel_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
    ${extractFunction(linebot, "applyManualEvidenceGuard_")}
    globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
@@ -1320,7 +1532,11 @@ vm.runInContext(
    globalThis.structuredMultiple = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"先開 Dual Mode，再用 Aim Point。",operationPath:"Game → Dual Mode",evidence:[{pageNumber:27,scope:"型號明確",evidenceExcerpt:"Game → Dual Mode"},{pageNumber:28,scope:"型號明確",evidenceExcerpt:"Aim Point"}]})), "問題");
    globalThis.structuredDeduped = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"執行 Self Diagnosis。",operationPath:"Support → Self Diagnosis",evidence:[{pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]})), "問題");
    globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,answer:"手冊未記載第三方顯卡驅動衝突。",operationPath:"",evidence:[]})), "問題");
-   globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");`,
+   globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");
+   globalThis.wrongSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32HG806ES 支援 USB-C 98W。",operationPath:"",evidence:[{pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG802SC / S32HG802SC 可透過 USB Type-C 充電，最高 98W"}]}), "S32HG806ES");
+   globalThis.rightSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32HG806ES 沒有 USB-C 影像輸入。",operationPath:"",evidence:[{pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG806EF / S32HG806ES 連接埠為 HDMI、DP 與 USB Hub"}]}), "S32HG806ES");
+   globalThis.regionalBaseModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"S32FM803UC 適用。",operationPath:"",evidence:[{pageNumber:151,scope:"型號明確",evidenceExcerpt:"S32FM803 可使用藍牙揚聲器清單"}]}), "S32FM803UC");
+   globalThis.allFileCommon = normalizeManualStructuredResponse_(JSON.stringify({found:true,answer:"所有型號使用前都要先斷電。",operationPath:"",evidence:[{pageNumber:4,scope:"全檔共通",evidenceExcerpt:"清潔產品前請先將電源線拔下"}]}), "S32HG806ES");`,
   manualUiContext,
 );
 assert(
@@ -1339,8 +1555,16 @@ assert(
     /操作路徑：Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
-    /補查一次公開網頁/.test(manualUiContext.formatError),
+    /補查一次公開網頁/.test(manualUiContext.formatError) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.wrongSharedModel) &&
+    /第12頁/.test(manualUiContext.rightSharedModel) &&
+    /第151頁/.test(manualUiContext.regionalBaseModel) &&
+    /第4頁/.test(manualUiContext.allFileCommon),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
+);
+assert(
+  /normalizeManualStructuredResponse_\(text, targetModelName\)/.test(linebot),
+  "PDF 結構化證據必須帶入當前鎖定型號，不得在共用手冊跨型號套用",
 );
 assert(
   /const manualEvidenceNotFound =/.test(linebot) &&
@@ -1573,7 +1797,7 @@ const deterministicRuleVm = {
 };
 vm.createContext(deterministicRuleVm);
 vm.runInContext(
-  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\n${extractFunction(linebot, "buildKnownRuleAnchorForMixedOperation_")}\n${extractFunction(linebot, "mergeKnownRuleAnchorWithAdvancedAnswer_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");\nglobalThis.mixedAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼連接？有幾個 HDMI？", "S32HG806ES");\nglobalThis.operationOnlyAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼恢復原廠？", "S32HG806ES");\nglobalThis.mixedFinal = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");\nglobalThis.mixedConflict = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有 1 個 HDMI 2.0 連接埠，請切換到正確輸入來源。\\n官方手冊：第23頁\\n[來源:官方手冊]");`,
+  `${extractFunction(linebot, "isInterfaceDisplayTimingQuery_")}\n${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\n${extractFunction(linebot, "buildKnownRuleAnchorForMixedOperation_")}\n${extractFunction(linebot, "mergeKnownRuleAnchorWithAdvancedAnswer_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");\nglobalThis.mixedAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼連接？有幾個 HDMI？", "S32HG806ES");\nglobalThis.operationOnlyAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼恢復原廠？", "S32HG806ES");\nglobalThis.mixedFinal = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");\nglobalThis.mixedConflict = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有 1 個 HDMI 2.0 連接埠，請切換到正確輸入來源。\\n官方手冊：第23頁\\n[來源:官方手冊]");`,
   deterministicRuleVm,
 );
 vm.runInContext(
@@ -1615,7 +1839,7 @@ const unsafeRuleVm = {
 };
 vm.createContext(unsafeRuleVm);
 vm.runInContext(
-  `${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.phoneCast = buildDeterministicExactRuleReply_("S24D300GAC 可以手機無線投影嗎？", "S24D300GAC");\nglobalThis.lineTv = buildDeterministicExactRuleReply_("S32FM501EC 可以安裝 LINE TV 嗎？", "S32FM501EC");\nglobalThis.blackScreen = buildDeterministicExactRuleReply_("S24D300GAC 黑屏怎麼排除？", "S24D300GAC");`,
+  `${extractFunction(linebot, "isInterfaceDisplayTimingQuery_")}\n${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.phoneCast = buildDeterministicExactRuleReply_("S24D300GAC 可以手機無線投影嗎？", "S24D300GAC");\nglobalThis.lineTv = buildDeterministicExactRuleReply_("S32FM501EC 可以安裝 LINE TV 嗎？", "S32FM501EC");\nglobalThis.blackScreen = buildDeterministicExactRuleReply_("S24D300GAC 黑屏怎麼排除？", "S24D300GAC");`,
   unsafeRuleVm,
 );
 assert.strictEqual(unsafeRuleVm.phoneCast, "");

@@ -64,6 +64,10 @@ const context = {
   stripAnySourceTags: (text) => String(text || ""),
   formatForLineMobile: (text) => String(text || ""),
   toHalfWidth: (text) => String(text || ""),
+  findExactModelRuleLine_: (model) =>
+    String(model || "").toUpperCase() === "S32FM803UC"
+      ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
+      : "",
 };
 vm.createContext(context);
 vm.runInContext(
@@ -81,6 +85,10 @@ vm.runInContext(
     extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
     extractFunction(linebot, "compactGroundedWebAnswer_"),
     extractFunction(linebot, "getGroundedQuestionFocusTokens_"),
+    extractFunction(linebot, "normalizeGroundedModelIdentity_"),
+    extractFunction(linebot, "getGroundedModelIdentityProfile_"),
+    extractFunction(linebot, "matchGroundedModelIdentity_"),
+    extractFunction(linebot, "isLowRiskGroundedTroubleshooting_"),
     extractFunction(linebot, "expandGroundedSupportToCompleteLine_"),
     extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_"),
     extractFunction(linebot, "buildGroundedSupportedAnswer_"),

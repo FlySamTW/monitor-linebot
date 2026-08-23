@@ -110,6 +110,11 @@ assert.strictEqual(
 );
 const wrongSpeaker = context.qaKnowledgeFindLocalMatch_("S32HG806ES 有雙喇叭嗎？");
 assert(!wrongSpeaker || !/S27FM501EC/.test(wrongSpeaker.question), "exact model mismatch must not borrow another model QA");
+assert.strictEqual(
+  context.qaKnowledgeFindLocalMatch_("G8 可以用 USB-C 同時顯示與充電嗎？"),
+  null,
+  "ambiguous G8 must still ask the user to choose a full model",
+);
 const g8Prompt = context.qaKnowledgeSelectPromptContext_("G8 有耳機孔嗎？", [], false);
 assert(
   !/Smart系列螢幕沒有耳機孔/.test(g8Prompt.text),
@@ -136,6 +141,17 @@ const usbFailure = context.qaKnowledgeFindManualEvidence_(
   "S32FM803UC",
 );
 assert.strictEqual(usbFailure, null, "manual evidence excludes must prevent topic contamination");
+
+const hg806Manual = context.qaKnowledgeFindManualEvidence_(
+  "想用一條 USB-C 連 MacBook 顯示又充電",
+  "S32HG806ES",
+);
+assert(hg806Manual && hg806Manual.id === "manual-hg806-no-usbc");
+const hg802Manual = context.qaKnowledgeFindManualEvidence_(
+  "USB-C 可以幫 MacBook 充電嗎？",
+  "S32HG802SC",
+);
+assert(hg802Manual && hg802Manual.id === "manual-hg802-usbc-98w");
 
 const selected = context.qaKnowledgeSelectPromptContext_("S27FM501EC 有雙喇叭嗎？", [], false);
 assert(selected.selectedCount > 0 && selected.selectedCount <= 6);
@@ -165,6 +181,7 @@ assert(
   "/紀錄 must persist structured QA2 rows",
 );
 
+vm.runInContext(extractFunction(linebot, "isInterfaceDisplayTimingQuery_"), context);
 vm.runInContext(extractFunction(linebot, "isPotentialMultiClaimQuestion_"), context);
 assert.strictEqual(
   context.isPotentialMultiClaimQuestion_("S27FM501EC 支援繁體中文介面與雙喇叭嗎？"),

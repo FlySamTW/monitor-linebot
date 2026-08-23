@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.254"; // 2026-08-23 自然追問沿用型號與 HDMI 接頭證據直答
-const BUILD_TIMESTAMP = "2026-08-23 01:19";
+const GAS_VERSION = "v29.6.263"; // 2026-08-23 共用手冊證據必須符合鎖定型號
+const BUILD_TIMESTAMP = "2026-08-23 14:28";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -2890,7 +2890,7 @@ function isFeatureBinaryQuestion(text) {
 
 function isOperationOrTroubleshootQuery(text) {
   const q = String(text || "");
-  return /(怎麼|如何|教學|步驟|設定|開啟|關閉|關掉|連接|安裝|組裝|拆裝|固定|壁掛|操作|使用|排除|故障|無法|不能|異常|偏色|色偏|偏黃|顏色異常|重置|恢復|閃爍|不亮|沒畫面|當機|調整|調到|調低|調小|切換|切到|叫出|進入選單|打開選單|進不去|更新|升級|插哪個孔|插哪一孔|接哪個孔|接哪一孔|孔位)/i.test(
+  return /(怎麼|如何|教學|步驟|設定|開啟|怎麼開|如何開|哪裡開|在哪|哪裡|去哪|到哪|位置|關閉|關掉|連接|安裝|組裝|拆裝|固定|壁掛|操作|使用|排除|故障|無法|不能|異常|偏色|色偏|偏黃|顏色異常|重置|恢復|閃爍|不亮|沒畫面|當機|調整|調到|調低|調小|切換|切到|叫出|進入選單|打開選單|進不去|更新|升級|插哪個孔|插哪一孔|接哪個孔|接哪一孔|孔位)/i.test(
     q,
   );
 }
@@ -3287,6 +3287,12 @@ function enforceExactModelCapabilityEvidence_(query, rawResponse) {
 function buildMissingExactRuleFactReply_(query, model) {
   const normalizedModel = normalizeModelForDisplay(model || "");
   if (!normalizedModel) return "";
+  if (isInterfaceDisplayTimingQuery_(query)) {
+    writeLog(
+      `[RULE Missing Fact v29.6.258] ${normalizedModel} 的介面×解析度／更新率組合必須查輸入訊號表，零 LLM 直接進手冊`,
+    );
+    return `這題要確認 ${normalizedModel} 在指定介面下能同時輸出的解析度與更新率，單看規格列的介面版本不能下結論，需要查官方手冊的訊號時序表。`;
+  }
   const capability = getExplicitCapabilityCheck_(query);
   if (!capability) return "";
   const exactRuleLine = findExactModelRuleLine_(normalizedModel);
@@ -4059,8 +4065,15 @@ function combineLlmUsage_(firstUsage, secondUsage) {
       Number(firstUsage.input || 0) + Number(secondUsage.input || 0),
     output:
       Number(firstUsage.output || 0) + Number(secondUsage.output || 0),
+    thoughts:
+      Number(firstUsage.thoughts || 0) + Number(secondUsage.thoughts || 0),
+    billedOutput:
+      Number(firstUsage.billedOutput || 0) +
+      Number(secondUsage.billedOutput || 0),
     total:
       Number(firstUsage.total || 0) + Number(secondUsage.total || 0),
+    costUSD:
+      Number(firstUsage.costUSD || 0) + Number(secondUsage.costUSD || 0),
     costTWD:
       Number(firstUsage.costTWD || 0) + Number(secondUsage.costTWD || 0),
   };
@@ -4417,10 +4430,25 @@ function isCapabilityClaimQuery(text) {
   );
 }
 
+// 介面版本、最高解析度與最高更新率分別存在 RULE，不代表
+// 它們能在同一輸入組合下同時達成。這類題必須查手冊訊號時序表，
+// 不能由介面數量或三個獨立規格欄位拼出肯定結論。
+function isInterfaceDisplayTimingQuery_(text) {
+  const q = String(text || "");
+  const hasInterface =
+    /(?:HDMI|DISPLAYPORT|\bDP\b|USB[\s-]*C|TYPE[\s-]*C|THUNDERBOLT)/i.test(q);
+  const hasDisplayTiming =
+    /(?:解析度|[2-8]K|UHD|QHD|FHD|更新率|刷新率|\d{2,3}\s*HZ)/i.test(q);
+  const asksCombinedCapability =
+    /(?:跑滿|跑到|開滿|開到|輸出|達到|帶得動|相容|同時|能不能|能否|可不可以|可以嗎|可否|支援)/i.test(q);
+  return hasInterface && hasDisplayTiming && asksCombinedCapability;
+}
+
 function isManualVerificationRequiredQuery(text) {
   const q = String(text || "");
-  return /(MATTER|THREAD|SMARTTHINGS|HUB|BORDER\s*ROUTER|CONTROLLER|ZIGBEE|中樞|集線器|協議|協定|橋接|網關|GATEWAY|HEVC|H\.?\s*265|H265|編解碼|CODEC|視訊格式|影片格式|影片檔|播放檔案|檔案格式|USB\s*播放|播放\s*USB|零售模式|使用模式|家庭模式|已連接裝置|媒體播放)/i.test(
-    q,
+  return (
+    isInterfaceDisplayTimingQuery_(q) ||
+    /(MATTER|THREAD|SMARTTHINGS|HUB|BORDER\s*ROUTER|CONTROLLER|ZIGBEE|中樞|集線器|協議|協定|橋接|網關|GATEWAY|HEVC|H\.?\s*265|H265|編解碼|CODEC|視訊格式|影片格式|影片檔|播放檔案|檔案格式|USB\s*播放|播放\s*USB|零售模式|使用模式|家庭模式|已連接裝置|媒體播放)/i.test(q)
   );
 }
 
@@ -5832,18 +5860,13 @@ function handleRichMenuPostback_(event) {
       );
       return true;
     }
-    CURRENT_DAILY_QUESTION_REMAINING =
-      typeof state.dailyQuestionRemaining === "number"
-        ? state.dailyQuestionRemaining
-        : null;
-    rememberSourceProductModel_(contextId, selectedModel, "manual_model_selection");
-    executeAdvancedSourceQuery_(
-      "manual",
-      `${selectedModel} ${state.draftQuery}`.trim(),
+    executePendingManualModelSelection_(
+      selectedModel,
+      state,
       contextId,
       userId,
       replyToken,
-      state,
+      "manual_model_selection",
     );
     return true;
   }
@@ -5918,6 +5941,65 @@ function processPendingSourceText_(message, contextId, userId, replyToken) {
   if (/^[\/#]/.test(String(message || "").trim())) {
     clearPendingSourceState_(contextId);
     return false;
+  }
+  if (
+    state.source === "manual" &&
+    state.draftQuery &&
+    Array.isArray(state.manualModelCandidates)
+  ) {
+    const descriptorResolution = resolvePendingManualModelByDescription_(
+      message,
+      state,
+    );
+    if (descriptorResolution.recognized) {
+      if (descriptorResolution.model) {
+        writeLog(
+          `[Manual Descriptor Model v29.6.256] ${descriptorResolution.signals.join("+")} 唯一選中 ${descriptorResolution.model}，接回原題`,
+        );
+        executePendingManualModelSelection_(
+          descriptorResolution.model,
+          state,
+          contextId,
+          userId,
+          replyToken,
+          "manual_descriptor_selection",
+        );
+        return true;
+      }
+
+      const originalCandidates = dedupDisplayModels(
+        state.manualModelCandidates,
+        10,
+      );
+      const remainingCandidates =
+        descriptorResolution.candidates.length > 1
+          ? descriptorResolution.candidates
+          : originalCandidates;
+      writePendingSourceState_(contextId, {
+        source: "manual",
+        userIdHash: state.userIdHash || getSourceContextHash_(userId),
+        previousQuestion: state.previousQuestion || "",
+        previousModel: "",
+        draftQuery: state.draftQuery,
+        manualModelCandidates: remainingCandidates,
+        dailyQuestionRemaining: state.dailyQuestionRemaining,
+      });
+      LAST_SOURCE_TEST_STATE = {
+        source: "manual",
+        pending: true,
+        needsModel: true,
+        modelCandidates: remainingCandidates,
+        remaining: getSourceRemaining_(contextId, "manual"),
+      };
+      const leadText = descriptorResolution.candidates.length > 1
+        ? `依「${descriptorResolution.signals.join("、")}」仍有 ${remainingCandidates.length} 款符合；原問題已保留。請再補一個差異，或直接點選型號。這一步不讀手冊、不扣次。`
+        : `這段描述還無法和候選型號唯一對上；原問題已保留。請再補尺寸、解析度、面板或更新率，或直接點選型號。這一步不讀手冊、不扣次。`;
+      replyMessage(replyToken, [
+        { type: "text", text: leadText },
+        createManualSourceModelSelectionFlex_(remainingCandidates),
+      ]);
+      return true;
+    }
   }
   executeAdvancedSourceQuery_(
     state.source,
@@ -6064,6 +6146,165 @@ function isManualModelHintOnly_(text) {
     remainder = remainder.replace(hint, " ");
   });
   return remainder.replace(/[\s,，。；;：:、.!！?？()（）\-]/g, "").length === 0;
+}
+
+function normalizeManualModelDescriptorText_(text) {
+  return toHalfWidth(String(text || ""))
+    .toUpperCase()
+    .replace(/MINI[\s-]*LED/g, "MINILED")
+    .replace(/(?:USB|TYPE)[\s-]*C/g, "USBC")
+    .replace(/(\d{2,3})\s*(?:吋|寸|INCH(?:ES)?)/g, "$1吋")
+    .replace(/\s+/g, "");
+}
+
+function extractManualModelDescriptorSignals_(text) {
+  const compact = normalizeManualModelDescriptorText_(text);
+  const signals = [];
+  const patterns = [
+    /\d{2,3}吋/g,
+    /(?:UWQHD|DQHD|WQHD|UHD|QHD|FHD|[2-8]K)/g,
+    /\d{2,3}HZ/g,
+    /\d{3,4}R/g,
+    /(?:MINILED|OLED|IPS|VA)/g,
+    /(?:曲面|平面|雙模|白色|黑色|智慧|TIZEN|USBC)/g,
+  ];
+  patterns.forEach(function (pattern) {
+    const matches = compact.match(pattern) || [];
+    matches.forEach(function (match) {
+      if (signals.indexOf(match) < 0) signals.push(match);
+    });
+  });
+  return signals;
+}
+
+function isManualModelDescriptorReply_(text) {
+  const raw = String(text || "").trim();
+  if (extractManualModelDescriptorSignals_(raw).length === 0) return false;
+  if (
+    /(?:我.{0,8}(?:看|指|說|問|要|選).{0,6}是|就是|應該是|(?:這|那)(?:一)?台|(?:這|那)(?:一)?款)/i.test(
+      raw,
+    )
+  ) {
+    return true;
+  }
+  return !/(?:怎麼|如何|為什麼|可以嗎|能不能|可不可以|有沒有|有幾個|幾個|多少|哪裡|是否|支援嗎|連接|開啟|設定|故障|沒畫面|無法|哪款可以|哪一台可以|\?|？)/i.test(
+    raw,
+  );
+}
+
+function getManualCandidateRuleLineMap_(models) {
+  const normalizedModels = dedupDisplayModels(models, 10).map(
+    normalizeModelForDisplay,
+  );
+  const result = {};
+  if (normalizedModels.length === 0 || !ss) return result;
+  const cache = CacheService.getScriptCache();
+  const missing = [];
+  normalizedModels.forEach(function (model) {
+    const cached = cache.get(`EXACT_RULE_LINE_${model}`);
+    if (cached) result[model] = cached;
+    else missing.push(model);
+  });
+  if (missing.length === 0) return result;
+
+  try {
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet || sheet.getLastRow() <= 1) return result;
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < values.length && missing.length > 0; i++) {
+      const line = values[i]
+        .map(function (cell) {
+          return String(cell || "");
+        })
+        .join(" ")
+        .trim();
+      const upper = toHalfWidth(line).toUpperCase();
+      if (!upper || /^(?:活動|別稱|系列|術語)_/.test(upper)) continue;
+      for (let m = missing.length - 1; m >= 0; m--) {
+        const model = missing[m];
+        if (upper.indexOf(model) < 0) continue;
+        result[model] = line;
+        cache.put(`EXACT_RULE_LINE_${model}`, line, 21600);
+        missing.splice(m, 1);
+      }
+    }
+  } catch (error) {
+    writeLog(
+      `[Manual Descriptor Model] 批次讀取候選規格失敗: ${error.message}`,
+    );
+  }
+  return result;
+}
+
+function resolvePendingManualModelByDescription_(
+  message,
+  state,
+  requireManualCoverage,
+) {
+  const manualOnly = requireManualCoverage !== false;
+  const candidates = dedupDisplayModels(
+    state && Array.isArray(state.manualModelCandidates)
+      ? state.manualModelCandidates
+      : [],
+    10,
+  ).filter(function (model) {
+    return !manualOnly || hasOfficialManualForModel_(model);
+  });
+  const signals = extractManualModelDescriptorSignals_(message);
+  if (
+    candidates.length < 2 ||
+    !state ||
+    !state.draftQuery ||
+    signals.length === 0 ||
+    !isManualModelDescriptorReply_(message)
+  ) {
+    return { recognized: false, model: "", candidates: candidates, signals: [] };
+  }
+
+  const ruleMap = getManualCandidateRuleLineMap_(candidates);
+  const matches = candidates.filter(function (model) {
+    const evidence = normalizeManualModelDescriptorText_(ruleMap[model] || "");
+    return (
+      evidence &&
+      signals.every(function (signal) {
+        return evidence.indexOf(signal) >= 0;
+      })
+    );
+  });
+  return {
+    recognized: true,
+    model: matches.length === 1 ? matches[0] : "",
+    candidates: matches,
+    signals: signals,
+  };
+}
+
+function executePendingManualModelSelection_(
+  selectedModel,
+  state,
+  contextId,
+  userId,
+  replyToken,
+  reason,
+) {
+  const normalizedModel = normalizeModelForDisplay(selectedModel || "");
+  CURRENT_DAILY_QUESTION_REMAINING =
+    typeof state.dailyQuestionRemaining === "number"
+      ? state.dailyQuestionRemaining
+      : null;
+  rememberSourceProductModel_(
+    contextId,
+    normalizedModel,
+    reason || "manual_model_selection",
+  );
+  return executeAdvancedSourceQuery_(
+    "manual",
+    `${normalizedModel} ${state.draftQuery}`.trim(),
+    contextId,
+    userId,
+    replyToken,
+    state,
+  );
 }
 
 function getManualSourceCandidateModels_(query, limit) {
@@ -6238,6 +6479,7 @@ function isPotentialMultiClaimQuestion_(query) {
   const text = String(query || "")
     .replace(/(?:LS)?S\d{2}[A-Z0-9]{5,16}/gi, "")
     .trim();
+  if (isInterfaceDisplayTimingQuery_(text)) return true;
   if (!/(?:和|與|及|、|以及|還有|同時|加上|並且)/.test(text)) return false;
   const subjectSignals = [
     /繁體中文|中文介面|語言/i,
@@ -6344,6 +6586,10 @@ function buildDeterministicComparisonReply_(query) {
 function buildDeterministicExactRuleReply_(query, model) {
   const text = String(query || "");
 
+  if (isInterfaceDisplayTimingQuery_(text)) {
+    return "";
+  }
+
   // 優先處理雙型號比較
   if (typeof buildDeterministicComparisonReply_ === "function") {
     const comparisonReply = buildDeterministicComparisonReply_(text);
@@ -6401,7 +6647,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   // 步驟、故障排除、投影／AirPlay／3D 等必須先命中精準 QA；否則交
   // 既有手冊路由。下方舊版相容分支因此不得搶答或把通用常識標成 RULE。
   if (
-    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|重置|恢復原廠|安裝|下載|黑屏|閃爍|無畫面|沒畫面|無訊號|不亮|當機|偏色|偏黃)/i.test(
+    /(如何|怎麼|怎樣|操作|切換|開啟|怎麼開|如何開|哪裡開|在哪|哪裡|去哪|到哪|位置|關閉|設定|排除|故障|異常|無法|沒反應|重置|恢復原廠|安裝|下載|黑屏|閃爍|無畫面|沒畫面|無訊號|不亮|當機|偏色|偏黃)/i.test(
       text,
     ) ||
     /(?:NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|愛奇藝|LINE\s*TV|手機投影|手機畫面|投屏|鏡像|鏡射|AIR[\s-]*PLAY|防烙印|SAFEGUARD|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB|護眼模式|低藍光)/i.test(
@@ -6556,7 +6802,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   }
 
   if (
-    /(如何|怎麼|怎樣|操作|切換|開啟|關閉|設定|排除|故障|異常|無法|沒反應|重置|恢復原廠)/i.test(
+    /(如何|怎麼|怎樣|操作|切換|開啟|怎麼開|如何開|哪裡開|在哪|哪裡|去哪|到哪|位置|關閉|設定|排除|故障|異常|無法|沒反應|重置|恢復原廠)/i.test(
       text,
     )
   ) {
@@ -6896,7 +7142,16 @@ function tryManualFreeLocalAnswer_(
     return true;
   }
 
-  const verifiedManualChunk = findVerifiedManualChunk_(query, model || "");
+  const requiresFullInterfaceTimingTable =
+    isInterfaceDisplayTimingQuery_(query);
+  if (requiresFullInterfaceTimingTable) {
+    writeLog(
+      "[Manual Chunk Guard v29.6.259] 介面×解析度／更新率需完整訊號時序證據，禁止泛用手冊片段提前終止",
+    );
+  }
+  const verifiedManualChunk = requiresFullInterfaceTimingTable
+    ? null
+    : findVerifiedManualChunk_(query, model || "");
   if (verifiedManualChunk) {
     const remaining = getSourceRemaining_(contextId, "manual");
     const verifiedReply = `${buildVerifiedManualChunkReply_(
@@ -7144,6 +7399,153 @@ function buildTentativeWebFallback_(rawResponse, query, model) {
   ].join("\n");
 }
 
+function normalizeGroundedModelIdentity_(value) {
+  return toHalfWidth(String(value || ""))
+    .toUpperCase()
+    .replace(/[^A-Z0-9\u4e00-\u9fff]+/g, "");
+}
+
+/**
+ * 由目前完整型號的官方 RULE 建立可核對的產品身分。
+ * 外部文章常只寫 Smart Monitor M8 / Odyssey G8，而不寫台灣完整 SKU；
+ * 這裡只接受 RULE 明載的正式系列別稱，不用「Samsung 螢幕」等過寬詞放行。
+ */
+function getGroundedModelIdentityProfile_(model) {
+  const exactModel = normalizeModelForDisplay(model || "");
+  const exactTokens = [];
+  const familyTokens = [];
+  let familyLabel = "";
+  let familyAlias = "";
+  let familyKind = "";
+  const addToken = function (target, value) {
+    const token = normalizeGroundedModelIdentity_(value);
+    if (token && target.indexOf(token) < 0) target.push(token);
+  };
+  if (!exactModel) {
+    return {
+      exactModel: "",
+      exactTokens: [],
+      familyTokens: [],
+      familyLabel: "",
+      familyAlias: "",
+      familyKind: "",
+    };
+  }
+
+  addToken(exactTokens, exactModel);
+  const regionalBase = exactModel.replace(
+    /(?:XZW|GAC|NAC|NWC|UBC|UXC|UIC|NC|UC|EC|EF|WC|XC|ES|SC|AC)$/i,
+    "",
+  );
+  if (regionalBase.length >= 7) addToken(exactTokens, regionalBase);
+
+  const ruleLine = String(findExactModelRuleLine_(exactModel) || "");
+  const upperRule = toHalfWidth(ruleLine).toUpperCase();
+  let seriesMatch = null;
+  if (/(?:SMART\s*MONITOR|智慧聯網螢幕|智慧顯示器)/i.test(ruleLine)) {
+    seriesMatch = upperRule.match(/(?:^|[^A-Z0-9])(M[5789])(?=[^A-Z0-9]|$)/);
+    if (!seriesMatch) {
+      const longSmart = upperRule.match(/(?:^|[^A-Z0-9])M([5789])0[A-Z](?=[^A-Z0-9]|$)/);
+      if (longSmart) seriesMatch = [longSmart[0], `M${longSmart[1]}`];
+    }
+    if (seriesMatch) {
+      familyAlias = seriesMatch[1];
+      familyKind = "smart";
+      familyLabel = `Smart Monitor ${seriesMatch[1]}`;
+      addToken(familyTokens, familyLabel);
+      addToken(familyTokens, `Samsung ${familyLabel}`);
+      addToken(familyTokens, `智慧聯網螢幕 ${seriesMatch[1]}`);
+    }
+  } else if (/ODYSSEY/i.test(ruleLine)) {
+    seriesMatch = upperRule.match(/(?:^|[^A-Z0-9])(G[356789])(?=[^A-Z0-9]|$)/);
+    if (seriesMatch) {
+      familyAlias = seriesMatch[1];
+      familyKind = "odyssey";
+      familyLabel = `Odyssey ${seriesMatch[1]}`;
+      addToken(familyTokens, familyLabel);
+      addToken(familyTokens, `Samsung ${familyLabel}`);
+    }
+  } else if (/VIEWFINITY/i.test(ruleLine)) {
+    seriesMatch = upperRule.match(/(?:^|[^A-Z0-9])(S[6789])(?=[^A-Z0-9]|$)/);
+    if (seriesMatch) {
+      familyAlias = seriesMatch[1];
+      familyKind = "viewfinity";
+      familyLabel = `ViewFinity ${seriesMatch[1]}`;
+      addToken(familyTokens, familyLabel);
+      addToken(familyTokens, `Samsung ${familyLabel}`);
+    }
+  }
+
+  return {
+    exactModel: exactModel,
+    exactTokens: exactTokens,
+    familyTokens: familyTokens,
+    familyLabel: familyLabel,
+    familyAlias: familyAlias,
+    familyKind: familyKind,
+  };
+}
+
+function matchGroundedModelIdentity_(text, model) {
+  const body = normalizeGroundedModelIdentity_(text);
+  const profile = getGroundedModelIdentityProfile_(model);
+  if (!profile.exactModel) return "none";
+  if (
+    profile.exactTokens.some(function (token) {
+      return token.length >= 7 && body.indexOf(token) >= 0;
+    })
+  ) {
+    return "exact";
+  }
+  if (
+    profile.familyTokens.some(function (token) {
+      return token.length >= 6 && body.indexOf(token) >= 0;
+    })
+  ) {
+    return "family";
+  }
+  if (profile.familyAlias && profile.familyKind) {
+    const contexts =
+      profile.familyKind === "smart"
+        ? ["SMARTMONITOR", "智慧聯網螢幕", "智慧螢幕", "智慧顯示器"]
+        : profile.familyKind === "odyssey"
+          ? ["ODYSSEY"]
+          : ["VIEWFINITY"];
+    if (
+      contexts.some(function (contextToken) {
+        const first = body.indexOf(contextToken);
+        const alias = body.indexOf(profile.familyAlias);
+        return first >= 0 && alias >= 0 && Math.abs(first - alias) <= 40;
+      })
+    ) {
+      return "family";
+    }
+  }
+  return "none";
+}
+
+function isLowRiskGroundedTroubleshooting_(text, question) {
+  const body = String(text || "");
+  const query = String(question || "");
+  if (
+    !/(?:斷線|連不上|不穩|沒反應|無法連線|異常|故障|黑屏|閃爍|沒聲音|沒有聲音)/i.test(
+      query,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /(?:拆機|拆開|焊接|短路|高壓|刷機|ROOT|破解|非官方韌體|第三方韌體|下載韌體)/i.test(
+      body,
+    )
+  ) {
+    return false;
+  }
+  return /(?:重新啟動|重新開機|重啟|拔掉[^。\n]{0,24}電源|重新連線|重設網路|網路重設|DNS|檢查連接|更換線材|交叉測試|恢復原廠設定)/i.test(
+    body,
+  );
+}
+
 function isGroundedWebAnswerRelevant_(text, model) {
   const body = String(text || "");
   if (!body.trim()) return false;
@@ -7159,7 +7561,7 @@ function isGroundedWebAnswerRelevant_(text, model) {
   }
   const normalizedModel = normalizeModelForDisplay(model || "");
   if (!normalizedModel) return true;
-  return body.toUpperCase().indexOf(normalizedModel.toUpperCase()) >= 0;
+  return matchGroundedModelIdentity_(body, normalizedModel) !== "none";
 }
 
 function compactGroundedWebAnswer_(rawResponse) {
@@ -7292,13 +7694,25 @@ function buildGroundedSupportedAnswer_(
     }
   });
   const normalizedModel = normalizeModelForDisplay(model || "");
-  if (
-    normalizedModel &&
-    !unique.some(function (segment) {
-      return segment.toUpperCase().indexOf(normalizedModel.toUpperCase()) >= 0;
-    })
-  ) {
-    return "";
+  let supportedIdentity = "none";
+  if (normalizedModel) {
+    supportedIdentity = matchGroundedModelIdentity_(
+      unique.join("\n"),
+      normalizedModel,
+    );
+    const rawIdentity = matchGroundedModelIdentity_(
+      rawResponse,
+      normalizedModel,
+    );
+    // 完整型號若只是在模型開場重複使用者問題，不能單獨證明外部來源適用；
+    // 只有 grounding 支持句段本身含型號／系列，或完整回應明確對上 RULE
+    // 已確認的正式系列別稱，才允許把低風險步驟整理給目前型號。
+    const safeFamilyFallback =
+      rawIdentity === "family" &&
+      isLowRiskGroundedTroubleshooting_(unique.join("\n"), originalQuestion);
+    if (supportedIdentity === "none" && !safeFamilyFallback) {
+      return "";
+    }
   }
   const focusTokens = getGroundedQuestionFocusTokens_(
     originalQuestion,
@@ -7314,7 +7728,14 @@ function buildGroundedSupportedAnswer_(
       return "";
     }
   }
-  const answer = unique.slice(0, 5).join("\n").trim();
+  let answer = unique.slice(0, 5).join("\n").trim();
+  if (answer && normalizedModel && supportedIdentity !== "exact") {
+    const profile = getGroundedModelIdentityProfile_(normalizedModel);
+    const identityLabel = profile.familyLabel
+      ? `${normalizedModel}（${profile.familyLabel}）`
+      : normalizedModel;
+    answer = `${identityLabel} 可先這樣排除：\n${answer}`;
+  }
   return doesGroundedAnswerCompleteQuestion_(answer, originalQuestion)
     ? answer
     : "";
@@ -8015,7 +8436,7 @@ function executeAdvancedSourceQuery_(
         )
       ) {
         writeLog(
-          "[Grounding Relevance v29.6.168] 搜尋支持句段沒有同時證明目前型號與本題核心詞，不視為本題答案",
+          "[Grounding Relevance v29.6.262] 搜尋支持句段沒有同時證明目前型號／RULE 系列身分與本題核心詞，不視為本題答案",
         );
         lastWebEvidenceValid = false;
         lastWebUnverifiedDraft = "[NO_RELEVANT_WEB_EVIDENCE]";
@@ -9032,10 +9453,13 @@ function getManualStructuredResponseSchema_() {
             scope: {
               type: "STRING",
               enum: ["型號明確", "全檔共通", "依型號而異"],
+              description:
+                "共用手冊的圖、表或註記若只列部分型號，必須選型號明確或依型號而異；只有內容真正適用全檔所有型號才可選全檔共通",
             },
             evidenceExcerpt: {
               type: "STRING",
-              description: "該頁直接支持答案的手冊原文短摘錄",
+              description:
+                "該頁直接支持答案的手冊原文短摘錄；型號專屬證據必須把最近的適用型號限定一併摘錄",
             },
           },
           required: ["pageNumber", "scope", "evidenceExcerpt"],
@@ -9046,7 +9470,56 @@ function getManualStructuredResponseSchema_() {
   };
 }
 
-function normalizeManualStructuredResponse_(text) {
+function normalizeManualEvidenceModel_(model) {
+  let normalized = String(model || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (/^LS\d{2}/.test(normalized)) {
+    normalized = "S" + normalized.slice(2);
+  }
+  return normalized.replace(/X[A-Z]{2,4}$/, "");
+}
+
+function getManualEvidenceRegionalBase_(model) {
+  return normalizeManualEvidenceModel_(model).replace(
+    /(?:GAC|NAC|NWC|UBC|UXC|UIC|NC|UC|EC|EF|WC|XC|ES|SC|AC)$/i,
+    "",
+  );
+}
+
+function extractManualEvidenceModels_(excerpt) {
+  const upper = String(excerpt || "").toUpperCase();
+  const matches = upper.match(/\b(?:LS)?S\d{2}[A-Z0-9]{4,16}\b/g) || [];
+  return [...new Set(matches.map(normalizeManualEvidenceModel_).filter(Boolean))];
+}
+
+/**
+ * 共用 PDF 的型號適用範圍必須可由摘錄自體驗證。
+ * 例：S32HG806ES 不得使用只標示 S32HG802SC 的 USB-C 圖說。
+ */
+function manualEvidenceSupportsTargetModel_(evidence, targetModel) {
+  const target = normalizeManualEvidenceModel_(targetModel);
+  if (!target) return true;
+
+  const targetBase = getManualEvidenceRegionalBase_(target);
+  const evidenceModels = extractManualEvidenceModels_(
+    evidence && evidence.excerpt,
+  );
+  if (evidenceModels.length > 0) {
+    return evidenceModels.some((evidenceModel) => {
+      const evidenceBase = getManualEvidenceRegionalBase_(evidenceModel);
+      return (
+        evidenceModel === target ||
+        (targetBase.length >= 7 && evidenceBase === targetBase)
+      );
+    });
+  }
+
+  // 「型號明確」卻沒有把適用型號摘入證據，程式無法核對。
+  return String((evidence && evidence.scope) || "") === "全檔共通";
+}
+
+function normalizeManualStructuredResponse_(text, targetModel) {
   const raw = String(text || "").trim();
   let parsed = null;
   let jsonText = raw
@@ -9096,7 +9569,8 @@ function normalizeManualStructuredResponse_(text) {
       Number.isInteger(item.pageNumber) &&
       item.pageNumber > 0 &&
       (item.scope === "型號明確" || item.scope === "全檔共通") &&
-      item.excerpt.length >= 6,
+      item.excerpt.length >= 6 &&
+      manualEvidenceSupportsTargetModel_(item, targetModel),
   );
 
   writeLog(
@@ -9803,6 +10277,8 @@ function resetRequestAudit_() {
     webCalls: 0,
     inputTokens: 0,
     outputTokens: 0,
+    thoughtTokens: 0,
+    billedOutputTokens: 0,
     estimatedCostTwd: 0,
     sources: [],
     logged: false,
@@ -9820,10 +10296,40 @@ function markGenerationAttempt_(stage, modelName) {
   if (stage === "web") currentRequestAudit.webCalls++;
 }
 
+function calculateGeminiUsageCost_(usage, priceInput, priceOutput) {
+  const safeUsage = usage || {};
+  const input = Math.max(0, Number(safeUsage.promptTokenCount) || 0);
+  const output = Math.max(0, Number(safeUsage.candidatesTokenCount) || 0);
+  const thoughts = Math.max(0, Number(safeUsage.thoughtsTokenCount) || 0);
+  const billedOutput = output + thoughts;
+  const inputRate = Math.max(0, Number(priceInput) || 0);
+  const outputRate = Math.max(0, Number(priceOutput) || 0);
+  const costUSD =
+    (input / 1000000) * inputRate +
+    (billedOutput / 1000000) * outputRate;
+  const reportedTotal = Number(safeUsage.totalTokenCount);
+  return {
+    input: input,
+    output: output,
+    thoughts: thoughts,
+    billedOutput: billedOutput,
+    total:
+      Number.isFinite(reportedTotal) && reportedTotal >= 0
+        ? reportedTotal
+        : input + billedOutput,
+    costUSD: costUSD,
+    costTWD: costUSD * EXCHANGE_RATE,
+  };
+}
+
 function addGenerationUsageToAudit_(usage, costTWD) {
   if (!currentRequestAudit || !usage) return;
   currentRequestAudit.inputTokens += Number(usage.promptTokenCount) || 0;
   currentRequestAudit.outputTokens += Number(usage.candidatesTokenCount) || 0;
+  currentRequestAudit.thoughtTokens += Number(usage.thoughtsTokenCount) || 0;
+  currentRequestAudit.billedOutputTokens +=
+    (Number(usage.candidatesTokenCount) || 0) +
+    (Number(usage.thoughtsTokenCount) || 0);
   currentRequestAudit.estimatedCostTwd += Number(costTWD) || 0;
 }
 
@@ -9842,6 +10348,8 @@ function writeRequestAuditOnce_(visibleText) {
     webCalls: currentRequestAudit.webCalls,
     inputTokens: currentRequestAudit.inputTokens,
     outputTokens: currentRequestAudit.outputTokens,
+    thoughtTokens: currentRequestAudit.thoughtTokens,
+    billedOutputTokens: currentRequestAudit.billedOutputTokens,
     estimatedCostTwd: Number(currentRequestAudit.estimatedCostTwd.toFixed(4)),
     sources: currentRequestAudit.sources,
   };
@@ -14036,7 +14544,7 @@ ${recentOfficialManualAnswer}
     // 會占用 maxOutputTokens，曾把合法 JSON 截在第 37 token；關閉後把
     // 1,200 tokens 全留給 answer/page/evidence，一次呼叫完成且更省成本。
     genConfig.thinkingConfig = { thinkingBudget: 0 };
-    dynamicPrompt += `\n\n【PDF 結構化輸出】只輸出 schema 指定的 JSON。檢索時先把使用者口語需求轉成手冊中的裝置類別、連接介面、功能名稱與同義詞，再查目錄與全文，不能只比對原句字面。found=true 時 answer 必須完整回答使用者問到的每個子項；evidence 最多 3 筆，每筆頁碼、適用範圍與原文摘錄都必須直接支持答案。手冊確定沒有直接證據時才回 found=false 且 evidence=[]。格式錯誤、讀取逾時或不確定，不得假裝 found=false。`;
+    dynamicPrompt += `\n\n【PDF 結構化輸出】目前鎖定完整型號：${normalizeManualEvidenceModel_(targetModelName) || "未提供"}。只輸出 schema 指定的 JSON。檢索時先把使用者口語需求轉成手冊中的裝置類別、連接介面、功能名稱與同義詞，再查目錄與全文，不能只比對原句字面。found=true 時 answer 必須完整回答使用者問到的每個子項；evidence 最多 3 筆，每筆頁碼、適用範圍與原文摘錄都必須直接支持答案。共用手冊同頁若有多個型號專屬圖、表或註記，evidenceExcerpt 必須連同最近的適用型號限定一併摘錄；只列其他型號時不得回答成目前型號，封面或型號清單也不能補當功能證據。手冊確定沒有直接證據時才回 found=false 且 evidence=[]。格式錯誤、讀取逾時或不確定，不得假裝 found=false。`;
     writeLog(
       `[PDF Config v29.6.177] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingBudget=0`,
     );
@@ -14364,25 +14872,25 @@ ${recentOfficialManualAnswer}
                 : modelName === CONFIG.MODEL_NAME_THINK
                   ? PRICE_THINK_OUTPUT
                   : PRICE_FAST_OUTPUT;
-            var costUSD =
-              (usage.promptTokenCount / 1000000) * priceInput +
-              (usage.candidatesTokenCount / 1000000) * priceOutput;
-            var costTWD = costUSD * EXCHANGE_RATE;
+            var usageCost = calculateGeminiUsageCost_(
+              usage,
+              priceInput,
+              priceOutput,
+            );
+            var costUSD = usageCost.costUSD;
+            var costTWD = usageCost.costTWD;
             writeLog(
               `[AI Stats] ${((endTime - start) / 1000).toFixed(2)}s | In: ${
-                usage.promptTokenCount
+                usageCost.input
               } / Out: ${
-                usage.candidatesTokenCount
+                usageCost.output
+              } / Thoughts: ${
+                usageCost.thoughts
               } | Cost: NT$${costTWD.toFixed(4)}`,
             );
 
             // v24.1.0: 儲存到全域變數，供測試模式顯示
-            lastTokenUsage = {
-              input: usage.promptTokenCount,
-              output: usage.candidatesTokenCount,
-              total: usage.totalTokenCount,
-              costTWD: costTWD,
-            };
+            lastTokenUsage = usageCost;
             addGenerationUsageToAudit_(usage, costTWD);
           } else {
             // v27.0.0: 如果沒有 usage data，清除舊的 lastTokenUsage
@@ -14480,7 +14988,7 @@ ${recentOfficialManualAnswer}
             let text = (firstPart.text || "").trim();
 
             if (attachPDFs) {
-              text = normalizeManualStructuredResponse_(text);
+              text = normalizeManualStructuredResponse_(text, targetModelName);
             }
 
             // v29.5.108: Exhaustive Grounding and Tool Call Detection
@@ -15579,13 +16087,38 @@ function handleMessage(event) {
       extractFullModelLikeTokens(msg),
       2,
     ).map(normalizeModelForDisplay);
+    const pendingPlainModelCandidatesRaw = parseSourceStateJson_(
+      cache.get(`${userId}:suggested_models`),
+    );
+    const pendingPlainModelCandidates = Array.isArray(
+      pendingPlainModelCandidatesRaw,
+    )
+      ? dedupDisplayModels(pendingPlainModelCandidatesRaw, 10)
+      : [];
+    const pendingPlainDescriptorResolution =
+      pendingPlainModelTopic &&
+      pendingPlainModelMode === "fast" &&
+      pendingPlainModelCandidates.length > 1
+        ? resolvePendingManualModelByDescription_(
+            msg,
+            {
+              draftQuery: pendingPlainModelTopic,
+              manualModelCandidates: pendingPlainModelCandidates,
+            },
+            false,
+          )
+        : { recognized: false, model: "", candidates: [], signals: [] };
     const isPlainModelClarification = Boolean(
       pendingPlainModelTopic &&
         pendingPlainModelMode === "fast" &&
-        isManualModelHintOnly_(msg) &&
-        plainModelTokens.length === 1,
+        ((isManualModelHintOnly_(msg) && plainModelTokens.length === 1) ||
+          pendingPlainDescriptorResolution.model),
     );
-    if (!isPlainModelClarification && shouldCountDailyQuestionText_(msg, contextId)) {
+    if (
+      !isPlainModelClarification &&
+      !pendingPlainDescriptorResolution.recognized &&
+      shouldCountDailyQuestionText_(msg, contextId)
+    ) {
       const dailyQuota = reserveDailyQuestionOrReply_(userId, replyToken);
       if (!dailyQuota.allowed) return;
       dailyQuestionReservedThisMessage = true;
@@ -15601,8 +16134,40 @@ function handleMessage(event) {
         pendingBeforeQuota.dailyQuestionRemaining;
     }
 
+    if (
+      pendingPlainDescriptorResolution.recognized &&
+      !pendingPlainDescriptorResolution.model
+    ) {
+      const remainingCandidates =
+        pendingPlainDescriptorResolution.candidates.length > 1
+          ? pendingPlainDescriptorResolution.candidates
+          : pendingPlainModelCandidates;
+      cache.put(
+        `${userId}:suggested_models`,
+        JSON.stringify(remainingCandidates),
+        600,
+      );
+      const leadText =
+        pendingPlainDescriptorResolution.candidates.length > 1
+          ? `依「${pendingPlainDescriptorResolution.signals.join("、")}」還有 ${remainingCandidates.length} 款符合；原問題已保留。請再補一個差異，或直接點選型號。這一步不會讀手冊，也不會另外計次。`
+          : `這段描述還無法和候選型號唯一對上；原問題已保留。請再補尺寸、解析度、面板或更新率，或直接點選型號。這一步不會讀手冊，也不會另外計次。`;
+      writeLog(
+        `[Fast Descriptor Model v29.6.257] ${pendingPlainDescriptorResolution.signals.join("+")} 未唯一選型，保留原題與 ${remainingCandidates.length} 個候選`,
+      );
+      replyMessage(replyToken, [
+        { type: "text", text: leadText },
+        createModelSelectionFlexV3(remainingCandidates, {
+          headerText: "🔍 再確認型號",
+          altText: "請選擇完整型號",
+          footerText: "選定後接著回答原題",
+        }),
+      ]);
+      return;
+    }
+
     if (isPlainModelClarification) {
-      const clarifiedModel = plainModelTokens[0];
+      const clarifiedModel =
+        plainModelTokens[0] || pendingPlainDescriptorResolution.model;
       const resumedQuestion = pendingPlainModelTopic;
       msg = `${resumedQuestion} (型號: ${clarifiedModel})`;
       userMessage = msg;
@@ -15617,7 +16182,7 @@ function handleMessage(event) {
       cache.remove(`${userId}:model_select_mode`);
       rememberSourceProductModel_(contextId, clarifiedModel, "plain_model_clarification");
       writeLog(
-        `[Model Clarification v29.6.158] ${clarifiedModel} 接回原題：${resumedQuestion.substring(0, 80)}`,
+        `[Model Clarification v29.6.257] ${clarifiedModel} 接回原題：${resumedQuestion.substring(0, 80)}`,
       );
     }
 
@@ -16247,9 +16812,14 @@ function handleMessage(event) {
           }
 
           if (result.usageMetadata) {
-            inputTokens = result.usageMetadata.promptTokenCount || 0;
-            outputTokens = result.usageMetadata.candidatesTokenCount || 0;
-            cost = inputTokens * 0.0000032 + outputTokens * 0.0000128;
+            const usageCost = calculateGeminiUsageCost_(
+              result.usageMetadata,
+              PRICE_FAST_INPUT,
+              PRICE_FAST_OUTPUT,
+            );
+            inputTokens = usageCost.input;
+            outputTokens = usageCost.output;
+            cost = usageCost.costTWD;
           } else {
             inputTokens = msg.length;
             outputTokens = replyText.length;
@@ -17553,6 +18123,37 @@ function handleMessage(event) {
     if (
       !incomingMessageWasElaboration &&
       exactRuleModels.length === 1 &&
+      isInterfaceDisplayTimingQuery_(routingQuestion)
+    ) {
+      if (dailyQuestionReservedThisMessage) {
+        refundDailyQuestionUsage_(userId, "interface_timing_to_manual");
+        dailyQuestionReservedThisMessage = false;
+      }
+      rememberSourceProductModel_(
+        contextId,
+        exactRuleModels[0],
+        "interface_timing_manual",
+      );
+      rememberRecentSourceQuestion_(
+        contextId,
+        routingQuestion,
+        exactRuleModels[0],
+      );
+      writeLog(
+        `[Interface Timing Guard v29.6.258] ${exactRuleModels[0]} 介面×解析度／更新率不用獨立 RULE 欄位推論，零 Fast 直接查手冊`,
+      );
+      executeAutomaticManualFallback_(
+        routingQuestion,
+        exactRuleModels[0],
+        contextId,
+        userId,
+        replyToken,
+      );
+      return;
+    }
+    if (
+      !incomingMessageWasElaboration &&
+      exactRuleModels.length === 1 &&
       isLikelyLocalSpecRuleQuestion_(routingQuestion) &&
       !isPotentialMultiClaimQuestion_(routingQuestion)
     ) {
@@ -17613,6 +18214,43 @@ function handleMessage(event) {
         );
         return;
       }
+    }
+
+    // 純規格題要先給上方精確 RULE 零成本回答；只有 RULE／QA
+    // 都未完成的選單、連接、故障等操作題，才直接進手冊。
+    if (
+      !incomingMessageWasElaboration &&
+      exactRuleModels.length === 1 &&
+      isOperationOrTroubleshootQuery(routingQuestion)
+    ) {
+      const heldModelSelectionCharge = resumedFromPlainModelClarification
+        ? consumeDailyQuestionModelSelectionHold_(userId)
+        : false;
+      if (dailyQuestionReservedThisMessage || heldModelSelectionCharge) {
+        refundDailyQuestionUsage_(userId, "exact_operation_to_manual");
+        dailyQuestionReservedThisMessage = false;
+      }
+      rememberSourceProductModel_(
+        contextId,
+        exactRuleModels[0],
+        "exact_operation_manual",
+      );
+      rememberRecentSourceQuestion_(
+        contextId,
+        routingQuestion,
+        exactRuleModels[0],
+      );
+      writeLog(
+        `[Exact Operation Guard v29.6.260] ${exactRuleModels[0]} 精準 QA／RULE 未完成，零 Fast 直接進免費手冊片段或完整 PDF`,
+      );
+      executeAutomaticManualFallback_(
+        routingQuestion,
+        exactRuleModels[0],
+        contextId,
+        userId,
+        replyToken,
+      );
+      return;
     }
 
     const exactRuleComparisonReply = incomingMessageWasElaboration
@@ -20844,16 +21482,11 @@ RULE_主題,規則類型,完整規則說明...
     const json = JSON.parse(body);
     if (json.usageMetadata) {
       const usage = json.usageMetadata;
-      const costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_POLISH_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_POLISH_OUTPUT;
-      const costTWD = costUSD * EXCHANGE_RATE;
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costTWD: costTWD,
-      };
+      lastTokenUsage = calculateGeminiUsageCost_(
+        usage,
+        PRICE_POLISH_INPUT,
+        PRICE_POLISH_OUTPUT,
+      );
     } else {
       lastTokenUsage = null;
     }
@@ -20918,15 +21551,11 @@ function callGeminiToModifyRule(currentText, instruction) {
     const json = JSON.parse(body);
     if (json.usageMetadata) {
       const usage = json.usageMetadata;
-      const costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_FAST_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_FAST_OUTPUT;
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costTWD: costUSD * EXCHANGE_RATE,
-      };
+      lastTokenUsage = calculateGeminiUsageCost_(
+        usage,
+        PRICE_FAST_INPUT,
+        PRICE_FAST_OUTPUT,
+      );
     }
 
     const candidates = json && json.candidates ? json.candidates : [];
@@ -21469,20 +22098,17 @@ function findSimilarQA(newContent, polishedQA) {
 
     // v25.0.1 新增：記錄 Token 成本（確保計費完整）
     if (json.usageMetadata) {
-      var inputTokens = json.usageMetadata.promptTokenCount || 0;
-      var outputTokens = json.usageMetadata.candidatesTokenCount || 0;
-      var totalTokens = inputTokens + outputTokens;
-      var costUSD =
-        (inputTokens * PRICE_FAST_INPUT) / 1000000 +
-        (outputTokens * PRICE_FAST_OUTPUT) / 1000000;
-      var costTWD = costUSD * EXCHANGE_RATE;
-      lastTokenUsage = {
-        input: inputTokens,
-        output: outputTokens,
-        total: totalTokens,
-        costUSD: costUSD,
-        costTWD: costTWD,
-      };
+      var usageCost = calculateGeminiUsageCost_(
+        json.usageMetadata,
+        PRICE_FAST_INPUT,
+        PRICE_FAST_OUTPUT,
+      );
+      var inputTokens = usageCost.input;
+      var outputTokens = usageCost.output;
+      var totalTokens = usageCost.total;
+      var costUSD = usageCost.costUSD;
+      var costTWD = usageCost.costTWD;
+      lastTokenUsage = usageCost;
       writeLog(
         "[FindSimilar Tokens] In:" +
           inputTokens +
@@ -21621,21 +22247,20 @@ function callGeminiToMergeQA(existingQAs, newQA) {
     // 記錄 Token 用量
     if (json.usageMetadata) {
       var usage = json.usageMetadata;
-      var costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_THINK_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_THINK_OUTPUT;
-      var costTWD = costUSD * EXCHANGE_RATE;
+      var usageCost = calculateGeminiUsageCost_(
+        usage,
+        PRICE_THINK_INPUT,
+        PRICE_THINK_OUTPUT,
+      );
+      var costTWD = usageCost.costTWD;
       // v27.9.19: 關鍵修正！設定 lastTokenUsage
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costTWD: costTWD,
-      };
+      lastTokenUsage = usageCost;
       writeLog(
         `[MergeQA Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
-        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
+        }, Thoughts: ${usageCost.thoughts}, Total: ${
+          usage.totalTokenCount
+        } (約 NT$${costTWD.toFixed(4)})`,
       );
     } else {
       lastTokenUsage = null;
@@ -21780,21 +22405,20 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
     // 記錄 Token 用量
     if (json.usageMetadata) {
       const usage = json.usageMetadata;
-      const costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_THINK_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_THINK_OUTPUT;
-      const costTWD = costUSD * EXCHANGE_RATE;
+      const usageCost = calculateGeminiUsageCost_(
+        usage,
+        PRICE_THINK_INPUT,
+        PRICE_THINK_OUTPUT,
+      );
+      const costTWD = usageCost.costTWD;
       // v27.9.19: 關鍵修正！設定 lastTokenUsage
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costTWD: costTWD,
-      };
+      lastTokenUsage = usageCost;
       writeLog(
         `[RefineQA Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
-        }, Total: ${usage.totalTokenCount} (約 NT$${costTWD.toFixed(4)})`,
+        }, Thoughts: ${usageCost.thoughts}, Total: ${
+          usage.totalTokenCount
+        } (約 NT$${costTWD.toFixed(4)})`,
       );
     } else {
       lastTokenUsage = null;
@@ -21941,17 +22565,14 @@ function callGeminiToPolish(input, userId = null) {
     // 記錄 Token 用量 - 使用 POLISH 專屬費率
     if (json.usageMetadata) {
       const usage = json.usageMetadata;
-      const costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_POLISH_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_POLISH_OUTPUT;
-      const costTWD = costUSD * EXCHANGE_RATE;
+      const usageCost = calculateGeminiUsageCost_(
+        usage,
+        PRICE_POLISH_INPUT,
+        PRICE_POLISH_OUTPUT,
+      );
+      const costTWD = usageCost.costTWD;
       // v27.9.19: 設定 lastTokenUsage 讓費用可以顯示在回覆中
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costTWD: costTWD,
-      };
+      lastTokenUsage = usageCost;
       writeLog(
         `[Polish Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
@@ -22077,17 +22698,13 @@ function callGeminiToModify(currentText, instruction) {
     // v27.9.17: 記錄 Token 費用
     if (json.usageMetadata) {
       const usage = json.usageMetadata;
-      const costUSD =
-        (usage.promptTokenCount / 1000000) * PRICE_FAST_INPUT +
-        (usage.candidatesTokenCount / 1000000) * PRICE_FAST_OUTPUT;
-      const costTWD = costUSD * EXCHANGE_RATE;
-      lastTokenUsage = {
-        input: usage.promptTokenCount,
-        output: usage.candidatesTokenCount,
-        total: usage.totalTokenCount,
-        costUSD: costUSD,
-        costTWD: costTWD,
-      };
+      const usageCost = calculateGeminiUsageCost_(
+        usage,
+        PRICE_FAST_INPUT,
+        PRICE_FAST_OUTPUT,
+      );
+      const costTWD = usageCost.costTWD;
+      lastTokenUsage = usageCost;
       writeLog(
         `[Modify Tokens] In: ${usage.promptTokenCount}, Out: ${
           usage.candidatesTokenCount
@@ -22381,17 +22998,13 @@ function handleAutoQA(u, cid) {
         // v27.9.17: 記錄 Token 費用
         if (j.usageMetadata) {
           const usage = j.usageMetadata;
-          const costUSD =
-            (usage.promptTokenCount / 1000000) * PRICE_FAST_INPUT +
-            (usage.candidatesTokenCount / 1000000) * PRICE_FAST_OUTPUT;
-          const costTWD = costUSD * EXCHANGE_RATE;
-          lastTokenUsage = {
-            input: usage.promptTokenCount,
-            output: usage.candidatesTokenCount,
-            total: usage.totalTokenCount,
-            costUSD: costUSD,
-            costTWD: costTWD,
-          };
+          const usageCost = calculateGeminiUsageCost_(
+            usage,
+            PRICE_FAST_INPUT,
+            PRICE_FAST_OUTPUT,
+          );
+          const costTWD = usageCost.costTWD;
+          lastTokenUsage = usageCost;
           writeLog(
             `[AutoQA Tokens] In: ${usage.promptTokenCount}, Out: ${
               usage.candidatesTokenCount
