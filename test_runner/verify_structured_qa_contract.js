@@ -125,6 +125,11 @@ assert.strictEqual(
   null,
   "unknown exact models must not borrow another product QA",
 );
+const m8Netflix = context.qaKnowledgeFindLocalMatch_("M8 怎麼安裝 Netflix？");
+assert(
+  m8Netflix && m8Netflix.qaId === "qa-smart-monitor-app-install",
+  "M8 Netflix 安裝題必須命中跨世代精準 QA，不得先要求完整型號或讀 PDF",
+);
 
 const bluetooth = context.qaKnowledgeFindManualEvidence_(
   "那要怎麼連接藍牙喇叭？",

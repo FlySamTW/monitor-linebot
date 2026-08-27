@@ -724,7 +724,16 @@ function qaKnowledgeRank_(query, options) {
 function qaKnowledgeFindLocalMatch_(query) {
   var result = qaKnowledgeRank_(query, { excludeManual: true });
   var best = result.ranked[0];
-  if (!best || !best.strongSignal || best.score < 68) return null;
+  if (!best || !best.strongSignal) return null;
+  var runnerUp = result.ranked.length > 1 ? result.ranked[1] : null;
+  // 完整型號／系列別稱＋兩個結構化意圖詞且明顯領先時，可視為精準 QA。
+  // 這是資料證據契約，不是為 Netflix 或任何單題新增路由特例。
+  var scopedIntentMatch =
+    best.score >= 55 &&
+    (best.modelHit || best.aliasHits > 0) &&
+    best.termHits >= 2 &&
+    (!runnerUp || best.score - runnerUp.score >= 8);
+  if (best.score < 68 && !scopedIntentMatch) return null;
   return {
     question: best.record.question,
     answer: qaKnowledgeRenderAnswer_(best.record),

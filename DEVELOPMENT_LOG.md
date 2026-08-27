@@ -1,5 +1,20 @@
 # 開發對話紀錄
 
+## 2026-08-27（v29.6.274 / M8 精準 QA 被分數門檻誤擋）
+
+- v29.6.273 正式 TestUI 實問 `M8 怎麼安裝 Netflix？` 時，資料層已找到 `qa-smart-monitor-app-install`，但分數 59.18 低於固定 68 分門檻，因此錯誤進入 M8 完整型號選擇。
+- 修正為通用 scoped intent 判定：型號／別稱命中、至少兩個結構化詞、55 分以上且領先第二名 8 分以上時可採用；不新增 M8、Netflix 或安裝題的程式特例。
+- 新增正式原句契約；模型、Prompt 與供應商呼叫策略均不變。
+- 正式 Webhook 已更新至 Apps Script `@1456`；health、HEAD、TestUI 均為 v29.6.274。真人重驗結果：M8 Netflix 直接 QA、M7 沿用 S32FM703UC 第 170 頁皆為 NT$0；`S27DG5` 唯一收斂 S27DG502EC 並實讀正確手冊第 34 頁，`pdfCalls=1 / webCalls=0 / thinking=0`，NT$0.1634。
+- G8 模糊題先列 10 款完整 Odyssey G8；選 S32DG802SC 後正確手冊無明文，依既定契約自動補一次非 Samsung 公開網頁，`pdfCalls=1 / webCalls=1 / thinking=0`，NT$0.1752。此次 v29.6.274 新增真人測試合計 NT$0.3386，未超過 NT$2。
+- 2026-08-27 再查 Google 官方價格：2.5 Flash-Lite Standard 為每百萬輸入／輸出 token US$0.10／0.40；2.5 Flash 為 US$0.30／2.50；2.5 Flash／Flash-Lite 共用每日 1,500 次免費搜尋 grounding，之後 US$35／1,000 grounded prompts。現行成本常數與模型分工相符，未誤用 3.x 或 Priority。
+
+## 2026-08-27（v29.6.273 / Smart 新題誤借舊 Odyssey 並跳過 QA）
+
+- 雲端紀錄證明 `Smart 如何開啟零售模式` 被錯補 `S49DG932SC`，掛錯 `S49DG932.pdf` 後又 Web rescue；根因是具名家族不在身分解析器，以及 Operation Source Gate 位於 QA First 前，不是模型或 PDF 本身失效。
+- 新增單一產品身分優先序、Smart M5/M7/M8/M9 一次性補問、相容別稱沿用、不相容舊型號暫停、S27DG5 類前段解析與完整候選分頁。移除 QA 前操作 early gate，手冊自動升級一律再做零成本本機證據預檢。
+- 契約涵蓋舊 S49 → Smart、M7/M8 相容與衝突、S27DG5、G5 超過 10 款、候選翻頁及 M8 Netflix QA 不得讀 PDF。模型、Prompt 內容與價格常數皆未變更。
+
 ## 2026-08-23（v29.6.272 / 第 10 題規格正確但沒有回答「怎麼選」）
 
 - `S27H704EAC` 與 `S32D707EAC` 修圖比較已零成本正確列面板、對比與支架，但只停在規格表，沒有給使用者可行動的選擇收尾。

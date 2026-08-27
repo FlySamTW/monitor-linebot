@@ -108,6 +108,10 @@ const aliasVmSource = [
   extractFunction(linebot, "extractFullModelLikeTokens"),
   extractFunction(linebot, "normalizeModelForDisplay"),
   extractFunction(linebot, "dedupDisplayModels"),
+  extractFunction(linebot, "extractNamedMonitorFamilyTokens_"),
+  extractFunction(linebot, "extractPartialModelPrefixTokens_"),
+  extractFunction(linebot, "getPartialModelCandidatesFromClassRules_"),
+  extractFunction(linebot, "getPartialModelSelectionModelsFromQuery_"),
   extractFunction(linebot, "normalizeManualModelDescriptorText_"),
   extractFunction(linebot, "getMonitorModelGenerationYear_"),
   extractFunction(linebot, "extractManualModelDescriptorSignals_"),
@@ -116,6 +120,10 @@ const aliasVmSource = [
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  extractFunction(linebot, "isPersistedModelCompatibleWithAlias_"),
+  extractFunction(linebot, "resolveTurnProductIdentity_"),
+  extractFunction(linebot, "isPureNamedFamilyOverviewQuery_"),
+  extractFunction(linebot, "shouldPromptSmartMonitorAlias_"),
   extractFunction(linebot, "isPureSeriesOverviewQuery_"),
   extractFunction(linebot, "shouldPromptAliasModelSelection_"),
   extractFunction(linebot, "stripInternalRoutingHints_"),
@@ -145,6 +153,13 @@ const aliasVmSource = [
   `globalThis.__overviewSkipsSelection = shouldPromptAliasModelSelection_("G8 有哪些型號？", __g8Candidates);`,
   `globalThis.__ellipticalFollowUp = isEllipticalEvidenceFollowUp_("要怎麼切？ (型號: S32HG806ES)");`,
   `globalThis.__standaloneFullModel = isEllipticalEvidenceFollowUp_("S32HG806ES 要怎麼切？");`,
+  `globalThis.__smartFamily = extractNamedMonitorFamilyTokens_("Smart 如何開啟零售模式");`,
+  `globalThis.__smartDoesNotStealPronoun = extractNamedMonitorFamilyTokens_("這台有 Smart 功能嗎？");`,
+  `globalThis.__smartOverridesOldG9 = resolveTurnProductIdentity_("Smart 如何開啟零售模式", "S49DG932SC");`,
+  `globalThis.__m7KeepsCompatibleModel = resolveTurnProductIdentity_("M7 怎麼重設", "S32FM703UC");`,
+  `globalThis.__m7RejectsM8Model = resolveTurnProductIdentity_("M7 怎麼重設", "S32FM803UC");`,
+  `globalThis.__s27dg5Identity = resolveTurnProductIdentity_("S27DG5 虛擬準心在哪", "S49DG932SC");`,
+  `globalThis.__s27dg50Identity = resolveTurnProductIdentity_("S27DG50 虛擬準心在哪", "S49DG932SC");`,
 ].join("\n\n");
 const aliasRuleCache = new Map();
 const aliasVmContext = {
@@ -274,6 +289,43 @@ assert.strictEqual(
   aliasVmContext.__standaloneFullModel,
   false,
   "含完整型號的獨立新題不得偷借上一題主題",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__smartFamily),
+  ["SMART_MONITOR"],
+  "句首 Smart 必須辨識成 Smart Monitor 家族",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__smartDoesNotStealPronoun),
+  [],
+  "『這台有 Smart 功能嗎』是在問功能，不得誤判成切換產品家族",
+);
+assert.strictEqual(aliasVmContext.__smartOverridesOldG9.kind, "family");
+assert.strictEqual(
+  aliasVmContext.__smartOverridesOldG9.model,
+  "",
+  "本輪明講 Smart 家族時不得沿用跨日 Odyssey G9 型號",
+);
+assert.strictEqual(
+  aliasVmContext.__m7KeepsCompatibleModel.model,
+  "S32FM703UC",
+  "已鎖定的 M7 完整型號遇到 M7 自然追問時應直接沿用",
+);
+assert.strictEqual(
+  aliasVmContext.__m7RejectsM8Model.model,
+  "",
+  "M7 新題不得借用先前鎖定的 M8 完整型號",
+);
+assert(
+  aliasVmContext.__s27dg5Identity.kind === "partial" &&
+    aliasVmContext.__s27dg5Identity.candidates.includes("S27DG502EC") &&
+    aliasVmContext.__s27dg5Identity.model === "S27DG502EC",
+  "S27DG5 等型號前段必須由 CLASS_RULES 唯一解析，不得回頭借舊型號",
+);
+assert(
+  aliasVmContext.__s27dg50Identity.kind === "partial" &&
+    aliasVmContext.__s27dg50Identity.candidates.includes("S27DG502EC"),
+  "語法像完整型號的 S27DG50 仍須依 CLASS_RULES 判斷為前段，不得冒充實體",
 );
 
 const descriptorRuleCache = new Map();
@@ -501,18 +553,17 @@ assert(
   "介面訊號時序題不得被 Dual Mode 等無關免費手冊片段提前終止",
 );
 assert(
-  /operationRuleOnlyReply[\s\S]{0,900}略過 PDF early gate/.test(linebot) &&
-    /knownRuleAnswer = buildKnownRuleAnchorForMixedOperation_/.test(linebot) &&
+  /knownRuleAnswer = buildKnownRuleAnchorForMixedOperation_/.test(linebot) &&
     /const providerQuery =[\s\S]{0,500}只查原題尚未解答的操作或故障部分/.test(
       linebot,
     ) &&
     /mergeKnownRuleAnchorWithAdvancedAnswer_\(\s*knownRuleAnswer,\s*finalText/.test(
       linebot,
     ) &&
-    /automaticFallback:\s*true,[\s\S]{0,100}priorFastChecked:\s*true/.test(
+    /automaticFallback:\s*true,[\s\S]{0,240}priorFastChecked:\s*false/.test(
       linebot,
     ),
-  "純規格不得被操作 early gate 誤送 PDF；混合題須把已知 RULE 與待查操作拆開後合併",
+  "自動手冊不得假裝已做本機預檢；混合題仍須把已知 RULE 與待查操作拆開後合併",
 );
 assert(
   /selectedMissingFactReply[\s\S]{0,600}refundDailyQuestionUsage_[\s\S]{0,600}executeAutomaticManualFallback_/.test(
@@ -557,6 +608,26 @@ assert(
     /cache\.put\(`\$\{userId\}:pending_topic`, msg, 600\);/.test(linebot) &&
     /resumedFromPlainModelClarification/.test(linebot),
   "系統請使用者補型號後，直接輸入完整型號也必須接回原題且不重複扣額度",
+);
+assert(
+  /model_select_mode`, "family_alias"/.test(linebot) &&
+    /Smart Monitor 分為 M5／M7／M8／M9/.test(linebot) &&
+    /Family Identity Resume v29\.6\.\d+/.test(linebot) &&
+    /resumedFromFamilyAlias/.test(linebot),
+  "Smart 家族題必須只補一次 M5/M7/M8/M9，回覆代號後接回原題且不重複扣額度",
+);
+assert(
+  /function promptPartialModelSelection_/.test(linebot) &&
+    /activeTurnProductIdentity\.kind === "partial"[\s\S]{0,220}activeTurnProductIdentity\.candidates/.test(
+      linebot,
+    ) &&
+    /#型號頁:\$\{page \+ 1\}/.test(
+      extractFunction(linebot, "createModelSelectionFlexV3"),
+    ) &&
+    /dedupDisplayModels\(pendingPlainModelCandidatesRaw, 50\)/.test(
+      linebot,
+    ),
+  "不完整型號與大型系列候選必須保留完整集合，並以 8 款一頁切換，不得截掉後段機型",
 );
 assert(
   /pendingPlainDescriptorResolution[\s\S]{0,900}resolvePendingManualModelByDescription_\([\s\S]{0,300}false/.test(
@@ -1208,8 +1279,8 @@ const gasVersionMatch = linebot.match(
 );
 assert(gasVersionMatch, "linebot.gs 必須宣告 GAS_VERSION");
 assert(
-  prompt.includes(`【Prompt ${gasVersionMatch[1]}】`),
-  "Prompt.csv 版本必須與 linebot.gs GAS_VERSION 一致",
+  /【Prompt v\d+\.\d+\.\d+】/.test(prompt),
+  "Prompt.csv 必須保留可稽核的獨立 Prompt 版本；純程式路由修正不得為湊 GAS 版本改 Prompt",
 );
 assert(
   !/一次受控的非官方 Web 補救|補救不扣使用者網搜額度|不得再次重試或跨回 PDF/.test(
@@ -1515,20 +1586,13 @@ assert(
   "組裝、韌體更新、插孔等操作題不得因相鄰規格詞而被洗白成官方規格答案",
 );
 assert(
-  /Operation Source Gate v29\.6\.247/.test(handleMessageText) &&
+  !/Operation Source Gate v29\.6\.24[79]/.test(handleMessageText) &&
     /tryManualFreeLocalAnswer_\(/.test(advancedRouteText) &&
     /normalizedSource === "manual"/.test(advancedRouteText) &&
-    /refundDailyQuestionUsage_\(userId, "operation_auto_manual"\)/.test(
-      handleMessageText,
-    ) &&
-    /heldOperationSelectionCharge[\s\S]{0,240}consumeDailyQuestionModelSelectionHold_\(userId\)[\s\S]{0,260}operation_auto_manual/.test(
-      handleMessageText,
-    ) &&
-    /executeAutomaticManualFallback_\([\s\S]{0,260}operationModel/.test(
-      handleMessageText,
-    ) &&
+    handleMessageText.indexOf("[QA First Router v29.6.116]") <
+      handleMessageText.indexOf("[Exact Operation Guard v29.6.260]") &&
     !/operation_source_handoff/.test(handleMessageText),
-  "完整型號操作題先免費查 QA／RULE／Evidence；未命中退回一般題額度並直接讀 PDF，不可停在來源 CTA",
+  "操作題必須先跑 QA／RULE／Evidence；精確型號仍不足時才直接讀 PDF，不可用 early gate 搶答",
 );
 assert(
   /rememberRecentSourceQuestion_\(contextId, msg, directVerifiedModel\);[\s\S]{0,180}resumedFromPlainModelClarification[\s\S]{0,120}clearDailyQuestionModelSelectionHold_\(userId\)/.test(

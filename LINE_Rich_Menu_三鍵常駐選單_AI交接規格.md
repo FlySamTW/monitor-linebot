@@ -16,6 +16,8 @@
 > v29.6.252 只移除 PDF 選檔後沒有讀取者的同步快取；Rich Menu 與所有 postback 契約完全不變。
 > v29.6.252 發布後唯讀回查：全體 default 與記錄值均為 `richmenu-e138f06c8c221915fef20ce16958d709`，管理者沒有 per-user 覆蓋；本機正式資產仍為 `selected: true`、3 個 areas，因此不需重建或重綁。
 > v29.6.253 修正的是回答訊息的空 Quick Reply，不改 Rich Menu；情境按鈕為零時必須完全省略 quickReply，不能送空陣列。
+> v29.6.273 不改 Rich Menu 圖片、三格 action、`selected: true` 或全體 default。修正的是按鍵／文字進入後的產品身分：句首 Smart 先補 M5/M7/M8/M9，不借舊 Odyssey；S27DG5 等前段與大型系列候選保留完整集合、每頁 8 款。QA／RULE／已核對片段必須先於整本 PDF，禁止恢復 QA 前 Operation Source Gate。
+> v29.6.274 同樣不改 Rich Menu。系列別稱已足以搭配結構化意圖精準命中 QA 時直接回答；只有免費證據不足才列完整型號或進 PDF，避免把固定三格誤當每題必經確認。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 
@@ -94,6 +96,8 @@
 - `到這款官網` 只能是答案不足且本題已鎖定完整型號後的情境 Quick Reply，不得增為第四個常駐 Rich Menu。它使用 URI action，優先開 RULE 已記錄的 Samsung Taiwan PDP，否則開同列 XZW 完整料號支援頁；選型中、成功答案或只有上一題型號 Cache 時不顯示。
 - `rm_action=confirm_manual` 只保留舊按鈕相容，不得產生第二次確認；收到後直接匯入同一 manual SourceOperation。取消使用 `rm_action=cancel_source&v=2`，不再使用「查上一題」文案。
 - 已確認完整型號跨日保存；短系列名觸發候選。10 分鐘內相同來源＋型號＋問題回傳快取，不重新扣次。
+- 跨日保存只在本輪沒有更高優先產品訊號時使用。優先序為完整型號、型號前段、系列別稱、具名家族、比較脈絡，最後才是舊型號；衝突時本輪暫停舊型號，不得把它附加到 Smart／Odyssey／ViewFinity 新題。
+- 一般候選從完整 CLASS_RULES 取回，手冊候選再與 PDF 索引取交集；狀態保存最多 50 款，畫面每頁 8 款並可翻頁，不得用 UI 顯示上限截斷資料。
 - 網路鍵只搜尋有可核對引用的非官方公開網頁，不讀 PDF，也不把 Samsung 官網送入模型；`到這款官網` 僅是回答不足後的 URI Quick Reply。供應商請求已送出即計 1 次，無引用也不退款；同題／同義改寫由 10 分鐘 operation cache 防重燒。
 - `#查手冊`／`#搜尋網路` 僅供 LINE 電腦版相容，必須進同一 pending、授權與配額服務。
 

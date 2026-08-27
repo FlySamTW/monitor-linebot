@@ -15,6 +15,11 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - 供應商 generate 請求一旦送出就計該來源 1 次；即使無證據或供應商回錯也不退款。相同題、標點差異與已知同義改寫必須由 operation cache 擋住，不能靠退款放任重燒成本。
 - 只有來源成功才更新 `lastSource` 與最近題目；Web 無證據、來源錯誤與 canonical provider query 不得覆蓋前一次成功手冊鏈或使用者原句。
 - G8 是 Odyssey 系列。短別稱先列 CLASS_RULES 完整型號；選型前零 PDF、零網路、零扣次。
+- 產品身分解析永遠先於回答與來源：本輪完整型號 > 型號前段 > 系列別稱 > 具名家族 > 比較脈絡 > 跨日持久型號。句首 `Smart` 是 Smart Monitor 家族，不得借用舊 Odyssey；未給 M5/M7/M8/M9 時只補問一次代號並保留原題。
+- M7/G8 等別稱若與已鎖定完整型號相容可直接沿用；不相容時只暫停本輪舊型號並重新選型，不得偷偷覆寫或刪除跨日狀態。S27DG5/G806 等前段由 CLASS_RULES 全集合收斂。
+- 候選狀態最多保留 50 款、LINE 每頁 8 款；一般選型來自 CLASS_RULES，手冊選型再與正式 PDF 索引取交集。禁止只保存畫面第一頁造成後段新機永久消失。
+- 操作／故障題仍須先過精準 QA、精確 RULE 與已核對手冊片段；禁止在 QA First 前新增 PDF early gate，也禁止用沒有同題同型號證據的 `priorFastChecked=true` 略過免費預檢。
+- 結構化 QA 可在「完整型號或系列別稱＋至少兩個意圖詞＋明顯領先第二候選」時直接回答；不要用過高固定分數逼使用者多選一次型號，也禁止改成單題 hard-code。
 - RULE 明載的規格是硬事實。模型不得把 Smart／Tizen 型號的藍牙、喇叭或介面答成相反結論。
 - 系列別稱只是候選不是 confirmed model；規格欄位只能由完整型號自己的 RULE 終止回答。未明載就是 UNKNOWN，零 LLM 建議手冊，不得套用同系列。
 - 「再詳細說明」每個答案最多一次，是零一般額度的 control action；必須保留原題與 confirmed model，不得把內部補充指令寫回最近題目。

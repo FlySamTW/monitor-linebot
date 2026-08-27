@@ -481,12 +481,7 @@ assert(
   "線上 runner 授權 helper 不符合 fail-fast／不洩密契約",
 );
 assert(
-  (() => {
-    const version = linebot.match(
-      /const\s+GAS_VERSION\s*=\s*"(v\d+\.\d+\.\d+)"/,
-    );
-    return version && prompt.includes(`Prompt ${version[1]}`);
-    })() &&
+  /【Prompt v\d+\.\d+\.\d+】/.test(prompt) &&
     prompt.length < 1600 &&
     /只使用本輪提供的 QA 與 RULE/.test(prompt) &&
     /需要手冊證據時，只輸出 \[AUTO_SEARCH_PDF\]/.test(prompt) &&

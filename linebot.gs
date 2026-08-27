@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.272"; // 2026-08-23 官方比較補上證據內選擇摘要
-const BUILD_TIMESTAMP = "2026-08-23 17:25";
+const GAS_VERSION = "v29.6.274"; // 2026-08-27 結構化 QA 命中先於別稱選型
+const BUILD_TIMESTAMP = "2026-08-27 18:46";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -2867,6 +2867,212 @@ function extractShortAliasModelTokens(text) {
   const q = toHalfWidth(String(text || "")).toUpperCase();
   const matches = q.match(/\b[SGM]\d{1,5}[A-Z]{0,3}\b/g) || [];
   return [...new Set(matches.filter((m) => isShortAliasModelToken(m)))];
+}
+
+/**
+ * 使用者本輪明講的產品家族。這不是產品規格，而是產品身分訊號；
+ * 必須先於跨日持久型號解析，避免「Smart 如何設定」被上一題 Odyssey 污染。
+ */
+function extractNamedMonitorFamilyTokens_(text) {
+  const q = toHalfWidth(String(text || "")).toUpperCase().trim();
+  const families = [];
+  if (
+    /(?:^|[^A-Z0-9])SMART\s*MONITOR(?:[^A-Z0-9]|$)/i.test(q) ||
+    /(?:^|[^A-Z0-9])SMART\s*系列(?:[^A-Z0-9]|$)/i.test(q) ||
+    /智慧(?:聯網)?螢幕/.test(q) ||
+    /^(?:三星\s*|SAMSUNG\s*)?SMART(?:\s|，|,|：|:|如何|怎麼|有|可|能|支援|開啟|設定)/i.test(q)
+  ) {
+    families.push("SMART_MONITOR");
+  }
+  if (/(?:^|[^A-Z0-9])ODYSSEY(?:[^A-Z0-9]|$)|奧德賽/i.test(q)) {
+    families.push("ODYSSEY");
+  }
+  if (/(?:^|[^A-Z0-9])VIEWFINITY(?:[^A-Z0-9]|$)/i.test(q)) {
+    families.push("VIEWFINITY");
+  }
+  return [...new Set(families)];
+}
+
+function extractPartialModelPrefixTokens_(text) {
+  const q = toHalfWidth(String(text || "")).toUpperCase();
+  const full = extractFullModelLikeTokens(q).map(normalizeModelForDisplay);
+  const matches = q.match(/\b(?:LS)?S\d{2}[A-Z][A-Z0-9]{1,5}\b/g) || [];
+  return [...new Set(
+    matches
+      .map(normalizeModelForDisplay)
+      .filter(function (model) {
+        return model.length >= 6 && full.indexOf(model) < 0;
+      }),
+  )];
+}
+
+function getPartialModelCandidatesFromClassRules_(prefixToken, limit) {
+  const prefix = normalizeModelForDisplay(prefixToken || "");
+  const max = Math.max(1, Number(limit) || 50);
+  if (!prefix || !ss) return [];
+  try {
+    const sheet = ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet) return [];
+    const values = sheet.getDataRange().getValues();
+    const candidates = [];
+    values.forEach(function (row) {
+      const line = row.map(function (cell) {
+        return String(cell || "");
+      }).join(" ").toUpperCase();
+      const models = line.match(
+        /\b(?:L?S\d{2}[A-Z]{1,3}\d{2,4}[A-Z0-9]*|L?[CF]\d{2}[A-Z]+\d{2,4}[A-Z0-9]*)\b/g,
+      ) || [];
+      models.forEach(function (model) {
+        const display = normalizeModelForDisplay(model);
+        if (display.indexOf(prefix) === 0) candidates.push(display);
+      });
+    });
+    return dedupDisplayModels(candidates, max).filter(function (model) {
+      return !isShortAliasModelToken(model);
+    });
+  } catch (e) {
+    writeLog(`[Partial Model Candidates] ${prefix} 解析失敗: ${e.message}`);
+    return [];
+  }
+}
+
+function getPartialModelSelectionModelsFromQuery_(text, limit, requirePdfCoverage) {
+  const prefixes = extractPartialModelPrefixTokens_(text);
+  if (prefixes.length === 0 || extractFullModelLikeTokens(text).length > 0) {
+    return [];
+  }
+  const bucket = [];
+  prefixes.forEach(function (prefix) {
+    bucket.push(...getPartialModelCandidatesFromClassRules_(prefix, 50));
+  });
+  let candidates = dedupDisplayModels(bucket, 50);
+  if (requirePdfCoverage === true) {
+    candidates = candidates.filter(function (model) {
+      return isModelCoveredByExistingPdf(model);
+    });
+  }
+  return dedupDisplayModels(candidates, Math.max(1, Number(limit) || 50));
+}
+
+function isPersistedModelCompatibleWithAlias_(model, aliases) {
+  const normalized = normalizeModelForDisplay(model || "");
+  if (!normalized || !Array.isArray(aliases) || aliases.length === 0) {
+    return false;
+  }
+  return aliases.every(function (alias) {
+    return getAliasCandidatesFromClassRules(alias, 50)
+      .map(normalizeModelForDisplay)
+      .indexOf(normalized) >= 0;
+  });
+}
+
+/**
+ * 本輪產品身分的唯一優先序：完整型號 > 不完整型號 > 系列別稱 >
+ * 具名家族 > 跨日持久型號。回傳值只描述身分，不做來源或付費決策。
+ */
+function resolveTurnProductIdentity_(text, persistedModel) {
+  const fullModels = dedupDisplayModels(extractFullModelLikeTokens(text), 4);
+  const partialPrefixes = extractPartialModelPrefixTokens_(text);
+  const aliases = extractShortAliasModelTokens(text);
+  const families = extractNamedMonitorFamilyTokens_(text);
+  const persisted = normalizeModelForDisplay(persistedModel || "");
+  if (fullModels.length > 0) {
+    // 某些 7～8 碼字串在語法上像完整型號，實際卻只是多款 RULE 型號的前段。
+    // 只有 CLASS_RULES 存在完全相同實體時才視為 full；否則回到 partial 收斂。
+    if (fullModels.length === 1 && fullModels[0].length <= 8) {
+      const expandedCandidates = getPartialModelCandidatesFromClassRules_(
+        fullModels[0],
+        50,
+      );
+      if (
+        expandedCandidates.length > 0 &&
+        expandedCandidates.map(normalizeModelForDisplay).indexOf(fullModels[0]) < 0
+      ) {
+        return {
+          kind: "partial",
+          model: expandedCandidates.length === 1 ? expandedCandidates[0] : "",
+          candidates: expandedCandidates,
+          partialPrefixes: [fullModels[0]],
+          aliases: aliases,
+          families: families,
+        };
+      }
+    }
+    return {
+      kind: "full",
+      model: fullModels.length === 1 ? fullModels[0] : "",
+      candidates: fullModels,
+      aliases: aliases,
+      families: families,
+    };
+  }
+  if (partialPrefixes.length > 0) {
+    const partialCandidates = getPartialModelSelectionModelsFromQuery_(
+      text,
+      50,
+      false,
+    );
+    return {
+      kind: "partial",
+      model: partialCandidates.length === 1 ? partialCandidates[0] : "",
+      candidates: partialCandidates,
+      partialPrefixes: partialPrefixes,
+      aliases: aliases,
+      families: families,
+    };
+  }
+  if (aliases.length > 0) {
+    const aliasCandidates = getAliasOnlySelectionModelsFromQuery(text, 50, false);
+    const persistedCompatible = aliases.length === 1
+      ? aliasCandidates.map(normalizeModelForDisplay).indexOf(persisted) >= 0
+      : isPersistedModelCompatibleWithAlias_(persisted, aliases);
+    return {
+      kind: "alias",
+      model: persistedCompatible ? persisted : "",
+      candidates: aliasCandidates,
+      aliases: aliases,
+      families: families,
+    };
+  }
+  if (families.length > 0) {
+    return {
+      kind: "family",
+      model: "",
+      candidates: [],
+      aliases: [],
+      families: families,
+    };
+  }
+  return {
+    kind: persisted ? "persisted" : "none",
+    model: persisted,
+    candidates: persisted ? [persisted] : [],
+    aliases: [],
+    families: [],
+  };
+}
+
+function isPureNamedFamilyOverviewQuery_(text) {
+  let remainder = toHalfWidth(String(text || "")).toUpperCase();
+  remainder = remainder
+    .replace(/(?:三星\s*|SAMSUNG\s*)?SMART\s*MONITOR|SMART\s*系列|智慧(?:聯網)?螢幕/g, "")
+    .replace(/(?:三星\s*|SAMSUNG\s*)?SMART/g, "")
+    .replace(/ODYSSEY|奧德賽|VIEWFINITY/g, "")
+    .replace(/[\s，,。.!！?？:：()（）]/g, "");
+  return /^(?:是什麼|介紹|介紹一下|系列介紹|有哪些|有哪些型號|型號有哪些|全系列|產品線)$/.test(
+    remainder,
+  );
+}
+
+function shouldPromptSmartMonitorAlias_(text) {
+  const families = extractNamedMonitorFamilyTokens_(text);
+  return (
+    families.indexOf("SMART_MONITOR") >= 0 &&
+    extractFullModelLikeTokens(text).length === 0 &&
+    extractPartialModelPrefixTokens_(text).length === 0 &&
+    extractShortAliasModelTokens(text).length === 0 &&
+    !isPureNamedFamilyOverviewQuery_(text)
+  );
 }
 
 function isAliasOnlyQuery(text) {
@@ -5930,6 +6136,32 @@ function handleRichMenuPostback_(event) {
     return true;
   }
 
+  if (action === "manual_model_page") {
+    const state = readPendingSourceState_(contextId, true);
+    const candidates = state && Array.isArray(state.manualModelCandidates)
+      ? dedupDisplayModels(state.manualModelCandidates, 50)
+      : [];
+    if (
+      !state ||
+      state.expired ||
+      state.source !== "manual" ||
+      !state.draftQuery ||
+      candidates.length === 0
+    ) {
+      clearPendingSourceState_(contextId);
+      replyMessage(
+        replyToken,
+        "剛才的型號選單已逾時，沒有讀手冊也沒有扣次。請重新按「官方手冊」。",
+      );
+      return true;
+    }
+    replyMessage(
+      replyToken,
+      createManualSourceModelSelectionFlex_(candidates, Number(params.page) || 0),
+    );
+    return true;
+  }
+
   if (action === "select_manual_model") {
     const state = readPendingSourceState_(contextId, true);
     const selectedModel = normalizeModelForDisplay(params.model || "");
@@ -6503,8 +6735,15 @@ function getManualSourceCandidateModels_(query, limit) {
   return keepOnlyIndexedManualModels_(candidates);
 }
 
-function createManualSourceModelSelectionFlex_(models) {
-  const displayModels = dedupDisplayModels(models, 10);
+function createManualSourceModelSelectionFlex_(models, requestedPage) {
+  const allModels = dedupDisplayModels(models, 50);
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(allModels.length / pageSize));
+  const page = Math.min(
+    Math.max(0, Number(requestedPage) || 0),
+    totalPages - 1,
+  );
+  const displayModels = allModels.slice(page * pageSize, (page + 1) * pageSize);
   const buttons = displayModels.map(function (model) {
     return {
       type: "button",
@@ -6519,6 +6758,32 @@ function createManualSourceModelSelectionFlex_(models) {
       height: "sm",
     };
   });
+  if (page > 0) {
+    buttons.push({
+      type: "button",
+      action: {
+        type: "postback",
+        label: "上一頁",
+        data: `rm_action=manual_model_page&page=${page - 1}&v=2`,
+      },
+      style: "secondary",
+      margin: "sm",
+      height: "sm",
+    });
+  }
+  if (page + 1 < totalPages) {
+    buttons.push({
+      type: "button",
+      action: {
+        type: "postback",
+        label: `下一頁（尚有 ${allModels.length - (page + 1) * pageSize} 款）`,
+        data: `rm_action=manual_model_page&page=${page + 1}&v=2`,
+      },
+      style: "secondary",
+      margin: "sm",
+      height: "sm",
+    });
+  }
   return {
     type: "flex",
     altText: "請選擇要查手冊的型號",
@@ -6538,7 +6803,9 @@ function createManualSourceModelSelectionFlex_(models) {
           },
           {
             type: "text",
-            text: `找到 ${displayModels.length} 個相近型號`,
+            text: totalPages > 1
+              ? `共 ${allModels.length} 款・第 ${page + 1}/${totalPages} 頁`
+              : `找到 ${displayModels.length} 個相近型號`,
             size: "xs",
             color: "#687386",
             align: "center",
@@ -8181,7 +8448,9 @@ function executeAutomaticManualFallback_(
     draftQuery: originalQuestion,
     usePrevious: Boolean(selectedModel),
     automaticFallback: true,
-    priorFastChecked: true,
+    // 每次自動升級都重新跑一次零成本本機 QA／RULE／已核對片段。
+    // 不得用布林旗標假裝已查過，否則任何新旁路都可能直接跳過答案進 PDF。
+    priorFastChecked: false,
     preserveComparison: Boolean(
       recentQuestion && recentQuestion.comparisonTarget,
     ),
@@ -8322,7 +8591,7 @@ function executeAdvancedSourceQuery_(
     if (!selectedModel) {
       const modelCandidates = getManualSourceCandidateModels_(
         normalizedQuery,
-        10,
+        50,
       );
       if (modelCandidates.length === 1) {
         selectedModel = modelCandidates[0];
@@ -9491,7 +9760,7 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
   // Fast Mode 必須列 CLASS_RULES 的完整系列候選；只有手冊模式才依 PDF 覆蓋範圍收斂。
   const models = getAliasOnlySelectionModelsFromQuery(
     query,
-    10,
+    50,
     (mode || "pdf") === "pdf",
   );
   if (models.length <= 1) {
@@ -9543,6 +9812,75 @@ function promptAliasOnlyModelSelection(query, userId, replyToken, contextId, mod
   }
   writeLog(
     `[Alias Select] ${aliasToken} 僅別稱查詢，要求選完整型號: ${models.join(", ")}`,
+  );
+  return true;
+}
+
+function promptPartialModelSelection_(
+  query,
+  userId,
+  replyToken,
+  contextId,
+  mode,
+  resolvedCandidates,
+) {
+  let prefixes = extractPartialModelPrefixTokens_(query);
+  if (
+    prefixes.length === 0 &&
+    Array.isArray(resolvedCandidates) &&
+    resolvedCandidates.length > 1
+  ) {
+    prefixes = dedupDisplayModels(extractFullModelLikeTokens(query), 4);
+  }
+  if (prefixes.length === 0) {
+    return false;
+  }
+  const models = Array.isArray(resolvedCandidates)
+    ? dedupDisplayModels(resolvedCandidates, 50)
+    : getPartialModelSelectionModelsFromQuery_(
+        query,
+        50,
+        (mode || "fast") === "pdf",
+      );
+  if (models.length <= 1) return false;
+
+  const cache = CacheService.getScriptCache();
+  cache.put(`${userId}:suggested_models`, JSON.stringify(models), 600);
+  cache.put(`${userId}:pending_topic`, String(query || ""), 600);
+  cache.put(`${userId}:model_select_mode`, mode || "fast", 600);
+  if ((mode || "fast") === "fast") {
+    markDailyQuestionModelSelectionHold_(userId);
+  }
+  LAST_SOURCE_TEST_STATE = {
+    source: (mode || "fast") === "fast" ? "spec" : "manual",
+    pending: (mode || "fast") !== "fast",
+    needsModel: true,
+    modelCandidates: models,
+    modelSelectionMode: mode || "fast",
+  };
+  const prefixLabel = prefixes.join("/");
+  const leadText = [
+    `「${prefixLabel}」對應到 ${models.length} 個完整型號。`,
+    "請點選機身背貼上的完整型號，我會接著回答原本問題；選型前不會讀 PDF。",
+  ].join("\n\n");
+  replyMessage(replyToken, [
+    { type: "text", text: leadText },
+    createModelSelectionFlexV3(models, {
+      headerText: `🔍 ${prefixLabel} 型號確認`,
+      altText: `請選擇 ${prefixLabel} 完整型號`,
+      footerText: "選定後接著回答原題",
+    }),
+  ]);
+  writeRecordDirectly(userId, query, contextId, "user", "");
+  writeRecordDirectly(userId, leadText, contextId, "assistant", "");
+  updateHistorySheetAndCache(
+    contextId,
+    getHistoryFromCacheOrSheet(contextId),
+    { role: "user", content: query },
+    { role: "assistant", content: leadText },
+  );
+  writeLog(
+    `[Partial Model Select v29.6.274] ${prefixLabel} 列出完整候選 ${models.length} 款`,
   );
   return true;
 }
@@ -16586,7 +16924,7 @@ function handleMessage(event) {
     let routingQuestion = userMessage;
     let activeAnswerEnvelope = null;
     let inheritedElaborationEnvelope = null;
-    const incomingMessageWasModelSelection = /^#型號:/i.test(msg);
+    const incomingMessageWasModelSelection = /^#型號(?::|頁:)/i.test(msg);
     const incomingMessageWasElaboration = msg === "#再詳細說明";
     let elaborationOriginalQuestion = "";
     let elaborationReplyAnchor = "";
@@ -16596,16 +16934,54 @@ function handleMessage(event) {
     let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
     let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
     let resolvedConversationModel = ""; // 本輪由選型、比較代稱或持久狀態明確解析出的型號
+    let activeTurnProductIdentity = null; // 本輪唯一產品身分解析結果，避免重掃 CLASS_RULES
     let aiSearchQuery = null; // v29.4.22: AI-driven search query
     let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
 
     const pendingBeforeQuota = readPendingSourceState_(contextId, true);
-    const pendingPlainModelTopic = String(
+    let pendingPlainModelTopic = String(
       cache.get(`${userId}:pending_topic`) || "",
     ).trim();
-    const pendingPlainModelMode = String(
+    let pendingPlainModelMode = String(
       cache.get(`${userId}:model_select_mode`) || "",
     ).trim();
+    let resumedFromFamilyAlias = false;
+    if (pendingPlainModelTopic && pendingPlainModelMode === "family_alias") {
+      const familyAliasReply = extractShortAliasModelTokens(msg);
+      const acceptedFamilyAlias =
+        familyAliasReply.length === 1 &&
+        /^M(?:5|7|8|9)$/i.test(familyAliasReply[0]) &&
+        String(msg || "").trim().toUpperCase() === familyAliasReply[0];
+      if (acceptedFamilyAlias) {
+        const originalFamilyQuestion = pendingPlainModelTopic;
+        msg = `${originalFamilyQuestion} ${familyAliasReply[0]}`.trim();
+        userMessage = msg;
+        routingQuestion = msg;
+        resumedFromFamilyAlias = true;
+        cache.remove(`${userId}:pending_topic`);
+        cache.remove(`${userId}:model_select_mode`);
+        cache.remove(`${userId}:suggested_models`);
+        pendingPlainModelTopic = "";
+        pendingPlainModelMode = "";
+        writeLog(
+          `[Family Identity Resume v29.6.274] ${familyAliasReply[0]} 接回原題：${originalFamilyQuestion.substring(0, 80)}`,
+        );
+      } else if (
+        !msg.startsWith("#") &&
+        !msg.startsWith("/") &&
+        !/^(?:取消|N)$/i.test(String(msg || "").trim())
+      ) {
+        cache.remove(`${userId}:pending_topic`);
+        cache.remove(`${userId}:model_select_mode`);
+        cache.remove(`${userId}:suggested_models`);
+        clearDailyQuestionModelSelectionHold_(userId);
+        pendingPlainModelTopic = "";
+        pendingPlainModelMode = "";
+        writeLog(
+          "[Family Identity Resume v29.6.274] 使用者改問新題，取消 Smart 系列代號等待",
+        );
+      }
+    }
     const plainModelTokens = dedupDisplayModels(
       extractFullModelLikeTokens(msg),
       2,
@@ -16616,7 +16992,7 @@ function handleMessage(event) {
     const pendingPlainModelCandidates = Array.isArray(
       pendingPlainModelCandidatesRaw,
     )
-      ? dedupDisplayModels(pendingPlainModelCandidatesRaw, 10)
+      ? dedupDisplayModels(pendingPlainModelCandidatesRaw, 50)
       : [];
     const plainModelBelongsToPending = Boolean(
       plainModelTokens.length === 1 &&
@@ -16674,6 +17050,7 @@ function handleMessage(event) {
     }
     if (
       !isPlainModelClarification &&
+      !resumedFromFamilyAlias &&
       !pendingPlainDescriptorResolution.recognized &&
       shouldCountDailyQuestionText_(msg, contextId)
     ) {
@@ -16913,19 +17290,41 @@ function handleMessage(event) {
           `[Comparison Context v29.6.264] 以已鎖定 ${previousComparisonModel} 補齊「跟 ${rememberedModels[1]}」比較`,
         );
       }
+      const turnIdentity = resolveTurnProductIdentity_(
+        msg,
+        productBeforeQuestion && productBeforeQuestion.model,
+      );
+      activeTurnProductIdentity = turnIdentity;
       rememberRecentSourceQuestion_(
         contextId,
         msg,
-        rememberedModels.length > 0 ? rememberedModels[0] : "",
+        turnIdentity.model ||
+          (turnIdentity.kind === "full" && rememberedModels.length > 0
+            ? rememberedModels[0]
+            : ""),
         comparisonReference.kind === "resolved",
       );
-      if (
-        rememberedModels.length === 0 &&
-        extractShortAliasModelTokens(msg).length === 0
-      ) {
+      if (turnIdentity.kind !== "full") {
         const exclusiveFeature = findExclusiveFeatureInQuery_(msg);
         const persistentProduct = readSourceProductState_(contextId);
-        if (exclusiveFeature) {
+        if (
+          (turnIdentity.kind === "partial" || turnIdentity.kind === "alias") &&
+          turnIdentity.model
+        ) {
+          primaryModel = turnIdentity.model;
+          resolvedConversationModel = turnIdentity.model;
+          msg = `${msg} (型號: ${turnIdentity.model})`;
+          userMessage = msg;
+          routingQuestion = msg;
+          writeLog(
+            `[Turn Identity v29.6.274] ${turnIdentity.kind} 與已知資料唯一對應 ${turnIdentity.model}`,
+          );
+        } else if (
+          turnIdentity.kind !== "family" &&
+          turnIdentity.kind !== "partial" &&
+          turnIdentity.kind !== "alias" &&
+          exclusiveFeature
+        ) {
           if (
             persistentProduct &&
             persistentProduct.model &&
@@ -16944,7 +17343,11 @@ function handleMessage(event) {
           } else {
             primaryModel = persistentProduct.model;
           }
-        } else if (persistentProduct && persistentProduct.model) {
+        } else if (
+          turnIdentity.kind === "persisted" &&
+          persistentProduct &&
+          persistentProduct.model
+        ) {
           primaryModel = persistentProduct.model;
           resolvedConversationModel = persistentProduct.model;
           msg = `${msg} (型號: ${persistentProduct.model})`;
@@ -16953,8 +17356,75 @@ function handleMessage(event) {
           writeLog(
             `[Product State v29.6.132] 自然追問沿用跨日型號 ${persistentProduct.model}`,
           );
+        } else if (
+          persistentProduct &&
+          persistentProduct.model &&
+          (turnIdentity.kind === "family" ||
+            turnIdentity.kind === "partial" ||
+            turnIdentity.kind === "alias")
+        ) {
+          writeLog(
+            `[Turn Identity v29.6.274] 本輪 ${turnIdentity.kind} 與跨日型號 ${persistentProduct.model} 不相容；本輪暫停沿用但不刪除`,
+          );
         }
       }
+    }
+
+    // 「Smart」是家族，不是完整產品實體。使用者明講家族時，本輪不得借用
+    // 幾天前的 Odyssey／其他 Smart 型號；先補 M5/M7/M8/M9，再接回原題。
+    if (!msg.startsWith("#") && shouldPromptSmartMonitorAlias_(routingQuestion)) {
+      const familyQuestion = stripInternalRoutingHints_(routingQuestion);
+      cache.put(`${userId}:pending_topic`, familyQuestion, 600);
+      cache.put(`${userId}:model_select_mode`, "family_alias", 600);
+      cache.put(
+        `${userId}:suggested_models`,
+        JSON.stringify(["M5", "M7", "M8", "M9"]),
+        600,
+      );
+      markDailyQuestionModelSelectionHold_(userId);
+      const familyReply = [
+        "Smart Monitor 分為 M5／M7／M8／M9。",
+        "請回覆系列代號就好，不用輸入完整型號；我會接著回答原本問題。",
+        "[費用:NT$0.0000（未呼叫 LLM）]",
+      ].join("\n\n");
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        pending: false,
+        needsFamilyAlias: true,
+        family: "SMART_MONITOR",
+      };
+      replyMessage(replyToken, familyReply);
+      writeRecordDirectly(userId, familyQuestion, contextId, "user", "");
+      writeRecordDirectly(userId, familyReply, contextId, "assistant", "");
+      updateHistorySheetAndCache(
+        contextId,
+        getHistoryFromCacheOrSheet(contextId),
+        { role: "user", content: familyQuestion },
+        { role: "assistant", content: familyReply },
+      );
+      writeLog(
+        "[Turn Identity v29.6.274] Smart 家族先補 M5/M7/M8/M9，未沿用跨日型號",
+      );
+      return;
+    }
+
+    // S27DG5、G806 等不完整型號先由 CLASS_RULES 收斂；多款才顯示
+    // 完整候選，唯一候選已由 resolveTurnProductIdentity_ 直接帶入本輪。
+    if (
+      !msg.startsWith("#") &&
+      activeTurnProductIdentity &&
+      activeTurnProductIdentity.kind === "partial" &&
+      activeTurnProductIdentity.candidates.length > 1 &&
+      promptPartialModelSelection_(
+        routingQuestion,
+        userId,
+        replyToken,
+        contextId,
+        "fast",
+        activeTurnProductIdentity.candidates,
+      )
+    ) {
+      return;
     }
 
     // v29.3.26: 手動觸發診斷功能 (供用戶測試二次搜機制用)
@@ -17108,54 +17578,6 @@ function handleMessage(event) {
         { role: "assistant", content: earlyExactComparisonReply },
       );
       return;
-    }
-
-    // 操作／故障題直接交給「QA/RULE 免費預檢 → 型號選擇 → PDF → Web 補救」
-    // 的單一狀態機。未知完整型號仍留給後方 Unknown Model Guard 攔截。
-    if (
-      !msg.startsWith("#") &&
-      isOperationOrTroubleshootQuery(msg) &&
-      !isServiceHoursQuery(msg) &&
-      !isPriceQueryIntent_(msg) &&
-      getUnknownFullModelTokens(msg).length === 0
-    ) {
-      const operationModels = dedupDisplayModels(
-        extractFullModelLikeTokens(msg).concat(primaryModel ? [primaryModel] : []),
-        2,
-      );
-      const operationModel = operationModels.length === 1
-        ? operationModels[0]
-        : "";
-      const operationRuleOnlyReply = operationModel
-        ? buildDeterministicExactRuleReply_(msg, operationModel)
-        : "";
-      // 「HDMI 連接埠有幾個」「可以壁掛嗎」雖含連接／壁掛字樣，
-      // 本質仍是 RULE 可直接回答的規格題；讓它繼續往下走零成本路由。
-      if (operationRuleOnlyReply) {
-        writeLog(
-          `[Operation Source Gate v29.6.249] ${operationModel} 命中明確 RULE 欄位，略過 PDF early gate`,
-        );
-      } else {
-        writeLog(
-          `[Operation Source Gate v29.6.247] ${operationModel || "待確認型號"} 直接進單一手冊狀態機`,
-        );
-        const heldOperationSelectionCharge = resumedFromPlainModelClarification
-          ? consumeDailyQuestionModelSelectionHold_(userId)
-          : false;
-        if (dailyQuestionReservedThisMessage || heldOperationSelectionCharge) {
-          refundDailyQuestionUsage_(userId, "operation_auto_manual");
-          dailyQuestionReservedThisMessage = false;
-        }
-        rememberRecentSourceQuestion_(contextId, msg, operationModel);
-        executeAutomaticManualFallback_(
-          msg,
-          operationModel,
-          contextId,
-          userId,
-          replyToken,
-        );
-        return;
-      }
     }
 
     if (!msg.startsWith("#") && isServiceHoursQuery(msg)) {
@@ -17741,6 +18163,46 @@ function handleMessage(event) {
     // v29.5.118: 攔截 #型號:XXX（V3 泡泡選擇）
     // 用戶點泡泡 → LINE 發送 #型號:S27FG900XC → 直接進 Pass 1.5 PDF 模式
     // ══════════════════════════════════════════════════════════
+    if (/^#型號頁:\d+$/i.test(msg)) {
+      const requestedPage = Number(msg.split(":")[1]) || 0;
+      const pendingTopicForPage = String(
+        cache.get(`${userId}:pending_topic`) || "",
+      ).trim();
+      const pendingModeForPage = String(
+        cache.get(`${userId}:model_select_mode`) || "",
+      ).trim();
+      const pendingCandidatesForPage = parseSourceStateJson_(
+        cache.get(`${userId}:suggested_models`),
+      );
+      const validCandidatesForPage = Array.isArray(pendingCandidatesForPage)
+        ? dedupDisplayModels(pendingCandidatesForPage, 50)
+        : [];
+      if (
+        !pendingTopicForPage ||
+        !pendingModeForPage ||
+        validCandidatesForPage.length === 0
+      ) {
+        replyMessage(
+          replyToken,
+          "剛才的型號選單已逾時。請再輸入系列或型號前段，我會重新列出。",
+        );
+        return;
+      }
+      replyMessage(
+        replyToken,
+        createModelSelectionFlexV3(validCandidatesForPage, {
+          headerText: "🔍 完整型號確認",
+          altText: "請選擇完整型號",
+          footerText: "選定後接著回答原題",
+          page: requestedPage,
+        }),
+      );
+      writeLog(
+        `[Model Selection Page v29.6.274] page=${requestedPage} total=${validCandidatesForPage.length}`,
+      );
+      return;
+    }
+
     if (msg.startsWith("#型號:")) {
       const selectedModel = msg.replace("#型號:", "").trim().toUpperCase();
       const pendingTopicForSelection = String(
@@ -18780,7 +19242,7 @@ function handleMessage(event) {
         replyToken,
         contextId,
       );
-      if (resumedFromPlainModelClarification) {
+      if (resumedFromPlainModelClarification || resumedFromFamilyAlias) {
         clearDailyQuestionModelSelectionHold_(userId);
       }
       return;
@@ -27252,8 +27714,15 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
   // v29.5.23: 降冪排列（Z-A）
   uniqueModels.sort((a, b) => b.localeCompare(a));
 
-  const displayModels = uniqueModels.slice(0, 10);
-  const remainingCount = uniqueModels.length - displayModels.length;
+  const pageSize = 8;
+  const requestedPage = Math.max(
+    0,
+    Number(intentConfig && intentConfig.page ? intentConfig.page : 0) || 0,
+  );
+  const totalPages = Math.max(1, Math.ceil(uniqueModels.length / pageSize));
+  const page = Math.min(requestedPage, totalPages - 1);
+  const pageStart = page * pageSize;
+  const displayModels = uniqueModels.slice(pageStart, pageStart + pageSize);
 
   // v29.5.118: 建立型號按鈕 - 回傳 #型號:MODEL 格式，讓 handleMessage 能攔截
   const buttons = displayModels.map((model, index) => {
@@ -27272,14 +27741,26 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
     };
   });
 
-  // 若有更多型號
-  if (remainingCount > 0) {
+  if (page > 0) {
     buttons.push({
       type: "button",
       action: {
         type: "message",
-        label: `還有 ${remainingCount} 款...`,
-        text: "列出所有型號",
+        label: "上一頁",
+        text: `#型號頁:${page - 1}`,
+      },
+      style: "secondary",
+      margin: "sm",
+      height: "sm",
+    });
+  }
+  if (page + 1 < totalPages) {
+    buttons.push({
+      type: "button",
+      action: {
+        type: "message",
+        label: `下一頁（尚有 ${uniqueModels.length - pageStart - displayModels.length} 款）`,
+        text: `#型號頁:${page + 1}`,
       },
       style: "secondary",
       margin: "sm",
@@ -27305,7 +27786,9 @@ function createModelSelectionFlexV3(models, intentConfig = null) {
         },
         {
           type: "text",
-          text: `找到 ${displayModels.length} 款`,
+          text: totalPages > 1
+            ? `共 ${uniqueModels.length} 款・第 ${page + 1}/${totalPages} 頁`
+            : `找到 ${displayModels.length} 款`,
           color: "#888888",
           size: "xs",
           align: "center",
