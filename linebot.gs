@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.276"; // 2026-08-27 PDF 型號數字驗證與 Web 完整句全局修復
-const BUILD_TIMESTAMP = "2026-08-27 18:46";
+const GAS_VERSION = "v29.6.277"; // 2026-08-28 條件式語意主張規劃器與 Evidence 關係守門
+const BUILD_TIMESTAMP = "2026-08-28 15:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -26,6 +26,13 @@ const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
 const SOURCE_DAILY_LIMITS = { manual: 5, web: 10 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 20;
+const SEMANTIC_ROUTER_VERSION = "RouteAnalysisV1";
+const SEMANTIC_ROUTER_MODE_DEFAULT = "conditional";
+const SEMANTIC_ROUTER_CACHE_TTL_SECONDS = 600;
+const SEMANTIC_ROUTER_MAX_CLAIMS = 5;
+// 五個 claims 的完整 JSON 上限仍控制在單次約 NT$0.01 內；220 對最長
+// 合法輸出過緊，可能截斷成無效 JSON，因此保留 384 的結構安全空間。
+const SEMANTIC_ROUTER_MAX_OUTPUT_TOKENS = 384;
 
 /**
  * Apps Script 編輯器限定的一鍵維護入口。
@@ -121,6 +128,7 @@ var CURRENT_DAILY_QUESTION_REMAINING = null;
 var CURRENT_REPLY_FOOTER_APPENDED = false;
 var LAST_SOURCE_TEST_STATE = null;
 var LAST_TEST_QUICK_REPLY_ITEMS = [];
+var LAST_SEMANTIC_ROUTE_ANALYSIS = null;
 var FAST_POSTBACK_HANDLED = false;
 var LOADING_ANIMATION_SHOWN = false;
 var RUNTIME_PROMPT_CONFIG_MEMO = null;
@@ -2468,6 +2476,1033 @@ function buildFastAnswerEnvelope_(options) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// v29.6.277 條件式語意主張規劃器
+// 只分析真正模糊／複合／追問題；不產生產品答案、不授權來源、不扣配額。
+// ════════════════════════════════════════════════════════════════
+
+function getSemanticRouterMode_(overrideMode) {
+  const allowed = ["off", "shadow", "conditional"];
+  const override = String(overrideMode || "").trim().toLowerCase();
+  if (allowed.indexOf(override) >= 0) return override;
+  try {
+    const configured = String(
+      PropertiesService.getScriptProperties().getProperty(
+        "SEMANTIC_ROUTER_MODE",
+      ) || SEMANTIC_ROUTER_MODE_DEFAULT,
+    )
+      .trim()
+      .toLowerCase();
+    return allowed.indexOf(configured) >= 0
+      ? configured
+      : SEMANTIC_ROUTER_MODE_DEFAULT;
+  } catch (error) {
+    return SEMANTIC_ROUTER_MODE_DEFAULT;
+  }
+}
+
+function getRouteAnalysisSchema_() {
+  return {
+    type: "OBJECT",
+    properties: {
+      version: {
+        type: "STRING",
+        enum: [SEMANTIC_ROUTER_VERSION],
+      },
+      topicRelation: {
+        type: "STRING",
+        enum: ["new", "followup", "ambiguous"],
+      },
+      productAction: {
+        type: "STRING",
+        enum: ["keep_confirmed", "choose_candidate", "none"],
+      },
+      candidateIndex: {
+        type: "INTEGER",
+        nullable: true,
+        description:
+          "只可填輸入候選陣列的 0-based index；沒有足夠線索時必須為 null",
+      },
+      claims: {
+        type: "ARRAY",
+        description: "把使用者問題拆成最多五個可獨立查證的主張",
+        items: {
+          type: "OBJECT",
+          properties: {
+            id: { type: "STRING" },
+            question: { type: "STRING" },
+            intent: {
+              type: "STRING",
+              enum: [
+                "spec",
+                "operation",
+                "troubleshoot",
+                "comparison",
+                "current_info",
+                "general_reasoning",
+              ],
+            },
+            evidenceNeed: {
+              type: "STRING",
+              enum: [
+                "local_stable",
+                "manual_model_specific",
+                "web_current",
+                "general_reasoning",
+              ],
+            },
+            answerShape: {
+              type: "STRING",
+              enum: ["fact", "menu_path", "steps", "comparison", "diagnosis"],
+            },
+          },
+          required: ["id", "question", "intent", "evidenceNeed", "answerShape"],
+        },
+      },
+      confidence: {
+        type: "STRING",
+        enum: ["high", "medium", "low"],
+      },
+      reasonCode: {
+        type: "STRING",
+        enum: [
+          "multi_claim",
+          "elliptical_followup",
+          "ambiguous_product",
+          "partial_local",
+          "intent_conflict",
+          "current_info",
+          "other",
+        ],
+      },
+    },
+    required: [
+      "version",
+      "topicRelation",
+      "productAction",
+      "candidateIndex",
+      "claims",
+      "confidence",
+      "reasonCode",
+    ],
+  };
+}
+
+function normalizeRouteAnalysis_(rawValue, inputValue) {
+  const reasonMap = {
+    AMBIGUOUS_PRODUCT_ALIAS: "ambiguous_product",
+    ELLIPTICAL_FOLLOWUP: "elliptical_followup",
+    MULTI_SOURCE_CLAIMS: "multi_claim",
+    CURRENT_INFORMATION: "current_info",
+    MODEL_REQUIRED: "ambiguous_product",
+    LOW_CONFIDENCE: "other",
+  };
+  let raw = rawValue;
+  if (typeof raw === "string") {
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    try {
+      raw = JSON.parse(cleaned);
+    } catch (error) {
+      return {
+        version: SEMANTIC_ROUTER_VERSION,
+        topicRelation: "ambiguous",
+        productAction: "none",
+        candidateIndex: null,
+        claims: [],
+        confidence: "low",
+        reasonCode: "other",
+        _parseError: true,
+        _unexpectedFields: [],
+      };
+    }
+  }
+  raw = raw && typeof raw === "object" ? raw : {};
+  const allowedTop = [
+    "version",
+    "topicRelation",
+    "productAction",
+    "candidateIndex",
+    "claims",
+    "confidence",
+    "reasonCode",
+  ];
+  const allowedClaim = ["id", "question", "intent", "evidenceNeed", "answerShape"];
+  const claims = (Array.isArray(raw.claims) ? raw.claims : [])
+    .slice(0, SEMANTIC_ROUTER_MAX_CLAIMS + 1)
+    .map(function (claim, index) {
+      const item = claim && typeof claim === "object" ? claim : {};
+      return {
+        id: String(item.id || `claim_${index + 1}`)
+          .replace(/[^a-zA-Z0-9_-]/g, "_")
+          .slice(0, 40),
+        question: String(item.question || "")
+          .replace(/[\r\n]+/g, " ")
+          .replace(/\s{2,}/g, " ")
+          .trim()
+          .slice(0, 240),
+        intent: String(item.intent || ""),
+        evidenceNeed: String(item.evidenceNeed || ""),
+        answerShape: String(item.answerShape || ""),
+        _unexpectedFields: Object.keys(item).filter(function (key) {
+          return allowedClaim.indexOf(key) < 0;
+        }),
+      };
+    });
+  const candidateWasProvided = Object.prototype.hasOwnProperty.call(
+    raw,
+    "candidateIndex",
+  );
+  const candidateIndex =
+    raw.candidateIndex === null || raw.candidateIndex === ""
+      ? null
+      : Number(raw.candidateIndex);
+  return {
+    version: String(raw.version || SEMANTIC_ROUTER_VERSION),
+    topicRelation: String(raw.topicRelation || "ambiguous"),
+    productAction: String(raw.productAction || "none"),
+    candidateIndex:
+      candidateIndex === null || Number.isInteger(candidateIndex)
+        ? candidateIndex
+        : null,
+    claims: claims,
+    confidence: String(raw.confidence || "low"),
+    reasonCode:
+      reasonMap[String(raw.reasonCode || "")] ||
+      String(raw.reasonCode || "other").toLowerCase(),
+    _parseError: false,
+    _candidateIndexInvalid:
+      candidateWasProvided &&
+      raw.candidateIndex !== null &&
+      raw.candidateIndex !== "" &&
+      !Number.isInteger(Number(raw.candidateIndex)),
+    _unexpectedFields: Object.keys(raw).filter(function (key) {
+      return allowedTop.indexOf(key) < 0;
+    }),
+    _input: inputValue || null,
+  };
+}
+
+function validateRouteAnalysis_(analysisValue, inputValue) {
+  const analysis =
+    analysisValue &&
+    Object.prototype.hasOwnProperty.call(analysisValue, "_unexpectedFields")
+      ? analysisValue
+      : normalizeRouteAnalysis_(analysisValue || {}, inputValue || {});
+  const input = buildSemanticRouterInput_(inputValue || analysis._input || {});
+  const errors = [];
+  const topicRelations = ["new", "followup", "ambiguous"];
+  const productActions = ["keep_confirmed", "choose_candidate", "none"];
+  const intents = [
+    "spec",
+    "operation",
+    "troubleshoot",
+    "comparison",
+    "current_info",
+    "general_reasoning",
+  ];
+  const evidenceNeeds = [
+    "local_stable",
+    "manual_model_specific",
+    "web_current",
+    "general_reasoning",
+  ];
+  const answerShapes = ["fact", "menu_path", "steps", "comparison", "diagnosis"];
+  const reasonCodes = [
+    "multi_claim",
+    "elliptical_followup",
+    "ambiguous_product",
+    "partial_local",
+    "intent_conflict",
+    "current_info",
+    "other",
+  ];
+  if (analysis._parseError) errors.push("invalid_json");
+  if (analysis.version !== SEMANTIC_ROUTER_VERSION) errors.push("invalid_version");
+  if (topicRelations.indexOf(analysis.topicRelation) < 0) errors.push("invalid_topic_relation");
+  if (productActions.indexOf(analysis.productAction) < 0) errors.push("invalid_product_action");
+  if (["high", "medium", "low"].indexOf(analysis.confidence) < 0) {
+    errors.push("invalid_confidence");
+  }
+  if (analysis.confidence === "low") errors.push("low_confidence");
+  if (reasonCodes.indexOf(analysis.reasonCode) < 0) errors.push("invalid_reason_code");
+  if (Array.isArray(analysis._unexpectedFields) && analysis._unexpectedFields.length > 0) {
+    errors.push("unexpected_top_level_field");
+  }
+  if (analysis._candidateIndexInvalid) errors.push("invalid_candidate_index_type");
+  const claims = Array.isArray(analysis.claims) ? analysis.claims : [];
+  if (claims.length < 1 || claims.length > SEMANTIC_ROUTER_MAX_CLAIMS) {
+    errors.push("invalid_claim_count");
+  }
+  const seenIds = {};
+  claims.forEach(function (claim) {
+    if (!claim.id || seenIds[claim.id]) errors.push("duplicate_or_empty_claim_id");
+    seenIds[claim.id] = true;
+    if (!claim.question || claim.question.length < 2) errors.push("empty_claim_question");
+    if (intents.indexOf(claim.intent) < 0) errors.push("invalid_claim_intent");
+    if (evidenceNeeds.indexOf(claim.evidenceNeed) < 0) {
+      errors.push("invalid_claim_evidence_need");
+    }
+    if (answerShapes.indexOf(claim.answerShape) < 0) {
+      errors.push("invalid_claim_answer_shape");
+    }
+    if (
+      Array.isArray(claim._unexpectedFields) &&
+      claim._unexpectedFields.length > 0
+    ) {
+      errors.push("unexpected_claim_field");
+    }
+  });
+
+  const candidates = Array.isArray(input.candidates) ? input.candidates : [];
+  const confirmedModel = normalizeModelForDisplay(input.confirmedModel || "");
+  if (analysis.productAction === "keep_confirmed" && !confirmedModel) {
+    errors.push("confirmed_model_missing");
+  }
+  // 已由程式持久狀態鎖定的型號才是權威。Router 只能承接，不能要求
+  // 使用者重選，也不能用 candidateIndex=null 把已確認型號洗掉。
+  if (confirmedModel && analysis.productAction === "choose_candidate") {
+    errors.push("confirmed_model_must_be_kept");
+  }
+  if (analysis.productAction === "none" && analysis.candidateIndex !== null) {
+    errors.push("candidate_without_selection");
+  }
+  if (analysis.productAction === "choose_candidate") {
+    if (candidates.length === 0) errors.push("candidate_list_missing");
+    if (
+      analysis.candidateIndex !== null &&
+      (analysis.candidateIndex < 0 || analysis.candidateIndex >= candidates.length)
+    ) {
+      errors.push("candidate_index_out_of_range");
+    }
+    if (
+      confirmedModel &&
+      analysis.candidateIndex !== null &&
+      normalizeModelForDisplay(candidates[analysis.candidateIndex] || "") !==
+        confirmedModel
+    ) {
+      errors.push("cannot_override_confirmed_model");
+    }
+  }
+  const applicationRequiresManual = Boolean(
+    input.localCoverage !== "full" &&
+      isManualVerificationRequiredQuery(input.originalQuestion),
+  );
+  const hasManualClaim = claims.some(function (claim) {
+    return claim.evidenceNeed === "manual_model_specific";
+  });
+  if (applicationRequiresManual && !hasManualClaim) {
+    let correctedClaim = claims.find(function (claim) {
+      return claim.evidenceNeed !== "web_current";
+    });
+    if (!correctedClaim && claims.length < SEMANTIC_ROUTER_MAX_CLAIMS) {
+      correctedClaim = {
+        id: "manual_policy",
+        question: input.originalQuestion,
+        intent: "operation",
+        evidenceNeed: "manual_model_specific",
+        answerShape: "steps",
+        _unexpectedFields: [],
+      };
+      claims.push(correctedClaim);
+    }
+    if (correctedClaim) {
+      correctedClaim.evidenceNeed = "manual_model_specific";
+      if (correctedClaim.intent === "general_reasoning") {
+        correctedClaim.intent = "operation";
+      }
+      writeLog(
+        `[Semantic Router v29.6.277] 應用端修正手冊型用語 claim=${correctedClaim.id}`,
+      );
+    }
+  }
+  const needsManual = claims.some(function (claim) {
+    return claim.evidenceNeed === "manual_model_specific";
+  });
+  if (
+    needsManual &&
+    !confirmedModel &&
+    !(
+      analysis.productAction === "choose_candidate" &&
+      (analysis.candidateIndex === null ||
+        (analysis.candidateIndex >= 0 && analysis.candidateIndex < candidates.length))
+    )
+  ) {
+    errors.push("manual_model_unresolved");
+  }
+  return {
+    valid: errors.length === 0,
+    errors: [...new Set(errors)],
+    analysis: analysis,
+  };
+}
+
+function buildSemanticRouterInput_(options) {
+  const source = options || {};
+  const question = stripInternalRoutingHints_(
+    source.originalQuestion || source.question || "",
+  )
+    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC)[^\]]*\]/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 500);
+  const previousTopic = stripInternalRoutingHints_(source.previousTopic || "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 300);
+  const confirmedModel = normalizeModelForDisplay(source.confirmedModel || "");
+  const rawCandidates = Array.isArray(source.candidates)
+    ? source.candidates
+    : Array.isArray(source.candidateModels)
+      ? source.candidateModels
+      : [];
+  const candidates = dedupDisplayModels(
+    rawCandidates
+      .map(normalizeModelForDisplay)
+      .filter(Boolean),
+    20,
+  );
+  const requestedLocalCoverage =
+    source.exactQaComplete === true || source.exactRuleComplete === true
+      ? "full"
+      : source.localCoverage || "none";
+  const localCoverage = ["none", "partial", "full"].indexOf(
+    String(requestedLocalCoverage),
+  ) >= 0
+    ? String(requestedLocalCoverage)
+    : "none";
+  return {
+    originalQuestion: question,
+    previousTopic: previousTopic,
+    confirmedModel: confirmedModel,
+    candidates: candidates,
+    identityKind: String(source.identityKind || "none").slice(0, 24),
+    localCoverage: localCoverage,
+    localEvidenceIds: (Array.isArray(source.localEvidenceIds)
+      ? source.localEvidenceIds
+      : []
+    )
+      .map(String)
+      .filter(Boolean)
+      .slice(0, 8),
+    manualAvailable: source.manualAvailable === true,
+    explicitSource: Boolean(source.explicitSource),
+    isElaboration: source.isElaboration === true,
+    unknownModel: source.unknownModel === true,
+    ambiguousAlias: source.ambiguousAlias === true,
+    possibleFollowUp: source.possibleFollowUp === true,
+    multiClaim: source.multiClaim === true,
+    routeConflict: source.routeConflict === true,
+    kbVersion: String(source.kbVersion || GAS_VERSION),
+  };
+}
+
+function shouldRunSemanticRouter_(options) {
+  const source = options || {};
+  const mode = getSemanticRouterMode_(source.mode);
+  if (mode === "off") return false;
+  const input = buildSemanticRouterInput_(source);
+  if (
+    !input.originalQuestion ||
+    input.explicitSource ||
+    input.isElaboration ||
+    input.unknownModel ||
+    input.localCoverage === "full" ||
+    /^[\/#]/.test(input.originalQuestion)
+  ) {
+    return false;
+  }
+  const question = input.originalQuestion;
+  const multiClaim = input.multiClaim || isPotentialMultiClaimQuestion_(question);
+  const ellipticalFollowup =
+    input.possibleFollowUp ||
+    (Boolean(input.previousTopic) && isEllipticalEvidenceFollowUp_(question));
+  const ambiguousProduct =
+    input.ambiguousAlias ||
+    input.candidates.length > 1 ||
+    /^(?:family|partial|alias|ambiguous)$/i.test(input.identityKind);
+  const partialLocal = input.localCoverage === "partial";
+  const intentConflict =
+    input.routeConflict ||
+    (isLikelyLocalSpecRuleQuestion_(question) &&
+      (isOperationOrTroubleshootQuery(question) ||
+        isManualVerificationRequiredQuery(question)));
+  const manualVerification = isManualVerificationRequiredQuery(question);
+  const currentInfo =
+    /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|韌體現況|服務資訊|業者|APP\s*現況)/i.test(
+      question,
+    );
+  return Boolean(
+    multiClaim ||
+      ellipticalFollowup ||
+      ambiguousProduct ||
+      partialLocal ||
+      intentConflict ||
+      manualVerification ||
+      currentInfo,
+  );
+}
+
+function buildSemanticRouterCacheKey_(inputValue) {
+  const input = buildSemanticRouterInput_(inputValue || {});
+  const fingerprint = JSON.stringify({
+    version: SEMANTIC_ROUTER_VERSION,
+    gasVersion: GAS_VERSION,
+    question: input.originalQuestion.toUpperCase(),
+    previousTopic: input.previousTopic.toUpperCase(),
+    confirmedModel: input.confirmedModel,
+    candidates: input.candidates,
+    localCoverage: input.localCoverage,
+    localEvidenceIds: input.localEvidenceIds,
+    manualAvailable: input.manualAvailable,
+    kbVersion: input.kbVersion,
+  });
+  return `SEM_ROUTE_V1_${computeReplyAnchor_(fingerprint)}`;
+}
+
+function recordSemanticRouterAudit_(result) {
+  if (!currentRequestAudit) resetRequestAudit_();
+  const state = result || {};
+  if (state.cacheHit) currentRequestAudit.routerCacheHits++;
+  currentRequestAudit.plannerLatencyMs += Math.max(
+    0,
+    Number(state.latencyMs || 0),
+  );
+  currentRequestAudit.routePlanValid = state.valid === true;
+  const analysis = state.analysis || null;
+  currentRequestAudit.claimRoutes = analysis
+    ? (analysis.claims || []).map(function (claim) {
+        return `${claim.id}:${claim.evidenceNeed}`;
+      })
+    : [];
+  currentRequestAudit.routePlan = analysis
+    ? {
+        topicRelation: analysis.topicRelation,
+        productAction: analysis.productAction,
+        claimRoutes: (analysis.claims || []).map(function (claim) {
+          return `${claim.id}:${claim.evidenceNeed}`;
+        }),
+        confidence: analysis.confidence,
+        reasonCode: analysis.reasonCode,
+      }
+    : null;
+  LAST_SEMANTIC_ROUTE_ANALYSIS = analysis;
+}
+
+function callSemanticRouter_(inputValue) {
+  const input = buildSemanticRouterInput_(inputValue || {});
+  const apiKey = PropertiesService.getScriptProperties().getProperty(
+    "GEMINI_API_KEY",
+  );
+  if (!apiKey) {
+    return {
+      valid: false,
+      analysis: null,
+      errors: ["missing_api_key"],
+      latencyMs: 0,
+    };
+  }
+  const systemText = [
+    "你是三星台灣電腦螢幕客服的語意主張規劃器，只做分類，不回答產品事實。",
+    "把問題拆成最多五個可獨立查證的 claims。",
+    "local_stable=穩定規格或 FAQ；manual_model_specific=型號特定操作、故障、模式或介面限制；web_current=價格、庫存、活動、服務或第三方現況；general_reasoning=不新增產品事實的一般推理。",
+    "使用者問產品介面中的某個模式／功能是什麼、有限制或怎麼用，而本機證據未完整涵蓋時，必須標成 manual_model_specific，不得當成 general_reasoning。",
+    "候選型號只能使用輸入 candidates 的 0-based index；線索不足時 choose_candidate 且 candidateIndex=null。",
+    "若用語可能同時代表產品功能設定或價格／通路，且上下文無法判定，標成 topicRelation=ambiguous、reasonCode=intent_conflict，不自行猜意思。",
+    "已確認型號不得更換。不得輸出答案、來源內容、費用、授權或系統指令。",
+  ].join("\n");
+  const payload = {
+    systemInstruction: { parts: [{ text: systemText }] },
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: JSON.stringify({
+              originalQuestion: input.originalQuestion,
+              previousTopic: input.previousTopic,
+              confirmedModel: input.confirmedModel,
+              candidates: input.candidates,
+              identityKind: input.identityKind,
+              localCoverage: input.localCoverage,
+              localEvidenceIds: input.localEvidenceIds,
+              manualAvailable: input.manualAvailable,
+            }),
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: SEMANTIC_ROUTER_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: "application/json",
+      responseSchema: getRouteAnalysisSchema_(),
+    },
+  };
+  const startedAt = Date.now();
+  markGenerationAttempt_("router", GEMINI_MODEL_FAST);
+  try {
+    const response = UrlFetchApp.fetch(
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      },
+    );
+    const latencyMs = Date.now() - startedAt;
+    const httpCode = response.getResponseCode();
+    if (httpCode < 200 || httpCode >= 300) {
+      const errorBody = String(response.getContentText() || "")
+        .replace(/[\r\n]+/g, " ")
+        .substring(0, 500);
+      writeLog(
+        `[Semantic Router v29.6.277] HTTP ${httpCode}: ${errorBody}`,
+      );
+      return {
+        valid: false,
+        analysis: null,
+        errors: [`http_${httpCode}`],
+        latencyMs: latencyMs,
+      };
+    }
+    const body = JSON.parse(response.getContentText() || "{}");
+    const usage = body.usageMetadata || null;
+    if (usage) {
+      const cost = calculateGeminiUsageCost_(
+        usage,
+        PRICE_FAST_INPUT,
+        PRICE_FAST_OUTPUT,
+      );
+      addGenerationUsageToAudit_(usage, cost.costTWD);
+      currentRequestAudit.routerCostTwd += Number(cost.costTWD) || 0;
+      lastTokenUsage = {
+        input: cost.input,
+        output: cost.output,
+        thoughts: cost.thoughts,
+        billedOutput: cost.billedOutput,
+        total: cost.total,
+        costUSD: cost.costUSD,
+        costTWD: cost.costTWD,
+      };
+    }
+    const parts =
+      body && body.candidates && body.candidates[0] && body.candidates[0].content
+        ? body.candidates[0].content.parts || []
+        : [];
+    const rawText = parts
+      .map(function (part) {
+        return String((part && part.text) || "");
+      })
+      .join("")
+      .trim();
+    const analysis = normalizeRouteAnalysis_(rawText, input);
+    const validation = validateRouteAnalysis_(analysis, input);
+    return {
+      valid: validation.valid,
+      analysis: analysis,
+      errors: validation.errors,
+      latencyMs: latencyMs,
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      analysis: null,
+      errors: [
+        `exception_${String(error && error.message ? error.message : error).slice(0, 80)}`,
+      ],
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+}
+
+function runConditionalRouteAnalysis_(options) {
+  const source = options || {};
+  const mode = getSemanticRouterMode_(source.mode);
+  const input = buildSemanticRouterInput_(source);
+  if (!shouldRunSemanticRouter_(Object.assign({}, input, { mode: mode }))) {
+    return {
+      mode: mode,
+      attempted: false,
+      cacheHit: false,
+      valid: false,
+      analysis: null,
+      error: "not_applicable",
+    };
+  }
+  const cacheKey = buildSemanticRouterCacheKey_(input);
+  try {
+    const cachedRaw = CacheService.getScriptCache().get(cacheKey);
+    if (cachedRaw) {
+      const cachedAnalysis = normalizeRouteAnalysis_(cachedRaw, input);
+      const cachedValidation = validateRouteAnalysis_(cachedAnalysis, input);
+      if (cachedValidation.valid) {
+        const cachedResult = {
+          mode: mode,
+          attempted: true,
+          cacheHit: true,
+          valid: true,
+          analysis: cachedAnalysis,
+          error: "",
+          latencyMs: 0,
+        };
+        recordSemanticRouterAudit_(cachedResult);
+        return cachedResult;
+      }
+      CacheService.getScriptCache().remove(cacheKey);
+    }
+  } catch (error) {
+    writeLog(`[Semantic Router v29.6.277] 快取讀取失敗: ${error.message}`);
+  }
+
+  let callResult;
+  if (Object.prototype.hasOwnProperty.call(source, "analysisOverride")) {
+    const overridden = normalizeRouteAnalysis_(source.analysisOverride, input);
+    const validation = validateRouteAnalysis_(overridden, input);
+    callResult = {
+      valid: validation.valid,
+      analysis: overridden,
+      errors: validation.errors,
+      latencyMs: 0,
+    };
+  } else {
+    callResult = callSemanticRouter_(input);
+  }
+  const result = {
+    mode: mode,
+    attempted: true,
+    cacheHit: false,
+    valid: callResult.valid === true,
+    analysis: callResult.analysis || null,
+    error: (callResult.errors || []).join(","),
+    latencyMs: Number(callResult.latencyMs || 0),
+  };
+  if (result.valid) {
+    try {
+      CacheService.getScriptCache().put(
+        cacheKey,
+        JSON.stringify(result.analysis),
+        SEMANTIC_ROUTER_CACHE_TTL_SECONDS,
+      );
+    } catch (error) {
+      writeLog(`[Semantic Router v29.6.277] 快取寫入失敗: ${error.message}`);
+    }
+  }
+  recordSemanticRouterAudit_(result);
+  return result;
+}
+
+function getSemanticRouteExecution_(routeResult, inputValue) {
+  const result = routeResult || {};
+  const analysis = result.analysis || {};
+  const input = buildSemanticRouterInput_(inputValue || {});
+  const executionErrors = String(result.error || "")
+    .split(",")
+    .filter(Boolean);
+  const onlyConfidenceUncertain = executionErrors.every(function (errorCode) {
+      return errorCode === "low_confidence";
+    });
+  const needsManualModel = (analysis.claims || []).some(function (claim) {
+    return claim.evidenceNeed === "manual_model_specific";
+  });
+  if (
+    !result.valid &&
+    analysis.confidence === "high" &&
+    needsManualModel &&
+    !input.confirmedModel &&
+    input.candidates.length === 0 &&
+    executionErrors.length > 0 &&
+    executionErrors.every(function (errorCode) {
+      return errorCode === "manual_model_unresolved";
+    })
+  ) {
+    return { action: "ask_full_model", model: "", candidates: [] };
+  }
+  const needsMeaningClarification = Boolean(
+    analysis &&
+      (analysis.topicRelation === "ambiguous" ||
+        analysis.reasonCode === "intent_conflict") &&
+      (analysis.confidence === "medium" ||
+        (analysis.confidence === "low" && onlyConfidenceUncertain) ||
+        (analysis.confidence === "high" &&
+          (analysis.reasonCode === "intent_conflict" ||
+            analysis.reasonCode === "other"))),
+  );
+  if (needsMeaningClarification) {
+    return {
+      action: "clarify",
+      model: input.confirmedModel,
+      candidates: input.candidates,
+    };
+  }
+  if (!result.valid || analysis.confidence !== "high") {
+    return { action: "continue_fast", model: input.confirmedModel };
+  }
+  let selectedModel = input.confirmedModel;
+  if (
+    !selectedModel &&
+    analysis.productAction === "choose_candidate" &&
+    analysis.candidateIndex !== null
+  ) {
+    selectedModel = normalizeModelForDisplay(
+      input.candidates[analysis.candidateIndex] || "",
+    );
+  }
+  if (
+    !selectedModel &&
+    analysis.productAction === "choose_candidate" &&
+    analysis.candidateIndex === null &&
+    input.candidates.length > 1
+  ) {
+    return { action: "ask_model", model: "", candidates: input.candidates };
+  }
+  const needs = (analysis.claims || []).map(function (claim) {
+    return claim.evidenceNeed;
+  });
+  if (needs.indexOf("manual_model_specific") >= 0) {
+    return {
+      action: "manual",
+      model: selectedModel,
+      candidates: input.candidates,
+      sourceSequence:
+        needs.indexOf("web_current") >= 0 ? ["manual", "web"] : ["manual"],
+      deferredClaims: (analysis.claims || [])
+        .filter(function (claim) {
+          return claim.evidenceNeed === "web_current";
+        })
+        .map(function (claim) {
+          return claim.id;
+        }),
+    };
+  }
+  if (needs.indexOf("web_current") >= 0) {
+    return {
+      action: "web",
+      model: selectedModel,
+      candidates: input.candidates,
+      sourceSequence: ["web"],
+      deferredClaims: [],
+    };
+  }
+  return { action: "continue_fast", model: selectedModel };
+}
+
+/**
+ * 把 Router 的 local_stable claims 轉成可核對的免費證據。
+ * 只允許既有 QA 或 deterministic RULE 進入 anchor；Router 本身永遠不能
+ * 產生產品事實。回傳 coveredIds 讓未命中的 local claim 繼續交由後續來源。
+ */
+function buildSemanticLocalEvidenceBundle_(analysisValue, model, userId) {
+  const analysis = analysisValue || {};
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  const claims = Array.isArray(analysis.claims) ? analysis.claims : [];
+  const answers = [];
+  const coveredIds = [];
+  claims
+    .filter(function (claim) {
+      return claim && claim.evidenceNeed === "local_stable";
+    })
+    .forEach(function (claim) {
+      let answer = "";
+      const qaMatch = findLocalMatchInQA(
+        String(claim.question || ""),
+        userId,
+        normalizedModel,
+      );
+      if (qaMatch && qaMatch.answer) {
+        answer = `${formatForLineMobile(qaMatch.answer)}\n[來源:QA庫]`;
+      } else {
+        answer = buildDeterministicExactRuleReply_(
+          String(claim.question || ""),
+          normalizedModel,
+        );
+      }
+      const normalizedAnswer = String(answer || "").trim();
+      if (!normalizedAnswer) return;
+      if (answers.indexOf(normalizedAnswer) < 0) answers.push(normalizedAnswer);
+      coveredIds.push(String(claim.id || ""));
+    });
+  return {
+    text: answers.join("\n").trim(),
+    coveredIds: coveredIds.filter(Boolean),
+  };
+}
+
+function getSemanticClaimQuestions_(analysisValue, evidenceNeeds, excludedIds) {
+  const analysis = analysisValue || {};
+  const allowedNeeds = Array.isArray(evidenceNeeds) ? evidenceNeeds : [];
+  const excluded = Array.isArray(excludedIds) ? excludedIds : [];
+  return (Array.isArray(analysis.claims) ? analysis.claims : [])
+    .filter(function (claim) {
+      return (
+        claim &&
+        allowedNeeds.indexOf(claim.evidenceNeed) >= 0 &&
+        excluded.indexOf(String(claim.id || "")) < 0
+      );
+    })
+    .map(function (claim) {
+      return String(claim.question || "").trim();
+    })
+    .filter(Boolean);
+}
+
+function getSemanticClarificationKey_(contextId, userId) {
+  return `SEM_CLARIFY_${getSourceContextHash_(contextId || userId)}`;
+}
+
+function getSemanticClarificationPhrase_(query) {
+  const text = stripInternalRoutingHints_(query || "").trim();
+  const quoted = text.match(/[「『\"']([^」』\"']{2,40})[」』\"']/);
+  if (quoted && quoted[1]) return quoted[1].trim();
+  let phrase = text
+    .replace(/\b(?:LS|S|LC|C)\d{2,3}[A-Z0-9-]*\b/gi, " ")
+    .replace(/^(?:請問|想問|幫我查|可以幫我看)?\s*/i, "")
+    .replace(/(?:是什麼|是指什麼|怎麼用|如何用|可以嗎|嗎|呢|啊)[？?]?\s*$/i, "")
+    .replace(/[？?。！!].*$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!phrase) phrase = text;
+  return phrase.length > 32 ? `${phrase.substring(0, 32)}…` : phrase;
+}
+
+function promptSemanticRouterClarification_(
+  query,
+  model,
+  userId,
+  replyToken,
+  contextId,
+  holdDailyQuestion,
+) {
+  const originalQuestion = stripInternalRoutingHints_(query || "").trim();
+  if (!originalQuestion) return false;
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  const phrase = getSemanticClarificationPhrase_(originalQuestion);
+  CacheService.getScriptCache().put(
+    getSemanticClarificationKey_(contextId, userId),
+    JSON.stringify({
+      question: originalQuestion,
+      model: normalizedModel,
+      expiresAt: Date.now() + 600000,
+    }),
+    600,
+  );
+  // 這仍是同一題的補充；只有前一輪確實已保留一般額度時才續抱該次計數。
+  if (holdDailyQuestion === true) {
+    markDailyQuestionModelSelectionHold_(userId);
+  }
+  const nextStep = normalizedModel
+    ? `回我你想做的事，我就接著查 ${normalizedModel}。`
+    : "如果是螢幕功能，再補完整型號和你想做的事，我就接著查。";
+  const reply = [
+    `我不想硬猜「${phrase}」是指哪一種。`,
+    "你是指螢幕裡的功能／設定，還是售價、通路這類資訊？",
+    nextStep,
+    "這種店內常用語若資料庫還沒有，我也會記給 Sam 補進常見問題庫。",
+  ].join("\n");
+  LAST_SOURCE_TEST_STATE = {
+    source: "spec",
+    pending: true,
+    needsClarification: true,
+    semanticRouter: true,
+    model: normalizedModel,
+  };
+  writeLog(
+    `[FAQ Candidate v29.6.277] 語意待澄清 phrase=${phrase.substring(0, 40)} model=${normalizedModel || "none"}`,
+  );
+  replyMessage(replyToken, reply);
+  return true;
+}
+
+function promptSemanticRouterFullModel_(
+  query,
+  userId,
+  replyToken,
+  contextId,
+  holdDailyQuestion,
+) {
+  const originalQuestion = stripInternalRoutingHints_(query || "").trim();
+  if (!originalQuestion) return false;
+  const phrase = getSemanticClarificationPhrase_(originalQuestion);
+  CacheService.getScriptCache().put(
+    getSemanticClarificationKey_(contextId, userId),
+    JSON.stringify({
+      question: originalQuestion,
+      model: "",
+      expiresAt: Date.now() + 600000,
+    }),
+    600,
+  );
+  if (holdDailyQuestion === true) {
+    markDailyQuestionModelSelectionHold_(userId);
+  }
+  const reply = [
+    `「${phrase}」看起來是螢幕裡的功能，但不同型號的選單可能不一樣。`,
+    "把機身背貼的完整型號丟給我，我就接著查，不用重打問題。",
+    "如果資料庫還沒有這題，我也會記給 Sam 補進常見問題庫。",
+  ].join("\n");
+  LAST_SOURCE_TEST_STATE = {
+    source: "spec",
+    pending: true,
+    needsModel: true,
+    semanticRouter: true,
+  };
+  writeLog(
+    `[FAQ Candidate v29.6.277] 手冊型用語缺完整型號 phrase=${phrase.substring(0, 40)}`,
+  );
+  replyMessage(replyToken, reply);
+  return true;
+}
+
+function promptSemanticRouterModelSelection_(
+  query,
+  candidates,
+  userId,
+  replyToken,
+  contextId,
+) {
+  const models = dedupDisplayModels(candidates || [], 50);
+  if (models.length < 2) return false;
+  const cache = CacheService.getScriptCache();
+  const originalQuestion = stripInternalRoutingHints_(query);
+  cache.put(`${userId}:suggested_models`, JSON.stringify(models), 600);
+  cache.put(`${userId}:pending_topic`, originalQuestion, 600);
+  cache.put(`${userId}:model_select_mode`, "fast", 600);
+  cache.remove(`${userId}:direct_search_models`);
+  markDailyQuestionModelSelectionHold_(userId);
+  const leadText =
+    "這個說法可能對應到不同型號。點一下機身背貼上的完整型號，我就接著回答剛才那題；選型前不會讀手冊或扣手冊次數。";
+  LAST_SOURCE_TEST_STATE = {
+    source: "spec",
+    pending: false,
+    needsModel: true,
+    modelCandidates: models,
+    modelSelectionMode: "fast",
+    semanticRouter: true,
+  };
+  replyMessage(replyToken, [
+    { type: "text", text: leadText },
+    createModelSelectionFlexV3(models, {
+      headerText: "請確認完整型號",
+      altText: "請選擇完整型號",
+      footerText: "選定後接著回答原題",
+    }),
+  ]);
+  writeRecordDirectly(userId, originalQuestion, contextId, "user", "");
+  writeRecordDirectly(userId, leadText, contextId, "assistant", "");
+  updateHistorySheetAndCache(
+    contextId,
+    getHistoryFromCacheOrSheet(contextId),
+    { role: "user", content: originalQuestion },
+    { role: "assistant", content: leadText },
+  );
+  return true;
+}
+
 const LINE_STICKERS = {
   GREETING: { packageId: "446", stickerId: "1988", label: "熊大揮手" },
   THANKS: { packageId: "446", stickerId: "1990", label: "熊大鞠躬" },
@@ -2590,13 +3625,20 @@ function buildAdvancedAnswerEnvelope_(
 ) {
   const normalizedOutcome = String(outcome || "");
   const succeeded = normalizedOutcome === "success" || normalizedOutcome === "rescued_web";
-  const effectiveSource = normalizedOutcome === "rescued_web" ? "web" : source;
+  const partial = normalizedOutcome === "partial";
+  const hasEvidence = succeeded || partial;
+  const hasWebSources = Array.isArray(searchSources) && searchSources.length > 0;
+  const effectiveSource =
+    normalizedOutcome === "rescued_web" || (partial && hasWebSources)
+      ? "web"
+      : source;
   const refs = [];
-  if (succeeded && effectiveSource === "manual") {
+  if (hasEvidence && source === "manual") {
     const pages = String(finalText || "").match(/第\s*\d+(?:[、,，\-–~至]\s*\d+)*\s*頁/g) || [];
     const pageKey = pages.length > 0 ? pages.join("/") : computeReplyAnchor_(finalText).substring(0, 16);
     refs.push(`MANUAL:${normalizeModelForDisplay(model || "") || "GENERAL"}:${pageKey}`);
-  } else if (succeeded && effectiveSource === "web") {
+  }
+  if (hasEvidence && (effectiveSource === "web" || hasWebSources)) {
     const sourceKey = Array.isArray(searchSources) && searchSources.length > 0
       ? searchSources.join("|")
       : finalText;
@@ -2607,12 +3649,21 @@ function buildAdvancedAnswerEnvelope_(
     topicId: computeReplyAnchor_(originalQuestion),
     originalQuestion: originalQuestion,
     model: model || "",
-    claims: succeeded
-      ? [{ id: `${effectiveSource}_evidence`, status: "supported", source: effectiveSource }]
-      : [{ id: `${effectiveSource}_evidence`, status: "unresolved", source: effectiveSource }],
+    claims: partial
+      ? [
+          { id: `${effectiveSource}_evidence`, status: "supported", source: effectiveSource },
+          { id: "remaining_claim", status: "unresolved", source: "" },
+        ]
+      : succeeded
+        ? [{ id: `${effectiveSource}_evidence`, status: "supported", source: effectiveSource }]
+        : [{ id: `${effectiveSource}_evidence`, status: "unresolved", source: effectiveSource }],
     evidenceRefs: refs,
-    status: succeeded ? "supported" : "unsupported",
-    unresolvedClaims: succeeded ? [] : [`${effectiveSource}_evidence`],
+    status: partial ? "partial" : succeeded ? "supported" : "unsupported",
+    unresolvedClaims: partial
+      ? ["remaining_claim"]
+      : succeeded
+        ? []
+        : [`${effectiveSource}_evidence`],
     allowedActions: succeeded ? ["elaborate"] : [],
     expandable: succeeded,
   });
@@ -4777,6 +5828,31 @@ function isEllipticalEvidenceFollowUp_(query) {
   );
 }
 
+function shouldDeferLocalEvidenceForSemanticFollowUp_(
+  query,
+  previousTopic,
+  routerMode,
+) {
+  const text = String(query || "")
+    .replace(/\(型號:[^)]+\)/gi, "")
+    .trim();
+  const previous = String(previousTopic || "").trim();
+  if (
+    String(routerMode || "").toLowerCase() !== "conditional" ||
+    !previous ||
+    !isEllipticalEvidenceFollowUp_(text)
+  ) {
+    return false;
+  }
+  // 本輪已明講新型號／系列時，依新的產品身分處理；只有「那兩邊呢／
+  // 怎麼開／這樣可以嗎」等沒有新產品主詞的省略追問，才禁止舊型號 RULE
+  // 搶答並先交由 RouteAnalysisV1 判斷承接關係。
+  return (
+    extractFullModelLikeTokens(text).length === 0 &&
+    extractShortAliasModelTokens(text).length === 0
+  );
+}
+
 function getPreviousUserTopicForEvidence_(contextId, currentQuery) {
   if (!isEllipticalEvidenceFollowUp_(currentQuery)) return "";
   const history = getHistoryFromCacheOrSheet(contextId);
@@ -5344,6 +6420,29 @@ function clearDailyQuestionModelSelectionHold_(userId) {
   CacheService.getScriptCache().remove(getDailyQuestionModelHoldKey_(userId));
 }
 
+/**
+ * 一般 20 題額度已在訊息入口原子保留；只有確定本機證據無法完整終止、
+ * 要進進階來源（或該來源額度已滿／索引缺檔）時才退回。傳入狀態會被
+ * consume-once，避免同一輪 manual→web 或並行重入重複退款。
+ */
+function refundTransferredDailyQuestion_(userId, pendingState, reason) {
+  if (
+    !pendingState ||
+    !pendingState.dailyQuestionCharge ||
+    pendingState.dailyQuestionRefunded === true
+  ) {
+    return false;
+  }
+  const refunded = refundDailyQuestionUsage_(
+    userId,
+    reason || "advanced_source_handoff",
+  );
+  if (!refunded) return false;
+  pendingState.dailyQuestionRefunded = true;
+  pendingState.dailyQuestionCharge = "";
+  return true;
+}
+
 function shouldCountDailyQuestionText_(message, contextId) {
   const text = String(message || "").trim();
   if (!text || isSourceCancelText_(text) || /^\//.test(text)) return false;
@@ -5694,12 +6793,14 @@ function getAdvancedSourceOperationKey_(
   query,
   model,
   versionOverride,
+  routePlanHash,
 ) {
   const identity = [
     String(versionOverride || GAS_VERSION),
     String(source || ""),
     normalizeModelForDisplay(model || ""),
     normalizeAdvancedSourceTopicIdentity_(query, model),
+    String(routePlanHash || ""),
   ].join("|");
   const digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
@@ -5712,9 +6813,51 @@ function getAdvancedSourceOperationKey_(
   return `SRC_OP_${getSourceContextHash_(contextId)}_${hash}`;
 }
 
-function beginAdvancedSourceOperation_(contextId, source, query, model) {
+function readDoneAdvancedSourceOperation_(
+  contextId,
+  source,
+  query,
+  model,
+  routePlanHash,
+) {
+  const key = getAdvancedSourceOperationKey_(
+    contextId,
+    source,
+    query,
+    model,
+    GAS_VERSION,
+    routePlanHash,
+  );
+  const existing = parseSourceStateJson_(
+    CacheService.getScriptCache().get(key),
+  );
+  if (
+    !existing ||
+    existing.status !== "done" ||
+    !existing.finalText ||
+    Number(existing.expiresAt || 0) < Date.now()
+  ) {
+    return null;
+  }
+  return Object.assign({ allowed: false, key: key }, existing);
+}
+
+function beginAdvancedSourceOperation_(
+  contextId,
+  source,
+  query,
+  model,
+  routePlanHash,
+) {
   const cache = CacheService.getScriptCache();
-  const key = getAdvancedSourceOperationKey_(contextId, source, query, model);
+  const key = getAdvancedSourceOperationKey_(
+    contextId,
+    source,
+    query,
+    model,
+    GAS_VERSION,
+    routePlanHash,
+  );
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) {
     return { allowed: false, busy: true, key: key };
@@ -7875,9 +9018,55 @@ function tryManualFreeLocalAnswer_(
   return true;
 }
 
+function isExactProductFactQuestion_(query) {
+  const text = String(query || "");
+  const asksFact =
+    /(?:多少|幾(?:個|組|條|孔|埠|台|吋|HZ)?|最高|最低|各自|分別|每(?:一)?(?:邊|側)|是否|有沒有|支援嗎|能否)/i.test(
+      text,
+    );
+  const asksTroubleshooting =
+    /(?:怎麼|如何|步驟|設定|開啟|關閉|排除|故障|異常|沒反應|無訊號|斷線|閃爍|重置)/i.test(
+      text,
+    );
+  return asksFact && !asksTroubleshooting;
+}
+
 function buildSafeNoEvidenceNextStep_(query, model) {
   const text = String(query || "");
   const modelPrefix = model ? `${model}：` : "";
+  if (isExactProductFactQuestion_(text)) {
+    const cleanQuestion = stripInternalRoutingHints_(text)
+      .replace(String(model || ""), "")
+      .replace(/[（(]\s*型號\s*[:：]\s*[）)]/gi, " ")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .substring(0, 120);
+    const modeQualified =
+      /(?:PBP|PIP|MULTI[\s-]*VIEW|多重視窗|雙畫面|分割畫面)/i.test(text);
+    let wholeDeviceBoundary = "";
+    if (model && modeQualified && /(?:HZ|更新率|刷新率)/i.test(text)) {
+      wholeDeviceBoundary = String(
+        buildDeterministicExactRuleReply_(`${model} 更新率最高多少？`, model) || "",
+      )
+        .replace(/\n{0,2}\[來源\s*[:：][^\]]+\]/gi, "")
+        .trim();
+    }
+    return [
+      `${modelPrefix}我把手冊和公開網頁都查過了，仍沒有足夠證據直接回答「${cleanQuestion || "這一點"}」的數字或結論。`,
+      wholeDeviceBoundary
+        ? `${wholeDeviceBoundary} 這是整機規格，不能直接當成分割模式下每一側的上限。`
+        : "我先不猜數字或功能結論，避免現場拿到錯答案。",
+      modeQualified && /(?:HZ|更新率|刷新率)/i.test(text)
+        ? "現場可接好兩個訊號源後，到各來源裝置的進階顯示設定，分別查看實際可選的最高更新率。"
+        : "這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。",
+      modeQualified
+        ? "這題也已記給 Sam 補進常見問題庫。"
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
   if (/(?:APP|應用程式|NETFLIX|YOUTUBE|DISNEY|SPOTIFY|LINE\s*TV|愛奇藝)/i.test(text)) {
     const ruleLine = model ? findExactModelRuleLine_(model) : "";
     if (/(?:SMART\s*MONITOR|TIZEN|智慧聯網)/i.test(ruleLine)) {
@@ -7895,6 +9084,13 @@ function buildSafeNoEvidenceNextStep_(query, model) {
 }
 
 function buildTentativeManualFallback_(rawResponse, model, question) {
+  if (isExactProductFactQuestion_(question)) {
+    return [
+      buildSafeNoEvidenceNextStep_(question, model),
+      "",
+      "這是手冊與公開網頁都沒有直接證據時的保守終點，不代表三星已證實未記載的數值。",
+    ].join("\n");
+  }
   let tentative = stripAnySourceTags(
     formatForLineMobile(String(rawResponse || "")),
   )
@@ -7935,9 +9131,11 @@ function sanitizeTentativeWebActionLine_(rawLine) {
   const label = colonIndex >= 0 ? line.substring(0, colonIndex).trim() : "";
   const body = colonIndex >= 0 ? line.substring(colonIndex + 1) : line;
   const unsafe =
-    /(?:可能|不一定|通常|一般來說|有些使用者|部分使用者|購買|訂購|付費|下單|推薦|其他品牌|其他型號|相近型號|來源不明|工程模式|韌體)/i;
+    /(?:可能|不一定|通常|一般來說|一般情況下|有(?:些|部分)?使用者|購買|訂購|付費|下單|推薦|其他品牌|其他型號|相近型號|來源不明|工程模式|韌體)/i;
   const actionable =
     /(?:先|再|使用|透過|連接|接上|切換|檢查|確認|詢問|諮詢|重新|改用|將|開啟|啟用|進入|尋找|選擇|按下)/i;
+  const unsupportedProductFact =
+    /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:\.\d+)?\s*(?:HZ|KHZ|MS|W|V|A|NIT|CD\s*\/\s*M|吋|公分|MM)\b|支援|不支援|具備|內建|限制|最高|最低|只能|無法|會將|可達)/i;
   const safeClauses = [];
   body
     .split(/[。；;]+/)
@@ -7958,7 +9156,9 @@ function sanitizeTentativeWebActionLine_(rawLine) {
         if (
           clause.length < 6 ||
           unsafe.test(clause) ||
+          unsupportedProductFact.test(clause) ||
           !actionable.test(clause) ||
+          /[\u4e00-\u9fff]的\s+[A-Z][A-Z0-9-]{2,}\.?$/i.test(clause) ||
           /(?:有些使用者|部分使用者|提到|指出|表示|然後|接著|並且|以及|且|並)$/.test(
             clause,
           ) ||
@@ -7975,10 +9175,17 @@ function sanitizeTentativeWebActionLine_(rawLine) {
 
 function buildTentativeWebFallback_(rawResponse, query, model) {
   const isMonitorUsbMedia = isMonitorUsbMediaWebQuestion_(query);
+  if (isExactProductFactQuestion_(query)) {
+    return [
+      buildSafeNoEvidenceNextStep_(query, model),
+      "",
+      "這是公開網頁沒有直接證據時的保守終點，不把搜尋片段或其他型號經驗當成答案。",
+    ].join("\n");
+  }
   const rawText = String(rawResponse || "");
   const declaredNoEvidence =
     rawText === "[NO_RELEVANT_WEB_EVIDENCE]" ||
-    /(?:沒有|未能|找不到)[^。\n]{0,100}(?:資料|資訊|結果|解法|步驟|說明|網頁)/i.test(
+    /(?:沒有|未能|找不到)[^。\n]{0,100}(?:資料|資訊|結果|解法|步驟|說明|網頁|結論|證據)/i.test(
       rawText,
     ) ||
     /無法[^。\n]{0,80}找到[^。\n]{0,80}(?:資料|資訊|結果|解法|步驟|說明|網頁)/i.test(
@@ -7987,12 +9194,16 @@ function buildTentativeWebFallback_(rawResponse, query, model) {
     /(?:沒有|未能|找不到)[^。\n]{0,100}(?:直接|明確)[^。\n]{0,40}(?:提到|回答|核對)/i.test(
       rawText,
     );
-  const rawSafeActionLines = rawText
+  const rawActionCandidateLines = rawText
     .split(/\n+/)
-    .filter((line) => /^\s*(?:\d+[.、)]|[•*-])\s*/.test(line))
+    .filter((line) => /^\s*(?:\d+[.、)]|[•*-])\s*/.test(line));
+  const rawSafeActionLines = rawActionCandidateLines
     .map(sanitizeTentativeWebActionLine_)
     .filter(Boolean);
-  if (declaredNoEvidence && rawSafeActionLines.length === 0) {
+  if (
+    rawSafeActionLines.length === 0 &&
+    (declaredNoEvidence || rawActionCandidateLines.length > 0)
+  ) {
     return [
       `${model ? `${model}：` : ""}這次公開網頁沒有足夠證據回答這題，我先不拿其他型號或「一般來說」的經驗當答案。`,
       "這類型號操作問題以官方手冊較可靠，可直接點下方「官方手冊」查同一題，不用重打型號。",
@@ -8320,15 +9531,131 @@ function doesGroundedAnswerCompleteQuestion_(text, originalQuestion) {
   const question = String(originalQuestion || "");
   if (!answer) return false;
   if (/[：:，,；;、（(\-]$/.test(answer)) return false;
-  if (/(?:可以|能不能|是否|可否|有沒有|支援嗎|能否)/i.test(question)) {
-    return /(?:可以|可透過|可使用|能夠|不能|無法|不支援|支援|接上|連接|需要|需先)/i.test(
-      answer,
-    );
+  const explicitModels = [...new Set(
+    extractFullModelLikeTokens(question).map(function (value) {
+      return normalizeModelForDisplay(value);
+    }),
+  )].filter(Boolean);
+  if (
+    explicitModels.length > 1 &&
+    explicitModels.some(function (model) {
+      return answer.toUpperCase().indexOf(model.toUpperCase()) < 0;
+    })
+  ) {
+    return false;
   }
-  if (/(?:怎麼|如何|怎樣|哪些步驟|操作步驟|哪個選單|從哪裡)/i.test(question)) {
-    return /(?:先|再|接著|進入|選擇|開啟|關閉|連接|設定|檢查|確認|按下|切換|重新)/i.test(
-      answer,
+  const conceptDefinitions = [
+    { question: /HDMI/i, answer: /HDMI/i },
+    { question: /(?:DISPLAYPORT|\bDP\b)/i, answer: /(?:DISPLAYPORT|\bDP\b)/i },
+    { question: /USB[\s-]*C/i, answer: /USB[\s-]*C/i },
+    { question: /(?:\bUSB\b|USB[\s-]*A)/i, answer: /(?:\bUSB\b|USB[\s-]*A)/i },
+    { question: /(?:同軸|COAX)/i, answer: /(?:同軸|COAX)/i },
+    { question: /機上盒/i, answer: /機上盒/i },
+    { question: /(?:藍牙|BLUETOOTH)/i, answer: /(?:藍牙|BLUETOOTH)/i },
+    { question: /(?:WI[\s-]*FI|無線網路)/i, answer: /(?:WI[\s-]*FI|無線網路)/i },
+    { question: /PBP/i, answer: /PBP/i },
+    { question: /PIP/i, answer: /PIP/i },
+    { question: /耳機/i, answer: /耳機/i },
+    { question: /喇叭/i, answer: /喇叭/i },
+  ];
+  const explicitConcepts = conceptDefinitions.filter(function (definition) {
+    return definition.question.test(question);
+  });
+  const isCompoundQuestion =
+    (question.match(/[？?]/g) || []).length > 1 ||
+    /(?:、|以及|也(?:能|可以|要|有)|和|與|同時|還有|分別|各自)/i.test(
+      question,
     );
+  if (
+    isCompoundQuestion &&
+    explicitConcepts.length > 1 &&
+    explicitConcepts.some(function (definition) {
+      return !definition.answer.test(answer);
+    })
+  ) {
+    return false;
+  }
+  const asksExactValue =
+    /(?:多少|幾(?:個|組|條|孔|埠|台|吋|HZ)?|最高|最低|各自|分別|每(?:一)?(?:邊|側))/i.test(
+      question,
+    );
+  if (asksExactValue) {
+    let metricPattern =
+      /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:[.,]\d+)?\s*(?:HZ|KHZ|MS|W|V|A|NIT|CD\s*\/\s*M|吋|公分|MM|CM|元|%|個|組|條|孔|埠|台))/i;
+    if (/(?:HZ|更新率|刷新率)/i.test(question)) {
+      metricPattern = /\d+(?:[.,]\d+)?\s*(?:HZ|KHZ)/i;
+    } else if (/(?:價格|售價|多少錢|價錢)/i.test(question)) {
+      metricPattern = /(?:NT\$|US\$|\$)?\s*\d[\d,]*(?:\.\d+)?\s*(?:元|美元)?/i;
+    }
+    const positiveMetricLines = answer
+      .split(/[。！？!?\n]+/)
+      .map(function (line) {
+        return line.trim();
+      })
+      .filter(Boolean)
+      .filter(function (line) {
+        return (
+          metricPattern.test(line) &&
+          !/(?:無法|不能|不支援|沒有|未(?:能|達|知|記載)|不到|不會|並非|不代表)/i.test(
+            line,
+          )
+        );
+      });
+    if (positiveMetricLines.length === 0) return false;
+    if (
+      explicitConcepts.length > 1 &&
+      explicitConcepts.some(function (definition) {
+        return !positiveMetricLines.some(function (line) {
+          return definition.answer.test(line);
+        });
+      })
+    ) {
+      return false;
+    }
+    if (/(?:兩邊|左右|各自|分別|每(?:一)?(?:邊|側))/i.test(question)) {
+      const pairedText = positiveMetricLines.join("\n");
+      const pairedMetricMatches =
+        pairedText.match(
+          /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:[.,]\d+)?\s*(?:HZ|KHZ|MS|W|V|A|NIT|CD\s*\/\s*M|吋|公分|MM|CM|元|%|個|組|條|孔|埠|台))/gi,
+        ) || [];
+      const bindsBothSides =
+        /(?:兩邊|左右|每(?:一)?(?:邊|側)|各自|分別)[^。\n]{0,50}\d/i.test(
+          pairedText,
+        ) ||
+        (/(?:左|第一)[^。\n]{0,60}\d/i.test(pairedText) &&
+          /(?:右|第二)[^。\n]{0,60}\d/i.test(pairedText));
+      if (!bindsBothSides || pairedMetricMatches.length < 1) return false;
+    }
+  }
+  if (
+    /(?:可以|能不能|是否|可否|有沒有|支援嗎|能否)/i.test(question) &&
+    !/(?:可以|可透過|可使用|能夠|不能|無法|不支援|支援|接上|連接|需要|需先)/i.test(
+      answer,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /(?:哪個選單|從哪裡|選單路徑|到哪裡)/i.test(question) &&
+    !/(?:選單|設定|進入|前往|路徑|選擇|裝置|清單|按下|開啟|關閉)/i.test(
+      answer,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /(?:怎麼|如何|怎樣|哪些步驟|操作步驟)/i.test(question) &&
+    !/(?:先|再|接著|進入|選擇|開啟|關閉|連接|設定|檢查|確認|按下|切換|重新)/i.test(
+      answer,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /(?:為什麼|原因|怎麼會)/i.test(question) &&
+    !/(?:因為|原因|由於|導致|造成|可能是|常見於|通常與)/i.test(answer)
+  ) {
+    return false;
   }
   return true;
 }
@@ -8338,6 +9665,7 @@ function buildGroundedSupportedAnswer_(
   model,
   originalQuestion,
   rawResponse,
+  allowPartial,
 ) {
   const unique = [];
   const seen = {};
@@ -8375,7 +9703,14 @@ function buildGroundedSupportedAnswer_(
     // 已確認的正式系列別稱，才允許把低風險步驟整理給目前型號。
     const safeFamilyFallback =
       rawIdentity === "family" &&
+      !isExactProductFactQuestion_(originalQuestion) &&
       isLowRiskGroundedTroubleshooting_(unique.join("\n"), originalQuestion);
+    if (
+      isExactProductFactQuestion_(originalQuestion) &&
+      supportedIdentity !== "exact"
+    ) {
+      return "";
+    }
     if (supportedIdentity === "none" && !safeFamilyFallback) {
       return "";
     }
@@ -8402,18 +9737,27 @@ function buildGroundedSupportedAnswer_(
       : normalizedModel;
     answer = `${identityLabel} 可先這樣排除：\n${answer}`;
   }
-  return doesGroundedAnswerCompleteQuestion_(answer, originalQuestion)
+  return doesGroundedAnswerCompleteQuestion_(answer, originalQuestion) ||
+    allowPartial === true
     ? answer
     : "";
 }
 
-function runManualWebRescue_(originalQuestion, model, contextId, userId) {
+function runManualWebRescue_(
+  originalQuestion,
+  model,
+  contextId,
+  userId,
+  options,
+) {
+  const rescueOptions = options || {};
+  const systemRescue = rescueOptions.systemRescue !== false;
   const canonicalQuery = buildCanonicalWebQuery_(originalQuestion, model || "");
   const rescueGrant = activateAdvancedSourceGrant_(
     "web",
     contextId,
     userId,
-    { systemRescue: true },
+    systemRescue ? { systemRescue: true } : { systemRescue: false },
   );
   try {
     const webResponse = callLLMWithRetry(
@@ -8434,6 +9778,16 @@ function runManualWebRescue_(originalQuestion, model, contextId, userId) {
       originalQuestion,
       rawWebDraft,
     );
+    const partialWebText =
+      !webText && lastWebEvidenceValid
+        ? buildGroundedSupportedAnswer_(
+            lastWebSupportedSegments,
+            model,
+            originalQuestion,
+            rawWebDraft,
+            true,
+          )
+        : "";
     if (
       lastWebEvidenceValid &&
       webText &&
@@ -8447,7 +9801,27 @@ function runManualWebRescue_(originalQuestion, model, contextId, userId) {
         success: true,
         text: webText,
         sources: lastSearchSources.slice(),
-        userQuotaCharged: false,
+        userQuotaCharged: !systemRescue && Boolean(rescueGrant.reserved),
+        remaining: rescueGrant.remaining,
+      };
+    }
+    if (
+      lastWebEvidenceValid &&
+      partialWebText &&
+      isGroundedWebAnswerRelevant_(partialWebText, model) &&
+      !isApiFailureReply(partialWebText) &&
+      Array.isArray(lastSearchSources) &&
+      lastSearchSources.length > 0
+    ) {
+      return {
+        attempted: true,
+        success: false,
+        partial: true,
+        text: partialWebText,
+        unresolvedQuestion: originalQuestion,
+        sources: lastSearchSources.slice(),
+        userQuotaCharged: !systemRescue && Boolean(rescueGrant.reserved),
+        remaining: rescueGrant.remaining,
       };
     }
     const tentativeText = buildTentativeWebFallback_(
@@ -8466,11 +9840,15 @@ function runManualWebRescue_(originalQuestion, model, contextId, userId) {
         ? tentativeText
         : "",
       sources: [],
-      userQuotaCharged: false,
+      userQuotaCharged: !systemRescue && Boolean(rescueGrant.reserved),
+      remaining: rescueGrant.remaining,
     };
   } catch (error) {
+    const errorCode = String(
+      error && error.message ? error.message : error,
+    );
     writeLog(
-      `[Source Rescue v29.6.148] 自動 Web 補救失敗: ${String(error && error.message ? error.message : error)}`,
+      `[Source Rescue v29.6.277] 自動 Web 補救失敗: ${errorCode}`,
     );
     return {
       attempted: false,
@@ -8478,6 +9856,9 @@ function runManualWebRescue_(originalQuestion, model, contextId, userId) {
       text: "",
       sources: [],
       userQuotaCharged: false,
+      quotaExhausted: /SOURCE_(?:QUOTA|RESCUE)_EXHAUSTED_WEB/.test(
+        errorCode,
+      ),
     };
   } finally {
     ACTIVE_ADVANCED_SOURCE_GRANT = null;
@@ -8494,6 +9875,24 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     .replace(/\[AUTO_SEARCH_WEB\]/gi, "")
     .replace(/\n*手冊還沒直接回答：[^\n]+(?:\n|$)/gi, "\n")
     .trim();
+  if (rescue && rescue.partial && rescue.text) {
+    const unresolved = stripInternalRoutingHints_(
+      rescue.unresolvedQuestion || question || "",
+    ).substring(0, 180);
+    return [
+      hadPartialManualEvidence && partialManualBody
+        ? `手冊能確認：\n${partialManualBody}`
+        : "官方手冊沒有直接寫出完整答案。",
+      "",
+      `公開網頁目前只確認：\n${rescue.text}`,
+      "",
+      unresolved
+        ? `目前仍沒有直接證據完整回答：「${unresolved}」。`
+        : "目前仍沒有直接證據完整回答這一點。",
+      `參考：${rescue.sources.join("、")}（非官方，請斟酌）`,
+      "[來源:官方手冊、網路搜尋]",
+    ].join("\n");
+  }
   if (rescue && rescue.success) {
     if (hadPartialManualEvidence && partialManualBody) {
       return [
@@ -8515,6 +9914,12 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
       `參考：${rescue.sources.join("、")}（非官方，請斟酌）`,
       "[來源:網路搜尋]",
     ].join("\n");
+  }
+  if (isExactProductFactQuestion_(question)) {
+    writeLog(
+      `[FAQ Candidate v29.6.277] 手冊與 Web 都沒有直接證據 model=${normalizeModelForDisplay(model || "") || "none"} question=${stripInternalRoutingHints_(question || "").substring(0, 100)}`,
+    );
+    return buildSafeNoEvidenceNextStep_(question, model);
   }
   if (!rescue || !rescue.attempted) {
     return [
@@ -8552,27 +9957,84 @@ function executeAutomaticManualFallback_(
   contextId,
   userId,
   replyToken,
+  routeOptions,
 ) {
+  const options = routeOptions || {};
   const originalQuestion = stripInternalRoutingHints_(query);
   const selectedModel = normalizeModelForDisplay(model || "");
   const recentQuestion = readRecentSourceQuestion_(contextId);
+  const routeAnalysis = options.analysis || null;
+  const localBundle = buildSemanticLocalEvidenceBundle_(
+    routeAnalysis,
+    selectedModel,
+    userId,
+  );
+  const coveredIds = localBundle.coveredIds || [];
+  const manualQuestions = getSemanticClaimQuestions_(
+    routeAnalysis,
+    ["manual_model_specific", "local_stable", "general_reasoning"],
+    coveredIds,
+  );
+  const webQuestions = getSemanticClaimQuestions_(
+    routeAnalysis,
+    ["web_current"],
+    [],
+  );
+  const manualQuery = manualQuestions.length > 0
+    ? manualQuestions.join("\n")
+    : originalQuestion;
   const queryWithModel =
     selectedModel &&
-    extractFullModelLikeTokens(originalQuestion).map(normalizeModelForDisplay).indexOf(selectedModel) < 0
-      ? `${selectedModel} ${originalQuestion}`.trim()
-      : originalQuestion;
+    extractFullModelLikeTokens(manualQuery)
+      .map(normalizeModelForDisplay)
+      .indexOf(selectedModel) < 0
+      ? `${selectedModel} ${manualQuery}`.trim()
+      : manualQuery;
+  const routePlanHash = routeAnalysis
+    ? computeReplyAnchor_(
+        JSON.stringify({
+          version: SEMANTIC_ROUTER_VERSION,
+          model: selectedModel,
+          coveredIds: coveredIds,
+          manualQuestions: manualQuestions,
+          webQuestions: webQuestions,
+        }),
+      )
+    : "";
   const automaticState = {
     source: "manual",
     contextId: contextId,
     userIdHash: getSourceContextHash_(userId),
+    originalQuestion: originalQuestion,
     previousQuestion: originalQuestion,
     previousModel: selectedModel,
-    draftQuery: originalQuestion,
+    draftQuery: manualQuery,
     usePrevious: Boolean(selectedModel),
     automaticFallback: true,
-    // 每次自動升級都重新跑一次零成本本機 QA／RULE／已核對片段。
-    // 不得用布林旗標假裝已查過，否則任何新旁路都可能直接跳過答案進 PDF。
+    // 舊式入口仍維持原本的 QA/RULE 預檢；Router 路徑由
+    // semanticClaimsPrepared 守門，不能用 priorFastChecked 假裝整題已查完。
     priorFastChecked: false,
+    semanticClaimsPrepared: Boolean(routeAnalysis),
+    semanticRouteVersion: routeAnalysis ? SEMANTIC_ROUTER_VERSION : "",
+    routePlanHash: routePlanHash,
+    routeClaims: routeAnalysis && Array.isArray(routeAnalysis.claims)
+      ? routeAnalysis.claims
+      : [],
+    unresolvedClaimIds: routeAnalysis
+      ? (routeAnalysis.claims || [])
+          .map(function (claim) {
+            return String(claim.id || "");
+          })
+          .filter(function (claimId) {
+            return claimId && coveredIds.indexOf(claimId) < 0;
+          })
+      : [],
+    knownRuleAnswer: localBundle.text || "",
+    manualQuery: manualQuery,
+    plannedWebQuery: webQuestions.join("\n"),
+    plannedWebAfterManual: webQuestions.length > 0,
+    dailyQuestionCharge: String(options.dailyQuestionCharge || ""),
+    dailyQuestionRefunded: false,
     preserveComparison: Boolean(
       recentQuestion && recentQuestion.comparisonTarget,
     ),
@@ -8591,6 +10053,99 @@ function executeAutomaticManualFallback_(
   );
 }
 
+/**
+ * 條件式主張規劃器判定為時效／第三方資訊時的唯一自動 Web 入口。
+ * Router 本身不扣額度；只有這裡真正送出供應商請求前，才由既有
+ * executeAdvancedSourceQuery_ 以同一套冪等、10 次／日與成本守門計次。
+ */
+function executeAutomaticWebFallback_(
+  query,
+  model,
+  contextId,
+  userId,
+  replyToken,
+  routeOptions,
+) {
+  const options = routeOptions || {};
+  const originalQuestion = stripInternalRoutingHints_(query);
+  const selectedModel = normalizeModelForDisplay(model || "");
+  const routeAnalysis = options.analysis || null;
+  const localBundle = buildSemanticLocalEvidenceBundle_(
+    routeAnalysis,
+    selectedModel,
+    userId,
+  );
+  const coveredIds = localBundle.coveredIds || [];
+  const webQuestions = getSemanticClaimQuestions_(
+    routeAnalysis,
+    ["web_current", "local_stable", "general_reasoning"],
+    coveredIds,
+  );
+  const webQuery = webQuestions.length > 0
+    ? webQuestions.join("\n")
+    : originalQuestion;
+  const queryWithModel =
+    selectedModel &&
+    extractFullModelLikeTokens(webQuery)
+      .map(normalizeModelForDisplay)
+      .indexOf(selectedModel) < 0
+      ? `${selectedModel} ${webQuery}`.trim()
+      : webQuery;
+  const routePlanHash = routeAnalysis
+    ? computeReplyAnchor_(
+        JSON.stringify({
+          version: SEMANTIC_ROUTER_VERSION,
+          model: selectedModel,
+          coveredIds: coveredIds,
+          webQuestions: webQuestions,
+        }),
+      )
+    : "";
+  const automaticState = {
+    source: "web",
+    contextId: contextId,
+    userIdHash: getSourceContextHash_(userId),
+    originalQuestion: originalQuestion,
+    previousQuestion: originalQuestion,
+    previousModel: selectedModel,
+    draftQuery: webQuery,
+    usePrevious: Boolean(selectedModel),
+    automaticFallback: true,
+    semanticRouter: true,
+    semanticClaimsPrepared: Boolean(routeAnalysis),
+    semanticRouteVersion: routeAnalysis ? SEMANTIC_ROUTER_VERSION : "",
+    routePlanHash: routePlanHash,
+    routeClaims: routeAnalysis && Array.isArray(routeAnalysis.claims)
+      ? routeAnalysis.claims
+      : [],
+    unresolvedClaimIds: routeAnalysis
+      ? (routeAnalysis.claims || [])
+          .map(function (claim) {
+            return String(claim.id || "");
+          })
+          .filter(function (claimId) {
+            return claimId && coveredIds.indexOf(claimId) < 0;
+          })
+      : [],
+    knownRuleAnswer: localBundle.text || "",
+    plannedWebQuery: webQuery,
+    dailyQuestionCharge: String(options.dailyQuestionCharge || ""),
+    dailyQuestionRefunded: false,
+    dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
+  };
+  writeLog(
+    `[Automatic Web Fallback v29.6.277] Router 判定需查公開網頁；model=${selectedModel || "none"}`,
+  );
+  return executeAdvancedSourceQuery_(
+    "web",
+    queryWithModel,
+    contextId,
+    userId,
+    replyToken,
+    automaticState,
+  );
+}
+
 function executeAdvancedSourceQuery_(
   source,
   query,
@@ -8601,8 +10156,10 @@ function executeAdvancedSourceQuery_(
 ) {
   const normalizedSource = String(source || "");
   const cache = CacheService.getScriptCache();
-  const originalQuestion = stripInternalRoutingHints_(query);
-  let normalizedQuery = originalQuestion;
+  const originalQuestion = stripInternalRoutingHints_(
+    (pendingState && pendingState.originalQuestion) || query,
+  );
+  let normalizedQuery = stripInternalRoutingHints_(query);
   let knownRuleAnswer = String(
     pendingState && pendingState.knownRuleAnswer
       ? pendingState.knownRuleAnswer
@@ -8624,6 +10181,7 @@ function executeAdvancedSourceQuery_(
 
   if (
     normalizedSource === "manual" &&
+    !(pendingState && pendingState.semanticClaimsPrepared) &&
     !(
       pendingState &&
       pendingState.automaticFallback &&
@@ -8645,14 +10203,6 @@ function executeAdvancedSourceQuery_(
   }
 
   const remainingBefore = getSourceRemaining_(contextId, normalizedSource);
-  if (remainingBefore <= 0 && normalizedSource === "web") {
-    clearPendingSourceState_(contextId);
-    replyMessage(
-      replyToken,
-      `今天的${normalizedSource === "manual" ? "官方手冊 5 次" : "網路解答 10 次"}已用完。這次沒有送出查詢；你仍可使用「規格＆FAQ」的每日提問額度。`,
-    );
-    return true;
-  }
 
   let selectedModel = "";
   if (normalizedSource === "web") {
@@ -8721,7 +10271,7 @@ function executeAdvancedSourceQuery_(
         selectedModel = modelCandidates[0];
         normalizedQuery = `${selectedModel} ${normalizedQuery}`.trim();
       } else if (modelCandidates.length > 1) {
-        writePendingSourceState_(contextId, {
+        writePendingSourceState_(contextId, Object.assign({}, pendingState || {}, {
           source: "manual",
           userIdHash: getSourceContextHash_(userId),
           previousQuestion: pendingState ? pendingState.previousQuestion || "" : "",
@@ -8732,7 +10282,7 @@ function executeAdvancedSourceQuery_(
           draftQuery: normalizedQuery,
           manualModelCandidates: modelCandidates,
           dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
-        });
+        }));
         cache.put(
           `${userId}:suggested_models`,
           JSON.stringify(modelCandidates),
@@ -8756,7 +10306,7 @@ function executeAdvancedSourceQuery_(
       }
     }
     if (!selectedModel) {
-      writePendingSourceState_(contextId, {
+      writePendingSourceState_(contextId, Object.assign({}, pendingState || {}, {
         source: "manual",
         userIdHash: getSourceContextHash_(userId),
         previousQuestion: pendingState ? pendingState.previousQuestion || "" : "",
@@ -8766,7 +10316,7 @@ function executeAdvancedSourceQuery_(
         ),
         draftQuery: normalizedQuery,
         dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
-      });
+      }));
       LAST_SOURCE_TEST_STATE = {
         source: "manual",
         pending: true,
@@ -8805,6 +10355,7 @@ function executeAdvancedSourceQuery_(
     }
 
     if (
+      !(pendingState && pendingState.semanticClaimsPrepared) &&
       tryManualFreeLocalAnswer_(
         normalizedQuery,
         contextId,
@@ -8817,24 +10368,6 @@ function executeAdvancedSourceQuery_(
     ) {
       return true;
     }
-    if (remainingBefore <= 0) {
-      clearPendingSourceState_(contextId);
-      const exhaustedManualReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
-        knownRuleAnswer,
-        "今天的官方手冊 5 次已用完。這題在規格／FAQ 沒有高信心答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。",
-      );
-      replyMessage(
-        replyToken,
-        exhaustedManualReply,
-        buildAdvancedSourceQuickReplies_(
-          "manual",
-          selectedModel,
-          exhaustedManualReply,
-          { forceOfficial: true, skipSameSource: true },
-        ),
-      );
-      return true;
-    }
 
     // 來源鍵（或相容 #查手冊 指令）本身已是明確授權。完整型號解析完成後
     // 直接進 token/PDF 預檢；禁止再送一個「確認要查」把同一題卡成兩次操作。
@@ -8845,12 +10378,52 @@ function executeAdvancedSourceQuery_(
 
   let relevantFiles = [];
   let primaryModel = selectedModel;
-  const sourceOperation = beginAdvancedSourceOperation_(
+  refundTransferredDailyQuestion_(
+    userId,
+    pendingState,
+    `semantic_router_to_${normalizedSource}`,
+  );
+
+  // 完成結果快取必須早於來源額度檢查；同題已付過就能免費重播，即使
+  // 今日 5／10 次剛好用完。唯讀命中前不建立 running，避免額度用完時
+  // 留下一個不存在的執行中狀態。
+  let sourceOperation = readDoneAdvancedSourceOperation_(
     contextId,
     normalizedSource,
     originalQuestion,
     primaryModel || selectedModel,
+    pendingState && pendingState.routePlanHash,
   );
+  if (!sourceOperation && remainingBefore <= 0) {
+    clearPendingSourceState_(contextId);
+    const exhaustedText = normalizedSource === "manual"
+      ? "今天的官方手冊 5 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。"
+      : "今天的網路解答 10 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出網路查詢；明天 00:00 會自動恢復。";
+    const exhaustedReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
+      knownRuleAnswer,
+      exhaustedText,
+    );
+    replyMessage(
+      replyToken,
+      exhaustedReply,
+      buildAdvancedSourceQuickReplies_(
+        normalizedSource,
+        primaryModel || selectedModel,
+        exhaustedReply,
+        { forceOfficial: true, skipSameSource: true },
+      ),
+    );
+    return true;
+  }
+  if (!sourceOperation) {
+    sourceOperation = beginAdvancedSourceOperation_(
+      contextId,
+      normalizedSource,
+      originalQuestion,
+      primaryModel || selectedModel,
+      pendingState && pendingState.routePlanHash,
+    );
+  }
   if (!sourceOperation.allowed) {
     clearPendingSourceState_(contextId);
     if (sourceOperation.status === "done" && sourceOperation.finalText) {
@@ -8917,11 +10490,21 @@ function executeAdvancedSourceQuery_(
       : selectedModel || kbResult.primaryModel;
     if (relevantFiles.length === 0) {
       clearPendingSourceState_(contextId);
+      const plannedWebQuery = String(
+        (pendingState && pendingState.plannedWebQuery) || "",
+      ).trim();
+      const noManualRescueQuery = [normalizedQuery, plannedWebQuery]
+        .filter(Boolean)
+        .filter(function (value, index, values) {
+          return values.indexOf(value) === index;
+        })
+        .join("\n");
       const noManualRescue = runManualWebRescue_(
-        originalQuestion,
+        noManualRescueQuery || originalQuestion,
         selectedModel,
         contextId,
         userId,
+        { systemRescue: !plannedWebQuery },
       );
       const noManualReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
         knownRuleAnswer,
@@ -9086,6 +10669,7 @@ function executeAdvancedSourceQuery_(
     normalizedSource === "manual" &&
     /\[MANUAL_EVIDENCE_NOT_FOUND\]/.test(String(response || ""));
   let manualEvidenceFailed = false;
+  let webEvidencePartial = false;
   let manualWebRescue = null;
   finalText = finalText
     .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
@@ -9111,26 +10695,84 @@ function executeAdvancedSourceQuery_(
       }
       manualEvidenceFailed = isManualEvidenceFailureReply_(finalText);
     }
-    const needsAutomaticWebRescue =
+    const plannedWebQuery = String(
+      (pendingState && pendingState.plannedWebQuery) || "",
+    ).trim();
+    const manualFailedBeforeWeb =
       response === "[KB_EXPIRED]" ||
       manualPreflightStopped ||
       manualEvidenceNotFound ||
       manualEvidenceFailed ||
       recommendedWeb;
+    const needsAutomaticWebRescue =
+      manualFailedBeforeWeb || Boolean(plannedWebQuery);
     if (needsAutomaticWebRescue) {
-      manualEvidenceFailed = true;
+      const rescueQuery = manualFailedBeforeWeb
+        ? [normalizedQuery, plannedWebQuery]
+            .filter(Boolean)
+            .filter(function (value, index, values) {
+              return values.indexOf(value) === index;
+            })
+            .join("\n")
+        : plannedWebQuery;
       manualWebRescue = runManualWebRescue_(
-        originalQuestion,
+        rescueQuery || originalQuestion,
         primaryModel || selectedModel,
         contextId,
         userId,
+        { systemRescue: !plannedWebQuery },
       );
-      finalText = buildManualWebRescueReply_(
-        manualWebRescue,
-        evidenceGuardedResponse,
-        primaryModel || selectedModel,
-        originalQuestion,
-      );
+      if (!manualFailedBeforeWeb) {
+        const manualBody = stripAnySourceTags(finalText).trim();
+        if (manualWebRescue && manualWebRescue.success) {
+          finalText = [
+            "手冊查證：",
+            manualBody,
+            "",
+            "公開網頁補充：",
+            manualWebRescue.text,
+            "",
+            `參考：${manualWebRescue.sources.join("、")}（非官方，請斟酌）`,
+            "[來源:官方手冊、網路搜尋]",
+          ]
+            .filter(Boolean)
+            .join("\n");
+        } else if (manualWebRescue && manualWebRescue.partial) {
+          const unresolved = stripInternalRoutingHints_(
+            manualWebRescue.unresolvedQuestion || originalQuestion,
+          ).substring(0, 180);
+          finalText = [
+            "手冊查證：",
+            manualBody,
+            "",
+            "公開網頁目前只確認：",
+            manualWebRescue.text,
+            "",
+            unresolved
+              ? `目前仍沒有直接證據完整回答：「${unresolved}」。`
+              : "目前仍沒有直接證據完整回答這一點。",
+            `參考：${manualWebRescue.sources.join("、")}（非官方，請斟酌）`,
+            "[來源:官方手冊、網路搜尋]",
+          ]
+            .filter(Boolean)
+            .join("\n");
+        } else {
+          const webNote = manualWebRescue && manualWebRescue.quotaExhausted
+            ? "這題的手冊部分已查完；今日網路解答額度已用完，未再送出公開網頁查詢。"
+            : "這題的手冊部分已查完；公開網頁目前沒有取得可核對的補充，我先保留手冊能確認的內容。";
+          finalText = [manualBody, "", webNote, "[來源:官方手冊]"]
+            .filter(Boolean)
+            .join("\n");
+        }
+      } else {
+        manualEvidenceFailed = true;
+        finalText = buildManualWebRescueReply_(
+          manualWebRescue,
+          evidenceGuardedResponse,
+          primaryModel || selectedModel,
+          originalQuestion,
+        );
+      }
     }
   } else {
     finalText = sanitizeManualDeflection(finalText, normalizedQuery);
@@ -9141,10 +10783,19 @@ function executeAdvancedSourceQuery_(
         originalQuestion,
         response,
       );
+      const partialWebText = compactWebText
+        ? ""
+        : buildGroundedSupportedAnswer_(
+            lastWebSupportedSegments,
+            primaryModel || selectedModel,
+            originalQuestion,
+            response,
+            true,
+          );
       if (
-        !compactWebText ||
+        (!compactWebText && !partialWebText) ||
         !isGroundedWebAnswerRelevant_(
-          compactWebText,
+          compactWebText || partialWebText,
           primaryModel || selectedModel,
         )
       ) {
@@ -9154,6 +10805,13 @@ function executeAdvancedSourceQuery_(
         lastWebEvidenceValid = false;
         lastWebUnverifiedDraft = "[NO_RELEVANT_WEB_EVIDENCE]";
         finalText = "";
+      } else if (partialWebText) {
+        webEvidencePartial = true;
+        finalText = [
+          partialWebText,
+          "",
+          `目前仍沒有直接證據完整回答：「${originalQuestion.substring(0, 180)}」。`,
+        ].join("\n");
       } else {
         finalText = compactWebText;
       }
@@ -9199,10 +10857,14 @@ function executeAdvancedSourceQuery_(
     outcome:
       normalizedSource === "web"
         ? lastWebEvidenceValid
-          ? "success"
+          ? webEvidencePartial
+            ? "partial"
+            : "success"
           : "no_evidence"
-        : manualWebRescue && manualWebRescue.success
-          ? "rescued_web"
+        : manualWebRescue && (manualWebRescue.success || manualWebRescue.partial)
+          ? manualWebRescue.partial
+            ? "partial"
+            : "rescued_web"
           : manualPreflightStopped || manualEvidenceFailed
           ? "no_evidence"
           : "success",
@@ -9222,13 +10884,19 @@ function executeAdvancedSourceQuery_(
       primaryModel || selectedModel,
       finalText,
       LAST_SOURCE_TEST_STATE.outcome,
-      manualWebRescue && manualWebRescue.success
+      manualWebRescue && (manualWebRescue.success || manualWebRescue.partial)
         ? manualWebRescue.sources
         : lastSearchSources,
     ),
   );
 
-  if (response === "[KB_EXPIRED]" && !(manualWebRescue && manualWebRescue.success)) {
+  if (
+    response === "[KB_EXPIRED]" &&
+    !(
+      manualWebRescue &&
+      (manualWebRescue.success || manualWebRescue.partial)
+    )
+  ) {
     // 索引自癒完成後，同題必須能立即重試，不能被 10 分鐘結果快取卡住。
     clearAdvancedSourceOperation_(sourceOperation);
   } else {
@@ -9277,14 +10945,17 @@ function executeAdvancedSourceQuery_(
   const sourceSucceeded =
     normalizedSource === "web"
       ? lastWebEvidenceValid
-      : (manualWebRescue && manualWebRescue.success) ||
+      : (manualWebRescue &&
+          (manualWebRescue.success || manualWebRescue.partial)) ||
         (response !== "[KB_EXPIRED]" &&
           !manualPreflightStopped &&
           !manualEvidenceFailed);
   if (sourceSucceeded) {
     rememberSourceLastAdvanced_(
       contextId,
-      manualWebRescue && manualWebRescue.success ? "web" : normalizedSource,
+      manualWebRescue && (manualWebRescue.success || manualWebRescue.partial)
+        ? "web"
+        : normalizedSource,
     );
     rememberRecentSourceQuestion_(
       contextId,
@@ -10417,10 +12088,203 @@ function manualSupportedAnswerTargetsModel_(answerText, targetModel) {
 }
 
 /**
- * 每個可顯示主張只能使用同一筆摘錄能直接核對的關鍵事實。
- * 這裡只做低誤判的數字／單位與否定語意守門；不嘗試用程式推論產品事實。
+ * 模式／介面／對象與數值必須在同一段手冊證據形成明確關係。
+ * 例如摘錄分別出現「PBP」與「HDMI 1 120Hz」，不能推成「PBP 兩側各 120Hz」。
+ * 這是通用的關係守門，不判斷任何特定型號的產品事實。
  */
-function manualSupportedAnswerMatchesExcerpt_(answerText, excerptText) {
+function manualEvidenceRelationMatchesExcerpt_(answerText, excerptText, questionText) {
+  const answer = String(answerText || "");
+  const excerpt = String(excerptText || "");
+  const question = String(questionText || "");
+  const claimText = `${question}\n${answer}`.toUpperCase();
+  const excerptUpper = excerpt.toUpperCase();
+  const timingPattern = /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:\.\d+)?\s*(?:HZ|KHZ|MS|W|V|A))/i;
+  if (!timingPattern.test(claimText)) return true;
+
+  const stripIdentity = function (value) {
+    return String(value || "")
+      .toUpperCase()
+      .replace(/\bL?[SCF]\d{2,3}[A-Z0-9]{4,16}\b/g, " ")
+      .replace(/\b(?:G|M)\d{1,5}[A-Z]{0,3}\b/g, " ");
+  };
+  const getCriticalTokens = function (value) {
+    return [
+      ...new Set(
+        (
+          stripIdentity(value).match(
+            /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:\.\d+)?\s*(?:HZ|KHZ|MS|W|V|A))/gi,
+          ) || []
+        ).map(function (token) {
+          return token.replace(/\s+/g, "").toUpperCase();
+        }),
+      ),
+    ];
+  };
+  const splitSegments = function (value) {
+    return String(value || "")
+      .toUpperCase()
+      // 介面表格常以換行、頓號或逗號分列；逐原子片段核對，不能把
+      // HDMI 的數值借給 DisplayPort，也不能要求每列含整段答案全部數值。
+      .split(/[。！？!?；;\n、，,]+/)
+      .map(function (segment) {
+        return segment.trim();
+      })
+      .filter(Boolean);
+  };
+  const splitSentences = function (value) {
+    return String(value || "")
+      .toUpperCase()
+      .split(/[。！？!?；;\n]+/)
+      .map(function (segment) {
+        return segment.trim();
+      })
+      .filter(Boolean);
+  };
+  const answerSegments = splitSegments(answer);
+  const segments = splitSegments(excerptUpper);
+  const answerSentences = splitSentences(answer);
+  const excerptSentences = splitSentences(excerptUpper);
+  const normalizeComparable = function (value) {
+    return String(value || "").replace(/\s+/g, "").toUpperCase();
+  };
+  const tokenIsInSegment = function (segment, token) {
+    return normalizeComparable(segment).indexOf(token) >= 0;
+  };
+  const segmentHasTokens = function (segment, tokens) {
+    return (tokens || []).every(function (token) {
+      return tokenIsInSegment(segment, token);
+    });
+  };
+  const tokensForAnswerPattern = function (pattern) {
+    const related = answerSegments.filter(function (segment) {
+      return pattern.test(segment);
+    });
+    return [
+      ...new Set(
+        (related.length > 0 ? related : answerSegments).reduce(
+          function (tokens, segment) {
+            return tokens.concat(getCriticalTokens(segment));
+          },
+          [],
+        ),
+      ),
+    ];
+  };
+
+  const asksPerSide =
+    /(?:兩側|兩邊|左右(?:兩側|兩邊|畫面)?|每側|各側|各自|分割後)/i.test(
+      claimText,
+    );
+  const mentionsPbp = /(?:PIP\s*\/\s*PBP|\bPBP\b)/i.test(claimText);
+  if (mentionsPbp && asksPerSide) {
+    const perSidePattern =
+      /(?:PIP\s*\/\s*PBP|\bPBP\b|兩側|兩邊|左右(?:兩側|兩邊|畫面)?|每側|各側|各自|分割後)/i;
+    const relatedSentences = answerSentences.filter(function (sentence) {
+      return perSidePattern.test(sentence);
+    });
+    let perSideTokens = [
+      ...new Set(
+        (relatedSentences.length > 0 ? relatedSentences : answerSentences).reduce(
+          function (tokens, sentence) {
+            return tokens.concat(getCriticalTokens(sentence));
+          },
+          [],
+        ),
+      ),
+    ];
+    if (perSideTokens.length === 0) perSideTokens = getCriticalTokens(answer);
+    return excerptSentences.some(function (segment) {
+      return (
+        /(?:PIP\s*\/\s*PBP|\bPBP\b)/i.test(segment) &&
+        /(?:兩側|兩邊|左右(?:兩側|兩邊|畫面)?|每側|各側|各自|分割後)/i.test(
+          segment,
+        ) &&
+        segmentHasTokens(segment, perSideTokens)
+      );
+    });
+  }
+
+  const modePatterns = [];
+  if (/(?:DUAL\s*MODE|雙模)/i.test(claimText)) {
+    modePatterns.push(/(?:DUAL\s*MODE|雙模)/i);
+  }
+  if (/(?:PIP\s*\/\s*PBP|\bPBP\b)/i.test(claimText)) {
+    modePatterns.push(/(?:PIP\s*\/\s*PBP|\bPBP\b)/i);
+  }
+  if (modePatterns.length > 0) {
+    const normalizedExcerpt = normalizeComparable(excerptUpper);
+    const modeBound = modePatterns.every(function (modePattern) {
+      const modeTokens = tokensForAnswerPattern(modePattern);
+      return (
+        modePattern.test(excerptUpper) &&
+        modeTokens.every(function (token) {
+          return normalizedExcerpt.indexOf(token) >= 0;
+        })
+      );
+    });
+    if (!modeBound) return false;
+  }
+
+  const interfacePattern =
+    /(?:HDMI\s*\d*|DISPLAYPORT\s*\d*|\bDP\s*\d*|USB\s*[- ]?C)/gi;
+  const normalizeInterface = function (token) {
+    const compact = normalizeComparable(token).replace(/-/g, "");
+    if (/^(?:DISPLAYPORT|DP)/.test(compact)) {
+      return `DISPLAYPORT${compact.replace(/^(?:DISPLAYPORT|DP)/, "")}`;
+    }
+    if (/^USBC/.test(compact)) return "USBC";
+    return compact;
+  };
+  const segmentHasInterface = function (segment, interfaceToken) {
+    const compact = normalizeComparable(segment).replace(/-/g, "");
+    if (interfaceToken.indexOf("DISPLAYPORT") === 0) {
+      const suffix = interfaceToken.replace("DISPLAYPORT", "");
+      return (
+        compact.indexOf(`DISPLAYPORT${suffix}`) >= 0 ||
+        compact.indexOf(`DP${suffix}`) >= 0
+      );
+    }
+    return compact.indexOf(interfaceToken) >= 0;
+  };
+  const answerInterfaceMatches = answer.match(interfacePattern);
+  const interfaceMatches =
+    answerInterfaceMatches && answerInterfaceMatches.length > 0
+      ? answerInterfaceMatches
+      : question.match(interfacePattern);
+  if (interfaceMatches && interfaceMatches.length > 0) {
+    const interfaceTokens = [
+      ...new Set(interfaceMatches.map(normalizeInterface).filter(Boolean)),
+    ];
+    return interfaceTokens.every(function (interfaceToken) {
+      const relatedAnswerSegments = answerSegments.filter(function (segment) {
+        return segmentHasInterface(segment, interfaceToken);
+      });
+      const localTokens = [
+        ...new Set(
+          (relatedAnswerSegments.length > 0
+            ? relatedAnswerSegments
+            : answerSegments
+          ).reduce(function (tokens, segment) {
+            return tokens.concat(getCriticalTokens(segment));
+          }, []),
+        ),
+      ];
+      return segments.some(function (segment) {
+        return (
+          segmentHasInterface(segment, interfaceToken) &&
+          segmentHasTokens(segment, localTokens)
+        );
+      });
+    });
+  }
+  return true;
+}
+
+/**
+ * 每個可顯示主張只能使用同一筆摘錄能直接核對的關鍵事實。
+ * 這裡只做低誤判的數字／單位、否定語意及關係守門；不推論產品事實。
+ */
+function manualSupportedAnswerMatchesExcerpt_(answerText, excerptText, questionText) {
   const answer = String(answerText || "").trim();
   const excerpt = String(excerptText || "").trim();
   if (!answer || !excerpt || /https?:\/\//i.test(answer)) return false;
@@ -10456,7 +12320,8 @@ function manualSupportedAnswerMatchesExcerpt_(answerText, excerptText) {
     /(?:不支援|不提供|沒有|並無|無法|未提供|不可|僅限|只有)/i.test(answer);
   const excerptHasNegativeEvidence =
     /(?:不支援|不提供|沒有|並無|無法|未提供|不可|僅限|只有|僅適用|只適用)/i.test(excerpt);
-  return !answerMakesNegativeClaim || excerptHasNegativeEvidence;
+  if (answerMakesNegativeClaim && !excerptHasNegativeEvidence) return false;
+  return manualEvidenceRelationMatchesExcerpt_(answer, excerpt, questionText);
 }
 
 /**
@@ -10572,6 +12437,7 @@ function normalizeManualStructuredResponse_(text, targetModel, questionText) {
         manualSupportedAnswerMatchesExcerpt_(
           item.supportedAnswer,
           item.excerpt,
+          questionText,
         )
       );
     },
@@ -10584,7 +12450,7 @@ function normalizeManualStructuredResponse_(text, targetModel, questionText) {
     normalizedEvidence.forEach(function (item, index) {
       if (validEvidence.indexOf(item) >= 0) return;
       writeLog(
-        `[Manual Evidence Reject v29.6.276] item=${index + 1} page=${Number.isInteger(item.pageNumber) && item.pageNumber > 0 ? 1 : 0} scope=${item.scope || "none"} model=${manualEvidenceSupportsTargetModel_(item, targetModel) ? 1 : 0} answerModel=${manualSupportedAnswerTargetsModel_(item.supportedAnswer, targetModel) ? 1 : 0} excerptMatch=${manualSupportedAnswerMatchesExcerpt_(item.supportedAnswer, item.excerpt) ? 1 : 0}`,
+        `[Manual Evidence Reject v29.6.277] item=${index + 1} page=${Number.isInteger(item.pageNumber) && item.pageNumber > 0 ? 1 : 0} scope=${item.scope || "none"} model=${manualEvidenceSupportsTargetModel_(item, targetModel) ? 1 : 0} answerModel=${manualSupportedAnswerTargetsModel_(item.supportedAnswer, targetModel) ? 1 : 0} excerptMatch=${manualSupportedAnswerMatchesExcerpt_(item.supportedAnswer, item.excerpt, questionText) ? 1 : 0}`,
       );
     });
   }
@@ -10652,8 +12518,17 @@ function normalizeManualStructuredResponse_(text, targetModel, questionText) {
     .join("\n")
     .trim();
   if (!safeAnswer) return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
-  const partialMarker = coverage === "partial"
-    ? `\n[MANUAL_EVIDENCE_PARTIAL:${unresolvedQuestion || "仍有部分條件未由手冊直接回答"}]\n[AUTO_SEARCH_WEB]`
+  const effectiveCoverage =
+    coverage === "full" && validEvidence.length !== normalizedEvidence.length
+      ? "partial"
+      : coverage;
+  const effectiveUnresolvedQuestion =
+    unresolvedQuestion ||
+    (effectiveCoverage === "partial"
+      ? "部分主張未能由同一段手冊證據直接支持"
+      : "");
+  const partialMarker = effectiveCoverage === "partial"
+    ? `\n[MANUAL_EVIDENCE_PARTIAL:${effectiveUnresolvedQuestion || "仍有部分條件未由手冊直接回答"}]\n[AUTO_SEARCH_WEB]`
     : "";
   return `${safeAnswer}\n\n手冊重點：${excerpts}\n[手冊證據:第${pages}頁|範圍:${scope}]${partialMarker}`;
 }
@@ -11332,7 +13207,18 @@ function resetRequestAudit_() {
   currentRequestAudit = {
     stages: [],
     model: "",
+    attemptedCalls: 0,
+    billableCalls: 0,
     paidCalls: 0,
+    routerCalls: 0,
+    routerCacheHits: 0,
+    plannerLatencyMs: 0,
+    routerCostTwd: 0,
+    routePlanValid: false,
+    routePlan: null,
+    claimRoutes: [],
+    selectedModel: "",
+    finalCoverage: "",
     pdfCalls: 0,
     webCalls: 0,
     inputTokens: 0,
@@ -11351,7 +13237,8 @@ function markGenerationAttempt_(stage, modelName) {
     currentRequestAudit.stages.push(stage);
   }
   currentRequestAudit.model = modelName || currentRequestAudit.model;
-  currentRequestAudit.paidCalls++;
+  currentRequestAudit.attemptedCalls++;
+  if (stage === "router") currentRequestAudit.routerCalls++;
   if (stage === "pdf") currentRequestAudit.pdfCalls++;
   if (stage === "web") currentRequestAudit.webCalls++;
 }
@@ -11384,6 +13271,10 @@ function calculateGeminiUsageCost_(usage, priceInput, priceOutput) {
 
 function addGenerationUsageToAudit_(usage, costTWD) {
   if (!currentRequestAudit || !usage) return;
+  currentRequestAudit.billableCalls++;
+  // paidCalls 保留供既有 TestUI／稽核讀取，但語意改為有 usageMetadata 的
+  // 實際可計費回應；HTTP 失敗只增加 attemptedCalls。
+  currentRequestAudit.paidCalls = currentRequestAudit.billableCalls;
   currentRequestAudit.inputTokens += Number(usage.promptTokenCount) || 0;
   currentRequestAudit.outputTokens += Number(usage.candidatesTokenCount) || 0;
   currentRequestAudit.thoughtTokens += Number(usage.thoughtsTokenCount) || 0;
@@ -11403,7 +13294,17 @@ function writeRequestAuditOnce_(visibleText) {
   const payload = {
     stage: currentRequestAudit.stages.join("+") || "deterministic",
     model: currentRequestAudit.model || "none",
+    attemptedCalls: currentRequestAudit.attemptedCalls,
+    billableCalls: currentRequestAudit.billableCalls,
     paidCalls: currentRequestAudit.paidCalls,
+    routerCalls: currentRequestAudit.routerCalls,
+    routerCacheHits: currentRequestAudit.routerCacheHits,
+    plannerLatencyMs: currentRequestAudit.plannerLatencyMs,
+    routerCostTwd: Number(currentRequestAudit.routerCostTwd.toFixed(4)),
+    routePlanValid: currentRequestAudit.routePlanValid,
+    routePlan: currentRequestAudit.routePlan,
+    claimRoutes: currentRequestAudit.claimRoutes,
+    selectedModel: currentRequestAudit.selectedModel,
     pdfCalls: currentRequestAudit.pdfCalls,
     webCalls: currentRequestAudit.webCalls,
     inputTokens: currentRequestAudit.inputTokens,
@@ -11411,6 +13312,17 @@ function writeRequestAuditOnce_(visibleText) {
     thoughtTokens: currentRequestAudit.thoughtTokens,
     billedOutputTokens: currentRequestAudit.billedOutputTokens,
     estimatedCostTwd: Number(currentRequestAudit.estimatedCostTwd.toFixed(4)),
+    finalCoverage:
+      currentRequestAudit.finalCoverage ||
+      (/(?:部分|尚未|還沒).{0,20}(?:回答|確認|解答)|沒有.{0,20}(?:明確|證據|結論)/i.test(
+        String(visibleText || ""),
+      )
+        ? currentRequestAudit.sources.length > 0
+          ? "partial"
+          : "unsupported"
+        : currentRequestAudit.sources.length > 0
+          ? "supported"
+          : "unknown"),
     sources: currentRequestAudit.sources,
   };
   writeLog(`[Request Audit v29.6.095] ${JSON.stringify(payload)}`);
@@ -17367,6 +19279,7 @@ function handleMessage(event) {
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
     lastWebUnverifiedDraft = "";
+    LAST_SEMANTIC_ROUTE_ANALYSIS = null;
     LAST_SOURCE_TEST_STATE = null;
     CURRENT_DAILY_QUESTION_REMAINING = null;
     LOADING_ANIMATION_SHOWN = false;
@@ -17432,16 +19345,59 @@ function handleMessage(event) {
     let elaborationOriginalQuestion = "";
     let elaborationReplyAnchor = "";
     let resumedFromPlainModelClarification = false;
+    let resumedFromSemanticClarification = false;
+    let heldSemanticClarificationCharge = false;
     let dailyQuestionReservedThisMessage = false;
     let isDualBubbleComplete = false; // v29.3.29: 修正旗標未定義問題
     let filesToAttach = []; // v29.4.19: Fix Scope Error (filesToAttach is not defined)
     let primaryModel = null; // v29.4.20: Fix Scope Error (primaryModel is not defined)
     let resolvedConversationModel = ""; // 本輪由選型、比較代稱或持久狀態明確解析出的型號
     let activeTurnProductIdentity = null; // 本輪唯一產品身分解析結果，避免重掃 CLASS_RULES
+    let semanticRouterControlsThisTurn = false; // conditional 有效時，舊暗號不得再成為第二個決策者
+    let semanticRouteResult = null;
+    let recentSourceQuestionBeforeTurn = null; // rememberRecentSourceQuestion_ 覆寫前的上一題
     let aiSearchQuery = null; // v29.4.22: AI-driven search query
     let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
 
     const pendingBeforeQuota = readPendingSourceState_(contextId, true);
+    const semanticClarificationKey = getSemanticClarificationKey_(
+      contextId,
+      userId,
+    );
+    const pendingSemanticClarification = parseSourceStateJson_(
+      cache.get(semanticClarificationKey),
+    );
+    if (
+      pendingSemanticClarification &&
+      Number(pendingSemanticClarification.expiresAt || 0) >= Date.now() &&
+      !msg.startsWith("#") &&
+      !msg.startsWith("/") &&
+      !/^(?:取消|N)$/i.test(String(msg || "").trim())
+    ) {
+      const clarificationReply = stripInternalRoutingHints_(msg);
+      const clarificationModel = normalizeModelForDisplay(
+        pendingSemanticClarification.model || "",
+      );
+      msg = [
+        String(pendingSemanticClarification.question || "").trim(),
+        `店員補充：${clarificationReply}`,
+        clarificationModel ? `(型號: ${clarificationModel})` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      userMessage = msg;
+      routingQuestion = msg;
+      resumedFromSemanticClarification = true;
+      heldSemanticClarificationCharge =
+        consumeDailyQuestionModelSelectionHold_(userId);
+      cache.remove(semanticClarificationKey);
+      writeLog(
+        `[Semantic Clarification v29.6.277] 已接回原題 model=${clarificationModel || "none"}`,
+      );
+    } else if (pendingSemanticClarification) {
+      cache.remove(semanticClarificationKey);
+      clearDailyQuestionModelSelectionHold_(userId);
+    }
     let pendingPlainModelTopic = String(
       cache.get(`${userId}:pending_topic`) || "",
     ).trim();
@@ -17553,6 +19509,7 @@ function handleMessage(event) {
     }
     if (
       !isPlainModelClarification &&
+      !resumedFromSemanticClarification &&
       !resumedFromFamilyAlias &&
       !pendingPlainDescriptorResolution.recognized &&
       shouldCountDailyQuestionText_(msg, contextId)
@@ -17772,6 +19729,7 @@ function handleMessage(event) {
       clearPendingSourceState_(contextId);
     } else if (!msg.startsWith("#")) {
       clearLegacyAdvancedRouteState_(cache, userId, contextId);
+      recentSourceQuestionBeforeTurn = readRecentSourceQuestion_(contextId);
       const rememberedModels = extractFullModelLikeTokens(msg);
       const productBeforeQuestion = readSourceProductState_(contextId);
       if (
@@ -19717,6 +21675,38 @@ function handleMessage(event) {
     }
 
     // D. 一般對話
+    const semanticRouterModeForTurn = getSemanticRouterMode_(
+      typeof IS_TEST_MODE !== "undefined" &&
+        IS_TEST_MODE &&
+        event.semanticRouterMode
+        ? event.semanticRouterMode
+        : undefined,
+    );
+    const earlySemanticHistory =
+      semanticRouterModeForTurn === "conditional" &&
+      isEllipticalEvidenceFollowUp_(routingQuestion)
+        ? getHistoryFromCacheOrSheet(contextId)
+        : null;
+    const earlySemanticPreviousTopic = String(
+      (recentSourceQuestionBeforeTurn &&
+        recentSourceQuestionBeforeTurn.question) ||
+        (earlySemanticHistory
+          ? getPreviousMeaningfulUserQuestion_(earlySemanticHistory)
+          : "") ||
+        "",
+    ).trim();
+    const deferLocalEvidenceForSemanticFollowUp =
+      shouldDeferLocalEvidenceForSemanticFollowUp_(
+        routingQuestion,
+        earlySemanticPreviousTopic,
+        semanticRouterModeForTurn,
+      );
+    if (deferLocalEvidenceForSemanticFollowUp) {
+      writeLog(
+        `[Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: ${routingQuestion.substring(0, 80)}`,
+      );
+    }
+
     // v29.6.116: 系列別稱的型號相關題先解析 CLASS_RULES 候選；精準 QA 只有在
     // 題目本身也涵蓋同一別稱時才可零成本直答，避免 Smart/其他型號 QA 污染 G8。
     const aliasSelectionBeforeQa = getAliasOnlySelectionModelsFromQuery(
@@ -19724,7 +21714,9 @@ function handleMessage(event) {
       10,
       false,
     );
-    const directLocalQa = incomingMessageWasElaboration
+    const directLocalQa =
+      incomingMessageWasElaboration ||
+      deferLocalEvidenceForSemanticFollowUp
       ? null
       : findLocalMatchInQA(routingQuestion, userId);
     const directQaCoversAliases =
@@ -19805,6 +21797,7 @@ function handleMessage(event) {
     ).map(normalizeModelForDisplay);
     if (
       !incomingMessageWasElaboration &&
+      !deferLocalEvidenceForSemanticFollowUp &&
       exactRuleModels.length === 1 &&
       (isInterfaceDisplayTimingQuery_(routingQuestion) ||
         (isModeQualifiedDisplaySpecQuestion_(routingQuestion) &&
@@ -19813,9 +21806,10 @@ function handleMessage(event) {
             findExactModelRuleLine_(exactRuleModels[0]),
           )))
     ) {
-      if (dailyQuestionReservedThisMessage) {
+      if (dailyQuestionReservedThisMessage || heldSemanticClarificationCharge) {
         refundDailyQuestionUsage_(userId, "qualified_display_spec_to_manual");
         dailyQuestionReservedThisMessage = false;
+        heldSemanticClarificationCharge = false;
       }
       rememberSourceProductModel_(
         contextId,
@@ -19841,6 +21835,7 @@ function handleMessage(event) {
     }
     if (
       !incomingMessageWasElaboration &&
+      !deferLocalEvidenceForSemanticFollowUp &&
       exactRuleModels.length === 1 &&
       isLikelyLocalSpecRuleQuestion_(routingQuestion)
     ) {
@@ -19889,9 +21884,11 @@ function handleMessage(event) {
         exactRuleModels[0],
       );
       if (missingExactFactReply) {
-        const heldPlainModelCharge = resumedFromPlainModelClarification
-          ? consumeDailyQuestionModelSelectionHold_(userId)
-          : false;
+        const heldPlainModelCharge = resumedFromSemanticClarification
+          ? heldSemanticClarificationCharge
+          : resumedFromPlainModelClarification
+            ? consumeDailyQuestionModelSelectionHold_(userId)
+            : false;
         if (dailyQuestionReservedThisMessage || heldPlainModelCharge) {
           refundDailyQuestionUsage_(userId, "exact_model_missing_fact_to_manual");
           dailyQuestionReservedThisMessage = false;
@@ -19913,12 +21910,15 @@ function handleMessage(event) {
     // 都未完成的選單、連接、故障等操作題，才直接進手冊。
     if (
       !incomingMessageWasElaboration &&
+      !deferLocalEvidenceForSemanticFollowUp &&
       exactRuleModels.length === 1 &&
       isOperationOrTroubleshootQuery(routingQuestion)
     ) {
-      const heldModelSelectionCharge = resumedFromPlainModelClarification
-        ? consumeDailyQuestionModelSelectionHold_(userId)
-        : false;
+      const heldModelSelectionCharge = resumedFromSemanticClarification
+        ? heldSemanticClarificationCharge
+        : resumedFromPlainModelClarification
+          ? consumeDailyQuestionModelSelectionHold_(userId)
+          : false;
       if (dailyQuestionReservedThisMessage || heldModelSelectionCharge) {
         refundDailyQuestionUsage_(userId, "exact_operation_to_manual");
         dailyQuestionReservedThisMessage = false;
@@ -19946,7 +21946,9 @@ function handleMessage(event) {
       return;
     }
 
-    const exactRuleComparisonReply = incomingMessageWasElaboration
+    const exactRuleComparisonReply =
+      incomingMessageWasElaboration ||
+      deferLocalEvidenceForSemanticFollowUp
       ? ""
       : buildExactRuleComparisonReply_(routingQuestion);
     if (exactRuleComparisonReply) {
@@ -19980,6 +21982,7 @@ function handleMessage(event) {
     const isExclusiveFeatureQuery = findExclusiveFeatureInQuery_(routingQuestion) !== null;
     const freshOperationNeedsModel =
       !incomingMessageWasElaboration &&
+      !deferLocalEvidenceForSemanticFollowUp &&
       !isExclusiveFeatureQuery &&
       isOperationOrTroubleshootQuery(routingQuestion) &&
       extractFullModelLikeTokens(routingQuestion).length === 0 &&
@@ -20013,7 +22016,8 @@ function handleMessage(event) {
       );
     }
 
-    const history = getHistoryFromCacheOrSheet(contextId);
+    const history =
+      earlySemanticHistory || getHistoryFromCacheOrSheet(contextId);
     const userMsgObj = { role: "user", content: msg };
 
     // 檢查是否在 PDF 模式（之前觸發過深度搜尋，同主題追問繼續用 PDF）
@@ -20210,6 +22214,221 @@ function handleMessage(event) {
 
     const hasSelectedPdf = cachedDirectModels.length > 0; // 現在絕對安全
 
+    // v29.6.277：只有 deterministic QA／RULE 已無法完整終止、且題目確實
+    // 模糊／複合／像追問時，才用一次 Flash-Lite 拆主張。Router 不回答事實、
+    // 不掛 PDF／Web 工具，也不能自行扣額度；程式仍是唯一來源決策者。
+    const semanticCandidates = dedupDisplayModels(
+      cachedDirectModels
+        .concat(
+          activeTurnProductIdentity &&
+            Array.isArray(activeTurnProductIdentity.candidates)
+            ? activeTurnProductIdentity.candidates
+            : [],
+        )
+        .concat(primaryModel ? [primaryModel] : [])
+        .concat(resolvedConversationModel ? [resolvedConversationModel] : []),
+      20,
+    );
+    const semanticConfirmedModel = normalizeModelForDisplay(
+      resolvedConversationModel || primaryModel || "",
+    );
+    const semanticPreviousTopic =
+      earlySemanticPreviousTopic || getPreviousMeaningfulUserQuestion_(history);
+    const semanticLocalPreview = buildKnownRuleAnchorForMixedOperation_(
+      routingQuestion,
+      semanticConfirmedModel,
+    );
+    const semanticRouterInput = {
+      originalQuestion: routingQuestion,
+      previousTopic: semanticPreviousTopic,
+      confirmedModel: semanticConfirmedModel,
+      candidates: semanticCandidates,
+      identityKind:
+        activeTurnProductIdentity && activeTurnProductIdentity.kind
+          ? activeTurnProductIdentity.kind
+          : "none",
+      localCoverage: semanticLocalPreview ? "partial" : "none",
+      localEvidenceIds: semanticLocalPreview ? ["deterministic_rule_partial"] : [],
+      manualAvailable: Boolean(
+        hasPdfForModel ||
+          (semanticConfirmedModel &&
+            hasOfficialManualForModel_(semanticConfirmedModel)) ||
+          semanticCandidates.some(function (candidate) {
+            return hasOfficialManualForModel_(candidate);
+          }),
+      ),
+      explicitSource: false,
+      isElaboration: incomingMessageWasElaboration,
+      unknownModel: extractFullModelLikeTokens(routingQuestion).some(function (
+        model,
+      ) {
+        return !isKnownFullModelToken(model);
+      }),
+      ambiguousAlias: Boolean(
+        activeTurnProductIdentity &&
+          (activeTurnProductIdentity.kind === "alias" ||
+            activeTurnProductIdentity.kind === "partial") &&
+          semanticCandidates.length > 1 &&
+          !semanticConfirmedModel,
+      ),
+      possibleFollowUp: Boolean(
+        semanticPreviousTopic && isEllipticalEvidenceFollowUp_(routingQuestion),
+      ),
+      multiClaim: isPotentialMultiClaimQuestion_(routingQuestion),
+      routeConflict: Boolean(
+        isLikelyLocalSpecRuleQuestion_(routingQuestion) &&
+          (isOperationOrTroubleshootQuery(routingQuestion) ||
+            isManualVerificationRequiredQuery(routingQuestion)),
+      ),
+      kbVersion: GAS_VERSION,
+      mode: semanticRouterModeForTurn,
+    };
+    semanticRouteResult = runConditionalRouteAnalysis_(semanticRouterInput);
+    if (semanticRouteResult.attempted) {
+      writeLog(
+        `[Semantic Router v29.6.277] mode=${semanticRouteResult.mode} valid=${semanticRouteResult.valid} cache=${semanticRouteResult.cacheHit} latency=${Number(semanticRouteResult.latencyMs || 0)}ms plan=${semanticRouteResult.analysis ? JSON.stringify(semanticRouteResult.analysis) : semanticRouteResult.error}`,
+      );
+    }
+    if (
+      semanticRouteResult.mode === "conditional" &&
+      semanticRouteResult.analysis
+    ) {
+      const clarificationExecution = getSemanticRouteExecution_(
+        semanticRouteResult,
+        semanticRouterInput,
+      );
+      if (
+        clarificationExecution.action === "clarify" &&
+        promptSemanticRouterClarification_(
+          routingQuestion,
+          clarificationExecution.model || semanticConfirmedModel,
+          userId,
+          replyToken,
+          contextId,
+          Boolean(
+            dailyQuestionReservedThisMessage ||
+              heldSemanticClarificationCharge ||
+              incomingMessageWasModelSelection ||
+              resumedFromPlainModelClarification ||
+              resumedFromFamilyAlias,
+          ),
+        )
+      ) {
+        semanticRouterControlsThisTurn = true;
+        if (currentRequestAudit) {
+          currentRequestAudit.selectedModel = normalizeModelForDisplay(
+            clarificationExecution.model || semanticConfirmedModel || "",
+          );
+        }
+        return;
+      }
+      if (
+        clarificationExecution.action === "ask_full_model" &&
+        promptSemanticRouterFullModel_(
+          routingQuestion,
+          userId,
+          replyToken,
+          contextId,
+          Boolean(
+            dailyQuestionReservedThisMessage ||
+              heldSemanticClarificationCharge ||
+              incomingMessageWasModelSelection ||
+              resumedFromPlainModelClarification ||
+              resumedFromFamilyAlias,
+          ),
+        )
+      ) {
+        semanticRouterControlsThisTurn = true;
+        return;
+      }
+    }
+    if (
+      semanticRouteResult.mode === "conditional" &&
+      semanticRouteResult.valid &&
+      semanticRouteResult.analysis &&
+      semanticRouteResult.analysis.confidence === "high"
+    ) {
+      semanticRouterControlsThisTurn = true;
+      const semanticExecution = getSemanticRouteExecution_(
+        semanticRouteResult,
+        semanticRouterInput,
+      );
+      if (currentRequestAudit) {
+        currentRequestAudit.selectedModel = normalizeModelForDisplay(
+          semanticExecution.model || semanticConfirmedModel || "",
+        );
+      }
+      if (semanticExecution.action === "ask_model") {
+        if (
+          promptSemanticRouterModelSelection_(
+            routingQuestion,
+            semanticExecution.candidates,
+            userId,
+            replyToken,
+            contextId,
+          )
+        ) {
+          return;
+        }
+        semanticRouterControlsThisTurn = false;
+      } else if (
+        semanticExecution.action === "manual" ||
+        semanticExecution.action === "web"
+      ) {
+        const heldModelSelectionCharge =
+          resumedFromSemanticClarification
+            ? heldSemanticClarificationCharge
+            : incomingMessageWasModelSelection || resumedFromPlainModelClarification
+            ? consumeDailyQuestionModelSelectionHold_(userId)
+            : false;
+        let advancedDailyQuestionCharge = "";
+        if (dailyQuestionReservedThisMessage) {
+          advancedDailyQuestionCharge = "current";
+          dailyQuestionReservedThisMessage = false;
+        } else if (heldModelSelectionCharge) {
+          advancedDailyQuestionCharge = "model_hold";
+        }
+        if (semanticExecution.model) {
+          rememberSourceProductModel_(
+            contextId,
+            semanticExecution.model,
+            `semantic_router_${semanticExecution.action}`,
+          );
+        }
+        rememberRecentSourceQuestion_(
+          contextId,
+          routingQuestion,
+          semanticExecution.model || semanticConfirmedModel,
+        );
+        if (semanticExecution.action === "manual") {
+          executeAutomaticManualFallback_(
+            routingQuestion,
+            semanticExecution.model || semanticConfirmedModel,
+            contextId,
+            userId,
+            replyToken,
+            {
+              analysis: semanticRouteResult.analysis,
+              dailyQuestionCharge: advancedDailyQuestionCharge,
+            },
+          );
+        } else {
+          executeAutomaticWebFallback_(
+            routingQuestion,
+            semanticExecution.model || semanticConfirmedModel,
+            contextId,
+            userId,
+            replyToken,
+            {
+              analysis: semanticRouteResult.analysis,
+              dailyQuestionCharge: advancedDailyQuestionCharge,
+            },
+          );
+        }
+        return;
+      }
+    }
+
     try {
       // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
       // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
@@ -20280,6 +22499,17 @@ function handleMessage(event) {
       }
 
       if (rawResponse) {
+        if (semanticRouterControlsThisTurn) {
+          rawResponse = String(rawResponse)
+            .replace(
+              /\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC)(?:[:：][^\]]*)?\]/gi,
+              "",
+            )
+            .trim();
+          writeLog(
+            "[Semantic Router v29.6.277] conditional 已接管來源；忽略 Fast 舊暗號",
+          );
+        }
         // 🆕 v29.5.218: 實體交叉比對防謊器 (Fake-Source Validator)
         // 若使用者詢問的是 6K/8K 等超前規格，但我們規格庫目前沒有，而 AI 卻自我幻覺瞎編，我們必須將其強行攔寫。
         const isQueryAboutNewSpec = /6K|8K/i.test(userMessage);
@@ -20301,6 +22531,16 @@ function handleMessage(event) {
           routingQuestion,
           rawResponse,
         );
+        // 能力／Evidence guard 可能為舊流程補回 AUTO_SEARCH 暗號；conditional
+        // 已接管時必須在所有 guard 後再次清除，避免形成第二套路由決策者。
+        if (semanticRouterControlsThisTurn) {
+          rawResponse = String(rawResponse)
+            .replace(
+              /\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC)(?:[:：][^\]]*)?\]/gi,
+              "",
+            )
+            .trim();
+        }
 
         // 🔥 v29.5.107: 完整記錄 AI 原始回應
         writeLog(`[AI Raw Response] ${rawResponse}`);
@@ -20321,9 +22561,14 @@ function handleMessage(event) {
         let webSourceRecommended = false;
 
         // 🔥 v29.5.106: 詳細 LOG - 檢測暗號
-        const hasAutoPdf = /\[AUTO_SEARCH_PDF/i.test(rawResponse);
-        const hasAutoWeb = /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
-        const hasNeedDoc = /\[NEED_DOC\]/i.test(rawResponse);
+        const hasAutoPdf =
+          !semanticRouterControlsThisTurn &&
+          /\[AUTO_SEARCH_PDF/i.test(rawResponse);
+        const hasAutoWeb =
+          !semanticRouterControlsThisTurn &&
+          /\[AUTO_SEARCH_WEB\]/i.test(rawResponse);
+        const hasNeedDoc =
+          !semanticRouterControlsThisTurn && /\[NEED_DOC\]/i.test(rawResponse);
         const hasMissingSourceTag = /\[來源[：:]\s*缺失\]/i.test(rawResponse);
         const looksLikeMissingDataReply = isKnowledgeMissingReply_(finalText);
         writeLog(
@@ -20331,6 +22576,7 @@ function handleMessage(event) {
         );
 
         if (
+          !semanticRouterControlsThisTurn &&
           (hasMissingSourceTag || looksLikeMissingDataReply) &&
           !hasAutoPdf &&
           !hasAutoWeb &&
@@ -20349,6 +22595,7 @@ function handleMessage(event) {
           );
         let forcedModelSelectionTrigger = false;
         if (
+          !semanticRouterControlsThisTurn &&
           !hasAutoPdf &&
           !hasAutoWeb &&
           !hasNeedDoc &&
@@ -20403,7 +22650,7 @@ function handleMessage(event) {
           normalizedFastAnswer,
           userQuestion: routingQuestion,
         });
-        if (shouldSopPdfEscalate) {
+        if (!semanticRouterControlsThisTurn && shouldSopPdfEscalate) {
           const degradedNote =
             contextHealth && contextHealth.degraded ? "；上下文降級" : "";
           writeLog(
@@ -20496,11 +22743,12 @@ function handleMessage(event) {
         // 2. Implicit Trigger (僅偵測到型號): 僅顯示泡泡，不自動跳轉 (避免誤判)
 
         // v29.4.22: Enhanced Trigger Detection with Argument Support
-        const explicitTriggerMatch = finalText.match(
-          /\[AUTO_SEARCH_PDF(?:[:：]\s*(.+?))?\]/i,
-        );
+        const explicitTriggerMatch = semanticRouterControlsThisTurn
+          ? null
+          : finalText.match(/\[AUTO_SEARCH_PDF(?:[:：]\s*(.+?))?\]/i);
         const hasExplicitTrigger =
-          !!explicitTriggerMatch || finalText.includes("[NEED_DOC]");
+          !semanticRouterControlsThisTurn &&
+          (!!explicitTriggerMatch || finalText.includes("[NEED_DOC]"));
 
         // QA／RULE 明確要求手冊時，直接交給統一手冊狀態機。
         // 不再使用「本對話查過 PDF 就改 Web」的黏性旁路；每一題依自身證據需求決定來源。
@@ -20947,7 +23195,10 @@ function handleMessage(event) {
         // 當 Fast Mode AI 判定需要網路搜尋 (含有 [AUTO_SEARCH_WEB]，通常表示官方資料庫中查無此機型或規格)，
         // 我們拒絕在背景悄悄自動發起聯網。而是直接將回答改寫為誠實無資料的警示引導，
         // 並主動提供 LINE 底部 [🌐 這題再搜網路] 按鈕，交由用戶決定是否進行網路搜尋。
-        if (finalText.includes("[AUTO_SEARCH_WEB]")) {
+        if (
+          !semanticRouterControlsThisTurn &&
+          finalText.includes("[AUTO_SEARCH_WEB]")
+        ) {
           webSourceRecommended = true;
           writeLog("[Auto Web Block] 🛑 偵測到 AI 企圖背景聯網，強行攔截改寫為『主動詢問用戶』");
           
@@ -21947,6 +24198,11 @@ function handleMessage(event) {
               `[Answer Envelope v29.6.189] status=supported evidence=${activeAnswerEnvelope.evidenceRefs.join(",") || "none"}`,
             );
           }
+          if (currentRequestAudit) {
+            currentRequestAudit.finalCoverage = activeAnswerEnvelope.status;
+            currentRequestAudit.selectedModel =
+              currentRequestAudit.selectedModel || envelopeModel;
+          }
         }
 
         // v29.6.092: Quick Reply 依回答狀態顯示，失敗／衝突／達上限時停止重試入口。
@@ -22075,9 +24331,11 @@ function handleMessage(event) {
           markDailyQuestionModelSelectionHold_(userId);
         } else if (manualSourceRecommended || webSourceRecommended) {
           const heldModelSelectionCharge =
-            incomingMessageWasModelSelection || resumedFromPlainModelClarification
-            ? consumeDailyQuestionModelSelectionHold_(userId)
-            : false;
+            resumedFromSemanticClarification
+              ? heldSemanticClarificationCharge
+              : incomingMessageWasModelSelection || resumedFromPlainModelClarification
+              ? consumeDailyQuestionModelSelectionHold_(userId)
+              : false;
           if (dailyQuestionReservedThisMessage || heldModelSelectionCharge) {
             refundDailyQuestionUsage_(
               userId,
@@ -26987,13 +29245,39 @@ function doGet(e) {
 
   // v29.6.024: 真實 webhook 測試, 走 handleMessage 完整流程
   if (e && e.parameter && e.parameter.testRun === "1") {
-    if (!isDoGetMaintenanceAuthorized_(e)) {
+    const maintenanceAuthorized = isDoGetMaintenanceAuthorized_(e);
+    const devProbeAuthorized =
+      isEditorOnlyDevelopmentWebApp_() &&
+      isTestUiAccessTokenValid_(
+        String(e.parameter.testUiAccessToken || ""),
+      );
+    if (!maintenanceAuthorized && !devProbeAuthorized) {
       return buildUnauthorizedResponse_();
     }
-    const q = String(e.parameter.q || "S27BM500 多少吋?");
-    const uid = String(e.parameter.uid || "TEST_OPENCODE_001");
+    const rawQuestion = String(e.parameter.q || "").trim();
+    if (!rawQuestion) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, error: "Missing q" }),
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    const q = rawQuestion.substring(0, 500);
+    const requestedUid = String(e.parameter.uid || "TEST_OPENCODE_001")
+      .replace(/[^A-Za-z0-9_-]/g, "_")
+      .substring(0, 80);
+    const uid = devProbeAuthorized
+      ? requestedUid.indexOf("TEST_DEV_") === 0
+        ? requestedUid
+        : `TEST_DEV_${computeReplyAnchor_(requestedUid || String(Date.now()))}`
+      : requestedUid || "TEST_OPENCODE_001";
+    const requestedRouterMode = String(e.parameter.router || "")
+      .trim()
+      .toLowerCase();
+    const previousTestMode = IS_TEST_MODE;
     IS_TEST_MODE = true;
     TEST_LOGS = [];
+    LAST_SOURCE_TEST_STATE = null;
+    LAST_TEST_QUICK_REPLY_ITEMS = [];
+    LAST_SEMANTIC_ROUTE_ANALYSIS = null;
     const fakeEvent = {
       replyToken: "TEST_REPLY_TOKEN",
       source: { type: "user", userId: uid },
@@ -27001,12 +29285,17 @@ function doGet(e) {
       type: "message",
       timestamp: Date.now(),
     };
+    if (["off", "shadow", "conditional"].indexOf(requestedRouterMode) >= 0) {
+      fakeEvent.semanticRouterMode = requestedRouterMode;
+    }
     try {
       handleMessage(fakeEvent);
       flushLogs();
     } catch (err) {
       TEST_LOGS.push(`[Fatal] ${err.message}`);
       flushLogs();
+    } finally {
+      IS_TEST_MODE = previousTestMode;
     }
     // 抓正式 Reply；只有沒有正式出口紀錄時，才退回中間稿。
     let reply = "";
@@ -27025,11 +29314,43 @@ function doGet(e) {
       reply = parseLogContent(rawFallbackLog, "[AI Raw Response]");
     }
     reply = reply.substring(0, 1500);
+    let requestAudit = null;
+    const auditMarker = "[Request Audit v29.6.095] ";
+    for (let i = TEST_LOGS.length - 1; i >= 0; i--) {
+      const markerIndex = TEST_LOGS[i].indexOf(auditMarker);
+      if (markerIndex < 0) continue;
+      try {
+        requestAudit = JSON.parse(
+          TEST_LOGS[i].substring(markerIndex + auditMarker.length),
+        );
+      } catch (error) {
+        requestAudit = { parseError: true };
+      }
+      break;
+    }
+    const safeProbeLogs = TEST_LOGS.filter((line) =>
+      /\[(?:Semantic Router|Request Audit|Source|PDF|Web|Reply|Fatal|KB Select|Direct QA|Direct Rule)/.test(
+        line,
+      ),
+    )
+      .slice(-60)
+      .map((line) => line.substring(0, 500));
     return ContentService.createTextOutput(
       JSON.stringify({
         q: q,
+        uid: uid,
+        routerMode:
+          ["off", "shadow", "conditional"].indexOf(requestedRouterMode) >= 0
+            ? requestedRouterMode
+            : getSemanticRouterMode_(),
         reply: reply.substring(0, 1500),
-        logs: TEST_LOGS.slice(-20).map(l => l.substring(0, 300))
+        requestAudit: requestAudit,
+        routeAnalysis: LAST_SEMANTIC_ROUTE_ANALYSIS,
+        sourceState: LAST_SOURCE_TEST_STATE,
+        quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
+        logs: maintenanceAuthorized
+          ? TEST_LOGS.slice(-80).map((line) => line.substring(0, 500))
+          : safeProbeLogs,
       })
     ).setMimeType(ContentService.MimeType.JSON);
   }
@@ -27135,7 +29456,7 @@ function doGet(e) {
  * 測試入口 (V27.7.2 - 型號選擇反問修復版)
  * 修正重點：捕捉型號選擇反問，確保前端能顯示選項
  */
-function testMessage(msg, userId, testUiAccessToken) {
+function testMessage(msg, userId, testUiAccessToken, semanticRouterMode) {
   assertTestUiAuthorized_(testUiAccessToken);
   IS_TEST_MODE = true;
   TEST_LOGS = [];
@@ -27160,6 +29481,12 @@ function testMessage(msg, userId, testUiAccessToken) {
     type: "message",
     timestamp: new Date().getTime(),
   };
+  const requestedRouterMode = String(semanticRouterMode || "")
+    .trim()
+    .toLowerCase();
+  if (["off", "shadow", "conditional"].indexOf(requestedRouterMode) >= 0) {
+    fakeEvent.semanticRouterMode = requestedRouterMode;
+  }
 
   try {
     if (typeof handleMessage === "function") {
@@ -27367,6 +29694,7 @@ function testMessage(msg, userId, testUiAccessToken) {
     logs: TEST_LOGS,
     sourceState: LAST_SOURCE_TEST_STATE,
     quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
+    routeAnalysis: LAST_SEMANTIC_ROUTE_ANALYSIS,
   };
 }
 

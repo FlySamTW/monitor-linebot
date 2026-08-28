@@ -1,4 +1,57 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.276)
+# Samsung LINE Bot 完整流程解析 (v29.6.277)
+
+## 2026-08-28（v29.6.277 / 條件式 RouteAnalysisV1 主張規劃器）
+
+> **現行優先契約**：本節取代所有與其衝突的舊版「必須再按手冊授權」、「AUTO_SEARCH 決定來源」及「每題只能有一個進階來源」敘述。歷史章節只保留事故與演進背景；實作、測試與發布一律以本節為準。
+
+### 決策原委與邊界
+
+- 本 Bot 是三星螢幕店員的內部同儕工具，不是對外制式客服。回答使用台灣口語、直接、有人味，不套「尊敬的客戶／請您」等客服敬語；已知使用者是 Sam 時可自然直呼 Sam，但不得每句強行稱呼或假裝私人關係。
+- 本版導入的是「條件式主張規劃器」，不是每題先多問一次 AI。指令、postback、冪等、配額、範圍、持久型號、精準 QA、完整 RULE、人工核對片段，以及使用者已明確按下手冊／網路來源時，全部先由程式處理，`routerCalls=0`；只有型號／系列模糊、可能承接前題、複合多主張、QA／RULE 僅部分覆蓋或既有規則互相衝突時才呼叫 Router。
+- Router 固定使用 `gemini-2.5-flash-lite`、`thinkingBudget: 0`、短 Prompt、Structured Output、無搜尋／檔案／其他工具、無 `answer` 欄位。型號只能從程式給的候選 index 選擇；Router 不得創造產品事實、扣額度、授權來源、指定 PDF 或覆蓋持久型號。
+- Router 單輪最多一次；逾時、429、格式錯誤、額外答案欄位、候選越界或低信心時零重試，直接回到既有 fail-closed 安全路徑。相同題目＋型號＋知識庫版本可使用短期快取。
+- 程式仍是唯一來源決策者，順序固定為 `控制／身分／免費證據 → QA／RULE → PDF → Web`。`conditional` 接管後，舊 `[AUTO_SEARCH_PDF]`、`[AUTO_SEARCH_WEB]`、`[NEED_DOC]` 只能作 fallback／稽核，不得再成為第二個正式決策者或覆蓋 RouteAnalysisV1。
+- 一般使用者送出問題代表希望系統完成可核對答案；在 `conditional` 模式，通過應用端 schema、候選、信心與狀態驗證的 Router 分類可由**程式政策**自動執行必要 PDF／Web，不需要再要求使用者按一次來源。這不是 Router 自行授權：Router 只回傳分類，程式仍須通過型號、來源可用性、Evidence、配額、成本、冪等與供應商預檢。使用者明確按手冊／網路時則直接進該來源狀態機，`routerCalls=0`；缺型號只選一次，選完接回原題。
+- 分類仍不確定時只准問一次自然釐清，例如「你是要查這款的操作步驟，還是確認它有沒有這個功能？」；不得顯示 Router、claim、confidence、schema、fallback 等程式術語。釐清仍不足時要到安全終點，可用同儕口吻說「我先幫你記給 Sam」，但不得虛構已通知、已建立工單或已由 Sam 處理。
+- 待釐清／補型號狀態保存原題 10 分鐘；使用者在有效期內回答系列、完整型號或釐清選項時，必須接回原問題，不建立新題、不重扣一般 20 題。逾時後才視為新流程，但持久完整型號仍依既有跨日契約保存。
+
+### RouteAnalysisV1 與 Evidence 契約
+
+- 結構化結果只描述 `topicRelation`、`productAction`、候選 index、`claims[]`、每項 `intent / evidenceNeed / answerShape`、信心與 reason code；每個主張分開決定本機證據、型號特定手冊、時效 Web或一般推理需求。
+- Router 只負責拆題與關係判斷，應用程式仍要驗證 schema、候選、信心、來源可用性與既有身分狀態；格式正確不代表語意正確。
+- 每個回答主張必須綁定 `claimId、canonical model、來源、頁碼／網址、同段摘錄、限定條件`。數值與限定模式必須在同一筆可核對證據中形成明確關係；例如「PBP 兩側都是 120Hz」只有同一證據明文同時綁定 PBP、兩側與 120Hz 才能宣稱，分散出現的 PBP 與整機最高 120Hz 不得拼接推論。
+- Web 要支持更新率、尺寸、介面數量、功率等精確產品數值時，evidence 必須命中本題 canonical 完整型號；只命中 G8／M7 等系列、相近型號或產品家族的網頁，不得用來肯定本機數值。系列層證據只可提供低風險排除方向或建議核對項目，必須明示尚未證實本型號。
+- 部分主張成立時保留有效答案，只將未解主張送往下一來源；不得因其中一項失敗丟棄全部已確認內容，也不得輸出無證據產品斷言。
+
+### 多主張、多來源與配額轉移
+
+1. 先依每個 claim 執行高信心 QA／精確 RULE／人工核對片段；命中的內容立即形成免費 evidence anchor，不再交給付費來源。
+2. 剩餘 `manual_model_specific` claims 合併成同一次、同一已確認型號的 PDF 查詢；不得每個 claim 各讀一次手冊。若缺完整型號，只顯示實際 PDF 索引候選，選定後接續同一 plan。
+3. `web_current` claims 不得混入 PDF prompt。只有 Web claims 時直接做一次 Web；同題同時有手冊與時效／第三方 Web claims 時，先保留本機 evidence、再查一次 PDF，最後只把計畫中的 Web claims 合併成一次 Web 查詢。
+4. 一般 20 題額度只保留於本機／Fast 已交付實質答案的情況；一旦該題轉入 PDF 或 Web，原本的一般題 hold 只退回一次。Router 呼叫、補型號、選型、快取命中與來源 preflight 都不扣一般、手冊或 Web 次數。
+5. 真正送出 PDF 供應商請求前才扣手冊 1 次；Web-only 或混合 plan 的「計畫性 Web claims」真正送出前才扣使用者 Web 1 次。混合 plan 可以是手冊 1＋Web 1，但不得再扣一般 20 題，也不得因 claims 數量重複扣同一來源。
+6. 「手冊本身無證據／缺檔／索引或供應商失敗」所觸發的 Web 是**系統補救**，不是原 plan 的 `web_current` claim：不扣使用者 Web 10 次額度，另受每聊天室每日 3 次系統補救上限；只能補救一次，不得再回 PDF。若同一 plan 原本已有 Web claims，該次 Web 仍屬計畫性 Web 並扣 Web 1 次，不能假借系統補救免額度。
+7. 請求送出後即使 no evidence 或供應商回錯仍算該來源一次；送出前被型號、檔案、token、成本或額度守門擋下則不扣。相同 route plan／型號／問題命中 operation cache 時零供應商、零再次扣次。
+
+### 模式、成本與稽核
+
+- `SEMANTIC_ROUTER_MODE=off|shadow|conditional`：v29.6.277 正式預設為 `conditional`；`off` 僅供明確停用，`shadow` 只記錄比較、不改正式答案與來源額度。TestUI 可用 request-scoped `?router=off|shadow|conditional` 驗收，不修改全域 ScriptProperties 或正式同仁流量。
+- 稽核至少記錄 `routerCalls、routerCacheHits、plannerLatencyMs、routerCostTwd、routePlanValid、claimRoutes、selectedModel、pdfCalls、webCalls、finalCoverage`。完整 QA／RULE、指令與明確來源按鍵必須維持 `routerCalls=0`；條件式題每輪最多一次 Router，且不得增加等價題的 PDF／Web 呼叫數。
+- 模型與工具契約不變：Router／Fast 仍用 Gemini 2.5 Flash-Lite；PDF／Web 仍用 Gemini 2.5 Flash。本版未改用 Gemini 3.x、較貴模型、背景搜尋或新增搜尋工具。
+- Router 輸入不是完整 Prompt／QA／RULE／PDF：原題最多 500 字、上一主題最多 300 字、候選最多 20 個、局部 evidence ID 最多 8 個；claims 最多 5 個，輸出上限 384 tokens，目標約 800～1,500 input 與 50～100 output tokens。以 Flash-Lite Standard US$0.10／M input、US$0.40／M output 估算，常見單次約 NT$0.003～0.006，實際以 `usageMetadata` 與當次匯率成本常數為準，且硬門檻仍為單次不超過 NT$0.01。
+- Router cache TTL 為 600 秒；相同原題、前題、已確認型號、候選、本機覆蓋與 KB 版本命中時 `routerCalls=0 / routerCacheHits=1 / routerCostTwd=0`。HTTP 2xx 但 JSON、候選或信心驗證失敗時，供應商已完成生成，仍依 `usageMetadata` 計入 `routerCostTwd` 後 fallback；缺 API key、送出前例外或未取得 usage 的失敗只記 error／latency，不得虛構費用。HTTP 429／5xx 零重試；現行非 2xx 回應不解析 usage，因此只記 HTTP error／latency，不自行估算成本。
+
+### Files API、File Search 與發布守門
+
+- 現行 PDF 路徑仍是程式依 canonical model、document role、第一頁適用範圍與有效 URI 選檔，再把整份 PDF 以 Gemini Files API `file_data` 送入 `generateContent`；不是 Google managed File Search，也不得在紀錄中稱為已遷移 File Search。
+- File Search 必須另案隔離 A/B，以同一本新機手冊固定題集比較跨頁召回、同名文件、模式限定、引用正確率、P95 延遲與每個有效答案成本。Router 與 RAG 遷移不得同版進行；只有官方相容性、模型、API、成本與來源隔離均通過才可另版評估。
+- 回歸至少涵蓋 G8 模糊選型、M9 第四台、G932 PBP、M7 HDMI、藍牙喇叭、跨日追問、新型號切換、明確來源按鍵與 Router 失敗 fallback。接管門檻為關鍵旅程零錯型號／錯 PDF／無證據斷言、Router JSON 有效率至少 99%、單次 Router 不超過 NT$0.01、P95 額外延遲不超過 2 秒，且固定題集至少 19/20 到達正確終點。
+- 正式發布前須跑 static、contract、`git diff --check`、guarded release dry-run、正式 TestUI 代表旅程與 LINE 真人旅程。Apps Script 版本已逼近 200 上限，發布前必須重新盤點容量並保留正式部署及回復所需版本；Shadow／實驗不得為每次試跑浪費正式版本。
+
+### v29.6.277 真人旅程紀錄
+
+- `零售模式`：系統只補問一次完整型號；使用者補型號後沿用原題、未新增一般題計次，並查到正確官方手冊第 170 頁完成回答。此案例驗證「一次釐清 → 10 分鐘 pending 原題 → 選型後直接續查」已打通。
+- PBP exact-model guard：真人測試確認系列／相近型號的 Web 數值不再當成目前型號證據；只有完整型號 evidence 可支持精確 PBP 數值。無 exact-model 關聯時保留可核對手冊內容，數值主張維持未證實，不以系列最高更新率補答。
 
 ## 2026-08-27（v29.6.276 / PDF 證據數字與 Web 完整句守門）
 
@@ -760,7 +813,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.276）
+## ✅ 現行鐵律 SOP（v29.6.277）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：QA／RULE／已核對片段不足時，自動建立一次性 manual SourceOperation；「查官方手冊」按鍵則是使用者主動指定同一路徑。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限依既有頁面收斂／成本守門處理。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

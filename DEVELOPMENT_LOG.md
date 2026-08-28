@@ -1,5 +1,25 @@
 # 開發對話紀錄
 
+## 2026-08-28（v29.6.277 / 條件式 RouteAnalysisV1 主張規劃器）
+
+> 本紀錄是 v29.6.277 的現行路由決策；若下方歷史版本仍記載「必須再按來源」、「AUTO_SEARCH 決策」或「每題僅一個進階來源」，只代表當時設計，不能覆蓋本節。
+
+- 人設定案：Bot 是店員內部同儕工具，不採對外客服式敬語；可自然稱呼 Sam，但不強行每句帶名字。所有 Router／claim／schema／confidence 等實作語彙只留 LOG，LINE 回覆必須是一般店員看得懂的自然說法。
+- 歷史回歸顯示，長尾失敗主要集中在 G8／Smart 等模糊身分、自然追問、複合問題與 QA／RULE 部分覆蓋；每題一律先問 Router 會讓零成本直答變慢並增加故障點，因此採「deterministic fast path 先行、僅模糊題呼叫一次」的條件式設計。
+- Router 使用 Gemini 2.5 Flash-Lite、thinking=0、短 Prompt、Structured Output、無工具／搜尋／PDF、無 `answer` 欄位與零重試；只能拆 claims、判斷追問關係及從候選 index 選型。低信心、429、逾時、格式或應用驗證失敗均回到安全 fallback。
+- 指令、postback、完整 QA／RULE、人工核對片段與明確來源按鍵全部 `routerCalls=0`。程式仍按 QA／RULE → PDF → Web 決定來源；`conditional` 接管後舊 AUTO_SEARCH 暗號不再是第二個正式決策者。
+- 授權決策定案：一般題已表達取得完整答案的意圖；Router 結果通過 schema、候選、信心與狀態驗證後，由程式政策直接完成所需 PDF／Web，不再回一個要求重按的 CTA。Router 只能分類，不能自行授權或扣額度；明確來源按鍵則跳過 Router 直接執行。
+- 不確定分類只問一次自然釐清；仍無法確定時安全收尾，可說「我先幫你記給 Sam」，但不能假稱已通知。釐清與補型號 pending 的 originalQuestion 保存 10 分鐘，期限內回覆零新增一般 20 題計次並直接續跑原題。
+- Evidence 守門升級為逐主張關聯驗證：來源、canonical model、頁碼／網址、同段摘錄與限定條件必須成對。PBP 兩側 120Hz 必須同一證據明文綁定，不得把不同頁／段的詞與整機最大值拼成產品事實。
+- Web exact-model guard 定案：精確數值 evidence 必須命中完整 canonical model；系列或相近型號 evidence 只能提供低風險排除方向，不可作本型號數值結論。
+- 多來源定案：免費 QA／RULE／verified Evidence 先形成 anchors；同型號手冊 claims 合併一次 PDF；時效／第三方 claims 獨立合併一次 Web。混合題順序為 anchors → PDF → 計畫性 Web，不逐 claim 重燒來源。一般 20 題 hold 在進階來源前只退一次；PDF／計畫性 Web 真送出分別扣 1。PDF 無證據或 pipeline 失敗觸發的系統 Web rescue 不扣使用者 Web 額度、另受每日 3 次上限；原 plan 已有 Web claim 則不是免費 rescue。
+- 模式為 `off|shadow|conditional`，通過接管門檻後正式預設設為 `conditional`；只有明確 `off` 才停用。TestUI `?router=` 僅限 request scope。新增 `routerCalls、routerCacheHits、plannerLatencyMs、routerCostTwd、routePlanValid、claimRoutes、selectedModel、pdfCalls、webCalls、finalCoverage` 稽核，便於比較成本、延遲與終點覆蓋。
+- Router payload 只含原題最多 500 字、前題 300 字、20 個候選與 8 個 evidence ID；最多 5 claims、輸出上限 384 tokens，目標 800～1,500 input／50～100 output。Flash-Lite Standard US$0.10／M input、US$0.40／M output，常見約 NT$0.003～0.006，單次硬門檻 NT$0.01。
+- 600 秒 cache 命中記為 `routerCalls=0 / routerCacheHits=1 / routerCostTwd=0`。成功生成但 JSON／候選／低信心驗證失敗，仍依 `usageMetadata` 記成本再 fallback；送出前失敗或無 usage 只記 error／latency。429／5xx 零重試，現行非 2xx 不解析 usage、也不自行推估成本。
+- 真人測試結果：`零售模式 → 補完整型號` 只釐清一次，補型號後正確沿用原題且未重扣一般額度，最終查到官方手冊第 170 頁；PBP exact-model guard 測試則拒絕以系列／相近型號 Web 數值支持目前機種，只接受完整型號關聯證據。兩條旅程均驗證本輪不是新增單題答案，而是狀態與 Evidence 契約生效。
+- PDF 架構不隨本版變動：仍使用 Files API `file_data`，PDF／Web 仍為 Gemini 2.5 Flash；沒有換 Gemini 3.x、File Search 或新增搜尋工具。File Search 留待隔離固定題 A/B，禁止與語意路由同時遷移而失去根因可辨識性。
+- 發布門檻：固定 20 題至少 19 題到達正確終點、安全題 100%、Router JSON 有效率至少 99%、單次 Router 不超過 NT$0.01、P95 額外延遲不超過 2 秒，且不增加等價題 PDF／Web 呼叫。Apps Script 容量已逼近 200，優先 HEAD／request-scoped 驗證，正式發布前必須先處理容量並保留回復版本。
+
 ## 2026-08-27（v29.6.276 / PDF 有答案卻被證據驗證器誤殺）
 
 - v29.6.275 正式 TestUI 實問 `S57CG952NC 的 PBP 在哪裡開？`，LOG 證明選到正確 `S49CG934,S57CG952.pdf`、`pdfCalls=1`；本機直接核對手冊第 34 頁也確有 `PIP/PBP Mode 開啟或關閉 PIP/PBP 模式`。失敗不是 PDF 沒讀，而是回答帶完整型號時，驗證器將型號內的 57／952 誤認為未受摘錄支持的規格數字。

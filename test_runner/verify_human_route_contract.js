@@ -428,7 +428,7 @@ assert(
   "明確來源入口必須統一進來源狀態機，並在供應商請求前原子保留額度",
 );
 assert(
-  /const directLocalQa = incomingMessageWasElaboration[\s\S]{0,120}findLocalMatchInQA\(routingQuestion, userId\)/.test(linebot) &&
+  /const directLocalQa\s*=[\s\S]{0,320}findLocalMatchInQA\(routingQuestion, userId\)/.test(linebot) &&
     /QA First Router v29\.6\.116/.test(linebot) &&
     /Alias Selection Gate v29\.6\.116/.test(linebot) &&
     !/callLLMWithRetry|UrlFetchApp/.test(

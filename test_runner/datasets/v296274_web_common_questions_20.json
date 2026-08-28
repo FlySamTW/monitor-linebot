@@ -39,7 +39,7 @@
     {"id":11,"conversation":"manual","input":"S27DG502EC 虛擬準心在哪裡開？","expected":"只掛正確共用手冊，回可核對頁碼與功能入口"},
     {"id":12,"conversation":"manual","input":"黑平衡也在同一個 Game 選單嗎？","expected":"沿用 S27DG502EC 與前題，回手冊證據；不得回到選型"},
     {"id":13,"conversation":"manual","input":"S57CG952NC 的 PBP 在哪裡開？","expected":"回多重視窗／PBP 入口，不混入其他 G9 型號"},
-    {"id":14,"conversation":"manual","input":"分割後兩邊最高都能跑 120Hz 嗎？","expected":"沿用 S57CG952NC，回答 PBP 120Hz+120Hz；若 PDF 無證據才做一次 Web 補救"},
+    {"id":14,"conversation":"manual","input":"分割後兩邊最高都能跑 120Hz 嗎？","expected":"沿用 S57CG952NC；只有同一筆證據明文綁定 PBP 左右兩側各 120Hz 才能肯定，否則保留未解並做一次 Web 補救，不得用整機或單一 HDMI 120Hz 推論"},
     {"id":15,"conversation":"manual","input":"S27C900PAC 接 RTX 3090 沒有 5K 畫面怎麼辦？","expected":"回答等待約 2 分鐘重讀 EDID，仍無畫面再斷電重啟；不可泛稱換線即結案"},
 
     {"id":16,"conversation":"service","input":"S27DG602SC 出現殘影要怎麼處理？","expected":"回答 Pixel Refresh／螢幕優化等官方處理方向並保留型號範圍"},

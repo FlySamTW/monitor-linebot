@@ -745,7 +745,7 @@ const aliasLookupBeforeQaIndex = linebot.indexOf(
   generalRouterStart,
 );
 const directQaIndex = linebot.indexOf(
-  "const directLocalQa = incomingMessageWasElaboration",
+  "const directLocalQa =",
   generalRouterStart,
 );
 const aliasGateIndex = linebot.indexOf(
@@ -753,7 +753,7 @@ const aliasGateIndex = linebot.indexOf(
   directQaIndex,
 );
 const historyIndex = linebot.indexOf(
-  "const history = getHistoryFromCacheOrSheet(contextId)",
+  "const history =",
   directQaIndex,
 );
 const freshOperationGuardIndex = linebot.indexOf(
@@ -999,6 +999,8 @@ const context = {
       ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
       : String(model || "").toUpperCase() === "S32HG802SC"
         ? "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8"
+        : String(model || "").toUpperCase() === "S49DG932SC"
+          ? "LS49DG932SCXZW,型號：S49DG932SC,49吋 Odyssey OLED G9"
         : "",
 };
 vm.createContext(context);
@@ -1485,10 +1487,25 @@ assert(
   "PDF 無證據後只能自動補搜一次受控 Web；不扣使用者網搜額度，同一缺檔結果也不得重複呼叫",
 );
 
+assert(
+  /allowPartial/.test(extractFunction(linebot, "buildGroundedSupportedAnswer_")) &&
+    /partialWebText/.test(extractFunction(linebot, "runManualWebRescue_")) &&
+    /partial:\s*true/.test(extractFunction(linebot, "runManualWebRescue_")) &&
+    /rescue\.partial/.test(extractFunction(linebot, "buildManualWebRescueReply_")) &&
+    /status:\s*partial\s*\?\s*"partial"/.test(
+      extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
+    ) &&
+    /webEvidencePartial/.test(advancedRouteText) &&
+    /\?\s*"partial"/.test(advancedRouteText),
+  "部分 PDF／Web 證據必須標成 partial 並保留未解主張，不得冒充完整 success",
+);
+
 const groundedSupportContext = {
   compactGroundedWebAnswer_: (value) => String(value || "").trim(),
   normalizeModelForDisplay: (value) => String(value || "").trim(),
   toHalfWidth: (value) => String(value || ""),
+  extractFullModelLikeTokens: (value) =>
+    String(value || "").match(/\bS\d{2}[A-Z0-9]{4,}\b/gi) || [],
   findExactModelRuleLine_: (model) =>
     String(model || "").toUpperCase() === "S32FM803UC"
       ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
@@ -1504,6 +1521,7 @@ vm.runInContext(
    ${extractFunction(linebot, "matchGroundedModelIdentity_")}
    ${extractFunction(linebot, "isLowRiskGroundedTroubleshooting_")}
    ${extractFunction(linebot, "expandGroundedSupportToCompleteLine_")}
+   ${extractFunction(linebot, "isExactProductFactQuestion_")}
    ${extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_")}
    ${extractFunction(linebot, "buildGroundedSupportedAnswer_")}
    globalThis.exactSupported = buildGroundedSupportedAnswer_([
@@ -1525,10 +1543,39 @@ vm.runInContext(
      "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
    ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
       "Odyssey G8 的 Wi-Fi 斷線可先依下列步驟排除。");
-   globalThis.neighborFamilyRejected = buildGroundedSupportedAnswer_([
-     "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
-   ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
-      "Smart Monitor M7 的 Wi-Fi 斷線可先依下列步驟排除。");`,
+    globalThis.neighborFamilyRejected = buildGroundedSupportedAnswer_([
+      "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
+    ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
+       "Smart Monitor M7 的 Wi-Fi 斷線可先依下列步驟排除。");
+    globalThis.compoundMetricsRejected = buildGroundedSupportedAnswer_([
+      "S27CG510EC 有 1 個 HDMI 埠。"
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠、幾個 DP 埠？");
+    globalThis.compoundMetricsComplete = buildGroundedSupportedAnswer_([
+      "S27CG510EC 有 1 個 HDMI 埠。",
+      "S27CG510EC 有 1 個 DP 埠。"
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠、幾個 DP 埠？");
+    globalThis.supportWithoutPathRejected = buildGroundedSupportedAnswer_([
+      "S32FM803UC 支援連接藍牙喇叭。"
+    ], "S32FM803UC", "S32FM803UC 支援藍牙喇叭嗎？要從哪裡連線？");
+    globalThis.allModelsPartialRejected = buildGroundedSupportedAnswer_([
+      "S32FM803UC 支援藍牙喇叭。"
+    ], "S32FM803UC", "S32FM803UC 和 S32FM703UC 都支援藍牙喇叭嗎？");
+    globalThis.alternativePartialRejected = buildGroundedSupportedAnswer_([
+      "S32FM902SC 可透過 HDMI 連接數位機上盒。"
+    ], "S32FM902SC", "S32FM902SC 能直接接同軸第四台嗎？也能用 HDMI 機上盒嗎？");
+    globalThis.causeMissingRejected = buildGroundedSupportedAnswer_([
+      "S32FM803UC Wi-Fi 斷線時，先重新啟動螢幕與路由器。"
+    ], "S32FM803UC", "S32FM803UC 為什麼每天 Wi-Fi 斷線？怎麼排除？");
+    globalThis.pbpLimitDoesNotAnswerPerSideMaximum = buildGroundedSupportedAnswer_([
+      "S49DG932SC 的 PBP 兩邊不能同時達到 240Hz。"
+    ], "S49DG932SC", "S49DG932SC 的 PBP 兩邊各自最高幾 Hz？");
+    globalThis.pbpPerSideMaximumComplete = buildGroundedSupportedAnswer_([
+      "S49DG932SC 的 PBP 左側最高 120Hz，右側最高 120Hz。"
+    ], "S49DG932SC", "S49DG932SC 的 PBP 兩邊各自最高幾 Hz？");
+    globalThis.familyNumericClaimRejected = buildGroundedSupportedAnswer_([
+      "Odyssey OLED G9（G95SC）在 PBP 模式下左右兩側最高 120Hz。"
+    ], "S49DG932SC", "S49DG932SC 的 PBP 兩邊各自最高幾 Hz？",
+       "Odyssey OLED G9（G95SC）在 PBP 模式下左右兩側最高 120Hz。");`,
   groundedSupportContext,
 );
 assert(
@@ -1539,19 +1586,34 @@ assert(
     /S32FM803UC（Smart Monitor M8）/.test(groundedSupportContext.m8FamilySupported) &&
     /重新開機/.test(groundedSupportContext.m8FamilySupported) &&
     groundedSupportContext.wrongFamilyRejected === "" &&
-    groundedSupportContext.neighborFamilyRejected === "",
-  `Web 最終回答只能使用 groundingSupports 同時支持目前型號（或 RULE 已確認系列）與本題核心詞的句段: ${JSON.stringify({ exactSupported: groundedSupportContext.exactSupported, otherModelRejected: groundedSupportContext.otherModelRejected, irrelevantExactModelRejected: groundedSupportContext.irrelevantExactModelRejected, m8FamilySupported: groundedSupportContext.m8FamilySupported, wrongFamilyRejected: groundedSupportContext.wrongFamilyRejected, neighborFamilyRejected: groundedSupportContext.neighborFamilyRejected })}`,
+    groundedSupportContext.neighborFamilyRejected === "" &&
+    groundedSupportContext.compoundMetricsRejected === "" &&
+    /HDMI/.test(groundedSupportContext.compoundMetricsComplete) &&
+    /\bDP\b/.test(groundedSupportContext.compoundMetricsComplete) &&
+    groundedSupportContext.supportWithoutPathRejected === "" &&
+    groundedSupportContext.allModelsPartialRejected === "" &&
+    groundedSupportContext.alternativePartialRejected === "" &&
+    groundedSupportContext.causeMissingRejected === "" &&
+    groundedSupportContext.pbpLimitDoesNotAnswerPerSideMaximum === "" &&
+    groundedSupportContext.familyNumericClaimRejected === "" &&
+    /左側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete) &&
+    /右側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete),
+  `Web 最終回答只能使用 groundingSupports 同時支持目前型號（或 RULE 已確認系列）與本題全部主張的句段: ${JSON.stringify(groundedSupportContext)}`,
 );
 
 const webFallbackContext = {
   isMonitorUsbMediaWebQuestion_: () => false,
   stripAnySourceTags: (value) => String(value || ""),
+  stripInternalRoutingHints_: (value) => String(value || ""),
   formatForLineMobile: (value) => String(value || ""),
   isApiFailureReply: () => false,
+  buildDeterministicExactRuleReply_: () => "",
 };
 vm.createContext(webFallbackContext);
 vm.runInContext(
-  `${extractFunction(linebot, "sanitizeTentativeWebActionLine_")}
+  `${extractFunction(linebot, "isExactProductFactQuestion_")}
+   ${extractFunction(linebot, "buildSafeNoEvidenceNextStep_")}
+   ${extractFunction(linebot, "sanitizeTentativeWebActionLine_")}
    ${extractFunction(linebot, "buildTentativeWebFallback_")}
    globalThis.noEvidence = buildTentativeWebFallback_(
      "沒有找到這個型號的明確資料。一般來說，可能採免工具設計。",
@@ -1577,6 +1639,14 @@ vm.runInContext(
      "1. **連接多個訊號源**：\\n* 要使用 PBP 功能，你需要從電腦連接至少兩條顯示線到螢幕，例如兩條 DisplayPort。\\n2. **開啟 PBP 模式**：\\n* 通常，你可以透過螢幕下方的按鈕或搖桿進入螢幕選單。\\n* 在選單中尋找「PIP/PBP Mode」或「Multi-View」選項，然後將其開啟。\\n* 有些使用者提到。",
      "S57CG952NC 的 PBP 在哪裡開？",
      "S57CG952NC"
+   );
+   globalThis.numericGuessRejected = buildTentativeWebFallback_(
+     "公開網頁找不到可核對結論。\\n* 一般情況下，PBP 模式會將更新頻率限制在 120Hz。\\n* 有使用者表示可在 Windows 手動調整到 120Hz。",
+     "S49DG932SC 的 PBP 兩邊各自最高幾 Hz？",
+     "S49DG932SC"
+   );
+   globalThis.danglingDisplayRejected = sanitizeTentativeWebActionLine_(
+     "* 建議使用高品質的 Display。"
    );`,
   webFallbackContext,
 );
@@ -1594,10 +1664,21 @@ assert(
     /在選單中尋找「PIP\/PBP Mode」或「Multi-View」選項，然後將其開啟/.test(
       webFallbackContext.pbpCoherent,
     ) &&
+    /沒有足夠證據/.test(webFallbackContext.numericGuessRejected) &&
+    !/120\s*Hz|限制在|有使用者表示/i.test(
+      webFallbackContext.numericGuessRejected,
+    ) &&
+    webFallbackContext.danglingDisplayRejected === "" &&
     !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)[。\s]*(?:\n|$)/.test(
       webFallbackContext.pbpCoherent,
     ),
-  "Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者",
+  `Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者: ${JSON.stringify({
+    noEvidence: webFallbackContext.noEvidence,
+    safeTerminal: webFallbackContext.safeTerminal,
+    noPurchase: webFallbackContext.noPurchase,
+    pbpCoherent: webFallbackContext.pbpCoherent,
+    numericGuessRejected: webFallbackContext.numericGuessRejected,
+  })}`,
 );
 
 assert(
@@ -1730,6 +1811,7 @@ vm.runInContext(
    ${extractFunction(linebot, "manualEvidenceModelMatchesTarget_")}
    ${extractFunction(linebot, "manualEvidenceSupportsTargetModel_")}
    ${extractFunction(linebot, "manualSupportedAnswerTargetsModel_")}
+   ${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}
    ${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}
    ${extractFunction(linebot, "selectManualEvidenceForQuestion_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
@@ -2325,6 +2407,12 @@ assert.strictEqual(
   "RULE 沒有直接證據的投影、App 與故障題必須交給 QA／手冊，不得硬編答案",
 );
 const safeNoEvidenceVm = {
+  stripInternalRoutingHints_: (value) =>
+    String(value || "").replace(/S49DG932SC/g, ""),
+  buildDeterministicExactRuleReply_: (query) =>
+    /更新率/.test(String(query || ""))
+      ? "S49DG932SC 的規格是：更新頻率最高240Hz。\n[來源:官方規格庫]"
+      : "",
   findExactModelRuleLine_: (model) =>
     model === "S32FM501EC"
       ? "LS32FM501ECXZW,型號：S32FM501EC,Smart Monitor,Tizen,HDMI x2"
@@ -2332,7 +2420,7 @@ const safeNoEvidenceVm = {
 };
 vm.createContext(safeNoEvidenceVm);
 vm.runInContext(
-  `${extractFunction(linebot, "buildSafeNoEvidenceNextStep_")}\nglobalThis.nonSmartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S24D300GAC");\nglobalThis.smartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S32FM501EC");`,
+  `${extractFunction(linebot, "isExactProductFactQuestion_")}\n${extractFunction(linebot, "buildSafeNoEvidenceNextStep_")}\nglobalThis.nonSmartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S24D300GAC");\nglobalThis.smartApp = buildSafeNoEvidenceNextStep_("可以安裝 Netflix 嗎？", "S32FM501EC");\nglobalThis.pbpBoundary = buildSafeNoEvidenceNextStep_("那 PBP 兩邊各自最高幾 Hz？ (型號: S49DG932SC)", "S49DG932SC");`,
   safeNoEvidenceVm,
 );
 assert(
@@ -2340,7 +2428,13 @@ assert(
     /沒有足夠證據確認這款具備內建 App 商店/.test(
       safeNoEvidenceVm.nonSmartApp,
     ) &&
-    /首頁 → 應用程式/.test(safeNoEvidenceVm.smartApp),
+    /首頁 → 應用程式/.test(safeNoEvidenceVm.smartApp) &&
+    /240Hz/.test(safeNoEvidenceVm.pbpBoundary) &&
+    /不能直接當成分割模式下每一側的上限/.test(
+      safeNoEvidenceVm.pbpBoundary,
+    ) &&
+    /Sam/.test(safeNoEvidenceVm.pbpBoundary) &&
+    !/型號\s*[:：]/.test(safeNoEvidenceVm.pbpBoundary),
   "無證據 App 終點只有 RULE 明載 Smart/Tizen 才可提供 Apps 選單，非 Smart 型號不得捏造路徑",
 );
 const operationIntentVm = {};

@@ -7,6 +7,14 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
+- v29.6.277 採條件式 `RouteAnalysisV1`，不是每題 Router：指令、postback、明確來源按鍵、精準 QA、完整 RULE 與人工核對片段都必須 `routerCalls=0`；只有模糊型號／系列、自然追問、複合主張、部分覆蓋或規則衝突才可呼叫一次。
+- Router 固定使用 Gemini 2.5 Flash-Lite、thinking=0、Structured Output、無工具／搜尋／PDF、無答案欄位、零重試。只能從程式候選 index 選型並拆 claims；低信心、逾時、429、格式或應用驗證失敗即 fallback，不得回答產品事實、扣額度、授權來源、指定 PDF 或覆蓋持久型號。
+- 程式仍是唯一來源決策者，固定 QA／RULE → PDF → Web。`conditional` 接管後舊 `[AUTO_SEARCH_PDF]`／`[AUTO_SEARCH_WEB]`／`[NEED_DOC]` 只可作 fallback／稽核，禁止成為第二決策者。模式限 `off|shadow|conditional`，v29.6.277 正式預設 `conditional`；TestUI `?router=` 只能 request-scoped。
+- Evidence 必須逐 claim 關聯 canonical model、來源、頁碼／網址、同段摘錄與限定條件。PBP 兩側 120Hz 只有同一證據明文綁定才可宣稱；分散關鍵字、不同頁或整機最大值不得拼接推論。partial 只升級未解 claim。
+- 現行仍是 Gemini Files API `file_data`，不是 File Search；Router 本版不換模型、不新增搜尋工具。File Search 僅能另案以固定題 A/B，不得與 Router 同版遷移。
+- 稽核至少保存 `routerCalls、routerCacheHits、plannerLatencyMs、routerCostTwd、routePlanValid、claimRoutes、selectedModel、pdfCalls、webCalls、finalCoverage`。正式接管前需通過 20 題至少 19 題、安全題 100%、JSON 有效率 99%、單次 Router 不超過 NT$0.01、P95 額外延遲不超過 2 秒，以及零額外等價 PDF／Web 呼叫。
+- Apps Script 版本逼近 200 時，先使用 HEAD／request-scoped TestUI；正式發布前盤點容量並保留回復版本，不得為 Shadow 測試反覆燒正式版本。
+
 - 通用 Prompt 只負責 FAST 證據邊界、回答方式與來源建議；產品個案放 QA，路由／授權／額度／補救／來源標籤由程式負責。Fast／PDF／Web 溫度固定為 0.3／0.2／0.15，不增加第二次潤飾呼叫。
 - 螢幕通識推理（4K 解析度對應桌面排列、HDMI 接機上盒看第四台、線材選購）由 `isGeneralComputingReasoningQuestion_` 放行，不強制 QA/RULE 實體來源行；但仍嚴格攔截型號能力問句（有沒有 KVM 等）與第三方 App/業者服務推測。
 - 預設只走 QA／CLASS_RULES。已確認完整型號跨日保存；手冊需「確認要查」，網路按鍵即授權。來源執行完不得黏住下一題，但不可清除產品型號。

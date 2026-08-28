@@ -29,9 +29,29 @@ function assertStep(condition, message) {
   const window = linebot.slice(index, index + 220);
   assertStep(
     /isDoGetMaintenanceAuthorized_\(e\)/.test(window),
-    `${name} endpoint requires maintenance authorization`,
+    `${name} endpoint checks maintenance authorization`,
   );
 });
+
+const testRunStart = linebot.indexOf('e.parameter.testRun === "1"');
+const testRunEnd = linebot.indexOf(
+  'v29.6.005: 從「所有紀錄」Sheet',
+  testRunStart,
+);
+const testRunSection = linebot.slice(testRunStart, testRunEnd);
+assertStep(
+  testRunStart >= 0 &&
+    testRunEnd > testRunStart &&
+    /isDoGetMaintenanceAuthorized_\(e\)/.test(testRunSection) &&
+    /isEditorOnlyDevelopmentWebApp_\(\)/.test(testRunSection) &&
+    /isTestUiAccessTokenValid_/.test(testRunSection) &&
+    /!maintenanceAuthorized && !devProbeAuthorized/.test(testRunSection) &&
+    /TEST_DEV_/.test(testRunSection) &&
+    /error: "Missing q"/.test(testRunSection) &&
+    /substring\(0, 500\)/.test(testRunSection) &&
+    /finally[\s\S]{0,120}IS_TEST_MODE = previousTestMode/.test(testRunSection),
+  "testRun permits only maintenance secret or editor-only dev plus short token, with isolated test identity",
+);
 
 assertStep(
   /MAINTENANCE_SECRET/.test(linebot) &&
@@ -49,7 +69,7 @@ assertStep(
 
 assertStep(
   /assertTestUiAuthorized_\(testUiAccessToken\)/.test(linebot) &&
-    /function testMessage\(msg, userId, testUiAccessToken\)/.test(linebot) &&
+    /function testMessage\(msg, userId, testUiAccessToken, semanticRouterMode\)/.test(linebot) &&
     /function clearTestSession\(userId, testUiAccessToken\)/.test(linebot) &&
     /function saveDraftToSheet\(draft\)[\s\S]{0,260}IS_TEST_MODE/.test(linebot),
   "TestUI requests require a short-lived token and cannot write QA or RULE data",
@@ -68,7 +88,7 @@ assertStep(
 assertStep(
   /TEST_UI_ACCESS_TOKEN/.test(testUi) &&
     /TEST_USER_ID_KEY/.test(testUi) &&
-    /testMessage\(text, TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(testUi) &&
+    /testMessage\(\s*text,\s*TEST_USER_ID,\s*TEST_UI_ACCESS_TOKEN,\s*TEST_ROUTER_MODE,?\s*\)/.test(testUi) &&
     /clearTestSession\(TEST_USER_ID, TEST_UI_ACCESS_TOKEN\)/.test(testUi),
   "TestUI forwards its authorized session token to the backend",
 );

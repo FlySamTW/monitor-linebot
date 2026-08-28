@@ -308,9 +308,16 @@ const testRunSection = doGetSection.slice(testRunStart, testRunEnd);
 
 assertStep(
   /isDoGetMaintenanceAuthorized_\(e\)/.test(testRunSection) &&
+    /isEditorOnlyDevelopmentWebApp_\(\)/.test(testRunSection) &&
+    /isTestUiAccessTokenValid_/.test(testRunSection) &&
+    /!maintenanceAuthorized && !devProbeAuthorized/.test(testRunSection) &&
     /buildUnauthorizedResponse_\(\)/.test(testRunSection) &&
+    /TEST_DEV_/.test(testRunSection) &&
+    /error: "Missing q"/.test(testRunSection) &&
+    /substring\(0, 500\)/.test(testRunSection) &&
+    /finally[\s\S]{0,120}IS_TEST_MODE = previousTestMode/.test(testRunSection) &&
     /handleMessage\(fakeEvent\)/.test(testRunSection),
-  "doGet testRun must require a secret before running the full LINEBot LLM flow",
+  "doGet testRun requires maintenance secret or editor-only dev plus short token before isolated LINEBot flow",
 );
 
 const postWriteRulesStart = doPostSection.indexOf('json.action === "write_rules"');

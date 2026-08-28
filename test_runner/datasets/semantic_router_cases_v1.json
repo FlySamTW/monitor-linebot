@@ -1,0 +1,322 @@
+{
+  "version": "RouteAnalysisV1",
+  "invocationCases": [
+    {
+      "id": "exact_qa_bypass",
+      "input": {
+        "question": "M8 怎麼安裝 Netflix？",
+        "confirmedModel": "",
+        "candidateModels": [],
+        "exactQaComplete": true,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "exact_rule_bypass",
+      "input": {
+        "question": "S32FM703UC 有幾個 HDMI？",
+        "confirmedModel": "S32FM703UC",
+        "candidateModels": ["S32FM703UC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": true,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "manual_postback_bypass",
+      "input": {
+        "question": "S57CG952NC 的 PBP 在哪裡開？",
+        "confirmedModel": "S57CG952NC",
+        "candidateModels": ["S57CG952NC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "manual",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "web_postback_bypass",
+      "input": {
+        "question": "S32FM703UC 現在官網有庫存嗎？",
+        "confirmedModel": "S32FM703UC",
+        "candidateModels": ["S32FM703UC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "web",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "unknown_model_bypass",
+      "input": {
+        "question": "S99ZZ999 有 PBP 嗎？",
+        "confirmedModel": "",
+        "candidateModels": [],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": true,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "ambiguous_g8_invoke",
+      "input": {
+        "question": "G8 的 PBP 怎麼開？",
+        "confirmedModel": "",
+        "candidateModels": ["S32HG806ES", "S32DG802SC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": true,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": true
+    },
+    {
+      "id": "elliptical_followup_invoke",
+      "input": {
+        "question": "那兩邊呢？",
+        "confirmedModel": "S57CG952NC",
+        "candidateModels": ["S57CG952NC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": true,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": true
+    },
+    {
+      "id": "mixed_claim_invoke",
+      "input": {
+        "question": "S32FM703UC 有幾個 HDMI，而且要怎麼切換訊號源？",
+        "confirmedModel": "S32FM703UC",
+        "candidateModels": ["S32FM703UC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": true,
+        "routeConflict": false
+      },
+      "expected": true
+    },
+    {
+      "id": "route_conflict_invoke",
+      "input": {
+        "question": "M9 可以接第四台，也可以直接裝業者 App 嗎？",
+        "confirmedModel": "S32FM902SC",
+        "candidateModels": ["S32FM902SC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": true,
+        "routeConflict": true
+      },
+      "expected": true
+    }
+  ],
+  "validAnalyses": [
+    {
+      "id": "ambiguous_alias_manual",
+      "inputCaseId": "ambiguous_g8_invoke",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "choose_candidate",
+        "candidateIndex": 0,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "這個型號的 PBP 要從哪裡開啟？",
+            "intent": "operation",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "menu_path"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "AMBIGUOUS_PRODUCT_ALIAS"
+      }
+    },
+    {
+      "id": "followup_manual",
+      "inputCaseId": "elliptical_followup_invoke",
+      "analysis": {
+        "topicRelation": "followup",
+        "productAction": "keep_confirmed",
+        "candidateIndex": 0,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "S57CG952NC 在 PBP 分割後每一側的最高更新率是多少？",
+            "intent": "spec",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "fact"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "ELLIPTICAL_FOLLOWUP"
+      }
+    },
+    {
+      "id": "mixed_local_and_manual",
+      "inputCaseId": "mixed_claim_invoke",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "keep_confirmed",
+        "candidateIndex": 0,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "S32FM703UC 有幾個 HDMI？",
+            "intent": "spec",
+            "evidenceNeed": "local_stable",
+            "answerShape": "fact"
+          },
+          {
+            "id": "claim_2",
+            "question": "S32FM703UC 要怎麼切換 HDMI 訊號源？",
+            "intent": "operation",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "steps"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "MULTI_SOURCE_CLAIMS"
+      }
+    },
+    {
+      "id": "current_info_web",
+      "inputCaseId": "web_postback_bypass",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "keep_confirmed",
+        "candidateIndex": 0,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "S32FM703UC 現在是否有庫存？",
+            "intent": "current_info",
+            "evidenceNeed": "web_current",
+            "answerShape": "fact"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "CURRENT_INFORMATION"
+      }
+    }
+  ],
+  "invalidAnalyses": [
+    {
+      "id": "invented_answer_field",
+      "inputCaseId": "ambiguous_g8_invoke",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "choose_candidate",
+        "candidateIndex": 0,
+        "claims": [],
+        "confidence": "high",
+        "reasonCode": "AMBIGUOUS_PRODUCT_ALIAS",
+        "answer": "這台一定支援 PBP。"
+      }
+    },
+    {
+      "id": "candidate_out_of_range",
+      "inputCaseId": "ambiguous_g8_invoke",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "choose_candidate",
+        "candidateIndex": 9,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "PBP 怎麼開？",
+            "intent": "operation",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "menu_path"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "AMBIGUOUS_PRODUCT_ALIAS"
+      }
+    },
+    {
+      "id": "manual_without_model",
+      "inputCaseId": "ambiguous_g8_invoke",
+      "analysis": {
+        "topicRelation": "new",
+        "productAction": "none",
+        "candidateIndex": null,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "PBP 怎麼開？",
+            "intent": "operation",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "menu_path"
+          }
+        ],
+        "confidence": "high",
+        "reasonCode": "MODEL_REQUIRED"
+      }
+    },
+    {
+      "id": "low_confidence",
+      "inputCaseId": "elliptical_followup_invoke",
+      "analysis": {
+        "topicRelation": "ambiguous",
+        "productAction": "keep_confirmed",
+        "candidateIndex": 0,
+        "claims": [
+          {
+            "id": "claim_1",
+            "question": "那兩邊呢？",
+            "intent": "spec",
+            "evidenceNeed": "manual_model_specific",
+            "answerShape": "fact"
+          }
+        ],
+        "confidence": "low",
+        "reasonCode": "LOW_CONFIDENCE"
+      }
+    }
+  ]
+}

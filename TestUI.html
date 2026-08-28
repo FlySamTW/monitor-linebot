@@ -19,6 +19,50 @@
       const TEST_UI_ACCESS_TOKEN = rawTestUiToken.startsWith("<")
         ? "MOCK_TOKEN"
         : rawTestUiToken;
+      let TEST_ROUTER_MODE = "";
+      let TEST_ROUTER_MODE_READY = false;
+
+      function normalizeTestRouterMode_(value) {
+        const requested = String(value || "").toLowerCase();
+        return ["off", "shadow", "conditional"].includes(requested)
+          ? requested
+          : "";
+      }
+
+      function resolveTestRouterMode_(onReady) {
+        const localFallback = new URLSearchParams(window.location.search).get(
+          "router",
+        );
+        let completed = false;
+        const finish = function (value) {
+          if (completed) return;
+          completed = true;
+          TEST_ROUTER_MODE = normalizeTestRouterMode_(value);
+          TEST_ROUTER_MODE_READY = true;
+          if (typeof onReady === "function") onReady();
+        };
+
+        // HtmlService 內容位於 iframe，window.location.search 看不到外層
+        // /dev 或 /exec 的 query；正式頁必須由 Apps Script bridge 讀取。
+        if (
+          window.google &&
+          window.google.script &&
+          window.google.script.url &&
+          typeof window.google.script.url.getLocation === "function"
+        ) {
+          window.google.script.url.getLocation(function (location) {
+            const parameters = (location && location.parameter) || {};
+            finish(parameters.router || localFallback);
+          });
+          // bridge 未回呼時仍可安全退回本機 query，但完成前不允許送出。
+          window.setTimeout(function () {
+            finish(localFallback);
+          }, 5000);
+          return;
+        }
+
+        finish(localFallback);
+      }
       const TEST_USER_ID_KEY = "samsung_linebot_test_user_id";
       const TEST_USER_ID = (() => {
         const existing = sessionStorage.getItem(TEST_USER_ID_KEY);
@@ -676,13 +720,15 @@
             </button>
           </div>
           <div class="input-area">
+            <span id="router-init-status" role="status">正在讀取路由設定…</span>
             <input
               type="text"
               id="msg-input"
               placeholder="Aa"
               onkeydown="checkEnter(event)"
+              disabled
             />
-            <button id="send-btn" onclick="sendMessage()" aria-label="送出訊息" title="送出訊息">
+            <button id="send-btn" onclick="sendMessage()" aria-label="送出訊息" title="送出訊息" disabled>
               <i class="fas fa-paper-plane"></i>
             </button>
           </div>
@@ -994,6 +1040,16 @@
         if (window.isMockMode)
           document.getElementById("mock-badge").style.display = "inline-block";
 
+        resolveTestRouterMode_(function () {
+          var status = document.getElementById("router-init-status");
+          var input = document.getElementById("msg-input");
+          var sendButton = document.getElementById("send-btn");
+          if (status) status.style.display = "none";
+          if (input) input.disabled = false;
+          if (sendButton) sendButton.disabled = false;
+          if (input) input.focus();
+        });
+
         // 1. 從後端載入歷史紀錄
         loadCloudHistory();
         loadManualCoverageStatus();
@@ -1197,6 +1253,7 @@
       }
 
       function runSourcePostback(action, source, model) {
+        if (!ensureRouterModeReady_()) return;
         if (isBotProcessing) return;
         isBotProcessing = true;
         updateLogs([
@@ -1241,6 +1298,7 @@
       }
 
       function sendMessage() {
+        if (!ensureRouterModeReady_()) return;
         var input = document.getElementById("msg-input");
         var text = input.value.trim();
         if (!text) return;
@@ -1257,6 +1315,7 @@
       }
 
       function addToQueue(text) {
+        if (!ensureRouterModeReady_()) return;
         if (!text) return;
         messageQueue.push(text);
         renderQueue();
@@ -1349,6 +1408,7 @@
       }
 
       function doSendMessage(text) {
+        if (!ensureRouterModeReady_()) return;
         isBotProcessing = true;
         addMsg("user", text);
 
@@ -1379,7 +1439,12 @@
               addMsg("bot", "❌ Error: " + err);
               setTimeout(processQueue, 1000);
             })
-            .testMessage(text, TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
+            .testMessage(
+              text,
+              TEST_USER_ID,
+              TEST_UI_ACCESS_TOKEN,
+              TEST_ROUTER_MODE,
+            );
         } catch (e) {
           console.error(e);
           isBotProcessing = false;
@@ -1489,6 +1554,7 @@
       }
 
       function sendMessage_Direct(text) {
+        if (!ensureRouterModeReady_()) return;
         var chatBox = document.getElementById("chat-box");
         addMsg("user", text);
         addToHistory(text);
@@ -1518,7 +1584,12 @@
             addMsg("bot", "❌ Error: " + err);
             setTimeout(processQueue, 1000);
           })
-          .testMessage(text, TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
+          .testMessage(
+            text,
+            TEST_USER_ID,
+            TEST_UI_ACCESS_TOKEN,
+            TEST_ROUTER_MODE,
+          );
       }
 
       function removeMsg(id) {
@@ -1589,6 +1660,16 @@
       }
       function checkEnter(e) {
         if (e.key === "Enter") sendMessage();
+      }
+
+      function ensureRouterModeReady_() {
+        if (TEST_ROUTER_MODE_READY) return true;
+        var status = document.getElementById("router-init-status");
+        if (status) {
+          status.textContent = "正在讀取路由設定，請稍候。";
+          status.style.display = "inline";
+        }
+        return false;
       }
 
       // 詳細模式控制

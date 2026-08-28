@@ -89,6 +89,7 @@ vm.runInContext(
     extractFunction(linebot, "getGroundedModelIdentityProfile_"),
     extractFunction(linebot, "matchGroundedModelIdentity_"),
     extractFunction(linebot, "isLowRiskGroundedTroubleshooting_"),
+    extractFunction(linebot, "isExactProductFactQuestion_"),
     extractFunction(linebot, "expandGroundedSupportToCompleteLine_"),
     extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_"),
     extractFunction(linebot, "buildGroundedSupportedAnswer_"),
