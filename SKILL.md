@@ -14,11 +14,12 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - Web 優先採有 grounding supports/chunks 的非官方公開網頁；只有具可稽核證據時才能標為網路來源。Google 未回傳引用時仍須提供經安全過濾且明確標示未證實的可能方向。不得把 Samsung 官網送進模型、`url_context` 或直接抓頁；官網只保留 `🔗 到這款官網` URI 選項。
 - 供應商 generate 請求一旦送出就計該來源 1 次；即使無證據或供應商回錯也不退款。相同題、標點差異與已知同義改寫必須由 operation cache 擋住，不能靠退款放任重燒成本。
 - 只有來源成功才更新 `lastSource` 與最近題目；Web 無證據、來源錯誤與 canonical provider query 不得覆蓋前一次成功手冊鏈或使用者原句。
-- G8 是 Odyssey 系列。短別稱先列 CLASS_RULES 完整型號；選型前零 PDF、零網路、零扣次。
+- G8 是 Odyssey 系列。若只問 G8 屬於哪個產品家族，而且所有候選 RULE 一致，可直接回答 Odyssey；耳機孔、介面、操作等會隨型號改變的題目才列完整型號。選型前零 PDF、零網路、零扣次。
 - 產品身分解析永遠先於回答與來源：本輪完整型號 > 型號前段 > 系列別稱 > 具名家族 > 比較脈絡 > 跨日持久型號。句首 `Smart` 是 Smart Monitor 家族，不得借用舊 Odyssey；未給 M5/M7/M8/M9 時只補問一次代號並保留原題。
 - M7/G8 等別稱若與已鎖定完整型號相容可直接沿用；不相容時只暫停本輪舊型號並重新選型，不得偷偷覆寫或刪除跨日狀態。S27DG5/G806 等前段由 CLASS_RULES 全集合收斂。
 - 候選狀態最多保留 50 款、LINE 每頁 8 款；一般選型來自 CLASS_RULES，手冊選型再與正式 PDF 索引取交集。禁止只保存畫面第一頁造成後段新機永久消失。
 - 操作／故障題仍須先過精準 QA、精確 RULE 與已核對手冊片段；禁止在 QA First 前新增 PDF early gate，也禁止用沒有同題同型號證據的 `priorFastChecked=true` 略過免費預檢。
+- `manual_chunk` 必須掃描完整小集合再依型號／意圖排序，不得只依倒排索引；片段若未逐項涵蓋本題條件，仍進整本 PDF。PBP／雙模限定規格只有 RULE 同欄明載完整模式值才可直答，整機最大值不得代答。
 - 結構化 QA 可在「完整型號或系列別稱＋至少兩個意圖詞＋明顯領先第二候選」時直接回答；不要用過高固定分數逼使用者多選一次型號，也禁止改成單題 hard-code。
 - RULE 明載的規格是硬事實。模型不得把 Smart／Tizen 型號的藍牙、喇叭或介面答成相反結論。
 - 系列別稱只是候選不是 confirmed model；規格欄位只能由完整型號自己的 RULE 終止回答。未明載就是 UNKNOWN，零 LLM 建議手冊，不得套用同系列。
@@ -39,7 +40,8 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - Fast／Polish 使用 `models/gemini-2.5-flash-lite`；只有未命中 QA／RULE／已核對片段的整本 PDF fallback 使用 `models/gemini-2.5-flash`。PDF 送出前以同一 payload `countTokens`，單次最壞 NT$0.35，手冊模式不得聯網；低成本證據已達標時禁止再呼叫模型。
 - Web grounding 獨立使用穩定版 `models/gemini-2.5-flash` 與 US$0.30／US$2.50 費率。較高費率只在整本 PDF、使用者按 Web 或 PDF 無證據的一次性補救發生，不得連 Fast／QA／RULE 一起升級。
 - Web 最多 5 點／450 個中文字並必須完整收尾；只留直接適用本題的 grounding 做法。螢幕內建 USB 播放不得混入 Windows／主機板排錯，亦不得建議非官方韌體下載。
-- PDF 成功答案必須同時具 PDF 顯示頁碼、型號適用範圍與可核對 Evidence[]；操作題另須以結構化 `operationPath` 呈現「入口分類 → 功能名稱」，不得只回注意事項。缺任一必要證據不得掛「三星官方手冊」來源；同頁證據去重。人工逐頁片段也要顯示 `NT$0.0000` 與未扣手冊額度。
+- PDF 成功答案必須同時具 PDF 顯示頁碼、型號適用範圍與可核對 Evidence[]；`coverage=full` 才代表每個明示主張都完成。入口必須在 `supportedAnswer` 與同頁摘錄中呈現「分類 → 功能」，不得只回注意事項。partial 要保留已驗證手冊答案再補 Web，不能整段蓋掉。缺任一必要證據不得掛完整的手冊結論；同頁證據去重。人工逐頁片段也要顯示 `NT$0.0000` 與未扣手冊額度。
+- Evidence 數字核對前只可排除已由型號適用性守門另行驗證的完整型號 token；回答中的功率、解析度、更新率等規格數字仍須出現在同筆摘錄。Web 安全補救以完整句過濾，禁止用逗號切出無主詞殘句。
 - 禁止未授權 LINE Push。Rich Menu 與一般客服一律使用 reply；只有業主當次明確授權的單次通知可使用 Push，不得因此新增常駐推播路由或擴大授權。
 
 ## 官網承接
@@ -51,7 +53,8 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 手冊生命週期與缺口
 
-- 每日 04:00 `dailyKnowledgeRefresh()` 重新上傳 Drive 既有 PDF，再執行 `auditManualCoverageGaps_()`。
+- 正式目前是 Gemini Files API 精確選出 1 份 PDF 後以 `file_data` 送入 2.5 Flash，不是 Google File Search store。未完成模型/API/成本 A/B 前不得宣稱已使用 File Search，也不得直接換模型。
+- `manualPdfRollingRefresh()` 每 4 小時續期 10 本 Files URI，約百本在 40 小時內完成一輪；每日 04:00 `dailyKnowledgeRefresh()` 只做增量同步並執行 `auditManualCoverageGaps_()`，禁止單次全量重傳撞上 GAS 6 分鐘上限。
 - `MANUAL_COVERAGE_REPORT` 保存 RULE/PDF 覆蓋；新 RULE 缺 PDF 或 H／2026 缺 PDF會寫入 `PENDING_MODEL_REVIEW.manualStatus` 與警示 LOG。
 - 維護者用受保護的 `?manualCoverage=1` 或 TestUI 覆蓋徽章檢查。索引不可用時不得製造假缺口。
 - 部分 PDF 上傳失敗時，保留前次完整 `KB_URI_LIST` 與備份；索引使用完整 Drive 檔名目錄。Drive 掃描中途失敗時，正式 URI、索引與備份都不得由部分清單覆蓋；兩種失敗均一分鐘後受控重試。

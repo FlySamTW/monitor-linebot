@@ -18,6 +18,8 @@
 > v29.6.253 修正的是回答訊息的空 Quick Reply，不改 Rich Menu；情境按鈕為零時必須完全省略 quickReply，不能送空陣列。
 > v29.6.273 不改 Rich Menu 圖片、三格 action、`selected: true` 或全體 default。修正的是按鍵／文字進入後的產品身分：句首 Smart 先補 M5/M7/M8/M9，不借舊 Odyssey；S27DG5 等前段與大型系列候選保留完整集合、每頁 8 款。QA／RULE／已核對片段必須先於整本 PDF，禁止恢復 QA 前 Operation Source Gate。
 > v29.6.274 同樣不改 Rich Menu。系列別稱已足以搭配結構化意圖精準命中 QA 時直接回答；只有免費證據不足才列完整型號或進 PDF，避免把固定三格誤當每題必經確認。
+> v29.6.275 仍不改圖片、三格 action、`selected: true` 或全體 default。只問 G8 等共同家族身分可由一致 RULE 直接回答；會隨型號不同的規格／操作才選型。Fast 無證據且已有唯一型號與手冊時直接完成 PDF，不先回無答案 CTA；PDF partial 保留手冊證據並自動補 Web。Rich Menu 仍只是固定入口，不是每題確認閘門。
+> v29.6.276 不改 Rich Menu 圖片、action、綁定或互動。只修 PDF Evidence 驗證與 Web 完整句輸出；不得把回答鏈修復誤作選單重建或重新綁定。
 
 ## 一、先釐清：Rich Menu 不是 Quick Reply
 

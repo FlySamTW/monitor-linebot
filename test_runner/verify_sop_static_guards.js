@@ -1785,7 +1785,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,900}Alias Selection Gate v29\.6\.116[\s\S]{0,8000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,1800}Alias Family Identity v29\.6\.275[\s\S]{0,1800}Alias Selection Gate v29\.6\.116[\s\S]{0,16000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(
@@ -1794,7 +1794,7 @@ assertStep(
     !/跨裝置短別稱直接走官方手冊型號選擇，不先呼叫 Fast LLM/.test(
       linebot,
     ),
-  "exact QA must remain first when entities align, while ambiguous series questions must select a full model before generic RULE/PDF",
+  "exact QA must remain first; common family identity may answer directly, while model-varying alias questions still select a full model before generic RULE/PDF",
 );
 
 assertStep(

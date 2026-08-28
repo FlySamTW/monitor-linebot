@@ -203,10 +203,14 @@ assert(
 const dailyFunction = extractFunction(linebot, "dailyKnowledgeRefresh");
 const syncFunction = extractFunction(linebot, "syncGeminiKnowledgeBase");
 assert(
-  /syncGeminiKnowledgeBase\(true\)[\s\S]*auditManualCoverageGaps_\(\)/.test(
+  /refreshManualPdfUriBatch_\(10\)[\s\S]*syncGeminiKnowledgeBase\(false\)[\s\S]*auditManualCoverageGaps_\(\)/.test(
     dailyFunction,
-  ),
-  "每日 04:00 重傳後必須執行 RULE/PDF 缺口稽核",
+  ) &&
+    /function manualPdfRollingRefresh/.test(linebot) &&
+    /everyHours\(4\)/.test(linebot) &&
+    /file_api_rolling_refresh/.test(linebot) &&
+    /fileApiUploadedAt/.test(syncFunction),
+  "每日 04:00 必須做增量同步與缺口稽核；Files URI 另以 4 小時輪替續期，不得單次重傳整庫",
 );
 assert(
   /drivePdfCatalog\.push\(\{[\s\S]*?identity:\s*fileIdentity[\s\S]*?if \(existingFilesMap\.has\(fileName\)\)/.test(

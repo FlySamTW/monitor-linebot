@@ -866,6 +866,58 @@ function qaKnowledgeManualQueryMatches_(record, query) {
   return true;
 }
 
+/**
+ * 已核對片段是 Evidence，不代表能回答所有後續問法。若使用者詢問路徑，
+ * 回答必須真的含路徑；若詢問兩個模式各自數值，片段必須對每個指定量
+ * 提供至少兩組值。覆蓋不足就回整本手冊檢索，不能重播固定答案。
+ */
+function qaKnowledgeManualAnswerCoversQuery_(record, query) {
+  var lines = String(query || "")
+    .split(/\n+/)
+    .map(function (line) { return String(line || "").trim(); })
+    .filter(Boolean);
+  var current = lines.length > 0 ? lines[lines.length - 1] : "";
+  var answer = qaKnowledgeRenderAnswer_(record);
+  if (!current || !answer) return false;
+
+  var asksLocation =
+    /(?:哪裡|在哪|去哪|哪個選單|什麼選單|從哪裡).{0,12}(?:開|開啟|啟用|設定|找到|搜尋|進入)?|(?:怎麼|如何).{0,8}(?:開|切換|設定)/i.test(
+      current,
+    );
+  if (
+    asksLocation &&
+    !/(?:→|選單|功能表|依序|進入.{0,18}(?:設定|選擇)|首頁.{0,12}應用程式|GAME.{0,12}DUAL\s*MODE)/i.test(
+      answer,
+    )
+  ) {
+    return false;
+  }
+
+  if (/(?:各|分別|兩個|兩種|每個|每一種)/i.test(current)) {
+    var metricChecks = [];
+    if (/解析度|[2-8]K|UHD|QHD|FHD/i.test(current)) {
+      metricChecks.push(
+        (answer.match(/\d{3,5}\s*[X×]\s*\d{3,5}|(?:[2-8]K|UHD|QHD|FHD)/gi) || [])
+          .map(function (value) { return String(value).replace(/\s+/g, "").toUpperCase(); })
+          .filter(function (value, index, all) { return all.indexOf(value) === index; })
+          .length >= 2,
+      );
+    }
+    if (/更新率|刷新率|\d{2,3}\s*HZ/i.test(current)) {
+      metricChecks.push(
+        (answer.match(/\d+(?:\.\d+)?\s*HZ/gi) || [])
+          .map(function (value) { return String(value).replace(/\s+/g, "").toUpperCase(); })
+          .filter(function (value, index, all) { return all.indexOf(value) === index; })
+          .length >= 2,
+      );
+    }
+    if (metricChecks.length > 0 && metricChecks.some(function (ok) { return !ok; })) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function qaKnowledgeGetManualEvidenceRecords_() {
   return qaKnowledgeLoadAllRecords_().filter(function (record) {
     return String(record.evidence && record.evidence.type || "").toLowerCase() === "manual_chunk";
@@ -875,14 +927,29 @@ function qaKnowledgeGetManualEvidenceRecords_() {
 function qaKnowledgeFindManualEvidence_(query, model) {
   var normalizedModel = String(model || "").trim().toUpperCase();
   if (!normalizedModel) return null;
-  var ranked = qaKnowledgeRank_(String(query || "") + " " + normalizedModel, {
-    manualOnly: true,
-    model: normalizedModel,
-  }).ranked;
+  // 已核對手冊片段數量很小，且型號可能以地區尾碼或前綴形式出現。
+  // 直接掃描 manual_chunk 並用同一 scorer 排序，避免倒排索引因
+  // S32FM803 / S32FM803UC token 不完全相同而漏掉正確片段。
+  var enrichedQuery = String(query || "") + " " + normalizedModel;
+  var ranked = qaKnowledgeGetManualEvidenceRecords_()
+    .map(function (record) {
+      return qaKnowledgeScoreRecord_(record, enrichedQuery, {
+        manualOnly: true,
+        model: normalizedModel,
+      });
+    })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      return b.score - a.score ||
+        Number(b.record.priority || 0) - Number(a.record.priority || 0);
+    });
   var candidates = ranked.map(function (item) {
     return item.record;
   }).filter(function (record) {
-    return qaKnowledgeManualQueryMatches_(record, query);
+    return (
+      qaKnowledgeManualQueryMatches_(record, query) &&
+      qaKnowledgeManualAnswerCoversQuery_(record, query)
+    );
   });
   candidates.sort(function (a, b) {
     var aHits = (a.terms || []).filter(function (term) {

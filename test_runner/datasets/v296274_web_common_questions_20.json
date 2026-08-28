@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-08-27",
+  "purpose": "以 Samsung 台灣官方支援常見主題建立固定 20 題真人對話基線；驗證產品身分、QA/RULE、PDF 證據、自然追問、Web 補救與成本，不得為單題新增程式特例。",
+  "evaluation": {
+    "required": [
+      "回答使用正確完整型號或安全的系列範圍",
+      "QA/RULE 足夠時 paidCalls=0",
+      "PDF 回答必須 pdfCalls=1、webCalls=0 或明確進入一次受控 Web 補救",
+      "產品事實必須有 QA、RULE、PDF 頁碼或 Web 引用",
+      "追問不得遺失前題或借用不相容舊型號",
+      "不得顯示 RAG、token、route、evidence 等內部術語",
+      "每一題都必須到達答案、選型或安全終點，不得形成確認迴圈"
+    ],
+    "costBudgetTwd": 5
+  },
+  "officialBasis": [
+    "https://www.samsung.com/tw/support/category/displays/monitors/",
+    "https://www.samsung.com/tw/support/displays/smart-networking-connection-device-related-troubleshooting/",
+    "https://www.samsung.com/tw/support/computing/smart-networking-screen-sound-related-troubleshooting/",
+    "https://www.samsung.com/tw/support/displays/57-odyssey-neo-g9s-update-rate-under-the-childs-picture/",
+    "https://www.samsung.com/tw/support/displays/27-inch-viewfinity-s9-5k-s90pc-when-using-rtx-2080rtx-3090-the-screen-has-no-signal/",
+    "https://www.samsung.com/tw/support/displays/how-to-troubleshoot-burn-in-or-image-retention-on-your-samsung-oled-monitor/",
+    "https://www.samsung.com/tw/support/displays/how-do-odyssey-neo-g9-mini-ld-update-the-screen-ligament-by-themselves/"
+  ],
+  "questions": [
+    {"id":1,"conversation":"smart","input":"S32FM703UC 有幾個 HDMI？","expected":"RULE 直接回答 HDMI 2.0 x2，零付費呼叫"},
+    {"id":2,"conversation":"smart","input":"那 USB-C 可以幫筆電充幾瓦？","expected":"沿用 S32FM703UC，回答 65W，零付費呼叫"},
+    {"id":3,"conversation":"smart","input":"M8 怎麼安裝 Netflix？","expected":"系列層級精準 QA 直接回答，不要求完整型號"},
+    {"id":4,"conversation":"smart","input":"S32FM803UC 如果找不到 Netflix，要去哪裡搜尋？","expected":"沿用 App 安裝證據，回答首頁應用程式搜尋流程"},
+    {"id":5,"conversation":"smart","input":"這台怎麼連藍牙喇叭？","expected":"沿用 S32FM803UC，命中已核對手冊第 151 頁或同等官方證據"},
+
+    {"id":6,"conversation":"g8","input":"G8 是 Odyssey 還是 Smart Monitor？","expected":"說明 G8 是 Odyssey 系列；不得誤分類為 Smart Monitor"},
+    {"id":7,"conversation":"g8","input":"S32HG806ES 雙模怎麼切？","expected":"命中已核對手冊第 27、35、43 頁，不另讀整本 PDF"},
+    {"id":8,"conversation":"g8","input":"那兩個模式最高解析度和更新率各是多少？","expected":"沿用 S32HG806ES，回答 6K 165Hz／3K 330Hz"},
+    {"id":9,"conversation":"g8","input":"它能用一條 USB-C 接 MacBook 又充電嗎？","expected":"沿用 S32HG806ES，明確回答不行並提供 HDMI／DP 加獨立供電替代"},
+    {"id":10,"conversation":"g8","input":"S32DG802SC 有哪些防烙印功能？","expected":"QA 回答 OLED Safeguard+、動態冷卻、熱調節與標誌／工作列偵測"},
+
+    {"id":11,"conversation":"manual","input":"S27DG502EC 虛擬準心在哪裡開？","expected":"只掛正確共用手冊，回可核對頁碼與功能入口"},
+    {"id":12,"conversation":"manual","input":"黑平衡也在同一個 Game 選單嗎？","expected":"沿用 S27DG502EC 與前題，回手冊證據；不得回到選型"},
+    {"id":13,"conversation":"manual","input":"S57CG952NC 的 PBP 在哪裡開？","expected":"回多重視窗／PBP 入口，不混入其他 G9 型號"},
+    {"id":14,"conversation":"manual","input":"分割後兩邊最高都能跑 120Hz 嗎？","expected":"沿用 S57CG952NC，回答 PBP 120Hz+120Hz；若 PDF 無證據才做一次 Web 補救"},
+    {"id":15,"conversation":"manual","input":"S27C900PAC 接 RTX 3090 沒有 5K 畫面怎麼辦？","expected":"回答等待約 2 分鐘重讀 EDID，仍無畫面再斷電重啟；不可泛稱換線即結案"},
+
+    {"id":16,"conversation":"service","input":"S27DG602SC 出現殘影要怎麼處理？","expected":"回答 Pixel Refresh／螢幕優化等官方處理方向並保留型號範圍"},
+    {"id":17,"conversation":"service","input":"像素更新時可以拔電源嗎？","expected":"沿用 S27DG602SC，明確提醒不要中斷；不得重新問型號"},
+    {"id":18,"conversation":"service","input":"S49AG950NC 要怎麼用 USB 更新韌體？","expected":"回答同型號韌體、USB 根目錄、Service 埠及 Support → Software Update"},
+    {"id":19,"conversation":"service","input":"S27FG602SC 和 S27DG602SC 怎麼選？","expected":"只依兩款 RULE 比較 500Hz／360Hz、亮度與既有明列差異，給可行動摘要"},
+    {"id":20,"conversation":"service","input":"S99ZZ999 有 PBP 嗎？","expected":"未知型號拒絕猜測，不借用上一題兩款 OLED 規格"}
+  ]
+}

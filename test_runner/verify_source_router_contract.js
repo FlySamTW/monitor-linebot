@@ -120,6 +120,9 @@ const aliasVmSource = [
   extractFunction(linebot, "isClassRuleLineMatchedAlias"),
   extractFunction(linebot, "getAliasCandidatesFromClassRules"),
   extractFunction(linebot, "getAliasOnlySelectionModelsFromQuery"),
+  extractFunction(linebot, "isAliasSeriesIdentityQuestion_"),
+  extractFunction(linebot, "getRuleFamilyLabel_"),
+  extractFunction(linebot, "buildAliasSeriesIdentityReply_"),
   extractFunction(linebot, "isPersistedModelCompatibleWithAlias_"),
   extractFunction(linebot, "resolveTurnProductIdentity_"),
   extractFunction(linebot, "isPureNamedFamilyOverviewQuery_"),
@@ -134,6 +137,7 @@ const aliasVmSource = [
   extractFunction(linebot, "stripKnownModelFromSourceQuestion_"),
   extractFunction(linebot, "resolveManualSourceModel_"),
   `globalThis.__g8Candidates = getAliasOnlySelectionModelsFromQuery("G8 有耳機孔嗎？", 10, false);`,
+  `globalThis.__g8FamilyIdentity = buildAliasSeriesIdentityReply_("G8 是 Odyssey 還是 Smart Monitor？", __g8Candidates);`,
   `globalThis.__g5AllCandidates = getAliasCandidatesFromClassRules("G5", 50);`,
   `globalThis.__g5FirstTurnDescriptorCandidates = getAliasOnlySelectionModelsFromQuery("Odyssey G5，27吋、QHD、180Hz、IPS那款，完整型號是哪個？", 10, false);`,
   `globalThis.__m7YearCandidates = getAliasOnlySelectionModelsFromQuery("公司那台 M7，我只記得是32吋、2025、4K、USB-C 65W，完整型號是哪個？", 10, false);`,
@@ -212,6 +216,12 @@ assert(
       .every((model) => aliasVmContext.__g8Candidates.includes(model)) &&
     !aliasVmContext.__g8Candidates.some((model) => /^M[5789]$/i.test(model)),
   "G8 功能題必須從 Odyssey CLASS_RULES 解析出全部完整型號候選",
+);
+assert(
+  /G8 屬於 Samsung Odyssey 電競螢幕/.test(
+    aliasVmContext.__g8FamilyIdentity,
+  ) && /來源:官方規格庫/.test(aliasVmContext.__g8FamilyIdentity),
+  "候選共同系列身分可直接回答；不得把 G8 身分題誤當成型號規格差異",
 );
 assert(
   aliasVmContext.__g5AllCandidates.length > 10 &&
@@ -434,6 +444,9 @@ const exactRuleVmSource = [
   extractFunction(linebot, "findExactModelRuleLine_"),
   extractFunction(linebot, "buildDeterministicComparisonReply_"),
   extractFunction(linebot, "isInterfaceDisplayTimingQuery_"),
+  extractFunction(linebot, "isModeQualifiedDisplaySpecQuestion_"),
+  extractFunction(linebot, "splitClassRuleFields_"),
+  extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_"),
   extractFunction(linebot, "isOperationOrTroubleshootQuery"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
   extractFunction(linebot, "buildMissingExactRuleFactReply_"),
@@ -575,11 +588,11 @@ assert(
   "精確型號與選型後的 RULE 缺項不得停在 CTA；退回一般題額度後必須直接查對應手冊",
 );
 assert(
-  /Interface Timing Guard v29\.6\.258[\s\S]{0,500}executeAutomaticManualFallback_/.test(
+  /Qualified Display Spec Guard v29\.6\.275[\s\S]{0,700}executeAutomaticManualFallback_/.test(
     linebot,
   ) &&
-    /interface_timing_to_manual/.test(linebot),
-  "精準 QA 未命中後，介面訊號時序題要退回一般額度並零 Fast 直接查手冊",
+    /qualified_display_spec_to_manual/.test(linebot),
+  "精準 QA 未命中後，介面時序或模式限定規格題要退回一般額度並零 Fast 直接查手冊",
 );
 assert(
   /Exact Operation Guard v29\.6\.260[\s\S]{0,500}executeAutomaticManualFallback_/.test(
@@ -1559,6 +1572,11 @@ vm.runInContext(
      "沒有找到直接解法。\\n* **外接數位電視盒：** 你可以購買市面上的電視盒，它通常有第四台輸入，並透過 HDMI 線連接到 S32FM902SC。",
      "M9 可以接第四台嗎？",
      "S32FM902SC"
+   );
+   globalThis.pbpCoherent = buildTentativeWebFallback_(
+     "1. **連接多個訊號源**：\\n* 要使用 PBP 功能，你需要從電腦連接至少兩條顯示線到螢幕，例如兩條 DisplayPort。\\n2. **開啟 PBP 模式**：\\n* 通常，你可以透過螢幕下方的按鈕或搖桿進入螢幕選單。\\n* 在選單中尋找「PIP/PBP Mode」或「Multi-View」選項，然後將其開啟。\\n* 有些使用者提到。",
+     "S57CG952NC 的 PBP 在哪裡開？",
+     "S57CG952NC"
    );`,
   webFallbackContext,
 );
@@ -1572,7 +1590,13 @@ assert(
     !/其他型號可能/.test(webFallbackContext.safeTerminal) &&
     /並非已由三星手冊或公開來源證實/.test(webFallbackContext.safeTerminal) &&
     /HDMI 線連接/.test(webFallbackContext.noPurchase) &&
-    !/購買|通常/.test(webFallbackContext.noPurchase),
+    !/購買|通常/.test(webFallbackContext.noPurchase) &&
+    /在選單中尋找「PIP\/PBP Mode」或「Multi-View」選項，然後將其開啟/.test(
+      webFallbackContext.pbpCoherent,
+    ) &&
+    !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)[。\s]*(?:\n|$)/.test(
+      webFallbackContext.pbpCoherent,
+    ),
   "Web 無支持證據時不得把模型的『一般來說／可能』猜測回送給使用者",
 );
 
@@ -1710,6 +1734,7 @@ vm.runInContext(
    ${extractFunction(linebot, "selectManualEvidenceForQuestion_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
    ${extractFunction(linebot, "applyManualEvidenceGuard_")}
+   ${extractFunction(linebot, "buildManualWebRescueReply_")}
    globalThis.preserved = buildManualConsentPrompt_("已確認搭載 Tizen。\\n[來源:官方規格庫]", "問題", "S32FM902SC");
    globalThis.unsourcedRemoved = buildManualConsentPrompt_("請把支架鎖到 VESA 孔。", "問題", "S32FM902SC");
    globalThis.newFailureDetected = isManualEvidenceFailureReply_("我已經查過這本官方手冊，但這次沒有找到能直接回答這題的明確段落，所以先不亂猜。");
@@ -1728,6 +1753,9 @@ vm.runInContext(
    globalThis.mixedScopedEvidence = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"先用 JOG 按鈕開啟選單。",pageNumber:4,scope:"全檔共通",evidenceExcerpt:"使用 JOG 按鈕開啟選單"},{supportedAnswer:"再到 Game → Virtual Aim Point。",pageNumber:49,scope:"依型號而異",evidenceExcerpt:"S32FG502EC：Game → Virtual Aim Point"}]}), "S32FG502EC");
    globalThis.partiallyValid = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",answer:"錯誤頂層答案：請開 AI Mode。",operationPath:"錯誤路徑 → AI Mode",evidence:[{supportedAnswer:"到 Game → Virtual Aim Point 開啟虛擬準心。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S27FG502EC / S32FG502EC 機型適用：Game → Virtual Aim Point"},{supportedAnswer:"可選擇偏好的瞄準點風格。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S32FG502EC 機型適用；選擇偏好的瞄準點風格"},{supportedAnswer:"可用 AI Mode 自動調整顏色。",pageNumber:35,scope:"依型號而異",evidenceExcerpt:"僅 S27FG502SC / S27FG706EC 機型適用：AI Mode"}]}), "S32FG502EC");
    globalThis.menuLocationOnly = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"到 Game → Virtual Aim Point 開啟虛擬準心。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S27FG502EC / S32FG502EC 機型適用：Game → Virtual Aim Point"},{supportedAnswer:"可選擇偏好的瞄準點風格，例如 5:3、53、23、613。",pageNumber:34,scope:"依型號而異",evidenceExcerpt:"S32FG502EC 機型適用；可選擇偏好的瞄準點風格，例如 5:3、53、23、613"}]}), "S32FG502EC", "要從哪個選單打開？");
+   globalThis.modelPrefixedCommonPath = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S57CG952NC：到 PIP/PBP → PIP/PBP Mode 開啟。",pageNumber:34,scope:"全檔共通",evidenceExcerpt:"PIP/PBP；PIP/PBP Mode 開啟或關閉 PIP/PBP 模式"}]}), "S57CG952NC", "PBP 在哪裡開？");
+   globalThis.modelPrefixedWrongNumber = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S57CG952NC：PBP 兩側最高可到 120Hz。",pageNumber:34,scope:"全檔共通",evidenceExcerpt:"PIP/PBP Mode 開啟或關閉 PIP/PBP 模式"}]}), "S57CG952NC", "PBP 兩側最高更新率？");
+   globalThis.lsModelPrefixedCommonPath = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"LS57CG952NNXZA：到 PIP/PBP → PIP/PBP Mode 開啟。",pageNumber:34,scope:"全檔共通",evidenceExcerpt:"PIP/PBP；PIP/PBP Mode 開啟或關閉 PIP/PBP 模式"}]}), "S57CG952", "PBP 在哪裡開？");
    globalThis.unsupportedNumber = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"USB-C 可供電 98W。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"USB-C 可供電 65W"}]}), "");
    globalThis.unsupportedNegative = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"這款沒有耳機孔。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"連接埠列出 HDMI 與 DisplayPort"}]}), "");
    globalThis.contradictoryNotFound = normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"沒有答案",evidence:[{supportedAnswer:"其實有答案。",pageNumber:1,scope:"全檔共通",evidenceExcerpt:"其實有答案"}]}), "");`,
@@ -1767,6 +1795,19 @@ assert(
     !/錯誤頂層答案|錯誤路徑/.test(manualUiContext.partiallyValid) &&
     /Game → Virtual Aim Point/.test(manualUiContext.menuLocationOnly) &&
     !/5:3|613|瞄準點風格/.test(manualUiContext.menuLocationOnly) &&
+    /PIP\/PBP → PIP\/PBP Mode/.test(
+      manualUiContext.modelPrefixedCommonPath,
+    ) &&
+    /第34頁/.test(manualUiContext.modelPrefixedCommonPath) &&
+    !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.modelPrefixedCommonPath,
+    ) &&
+    !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.lsModelPrefixedCommonPath,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.modelPrefixedWrongNumber,
+    ) &&
     /第34頁/.test(manualUiContext.partiallyValid) &&
     !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.partiallyValid) &&
     /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.unsupportedNumber) &&
@@ -1774,17 +1815,41 @@ assert(
     /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
-const manualContextVm = {};
+const partialRescueReply = manualUiContext.buildManualWebRescueReply_(
+  {
+    success: true,
+    text: "可先依外部裝置說明檢查設定。",
+    sources: ["可信公開來源"],
+  },
+  "手冊已確認可進入 Game → PBP 設定。\n\n手冊還沒直接回答：兩側最高更新率。\n\n[AUTO_SEARCH_WEB]",
+  "S57CG952NC",
+  "PBP 兩側最高更新率",
+);
+assert(
+  /手冊先確認/.test(partialRescueReply) &&
+    /Game → PBP/.test(partialRescueReply) &&
+    /公開網頁補充/.test(partialRescueReply) &&
+    /來源:官方手冊、網路搜尋/.test(partialRescueReply),
+  "PDF 只回答部分主張時，Web 補救必須保留已驗證的手冊證據",
+);
+const manualContextVm = {
+  extractFullModelLikeTokens: (text) =>
+    String(text || "").match(/\bS\d{2}[A-Z0-9]{4,}\b/gi) || [],
+};
 vm.createContext(manualContextVm);
 vm.runInContext(
   `${extractFunction(linebot, "buildManualContextCompleteQuery_")}
    globalThis.followup = buildManualContextCompleteQuery_("桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？", [{role:"user",content:"S32D806 Type-C 幾瓦，還有 RJ-45 和 KVM 嗎？"},{role:"assistant",content:"有 KVM"},{role:"user",content:"桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？"}]);
+   globalThis.shortTopicFollowup = buildManualContextCompleteQuery_("像素更新時可以拔電源嗎？", [{role:"user",content:"S27DG602SC 出現殘影要怎麼處理？"},{role:"assistant",content:"可以執行像素更新"},{role:"user",content:"像素更新時可以拔電源嗎？"}]);
+   globalThis.unrelatedShortQuestion = buildManualContextCompleteQuery_("有幾個 HDMI？", [{role:"user",content:"S27DG602SC 出現殘影要怎麼處理？"},{role:"assistant",content:"可以執行像素更新"},{role:"user",content:"有幾個 HDMI？"}]);
    globalThis.standalone = buildManualContextCompleteQuery_("S32D806 如何切換 USB 訊號源？", [{role:"user",content:"昨天問的是別款螢幕"},{role:"user",content:"S32D806 如何切換 USB 訊號源？"}]);`,
   manualContextVm,
 );
 assert(
   /KVM/.test(manualContextVm.followup) &&
-    /只用來補全本題/.test(manualContextVm.followup) &&
+    /只用這行判斷本題省略/.test(manualContextVm.followup) &&
+    /S27DG602SC 出現殘影/.test(manualContextVm.shortTopicFollowup) &&
+    manualContextVm.unrelatedShortQuestion === "有幾個 HDMI？" &&
     manualContextVm.standalone === "S32D806 如何切換 USB 訊號源？",
   "PDF 只在自然省略追問帶一行前題主題；獨立新題不得混入舊歷史",
 );
@@ -1854,6 +1919,10 @@ const exactComparisonVm = {
   findExactModelRuleLine_: (model) => comparisonRuleLines.get(model) || "",
 };
 vm.createContext(exactComparisonVm);
+vm.runInContext(
+  extractFunction(linebot, "splitClassRuleFields_"),
+  exactComparisonVm,
+);
 vm.runInContext(
   `${deterministicComparisonText}\n${exactComparisonText}\n` +
     `globalThis.result = buildExactRuleComparisonReply_("S32HG806ES 跟 S32HG802SC 哪一台比較適合打遊戲？");\n` +
@@ -2177,12 +2246,22 @@ assert(
     !/callLLMWithRetry|UrlFetchApp\.fetch/.test(manualFreePrecheckText),
   "手冊免費預檢只能用 deterministic QA／RULE／人工片段，不得呼叫 Fast LLM 擋住 PDF",
 );
+assert(
+  /tryManualFreeLocalAnswer_\([\s\S]{0,220}pendingState && pendingState\.previousModel/.test(
+    extractFunction(linebot, "executeAdvancedSourceQuery_"),
+  ),
+  "自動手冊預檢必須帶入上一輪已確認完整型號，不能因型號遺失而跳過免費 QA／RULE／片段",
+);
 const deterministicRuleVm = {
   normalizeModelForDisplay: (model) => model,
   findExactModelRuleLine_: () =>
     "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,HDMI 2.1 x2,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
 };
 vm.createContext(deterministicRuleVm);
+vm.runInContext(
+  `${extractFunction(linebot, "isModeQualifiedDisplaySpecQuestion_")}\n${extractFunction(linebot, "splitClassRuleFields_")}\n${extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_")}`,
+  deterministicRuleVm,
+);
 vm.runInContext(
   `${extractFunction(linebot, "isInterfaceDisplayTimingQuery_")}\n${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\n${extractFunction(linebot, "buildKnownRuleAnchorForMixedOperation_")}\n${extractFunction(linebot, "mergeKnownRuleAnchorWithAdvancedAnswer_")}\nglobalThis.operation = buildDeterministicExactRuleReply_("S32HG806ES 如何切換雙模？", "S32HG806ES");\nglobalThis.fact = buildDeterministicExactRuleReply_("S32HG806ES 更新率是多少？", "S32HG806ES");\nglobalThis.mount = buildDeterministicExactRuleReply_("S32HG806ES 可以壁掛嗎？VESA 幾乘幾？支架能旋轉嗎？", "S32HG806ES");\nglobalThis.mixedAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼連接？有幾個 HDMI？", "S32HG806ES");\nglobalThis.operationOnlyAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 怎麼恢復原廠？", "S32HG806ES");\nglobalThis.mixedFinal = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有兩個 HDMI 連接埠，請用 HDMI 線接到訊號源。\\n官方手冊：第23頁\\n[來源:官方手冊]");\nglobalThis.mixedConflict = mergeKnownRuleAnchorWithAdvancedAnswer_(globalThis.mixedAnchor, "S32HG806ES 這款有 1 個 HDMI 2.0 連接埠，請切換到正確輸入來源。\\n官方手冊：第23頁\\n[來源:官方手冊]");`,
   deterministicRuleVm,
@@ -2230,6 +2309,10 @@ const unsafeRuleVm = {
       : "LS32FM501ECXZW,型號：S32FM501EC,Smart Monitor,Tizen,HDMI x2",
 };
 vm.createContext(unsafeRuleVm);
+vm.runInContext(
+  `${extractFunction(linebot, "isModeQualifiedDisplaySpecQuestion_")}\n${extractFunction(linebot, "splitClassRuleFields_")}\n${extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_")}`,
+  unsafeRuleVm,
+);
 vm.runInContext(
   `${extractFunction(linebot, "isInterfaceDisplayTimingQuery_")}\n${extractFunction(linebot, "buildDeterministicExactRuleReply_")}\nglobalThis.phoneCast = buildDeterministicExactRuleReply_("S24D300GAC 可以手機無線投影嗎？", "S24D300GAC");\nglobalThis.lineTv = buildDeterministicExactRuleReply_("S32FM501EC 可以安裝 LINE TV 嗎？", "S32FM501EC");\nglobalThis.blackScreen = buildDeterministicExactRuleReply_("S24D300GAC 黑屏怎麼排除？", "S24D300GAC");`,
   unsafeRuleVm,

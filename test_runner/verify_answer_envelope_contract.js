@@ -135,6 +135,16 @@ assert(actions.every((item) => item.action.type === "postback"));
 const handoff = context.buildEvidenceHandoffReply_(unsupported);
 assert(/查官方手冊|再查網路/.test(handoff));
 assert(!/沒有調諧器|業者可能提供/.test(handoff));
+assert(
+  /const canCompleteWithManualNow = Boolean\([\s\S]{0,500}hasOfficialManualForModel_\(envelopeModel\)/.test(
+    linebot,
+  ) &&
+    /unsupported_fast_to_manual/.test(linebot) &&
+    /Answer Envelope v29\.6\.275[\s\S]{0,400}executeAutomaticManualFallback_/.test(
+      linebot,
+    ),
+  "Fast 無可信證據但已有唯一型號與官方手冊時，必須直接完成 PDF 查證，不得只回來源 CTA",
+);
 
 const supported = context.buildFastAnswerEnvelope_({
   originalQuestion: "S32FM902SC 是 OLED 嗎?",

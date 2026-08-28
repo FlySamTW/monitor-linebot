@@ -141,6 +141,28 @@ const bluetoothReply = context.qaKnowledgeBuildManualReply_("S32FM803UC", blueto
 assert(/音效輸出 → 藍牙揚聲器清單/.test(bluetoothReply));
 assert(/第 151 頁/.test(bluetoothReply));
 
+const appManagementManual = context.qaKnowledgeFindManualEvidence_(
+  "S32FM803UC 如果找不到 Netflix，要去哪裡搜尋？",
+  "S32FM803UC",
+);
+assert(
+  appManagementManual &&
+    appManagementManual.id === "manual-s32fm70x80x-app-management" &&
+    /首頁 → 應用程式/.test(
+      context.qaKnowledgeBuildManualReply_("S32FM803UC", appManagementManual),
+    ),
+  "完整型號必須傳入手冊免費預檢；既有已核對 App 片段不得誤讀整本 PDF",
+);
+
+const dualModeBothMetrics = context.qaKnowledgeFindManualEvidence_(
+  "那兩個模式最高解析度和更新率各是多少？",
+  "S32HG806ES",
+);
+assert(
+  dualModeBothMetrics === null,
+  "片段若沒有同時列出兩種模式的解析度與更新率，不得只重複半套答案",
+);
+
 const usbFailure = context.qaKnowledgeFindManualEvidence_(
   "USB 播放一直斷線，想找非官方網路解法",
   "S32FM803UC",
@@ -187,6 +209,8 @@ assert(
 );
 
 vm.runInContext(extractFunction(linebot, "isInterfaceDisplayTimingQuery_"), context);
+vm.runInContext(extractFunction(linebot, "isModeQualifiedDisplaySpecQuestion_"), context);
+vm.runInContext(extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_"), context);
 vm.runInContext(extractFunction(linebot, "isPotentialMultiClaimQuestion_"), context);
 assert.strictEqual(
   context.isPotentialMultiClaimQuestion_("S27FM501EC 支援繁體中文介面與雙喇叭嗎？"),
@@ -220,7 +244,33 @@ assert.strictEqual(
 context.buildDeterministicComparisonReply_ = () => "";
 context.findExactModelRuleLine_ = () =>
   "S32DG802SC,尺寸含底座719.7x584.6x263.5mm,HDMI 2.1 x2";
+vm.runInContext(extractFunction(linebot, "splitClassRuleFields_"), context);
 vm.runInContext(extractFunction(linebot, "buildDeterministicExactRuleReply_"), context);
+assert.deepStrictEqual(
+  Array.from(context.splitClassRuleFields_("S27TEST001,原生對比1,000:1,HAS升降底座")),
+  ["S27TEST001", "原生對比1000:1", "HAS升降底座"],
+  "CLASS_RULES 千分位逗號不得被誤切成兩個欄位",
+);
+assert.strictEqual(
+  context.buildDeterministicExactRuleReply_(
+    "S57CG952NC PBP 分割後兩邊最高都能跑 120Hz 嗎？",
+    "S57CG952NC",
+  ),
+  "",
+  "PBP／雙模限定值不得拿整機最高更新率直接回答",
+);
+context.findExactModelRuleLine_ = () =>
+  "S32HG806ES,雙模 6K 165Hz / 3K 330Hz,最大165Hz更新頻率";
+const dualModeRuleReply = context.buildDeterministicExactRuleReply_(
+  "S32HG806ES 兩個模式最高解析度和更新率各是多少？",
+  "S32HG806ES",
+);
+assert(
+  /雙模 6K 165Hz \/ 3K 330Hz/.test(dualModeRuleReply),
+  "RULE 本身明載兩種模式完整數值時應零成本回答，不必讀 PDF",
+);
+context.findExactModelRuleLine_ = () =>
+  "S32DG802SC,尺寸含底座719.7x584.6x263.5mm,HDMI 2.1 x2";
 assert.strictEqual(
   context.buildDeterministicExactRuleReply_("S32DG802SC 有耳機孔嗎？", "S32DG802SC"),
   "",

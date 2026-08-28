@@ -215,16 +215,37 @@ assert(
     /【唯一資料來源】本輪掛載的官方手冊 PDF/.test(linebot),
   "PDF 生成階段必須是手冊單一來源，避免 QA/RULE 污染與額外 token",
 );
+const manualEvidenceGuardText = extractFunction(linebot, "applyManualEvidenceGuard_");
+const manualEvidenceParserText = extractFunction(
+  linebot,
+  "parseManualEvidenceMarker_",
+);
+const manualEvidenceSchemaText = extractFunction(
+  linebot,
+  "getManualStructuredResponseSchema_",
+);
+const manualEvidenceNormalizerText = extractFunction(
+  linebot,
+  "normalizeManualStructuredResponse_",
+);
 assert(
-  /function applyManualEvidenceGuard_/.test(linebot) &&
-    /範圍:型號明確/.test(linebot) &&
-    /範圍:依型號而異/.test(linebot) &&
-    /手冊回答缺少可核對頁碼／摘錄／適用範圍/.test(linebot) &&
-    /evidence\.page === "未找到"/.test(linebot) &&
-    /!evidence\.excerpt/.test(linebot) &&
-    /\(\?:證據摘錄\|手冊重點\)\\s\*\[:：\]/.test(linebot) &&
-    /\^\\s\*\(\?:證據摘錄\|手冊重點\)/.test(linebot) &&
-      /官方手冊：\$\{evidence\.page\}/.test(linebot) &&
+  /型號明確/.test(manualEvidenceSchemaText) &&
+    /全檔共通/.test(manualEvidenceSchemaText) &&
+    /依型號而異/.test(manualEvidenceSchemaText) &&
+    /手冊證據:第\$\{pages\}頁\|範圍:\$\{scope\}/.test(
+      manualEvidenceNormalizerText,
+    ) &&
+    /const weakScope/.test(manualEvidenceGuardText) &&
+    /!evidence\.found/.test(manualEvidenceGuardText) &&
+    /手冊回答缺少可核對頁碼／摘錄／適用範圍/.test(manualEvidenceGuardText) &&
+    /evidence\.page === "未找到"/.test(manualEvidenceGuardText) &&
+    /!evidence\.excerpt/.test(manualEvidenceGuardText) &&
+    /手冊重點/.test(manualEvidenceParserText) &&
+    /partialPage[\s\S]{0,260}官方手冊：\$\{evidence\.page\}/.test(
+      manualEvidenceGuardText,
+    ) &&
+    /guarded \+=/.test(manualEvidenceGuardText) &&
+    /官方手冊：\$\{evidence\.page\}/.test(manualEvidenceGuardText) &&
     /rawScope === "型號共通" \? "全檔共通"/.test(linebot),
   "所有手冊回答都必須具頁碼與型號適用範圍，泛用段落不得硬下結論",
 );
@@ -294,11 +315,15 @@ assert(
   "本題 PDF 過期時先以 Drive ID 直接取檔，相容掃描找齊目標後立即停止",
 );
 assert(
-  /getManualPdfKbList_\(\)\.slice\(-2\)/.test(linebot) &&
-    /refreshStalePdfAttachmentsFromDrive_\(hotManualFiles\)/.test(linebot) &&
+  /function refreshManualPdfUriBatch_/.test(linebot) &&
+    /everyHours\(4\)/.test(linebot) &&
+    /file_api_rolling_refresh/.test(linebot) &&
+    /refreshManualPdfUriBatch_\(10\)[\s\S]{0,500}syncGeminiKnowledgeBase\(false\)/.test(
+      extractFunction(linebot, "dailyKnowledgeRefresh"),
+    ) &&
     /expirationTime: f\.expirationTime/.test(linebot) &&
     !/expireTime: f\.expireTime/.test(linebot),
-  "每日同步先續期最近自癒手冊且維護端使用 Gemini 正式 expirationTime 欄位",
+  "手冊 URI 必須在到期前以小批次輪替續期；每日只做增量同步，維護端仍使用正式 expirationTime 欄位",
 );
 assert(
   /單次上限約 NT\$0\.35/.test(testUi) &&
