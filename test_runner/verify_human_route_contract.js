@@ -254,6 +254,8 @@ vm.runInContext(
     extractFunction(linebot, "getPdfFileModelTokens_"),
     extractFunction(linebot, "pdfFileNameMatchesModelToken_"),
     extractFunction(linebot, "pdfFileNameMatchesModels"),
+    extractFunction(linebot, "buildDrivePdfIdentity_"),
+    extractFunction(linebot, "isKbPdfUriFreshForDriveCandidate_"),
     extractFunction(linebot, "isPdfKbFile"),
     extractFunction(linebot, "extractPdfModelIndexFromKbList"),
     extractFunction(linebot, "persistPdfKbState"),
@@ -279,7 +281,7 @@ const noDuplicateRecovery = recoveryContext.recoverRelevantPdfUrisFromDrive(
   ["S32FM803UC", "S32FM803"],
   "S32FM803UC",
   1,
-  [focusedFullManual],
+  recoveredFocused,
 );
 assert.strictEqual(noDuplicateRecovery.length, 0, "完整手冊已存在仍重複上傳");
 assert.strictEqual(uploadedDriveFiles.length, 1, "完整手冊已存在仍產生供應商上傳");

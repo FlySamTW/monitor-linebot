@@ -448,7 +448,13 @@ const exactRuleVmSource = [
   extractFunction(linebot, "splitClassRuleFields_"),
   extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_"),
   extractFunction(linebot, "isOperationOrTroubleshootQuery"),
+  extractFunction(linebot, "loadRuleTermOntology_"),
+  extractFunction(linebot, "buildRuleTermAliasRegex_"),
+  extractFunction(linebot, "findRuleTermOntologyMatches_"),
+  extractFunction(linebot, "findRuleTermOntologyMatch_"),
   extractFunction(linebot, "getExplicitCapabilityCheck_"),
+  extractFunction(linebot, "getAllExplicitCapabilityChecks_"),
+  extractFunction(linebot, "sanitizeExactRuleReplyField_"),
   extractFunction(linebot, "buildMissingExactRuleFactReply_"),
   extractFunction(linebot, "enforceExactModelCapabilityEvidence_"),
   extractFunction(linebot, "buildDeterministicExactRuleReply_"),
@@ -471,6 +477,7 @@ const exactRuleVmContext = {
       return {
         getLastRow() { return rows.length + 1; },
         getRange() { return { getValues() { return rows; } }; },
+        getDataRange() { return { getValues() { return rows; } }; },
       };
     },
   },
@@ -976,6 +983,7 @@ const props = {
 };
 const context = {
   GAS_VERSION: "v29.6.253",
+  ADVANCED_SOURCE_CACHE_SCHEMA: "EvidenceV2",
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_OPERATION_CACHE_TTL_SECONDS: 600,
@@ -994,6 +1002,8 @@ const context = {
     getUserLock: () => ({ tryLock: () => true, releaseLock: () => {} }),
   },
   writeLog: () => {},
+  getAdvancedSourceKnowledgeFingerprint_: (source, model) =>
+    `${String(source || "").toUpperCase()}:${String(model || "").toUpperCase()}:DEFAULT`,
   findExactModelRuleLine_: (model) =>
     String(model || "").toUpperCase() === "S32FM803UC"
       ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
@@ -1028,6 +1038,7 @@ vm.runInContext(
     extractFunction(linebot, "parseSourceStateJson_"),
     extractFunction(linebot, "readSourceProductState_"),
     extractFunction(linebot, "rememberSourceProductModel_"),
+    extractFunction(linebot, "persistSourceProductState_"),
     extractFunction(linebot, "rememberSourceLastAdvanced_"),
     extractFunction(linebot, "clearSourceProductState_"),
     extractFunction(linebot, "writePendingSourceState_"),
@@ -1038,6 +1049,7 @@ vm.runInContext(
     extractFunction(linebot, "reserveAdvancedSourceUsage_"),
     extractFunction(linebot, "refundAdvancedSourceUsage_"),
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+    extractFunction(linebot, "getPersistedAdvancedSourceOperation_"),
     extractFunction(linebot, "beginAdvancedSourceOperation_"),
     extractFunction(linebot, "finishAdvancedSourceOperation_"),
     extractFunction(linebot, "clearAdvancedSourceOperation_"),
@@ -1135,6 +1147,8 @@ const operation = context.beginAdvancedSourceOperation_(
   "manual",
   "如何播放 USB？",
   "S32FM803UC",
+  "",
+  "PDF:USB-MANUAL:SHA-A",
 );
 assert.strictEqual(operation.allowed, true);
 context.finishAdvancedSourceOperation_(operation, "已核對第 97 頁", "S32FM803UC");
@@ -1143,36 +1157,193 @@ const duplicateOperation = context.beginAdvancedSourceOperation_(
   "manual",
   "如何播放USB",
   "S32FM803UC",
+  "",
+  "PDF:USB-MANUAL:SHA-A",
 );
 assert.strictEqual(duplicateOperation.allowed, false);
 assert.strictEqual(duplicateOperation.status, "done");
 assert.strictEqual(duplicateOperation.finalText, "已核對第 97 頁");
-context.GAS_VERSION = "v29.6.252";
+const webOperation = context.beginAdvancedSourceOperation_(
+  "C3",
+  "web",
+  "USB 隨身碟無法播放有什麼公開解法？",
+  "S32FM803UC",
+  "",
+  "WEB:20260816",
+);
+assert.strictEqual(webOperation.allowed, true);
+context.finishAdvancedSourceOperation_(
+  webOperation,
+  "公開網頁建議先確認檔案系統",
+  "S32FM803UC",
+);
+const sourceBuckets = context.readSourceProductState_("C3").advancedBySource;
+assert(
+  sourceBuckets.manual &&
+    sourceBuckets.web &&
+    sourceBuckets.manual.finalText === "已核對第 97 頁" &&
+    sourceBuckets.web.finalText === "公開網頁建議先確認檔案系統",
+  "手冊與網路完成快取必須分槽持久化，不得由後一來源覆蓋前一來源",
+);
+cache.remove(operation.key);
+const persistedManualAfterWeb = context.beginAdvancedSourceOperation_(
+  "C3",
+  "manual",
+  "如何播放 USB？",
+  "S32FM803UC",
+  "",
+  "PDF:USB-MANUAL:SHA-A",
+);
+assert.strictEqual(
+  persistedManualAfterWeb.allowed,
+  false,
+  "完成 Web 後仍須能從 manual 分槽重播先前已付答案",
+);
+context.GAS_VERSION = "v29.6.279";
+context.rememberSourceProductModel_("C4", "S49DG932SC");
 const previousVersionOperation = context.beginAdvancedSourceOperation_(
   "C4",
   "manual",
   "如何開啟 PBP？",
   "S49DG932SC",
+  "",
+  "PDF:G9-MANUAL:SHA-A",
 );
 context.finishAdvancedSourceOperation_(
   previousVersionOperation,
   "已核對第 35 頁",
   "S49DG932SC",
 );
-context.GAS_VERSION = "v29.6.253";
-const migratedOperation = context.beginAdvancedSourceOperation_(
+cache.remove(previousVersionOperation.key);
+context.GAS_VERSION = "v29.6.280";
+const sameEvidenceAfterDeploy = context.beginAdvancedSourceOperation_(
   "C4",
   "manual",
   "如何開啟PBP",
   "S49DG932SC",
+  "",
+  "PDF:G9-MANUAL:SHA-A",
 );
 assert.strictEqual(
-  migratedOperation.allowed,
+  sameEvidenceAfterDeploy.allowed,
+  false,
+  "同日、同型號、同主題且 PDF fingerprint 未變時，部署版本更新後仍須重播已完成答案",
+);
+assert.strictEqual(sameEvidenceAfterDeploy.status, "done");
+assert.strictEqual(sameEvidenceAfterDeploy.finalText, "已核對第 35 頁");
+const changedPdfOperation = context.beginAdvancedSourceOperation_(
+  "C4",
+  "manual",
+  "如何開啟PBP",
+  "S49DG932SC",
+  "",
+  "PDF:G9-MANUAL:SHA-B",
+);
+assert.strictEqual(
+  changedPdfOperation.allowed,
   true,
-  "新版本代表回答／證據契約可能已修正，不得重播上一 patch 的舊答案",
+  "同型號同主題但 PDF fingerprint 變更時必須重新查證，不能重播舊手冊答案",
 );
 context.clearSourceProductState_("C3");
 assert.strictEqual(context.readSourceProductState_("C3"), null);
+
+const sourceCacheQueryVm = {
+  stripInternalRoutingHints_: (value) => String(value || ""),
+  stripKnownModelFromSourceQuestion_: (value, model) =>
+    String(value || "").replace(String(model || ""), "").trim(),
+  isEllipticalEvidenceFollowUp_: (value) => /^(?:那|它|這個)/.test(String(value || "")),
+  readSourceCanonicalTopic_: () => ({
+    canonicalQuestion: "CoreSync 背光要從哪個選單開啟？",
+  }),
+};
+vm.createContext(sourceCacheQueryVm);
+vm.runInContext(
+  `${extractFunction(linebot, "buildAdvancedSourceCacheQuery_")}
+   globalThis.manualCanonical = buildAdvancedSourceCacheQuery_("manual", "S49DG952SC 那怎麼開？", "S49DG952SC", {
+     semanticClaimsPrepared: true,
+     manualQuery: "CoreSync 背光要從哪個選單開啟？",
+     routeClaims: [{id:"c1", question:"CoreSync 背光要從哪個選單開啟？", evidenceNeed:"manual_model_specific"}],
+     unresolvedClaimIds: ["c1"]
+   }, "CACHE_QUERY");
+   globalThis.webCanonical = buildAdvancedSourceCacheQuery_("web", "那還有別的解法嗎？", "S49DG952SC", {
+     semanticClaimsPrepared: true,
+     plannedWebQuery: "CoreSync 背光無法同步時有哪些公開排除方式？",
+     routeClaims: [{id:"c2", question:"CoreSync 背光無法同步時有哪些公開排除方式？", evidenceNeed:"web_current"}],
+     unresolvedClaimIds: ["c2"]
+   }, "CACHE_QUERY");`,
+  sourceCacheQueryVm,
+);
+assert.strictEqual(
+  sourceCacheQueryVm.manualCanonical,
+  "CoreSync 背光要從哪個選單開啟？",
+  "手冊快取必須採 Router 補全後的 manual claim，不得採原始省略追問",
+);
+assert.strictEqual(
+  sourceCacheQueryVm.webCanonical,
+  "CoreSync 背光無法同步時有哪些公開排除方式？",
+  "網路快取必須採 Router 補全後的 web claim，不得採原始省略追問",
+);
+
+const topicGuardState = {
+  model: "S49DG952SC",
+  topic: {
+    canonicalQuestion: "CoreSync 背光要從哪個選單開啟？",
+    canonicalClaimKey: "KEEP",
+  },
+};
+const topicGuardRecent = new Map();
+const topicGuardVm = {
+  Date,
+  SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
+  CacheService: {
+    getScriptCache: () => ({
+      put: (key, value) => topicGuardRecent.set(key, value),
+    }),
+  },
+  PropertiesService: {
+    getScriptProperties: () => ({
+      setProperty: (key, value) => topicGuardRecent.set(`P:${key}`, value),
+    }),
+  },
+  normalizeModelForDisplay: (value) => String(value || ""),
+  stripKnownModelFromSourceQuestion_: (value) => String(value || ""),
+  stripInternalRoutingHints_: (value) => String(value || ""),
+  isEllipticalEvidenceFollowUp_: () => false,
+  computeReplyAnchor_: (value) => String(value || ""),
+  normalizeAdvancedSourceTopicIdentity_: (value) => String(value || ""),
+  readSourceProductState_: () => topicGuardState,
+  persistSourceProductState_: (_contextId, state) => {
+    Object.assign(topicGuardState, state);
+    return state;
+  },
+  getOrderedKnownFullModels_: () => [],
+  rememberComparisonContext_: () => {},
+  isKnownFullModelToken: () => false,
+  rememberSourceProductModel_: () => {},
+  getSourceRecentKey_: (contextId) => `RECENT:${contextId}`,
+  writeLog: () => {},
+};
+vm.createContext(topicGuardVm);
+vm.runInContext(
+  `${extractFunction(linebot, "toHalfWidth")}
+   ${extractFunction(linebot, "normalizePersistentTopicQuestion_")}
+   ${extractFunction(linebot, "isNonProductConversationTurn_")}
+   ${extractFunction(linebot, "rememberSourceCanonicalTopic_")}
+   ${extractFunction(linebot, "rememberRecentSourceQuestion_")}
+   globalThis.directResult = rememberSourceCanonicalTopic_("TOPIC", "謝謝", "S49DG952SC", [{question:"謝謝"}]);
+   rememberRecentSourceQuestion_("TOPIC", "收到", "S49DG952SC", false);`,
+  topicGuardVm,
+);
+assert.strictEqual(
+  topicGuardState.topic.canonicalQuestion,
+  "CoreSync 背光要從哪個選單開啟？",
+  "謝謝／收到等非產品閒聊不得覆寫跨日 canonical product topic",
+);
+assert.strictEqual(
+  topicGuardRecent.size,
+  0,
+  "非產品閒聊不得寫入 Rich Menu 的 recent question，也不得間接更新主題",
+);
 
 const pending = context.writePendingSourceState_("C2", { source: "manual" });
 pending.expiresAt = Date.now() - 1;
@@ -1353,8 +1524,10 @@ assert(
     advancedRouteText,
   ) &&
     /buildTentativeWebFallback_/.test(advancedRouteText) &&
-    /這次公開網頁沒有足夠證據回答這題/.test(linebot),
-  "Web 已送供應商但無引用時仍須計一次，且不得用退款繞過成本上限",
+    /return buildSafeNoEvidenceNextStep_\(query, model\)/.test(
+      extractFunction(linebot, "buildTentativeWebFallback_"),
+    ),
+  "Web 已送供應商但無引用時仍須計一次；未驗證草稿只能轉成安全終點，且不得用退款繞過成本上限",
 );
 assert(
   /function isExplicitNonOfficialWebRequest_/.test(linebot) &&
@@ -1445,12 +1618,15 @@ assert(
     /lastWebUnverifiedDraft \|\| webResponse/.test(
       extractFunction(linebot, "runManualWebRescue_"),
     ) &&
-    /buildTentativeWebFallback_\(\s*rawWebDraft/.test(
+    !/buildTentativeWebFallback_\(/.test(
+      extractFunction(linebot, "runManualWebRescue_"),
+    ) &&
+    /tentativeText:\s*""/.test(
       extractFunction(linebot, "runManualWebRescue_"),
     ) &&
     /userWebQuotaCharged=0/.test(linebot) &&
     /SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT\s*=\s*3/.test(linebot) &&
-    /buildTentativeManualFallback_/.test(
+    /buildSafeNoEvidenceNextStep_/.test(
       extractFunction(linebot, "buildManualWebRescueReply_"),
     ) &&
     /function isGroundedWebAnswerRelevant_/.test(linebot) &&
@@ -1536,7 +1712,8 @@ vm.runInContext(
      "購物網站有販售 S32HG802SC。"
    ], "S32HG802SC", "S32HG802SC 底座是免工具安裝嗎？");
    globalThis.m8FamilySupported = buildGroundedSupportedAnswer_([
-     "針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。"
+     {text:"Smart Monitor M8 的 Wi-Fi 斷線可先依下列步驟排除。",sourceIds:["chunk:m8"],sourceLabels:["example-m8.com"]},
+     {text:"針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。",sourceIds:["chunk:m8"],sourceLabels:["example-m8.com"]}
    ], "S32FM803UC", "S32FM803UC 每晚 Wi-Fi 斷線要怎麼排除？",
       "M8 智慧螢幕的 Wi-Fi 斷線可先依下列步驟排除。\\n針對 Wi-Fi 斷線，先拔掉螢幕與路由器電源 30 秒，再依序重新開機。");
    globalThis.wrongFamilyRejected = buildGroundedSupportedAnswer_([
@@ -1575,7 +1752,31 @@ vm.runInContext(
     globalThis.familyNumericClaimRejected = buildGroundedSupportedAnswer_([
       "Odyssey OLED G9（G95SC）在 PBP 模式下左右兩側最高 120Hz。"
     ], "S49DG932SC", "S49DG932SC 的 PBP 兩邊各自最高幾 Hz？",
-       "Odyssey OLED G9（G95SC）在 PBP 模式下左右兩側最高 120Hz。");`,
+       "Odyssey OLED G9（G95SC）在 PBP 模式下左右兩側最高 120Hz。");
+    globalThis.crossSourceFactRejected = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]},
+      {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:1"],sourceLabels:["source-b.com"]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.sameSourceFactAccepted = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]},
+      {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.multiSourceCannotSplit = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0","chunk:1"],sourceLabels:["source-a.com","source-b.com"]},
+      {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.completeSourceSetAccepted = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0","chunk:1"],sourceLabels:["source-a.com","source-b.com"]},
+      {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:1","chunk:0"],sourceLabels:["source-b.com","source-a.com"]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.completeSourceSetLabels = lastSearchSources.slice();
+    globalThis.missingLabelRejected = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 有 1 個 HDMI 埠。",sourceIds:["chunk:0"],sourceLabels:[]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.conflictingLabelRejected = buildGroundedSupportedAnswer_([
+      {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]},
+      {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:0"],sourceLabels:["source-b.com"]}
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");`,
   groundedSupportContext,
 );
 assert(
@@ -1596,9 +1797,23 @@ assert(
     groundedSupportContext.causeMissingRejected === "" &&
     groundedSupportContext.pbpLimitDoesNotAnswerPerSideMaximum === "" &&
     groundedSupportContext.familyNumericClaimRejected === "" &&
+    groundedSupportContext.crossSourceFactRejected === "" &&
+    groundedSupportContext.multiSourceCannotSplit === "" &&
+    /1 個 HDMI/.test(groundedSupportContext.completeSourceSetAccepted) &&
+    Array.from(groundedSupportContext.completeSourceSetLabels).join("|") ===
+      "source-a.com|source-b.com" &&
+    groundedSupportContext.missingLabelRejected === "" &&
+    groundedSupportContext.conflictingLabelRejected === "" &&
+    /S27CG510EC/.test(groundedSupportContext.sameSourceFactAccepted) &&
+    /1 個 HDMI/.test(groundedSupportContext.sameSourceFactAccepted) &&
     /左側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete) &&
     /右側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete),
   `Web 最終回答只能使用 groundingSupports 同時支持目前型號（或 RULE 已確認系列）與本題全部主張的句段: ${JSON.stringify(groundedSupportContext)}`,
+);
+assert(
+  /groundingChunkIndices/.test(linebot) &&
+    /sourceIds/.test(extractFunction(linebot, "buildGroundedSupportedAnswer_")),
+  "Web groundingSupports 必須保留來源 ID；不同來源不得拼接成同一項型號事實",
 );
 
 const webFallbackContext = {
@@ -1652,19 +1867,22 @@ vm.runInContext(
 );
 assert(
   /沒有足夠證據/.test(webFallbackContext.noEvidence) &&
-    /官方手冊/.test(webFallbackContext.noEvidence) &&
+    /先不套用其他型號/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
     /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
-    /使用數位機上盒/.test(webFallbackContext.safeTerminal) &&
-    /諮詢業者/.test(webFallbackContext.safeTerminal) &&
-    !/其他型號可能/.test(webFallbackContext.safeTerminal) &&
-    /並非已由三星手冊或公開來源證實/.test(webFallbackContext.safeTerminal) &&
-    /HDMI 線連接/.test(webFallbackContext.noPurchase) &&
-    !/購買|通常/.test(webFallbackContext.noPurchase) &&
-    /在選單中尋找「PIP\/PBP Mode」或「Multi-View」選項，然後將其開啟/.test(
+    /沒有足夠證據/.test(webFallbackContext.safeTerminal) &&
+    !/使用數位機上盒|諮詢業者|其他型號可能/.test(
+      webFallbackContext.safeTerminal,
+    ) &&
+    /沒有足夠證據/.test(webFallbackContext.noPurchase) &&
+    !/購買|通常|HDMI 線連接/.test(webFallbackContext.noPurchase) &&
+    /沒有足夠證據/.test(webFallbackContext.pbpCoherent) &&
+    !/PIP\/PBP Mode|Multi-View|然後將其開啟/.test(
       webFallbackContext.pbpCoherent,
     ) &&
-    /沒有足夠證據/.test(webFallbackContext.numericGuessRejected) &&
+    /沒有足夠(?:可靠的資料|證據)/.test(
+      webFallbackContext.numericGuessRejected,
+    ) &&
     !/120\s*Hz|限制在|有使用者表示/i.test(
       webFallbackContext.numericGuessRejected,
     ) &&
@@ -1729,13 +1947,22 @@ assert(
 );
 
 assert(
-  /versionOverride \|\| GAS_VERSION/.test(
+  /ADVANCED_SOURCE_CACHE_SCHEMA/.test(
     extractFunction(linebot, "getAdvancedSourceOperationKey_"),
   ) &&
+    /getSourceDateKey_\(\)/.test(
+      extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+    ) &&
+    /knowledgeFingerprint/.test(
+      extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+    ) &&
+    !/versionOverride \|\| GAS_VERSION/.test(
+      extractFunction(linebot, "getAdvancedSourceOperationKey_"),
+    ) &&
     !/getPreviousGasPatchVersion_/.test(
       extractFunction(linebot, "beginAdvancedSourceOperation_"),
     ),
-  "PDF／Web 快取鍵須版本化；同版本可去重，新版本不得重播舊證據或錯答",
+  "PDF／Web 快取鍵必須由證據契約、台北日期、型號、主題與知識 fingerprint 決定；不可因單純部署版本更新重複付費",
 );
 
 const operationClassifierContext = {};
@@ -1771,6 +1998,34 @@ assert(
       handleMessageText,
     ),
   "自然追問沿用的完整型號必須同步進 routingQuestion 與上一題來源狀態，不能被舊候選覆寫",
+);
+const modelSelectionRouterStart = handleMessageText.indexOf(
+  'if (msg.startsWith("#型號:"))',
+);
+const modelSelectionRouterEnd = handleMessageText.indexOf(
+  '} else if (modelSelectMode === "consent")',
+  modelSelectionRouterStart,
+);
+const fastModelSelectionRouterText = handleMessageText.slice(
+  modelSelectionRouterStart,
+  modelSelectionRouterEnd,
+);
+assert(
+  modelSelectionRouterStart >= 0 &&
+    modelSelectionRouterEnd > modelSelectionRouterStart &&
+    /const savedTopic = pendingTopicForSelection;/.test(
+      fastModelSelectionRouterText,
+    ) &&
+    /const queryText = normalizedTopic[\s\S]{0,120}\$\{normalizedTopic\} \(型號: \$\{selectedModel\}\)/.test(
+      fastModelSelectionRouterText,
+    ) &&
+    /msg = queryText;[\s\S]{0,100}userMessage = queryText;[\s\S]{0,220}routingQuestion = queryText;/.test(
+      fastModelSelectionRouterText,
+    ) &&
+    /rememberRecentSourceQuestion_\(contextId, normalizedTopic \|\| queryText, primaryModel\)/.test(
+      fastModelSelectionRouterText,
+    ),
+  "點 #型號 後必須以 pending 原題＋完整型號續跑 Router／QA／PDF，不能把原題替換成型號按鈕文字",
 );
 
 const emptyQuickReplyContext = {
@@ -1809,6 +2064,7 @@ vm.runInContext(
    ${extractFunction(linebot, "getManualEvidenceRegionalBase_")}
    ${extractFunction(linebot, "extractManualEvidenceModels_")}
    ${extractFunction(linebot, "manualEvidenceModelMatchesTarget_")}
+   ${extractFunction(linebot, "manualEvidenceHasModelApplicabilityCaveat_")}
    ${extractFunction(linebot, "manualEvidenceSupportsTargetModel_")}
    ${extractFunction(linebot, "manualSupportedAnswerTargetsModel_")}
    ${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}
@@ -1840,6 +2096,10 @@ vm.runInContext(
    globalThis.lsModelPrefixedCommonPath = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"LS57CG952NNXZA：到 PIP/PBP → PIP/PBP Mode 開啟。",pageNumber:34,scope:"全檔共通",evidenceExcerpt:"PIP/PBP；PIP/PBP Mode 開啟或關閉 PIP/PBP 模式"}]}), "S57CG952", "PBP 在哪裡開？");
    globalThis.unsupportedNumber = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"USB-C 可供電 98W。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"USB-C 可供電 65W"}]}), "");
    globalThis.unsupportedNegative = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"這款沒有耳機孔。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"連接埠列出 HDMI 與 DisplayPort"}]}), "");
+   globalThis.conditionalCommonCaveat = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可使用 Eclipse Lighting 開啟機背燈效。",pageNumber:141,scope:"全檔共通",evidenceExcerpt:"Eclipse Lighting；依型號而定，可能不支援此功能"}]}), "S49DG952SC", "機背燈效怎麼開？");
+   globalThis.coreSyncFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 CoreSync。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "CoreSync 在哪裡開？");
+   globalThis.eclipseFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 Eclipse Lighting。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效叫什麼？");
+   globalThis.coreLightingExactAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可到 Core Lighting+ 開啟機背燈效。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting+ 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效怎麼開？");
    globalThis.contradictoryNotFound = normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"沒有答案",evidence:[{supportedAnswer:"其實有答案。",pageNumber:1,scope:"全檔共通",evidenceExcerpt:"其實有答案"}]}), "");`,
   manualUiContext,
 );
@@ -1894,6 +2154,17 @@ assert(
     !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.partiallyValid) &&
     /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.unsupportedNumber) &&
     /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.unsupportedNegative) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.conditionalCommonCaveat,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.coreSyncFromCoreLightingRejected,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.eclipseFromCoreLightingRejected,
+    ) &&
+    /第115頁/.test(manualUiContext.coreLightingExactAccepted) &&
+    /Core Lighting\+/.test(manualUiContext.coreLightingExactAccepted) &&
     /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
@@ -2279,6 +2550,28 @@ assert(
       handleScopeOrderText.indexOf("rememberRecentSourceQuestion_("),
   "競品／家電 Scope Guard 必須先於來源 pending 與持久產品狀態",
 );
+const competitorScopeVm = {};
+vm.createContext(competitorScopeVm);
+vm.runInContext(
+  `${extractFunction(linebot, "isCrossDeviceMonitorQuery")}
+   ${extractFunction(linebot, "isCompetitorMonitorQuery_")}
+   ${extractFunction(linebot, "isOutOfProjectScopeQuery")}
+   ${extractFunction(linebot, "buildOutOfProjectScopeReply")}
+   globalThis.isCompetitor = isOutOfProjectScopeQuery("LG 螢幕跟三星哪個比較好？");
+   globalThis.isSamsung = isOutOfProjectScopeQuery("三星 G8 螢幕跟 G9 哪個比較好？");
+   globalThis.isCrossDevice = isOutOfProjectScopeQuery("LG 手機要怎麼接三星 M8 螢幕？");
+   globalThis.reply = buildOutOfProjectScopeReply("LG 螢幕跟三星哪個比較好？");`,
+  competitorScopeVm,
+);
+assert(
+  competitorScopeVm.isCompetitor === true &&
+    competitorScopeVm.isSamsung === false &&
+    competitorScopeVm.isCrossDevice === false &&
+    /先不亂比/.test(competitorScopeVm.reply) &&
+    /Sam/.test(competitorScopeVm.reply) &&
+    !/(再查網路|搜尋網路|客服)/.test(competitorScopeVm.reply),
+  `競品螢幕比較必須零 LLM 收斂為店員同儕回覆，不得因含「螢幕」繞過 Scope Guard 或再要求網搜：${JSON.stringify({ isCompetitor: competitorScopeVm.isCompetitor, isSamsung: competitorScopeVm.isSamsung, isCrossDevice: competitorScopeVm.isCrossDevice, reply: competitorScopeVm.reply })}`,
+);
 assert(
   /candidateModel && isKnownFullModelToken\(candidateModel\)/.test(
     extractFunction(linebot, "rememberRecentSourceQuestion_"),
@@ -2336,6 +2629,8 @@ assert(
 );
 const deterministicRuleVm = {
   normalizeModelForDisplay: (model) => model,
+  findRuleTermOntologyMatches_: () => [],
+  sanitizeExactRuleReplyField_: (field) => field,
   findExactModelRuleLine_: () =>
     "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,HDMI 2.1 x2,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
 };
@@ -2385,6 +2680,8 @@ assert(
 const unsafeRuleVm = {
   normalizeModelForDisplay: (model) => model,
   buildDeterministicComparisonReply_: () => "",
+  findRuleTermOntologyMatches_: () => [],
+  sanitizeExactRuleReplyField_: (field) => field,
   findExactModelRuleLine_: (model) =>
     model === "S24D300GAC"
       ? "LS24D300GACXZW,型號：S24D300GAC,24吋 IPS,FHD,HDMI x1"

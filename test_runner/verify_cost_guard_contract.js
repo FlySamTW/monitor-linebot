@@ -366,12 +366,16 @@ assert(
   "網搜缺引用時不重複付費，改以明確未證實的保守答案完成回覆",
 );
 assert(
-  /if \(forceWebSearch\)[\s\S]{0,100}thinkingBudget:\s*0/.test(linebot) &&
+  /if \(forceWebSearch\)\s*\{\s*genConfig\.thinkingConfig\s*=\s*\{\s*thinkingBudget:\s*0\s*\}/.test(
+    linebot,
+  ) &&
     /maxOutputTokens:\s*forceWebSearch\s*\?\s*450/.test(linebot) &&
-    /numbered\.length < 3/.test(linebot) &&
     /buildGroundedSupportedAnswer_\(/.test(linebot) &&
+    /return buildSafeNoEvidenceNextStep_\(query, model\)/.test(
+      extractFunction(linebot, "buildTentativeWebFallback_"),
+    ) &&
     !/isMonitorUsbMediaWebQuestion_\([^)]*\)[\s\S]{0,240}finalText\s*=\s*buildSafeUsbMediaWebAnswer_/.test(linebot),
-  "Web 關閉動態思考並限制輸出；USB 媒體題只能使用 grounded 支持句，不得用固定摘要冒充來源",
+  "Web 關閉動態思考並限制輸出；所有題型都只能使用 grounded 支持句，未驗證草稿不得冒充答案",
 );
 assert(
   /--paid-live/.test(paidRunner) &&

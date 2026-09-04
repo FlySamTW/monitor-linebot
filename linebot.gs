@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.277"; // 2026-08-28 條件式語意主張規劃器與 Evidence 關係守門
-const BUILD_TIMESTAMP = "2026-08-28 15:30";
+const GAS_VERSION = "v29.6.280"; // 2026-09-04 語意規劃、原子證據與跨日主題根治
+const BUILD_TIMESTAMP = "2026-09-04 18:30";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,6 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV2";
 const SOURCE_DAILY_LIMITS = { manual: 5, web: 10 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 20;
@@ -74,6 +75,13 @@ const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite Sta
 const GEMINI_MODEL_WEB = "models/gemini-2.5-flash";
 const PRICE_WEB_INPUT = 0.3; // $0.30 per 1M Input (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
 const PRICE_WEB_OUTPUT = 2.5; // $2.50 per 1M Output (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
+
+// 只有模糊、複合或省略式追問才使用較強的語意規劃器。它只拆主張與選來源，
+// 不回答產品事實、不掛 PDF／Web 工具；精準 QA／RULE 仍維持零 Router。
+// 2026-09-04 Google 官方穩定型號與限時標準價（至 2026-12-31）。
+const GEMINI_MODEL_ROUTER = "models/gemini-3.7-flash";
+const PRICE_ROUTER_INPUT = 0.75;
+const PRICE_ROUTER_OUTPUT = 3.75;
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -199,9 +207,12 @@ function getElaborationCountForAnchor_(cache, userId, anchor) {
 }
 
 function getElaborationTopicAnchor_(cache, userId, fallbackText) {
+  const cachedTopic = String(
+    cache.get(`${userId}:last_meaningful_query`) || "",
+  ).trim();
   const topicText = (
-    cache.get(`${userId}:last_meaningful_query`) ||
     fallbackText ||
+    (!isNonProductConversationTurn_(cachedTopic) ? cachedTopic : "") ||
     ""
   ).trim();
   return computeReplyAnchor_(topicText);
@@ -3006,12 +3017,13 @@ function callSemanticRouter_(inputValue) {
     };
   }
   const systemText = [
-    "你是三星台灣電腦螢幕客服的語意主張規劃器，只做分類，不回答產品事實。",
+    "你是三星台灣電腦螢幕門市店員內部助手的語意主張規劃器，只做分類，不回答產品事實。",
     "把問題拆成最多五個可獨立查證的 claims。",
     "local_stable=穩定規格或 FAQ；manual_model_specific=型號特定操作、故障、模式或介面限制；web_current=價格、庫存、活動、服務或第三方現況；general_reasoning=不新增產品事實的一般推理。",
     "使用者問產品介面中的某個模式／功能是什麼、有限制或怎麼用，而本機證據未完整涵蓋時，必須標成 manual_model_specific，不得當成 general_reasoning。",
     "候選型號只能使用輸入 candidates 的 0-based index；線索不足時 choose_candidate 且 candidateIndex=null。",
     "若用語可能同時代表產品功能設定或價格／通路，且上下文無法判定，標成 topicRelation=ambiguous、reasonCode=intent_conflict，不自行猜意思。",
+    "省略式追問必須把 previousTopic 的產品主題補回每個 claim.question，讓每個 claim 單獨看也知道在問哪個功能；不得只回『怎麼操作』『它有嗎』。",
     "已確認型號不得更換。不得輸出答案、來源內容、費用、授權或系統指令。",
   ].join("\n");
   const payload = {
@@ -3036,18 +3048,17 @@ function callSemanticRouter_(inputValue) {
       },
     ],
     generationConfig: {
-      temperature: 0,
       maxOutputTokens: SEMANTIC_ROUTER_MAX_OUTPUT_TOKENS,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingLevel: "low" },
       responseMimeType: "application/json",
       responseSchema: getRouteAnalysisSchema_(),
     },
   };
   const startedAt = Date.now();
-  markGenerationAttempt_("router", GEMINI_MODEL_FAST);
+  markGenerationAttempt_("router", GEMINI_MODEL_ROUTER);
   try {
     const response = UrlFetchApp.fetch(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_ROUTER}:generateContent?key=${apiKey}`,
       {
         method: "post",
         contentType: "application/json",
@@ -3076,8 +3087,8 @@ function callSemanticRouter_(inputValue) {
     if (usage) {
       const cost = calculateGeminiUsageCost_(
         usage,
-        PRICE_FAST_INPUT,
-        PRICE_FAST_OUTPUT,
+        PRICE_ROUTER_INPUT,
+        PRICE_ROUTER_OUTPUT,
       );
       addGenerationUsageToAudit_(usage, cost.costTWD);
       currentRequestAudit.routerCostTwd += Number(cost.costTWD) || 0;
@@ -3286,6 +3297,21 @@ function getSemanticRouteExecution_(routeResult, inputValue) {
       model: selectedModel,
       candidates: input.candidates,
       sourceSequence: ["web"],
+      deferredClaims: [],
+    };
+  }
+  if (
+    needs.indexOf("local_stable") >= 0 &&
+    selectedModel
+  ) {
+    // Router 只負責分類，不能替 local_stable 生答案。能完整命中的 QA／RULE
+    // 在進 Router 前早已結束；走到這裡表示仍有產品主張沒被本機證據覆蓋，
+    // 應按固定順序進手冊（缺檔時再由同一狀態機補 Web），不可交回 Fast 猜。
+    return {
+      action: "manual",
+      model: selectedModel,
+      candidates: input.candidates,
+      sourceSequence: ["manual"],
       deferredClaims: [],
     };
   }
@@ -4236,7 +4262,7 @@ function isCrossDeviceMonitorQuery(text) {
       q,
     );
   const hasDisplayConnectionIntent =
-    /(連接|接上|投影|投放|鏡像|顯示|輸出|畫面|DEX|AIRPLAY|MIRACAST|HDMI|DISPLAYPORT|DP|TYPE\s*-?\s*C|USB\s*-?\s*C|THUNDERBOLT|無線連線|播放)/i.test(
+    /(連接|接上|接到|怎麼接|如何接|投影|投放|鏡像|顯示|輸出|畫面|DEX|AIRPLAY|MIRACAST|HDMI|DISPLAYPORT|DP|TYPE\s*-?\s*C|USB\s*-?\s*C|THUNDERBOLT|無線連線|播放)/i.test(
       q,
     );
   return hasExternalDevice && hasMonitorTarget && hasDisplayConnectionIntent;
@@ -4469,7 +4495,7 @@ function findExactModelRuleLine_(model) {
   const normalizedModel = normalizeModelForDisplay(model || "");
   if (!normalizedModel || !ss) return "";
   const cache = CacheService.getScriptCache();
-  const cacheKey = `EXACT_RULE_LINE_${normalizedModel}`;
+  const cacheKey = `EXACT_RULE_LINE_V3_${normalizedModel}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
@@ -4478,6 +4504,7 @@ function findExactModelRuleLine_(model) {
     if (!sheet || sheet.getLastRow() <= 1) return "";
     const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
     const needle = normalizedModel.toUpperCase();
+    const matchedLines = [];
     for (let i = 0; i < values.length; i++) {
       const line = values[i]
         .map((cell) => String(cell || ""))
@@ -4486,9 +4513,11 @@ function findExactModelRuleLine_(model) {
       const upper = toHalfWidth(line).toUpperCase();
       if (!upper || /^(?:活動|別稱|系列|術語)_/.test(upper)) continue;
       if (upper.indexOf(needle) < 0) continue;
-      cache.put(cacheKey, line, 21600);
-      return line;
+      if (matchedLines.indexOf(line) < 0) matchedLines.push(line);
     }
+    const combined = matchedLines.slice(0, 8).join(",");
+    if (combined) cache.put(cacheKey, combined, 21600);
+    return combined;
   } catch (e) {
     writeLog(`[RULE Exact Model Guard] 讀取 ${normalizedModel} 規格失敗: ${e.message}`);
   }
@@ -4513,6 +4542,38 @@ function splitClassRuleFields_(ruleLine) {
       return String(field || "").trim();
     })
     .filter(Boolean);
+}
+
+// 「能力_」列是型號能力的內部證據索引。回覆時只留下本題實際詢問、
+// 且該列明載的能力名稱，不把 model/evidence/checkedAt/source 等維護欄位
+// 原樣送到 LINE。
+function sanitizeExactRuleReplyField_(field, query) {
+  const raw = String(field || "").trim();
+  const match = raw.match(/(?:^|[；;])capabilities=([^；;]+)/i);
+  if (!match) return raw;
+
+  let requestedChecks = findRuleTermOntologyMatches_(query);
+  if (requestedChecks.length === 0) {
+    const explicitCheck = getExplicitCapabilityCheck_(query);
+    requestedChecks = explicitCheck ? [explicitCheck] : [];
+  }
+  if (requestedChecks.length === 0) return "";
+  const supported = String(match[1] || "")
+    .split(/[、,]/)
+    .map(function (value) {
+      return String(value || "").trim();
+    })
+    .filter(function (capability, index, list) {
+      if (!capability || list.indexOf(capability) !== index) return false;
+      return requestedChecks.some(function (check) {
+        if (!check || !check.evidence) return false;
+        check.evidence.lastIndex = 0;
+        return check.evidence.test(capability);
+      });
+    });
+  return supported.length > 0
+    ? `官方產品頁明載：${supported.join("、")}`
+    : "";
 }
 
 /**
@@ -4558,12 +4619,182 @@ function hasDirectModeQualifiedRuleEvidence_(query, ruleLine) {
   });
 }
 
+/**
+ * 從 CLASS_RULES 的「術語_」列建立功能詞彙索引。這個索引只負責理解
+ * Samsung 官網名稱與店員口語別稱；它不能證明任何型號具備該功能。
+ * 新功能詞只需補資料列，不再為每一題擴充 Prompt 或路由 regex。
+ */
+function loadRuleTermOntology_() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "RULE_TERM_ONTOLOGY_V2";
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+  }
+
+  const terms = [];
+  try {
+    const sheet = ss && ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet) return terms;
+    const values = sheet.getDataRange().getValues();
+    values.forEach(function (row) {
+      const line = row
+        .map(function (cell) {
+          return String(cell || "");
+        })
+        .join(" ")
+        .trim();
+      const keyMatch = line.match(/^術語_([^,，\s]+)/i);
+      if (!keyMatch) return;
+      const aliasMatch = line.match(/(?:^|[,，；;])aliases=([^；;]+)/i);
+      const canonicalMatch = line.match(/(?:^|[,，；;])canonical=([^；;]+)/i);
+      const aliases = (aliasMatch ? aliasMatch[1].split(/[、|]/) : [])
+        .concat([keyMatch[1]])
+        .map(function (value) {
+          return String(value || "").trim();
+        })
+        .filter(function (value, index, list) {
+          return value.length >= 2 && list.indexOf(value) === index;
+        });
+      if (aliases.length === 0) return;
+      terms.push({
+        key: keyMatch[1],
+        canonical: canonicalMatch ? canonicalMatch[1].trim() : keyMatch[1],
+        aliases: aliases,
+      });
+    });
+    terms.sort(function (a, b) {
+      const aLength = Math.max.apply(
+        null,
+        a.aliases.map(function (alias) {
+          return alias.replace(/\s+/g, "").length;
+        }),
+      );
+      const bLength = Math.max.apply(
+        null,
+        b.aliases.map(function (alias) {
+          return alias.replace(/\s+/g, "").length;
+        }),
+      );
+      return bLength - aLength;
+    });
+    cache.put(cacheKey, JSON.stringify(terms), 21600);
+  } catch (e) {
+    writeLog(`[RULE Term Ontology] 讀取功能詞彙失敗: ${e.message}`);
+  }
+  return terms;
+}
+
+function buildRuleTermAliasRegex_(aliases) {
+  const sources = (aliases || [])
+    .map(function (alias) {
+      const rawAlias = String(alias || "").trim();
+      if (!rawAlias) return "";
+      const escaped = rawAlias
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[\s\-‐‑–—_]+/g, "[\\s\\-‐‑–—_]*");
+      const startBoundary = /^[A-Z0-9]/i.test(rawAlias)
+        ? "(?:^|[^A-Z0-9])"
+        : "";
+      const endBoundary = /[A-Z0-9]$/i.test(rawAlias)
+        ? "(?=$|[^A-Z0-9])"
+        : "";
+      return `${startBoundary}${escaped}${endBoundary}`;
+    })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      return b.length - a.length;
+    });
+  return sources.length > 0 ? new RegExp(sources.join("|"), "i") : null;
+}
+
+function findRuleTermOntologyMatches_(query) {
+  const text = toHalfWidth(String(query || ""));
+  if (!text.trim()) return [];
+  const terms = loadRuleTermOntology_();
+  const matches = [];
+  for (let i = 0; i < terms.length; i++) {
+    const aliases = terms[i].aliases
+      .slice()
+      .sort(function (a, b) {
+        return b.replace(/\s+/g, "").length - a.replace(/\s+/g, "").length;
+      });
+    let matchedAlias = "";
+    for (let j = 0; j < aliases.length; j++) {
+      // HAS 是高度調整底座縮寫；英文動詞 has 不得當成產品術語。
+      if (
+        String(aliases[j] || "").toUpperCase() === "HAS" &&
+        !/(?:^|[^A-Z0-9])HAS(?=$|[^A-Z0-9])/.test(String(query || ""))
+      ) {
+        continue;
+      }
+      const aliasPattern = buildRuleTermAliasRegex_([aliases[j]]);
+      if (aliasPattern && aliasPattern.test(text)) {
+        matchedAlias = aliases[j];
+        break;
+      }
+    }
+    if (matchedAlias) {
+      matches.push({
+        label: terms[i].aliases[0] || terms[i].key,
+        canonical: terms[i].canonical,
+        evidence: buildRuleTermAliasRegex_(terms[i].aliases),
+        matchedAlias: matchedAlias,
+        definitionOnly: true,
+      });
+    }
+  }
+
+  // Pro／Premium／複合名稱常包含基礎名稱；同一段文字命中更長正式名時，
+  // 不再把短字串誤算成第二個功能（例如 HDR10+ Gaming 不是三個主張）。
+  return matches.filter(function (candidate, index, list) {
+    const compact = String(candidate.matchedAlias || "")
+      .toUpperCase()
+      .replace(/[\s\-‐‑–—_]+/g, "");
+    return !list.some(function (other, otherIndex) {
+      if (otherIndex === index) return false;
+      const otherCompact = String(other.matchedAlias || "")
+        .toUpperCase()
+        .replace(/[\s\-‐‑–—_]+/g, "");
+      return otherCompact.length > compact.length && otherCompact.indexOf(compact) >= 0;
+    });
+  });
+}
+
+function findRuleTermOntologyMatch_(query) {
+  const matches = findRuleTermOntologyMatches_(query);
+  return matches.length > 0 ? matches[0] : null;
+}
+
 function getExplicitCapabilityCheck_(query) {
   const q = String(query || "");
   if (!/(?:有|支援|支持|內建|具備|是否|能不能|可不可以).{0,28}(?:嗎|呢|\?|？)?|(?:嗎|呢|\?|？)/i.test(q)) {
     return null;
   }
   const capabilities = [
+    {
+      label: "Core Lighting+",
+      query: /CORE\s*LIGHTING\s*\+/i,
+      evidence: /CORE\s*LIGHTING\s*\+/i,
+    },
+    {
+      label: "Infinity Core Lighting",
+      query: /INFINITY\s*CORE(?:\s*LIGHTING)?/i,
+      evidence: /INFINITY\s*CORE(?:\s*LIGHTING)?/i,
+    },
+    {
+      label: "Eclipse Lighting／Eclipse Sync",
+      query: /ECLIPSE\s*(?:LIGHTING|SYNC)/i,
+      evidence: /ECLIPSE\s*(?:LIGHTING|SYNC)/i,
+    },
+    {
+      label: "CoreSync",
+      query: /CORE\s*SYNC/i,
+      evidence: /CORE\s*SYNC/i,
+    },
     { label: "KVM", query: /\bKVM\b/i, evidence: /\bKVM\b/i },
     {
       label: "耳機孔",
@@ -4582,7 +4813,22 @@ function getExplicitCapabilityCheck_(query) {
   for (let i = 0; i < capabilities.length; i++) {
     if (capabilities[i].query.test(q)) return capabilities[i];
   }
-  return null;
+  return findRuleTermOntologyMatch_(q);
+}
+
+function getAllExplicitCapabilityChecks_(query) {
+  const checks = [];
+  const first = getExplicitCapabilityCheck_(query);
+  if (first) checks.push(first);
+  findRuleTermOntologyMatches_(query).forEach(function (term) {
+    const identity = String(term.canonical || term.label || "").toUpperCase();
+    const duplicate = checks.some(function (item) {
+      const itemIdentity = String(item.canonical || item.label || "").toUpperCase();
+      return itemIdentity === identity || String(item.label || "").toUpperCase() === String(term.label || "").toUpperCase();
+    });
+    if (!duplicate) checks.push(term);
+  });
+  return checks;
 }
 
 function enforceExactModelCapabilityEvidence_(query, rawResponse) {
@@ -4590,18 +4836,36 @@ function enforceExactModelCapabilityEvidence_(query, rawResponse) {
   const models = dedupDisplayModels(extractFullModelLikeTokens(cleanQuery), 3);
   if (models.length !== 1) return String(rawResponse || "");
 
-  const capability = getExplicitCapabilityCheck_(cleanQuery);
-  if (!capability) return String(rawResponse || "");
+  const capabilities = getAllExplicitCapabilityChecks_(cleanQuery);
+  if (capabilities.length === 0) return String(rawResponse || "");
   const model = normalizeModelForDisplay(models[0]);
   const exactRuleLine = findExactModelRuleLine_(model);
-  if (exactRuleLine && capability.evidence.test(exactRuleLine)) {
+  const missing = capabilities.filter(function (capability) {
+    return !(exactRuleLine && capability.evidence.test(exactRuleLine));
+  });
+  if (missing.length === 0) {
     return String(rawResponse || "");
   }
 
+  const supported = capabilities.filter(function (capability) {
+    return missing.indexOf(capability) < 0;
+  });
+  const missingLabels = missing.map(function (capability) {
+    return capability.label;
+  });
+
   writeLog(
-    `[RULE Exact Model Guard] ${model} 的完整規格列未明載 ${capability.label}；禁止用術語列或同系列型號作肯定／否定結論`,
+    `[RULE Exact Model Guard] ${model} 的完整規格列未明載 ${missingLabels.join("、")}；禁止用術語列或同系列型號作肯定／否定結論`,
   );
-  return `${model} 的台灣三星官方規格資料目前沒有列出「${capability.label}」，所以我不能把其他同系列型號的功能套到這台，也不能直接說它有或沒有。\n\n若要再確認官方手冊是否另有記載，請按「查手冊｜5次/日」；系統會沿用 ${model}，不必重新選型號。\n[AUTO_SEARCH_PDF]`;
+  return [
+    supported.length > 0
+      ? `${model} 的台灣官方規格已明載：${supported.map(function (item) { return item.label; }).join("、")}。`
+      : "",
+    `${model} 的台灣三星官方規格目前沒有列出「${missingLabels.join("、")}」，所以我不能把其他同系列型號的功能套到這台，也不能直接說它有或沒有。`,
+    "",
+    `若要再確認官方手冊是否另有記載，請按「查手冊｜5次/日」；系統會沿用 ${model}，不必重新選型號。`,
+    "[AUTO_SEARCH_PDF]",
+  ].filter(Boolean).join("\n");
 }
 
 function buildMissingExactRuleFactReply_(query, model) {
@@ -4613,15 +4877,21 @@ function buildMissingExactRuleFactReply_(query, model) {
     );
     return `這題要確認 ${normalizedModel} 在指定介面下能同時輸出的解析度與更新率，單看規格列的介面版本不能下結論，需要查官方手冊的訊號時序表。`;
   }
-  const capability = getExplicitCapabilityCheck_(query);
-  if (!capability) return "";
+  const capabilities = getAllExplicitCapabilityChecks_(query);
+  if (capabilities.length === 0) return "";
   const exactRuleLine = findExactModelRuleLine_(normalizedModel);
-  if (exactRuleLine && capability.evidence.test(exactRuleLine)) return "";
+  const missing = capabilities.filter(function (capability) {
+    return !(exactRuleLine && capability.evidence.test(exactRuleLine));
+  });
+  if (missing.length === 0) return "";
+  const missingLabels = missing.map(function (capability) {
+    return capability.label;
+  });
   writeLog(
-    `[RULE Missing Fact v29.6.158] ${normalizedModel} 規格列未明載 ${capability.label}，零 LLM 停止猜測`,
+    `[RULE Missing Fact v29.6.280] ${normalizedModel} 規格列未明載 ${missingLabels.join("、")}，零 LLM 停止猜測`,
   );
   return [
-    `這份台灣官方規格還沒有列出 ${normalizedModel} 的「${capability.label}」，我不想拿其他同系列型號套過來猜。`,
+    `這份台灣官方規格還沒有列出 ${normalizedModel} 的「${missingLabels.join("、")}」，我不想拿其他同系列型號套過來猜。`,
     "",
     "你可以按「查官方手冊」繼續確認，或按「再查網路」找公開資料；兩個選擇都會沿用這款型號，不用再選一次。",
   ].join("\n");
@@ -5450,9 +5720,26 @@ function getSearchFriendlyModelTokens_(rawModel) {
   return Array.from(new Set(results));
 }
 
+function isCompetitorMonitorQuery_(text) {
+  const q = String(text || "");
+  const mentionsCompetitor =
+    /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|樂金|聯想|惠普|LG|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC|LENOVO|HP)/i.test(
+      q,
+    );
+  const asksMonitorOrPriceOrTable =
+    /(螢幕|顯示器|MONITOR|DISPLAY|售價|價格|報價|最低價|促銷|Excel|表格|列出|比較|規格|更新率|刷新率|解析度|TYPE-?C)/i.test(
+      q,
+    );
+  return mentionsCompetitor && asksMonitorOrPriceOrTable;
+}
+
 function isOutOfProjectScopeQuery(text) {
   const q = String(text || "");
   if (isCrossDeviceMonitorQuery(q)) return false;
+
+  // 競品螢幕即使含「螢幕／規格／耳機」等字樣，也不能先被一般螢幕情境放行。
+  // 這是資料邊界，不交給 LLM 猜測，也不要求店員再花一次網搜額度。
+  if (isCompetitorMonitorQuery_(q)) return true;
 
   // 排除：若是音訊、耳機、接線、選單設定、解析度等電腦/螢幕常見配件與操作，不算 Out of Scope
   if (/(?:耳機|喇叭|音效|音訊|聲音|雙音訊|延遲|藍牙|BLUETOOTH|HDMI|DP|TYPE-?C|USB|解析度|更新率|刷新率|HDR|FREESYNC|G-SYNC|選單|設定|按鍵|遙控器|閃爍|沒畫面|黑屏|閃屏)/i.test(q)) {
@@ -5471,25 +5758,22 @@ function isOutOfProjectScopeQuery(text) {
     );
   if (purePhoneOrApplianceContext) return true;
 
-  const mentionsCompetitor =
-    /(華碩|技嘉|微星|宏碁|戴爾|飛利浦|樂金|聯想|惠普|LG|BENQ|ASUS|GIGABYTE|AORUS|MSI|ACER|DELL|PHILIPS|AOC|LENOVO|HP)/i.test(
-      q,
-    );
-  const asksMonitorOrPriceOrTable =
-    /(螢幕|顯示器|MONITOR|DISPLAY|售價|價格|報價|最低價|促銷|Excel|表格|列出|比較|規格|更新率|刷新率|解析度|TYPE-?C)/i.test(
-      q,
-    );
-
   const clearlyUnrelated =
     /(高鐵|總統|電影|韓劇|餐廳|天氣|股票|匯率|旅遊|行事曆|郵件|新聞)/i.test(q);
 
-  return (mentionsCompetitor && asksMonitorOrPriceOrTable) || clearlyUnrelated;
+  return clearlyUnrelated;
 }
 
 function buildOutOfProjectScopeReply(text) {
+  if (isCompetitorMonitorQuery_(text)) {
+    return [
+      "它牌螢幕的規格與評價不在這份三星資料庫裡，我先不亂比。",
+      "把想比較的三星完整型號或條件丟給我，我幫你整理重點；如果門市常遇到這題，也可以請 Sam 補進常見問題庫。",
+    ].join("\n");
+  }
   return [
-    "我主要協助三星電腦螢幕、Smart Monitor，以及外接電腦、手機或遊戲機的連線與設定問題",
-    "如果有螢幕相關疑問，隨時提出 💡",
+    "這題超出三星電腦螢幕資料範圍，我先不亂答。",
+    "換成螢幕型號或連線、設定問題，我再接著看。",
   ].join("\n");
 }
 
@@ -5934,6 +6218,7 @@ function getPreviousMeaningfulUserQuestion_(history) {
     const text = String(item.content || "").trim();
     if (!text || text.startsWith("#") || text.startsWith("/")) continue;
     if (text.includes("請針對你剛才的回答再詳細說明")) continue;
+    if (isNonProductConversationTurn_(text)) continue;
     return text;
   }
   return "";
@@ -6259,7 +6544,14 @@ function rememberSourceProductModel_(
   }
   const state = {
     model: normalized,
-    lastSource: String(existing.lastSource || ""),
+    // 換成新的完整型號就是新的產品工作階段；舊主題、舊來源與已付結果
+    // 都不得跟著搬過來。只有同型號自然追問才沿用。
+    lastSource: "",
+    topic: null,
+    // 手冊與網路各自保存最後一次已完成結果，不能共用單一槽位互相覆蓋。
+    // lastAdvanced 只保留作舊資料讀取相容，新資料不再寫入。
+    advancedBySource: { manual: null, web: null },
+    lastAdvanced: null,
     updatedAt: Date.now(),
     reason: String(reason || "resolved_model"),
   };
@@ -6273,6 +6565,122 @@ function rememberSourceProductModel_(
   return state;
 }
 
+function persistSourceProductState_(contextId, stateValue) {
+  const state = stateValue && typeof stateValue === "object"
+    ? Object.assign({}, stateValue)
+    : null;
+  if (!state || !state.model) return null;
+  const key = getSourceProductKey_(contextId);
+  let payload = JSON.stringify(state);
+  // Apps Script 單一 Property 有大小上限。一般 LINE 回覆遠低於此值；
+  // 若極端答案過長，只捨棄可重建的跨日答案，不影響型號與主題。
+  if (
+    payload.length > 8000 &&
+    (state.lastAdvanced || state.advancedBySource)
+  ) {
+    state.lastAdvanced = null;
+    state.advancedBySource = { manual: null, web: null };
+    payload = JSON.stringify(state);
+    writeLog(
+      "[Product State v29.6.280] 進階來源快取過長，僅保留型號與主題",
+    );
+  }
+  CacheService.getScriptCache().put(key, payload, 21600);
+  PropertiesService.getScriptProperties().setProperty(key, payload);
+  return state;
+}
+
+function normalizePersistentTopicQuestion_(question, model) {
+  return stripKnownModelFromSourceQuestion_(
+    stripInternalRoutingHints_(question || ""),
+    model || "",
+  )
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+function isNonProductConversationTurn_(question) {
+  const text = toHalfWidth(String(question || ""))
+    .replace(/[\s！!。．，,～~…]+/g, "")
+    .trim();
+  if (!text) return true;
+  return /^(?:謝謝(?:你|啦|喔|唷)?|感謝(?:你|啦|喔|唷)?|多謝|感恩|辛苦了|好|好的|好喔|好哦|好啦|了解|了解了|收到|收到了|知道了|明白了|懂了|沒問題|不用了|先這樣|讚|OK|OKAY|掰掰|再見|BYE|GOODBYE|嗨|哈囉|你好|您好|早安|午安|晚安)$/i.test(
+    text,
+  );
+}
+
+function readSourceCanonicalTopic_(contextId) {
+  const productState = readSourceProductState_(contextId);
+  const topic = productState && productState.topic;
+  if (!topic || !String(topic.canonicalQuestion || "").trim()) return null;
+  return {
+    canonicalQuestion: String(topic.canonicalQuestion || "").trim(),
+    canonicalClaimKey: String(topic.canonicalClaimKey || "").trim(),
+    lastQuestion: String(topic.lastQuestion || "").trim(),
+    claims: Array.isArray(topic.claims) ? topic.claims.slice(0, 5) : [],
+    updatedAt: Number(topic.updatedAt || 0),
+    model: normalizeModelForDisplay(productState.model || ""),
+  };
+}
+
+function rememberSourceCanonicalTopic_(contextId, question, model, claims) {
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  const productState = readSourceProductState_(contextId);
+  if (!productState || !productState.model) return null;
+  if (
+    normalizedModel &&
+    normalizeModelForDisplay(productState.model) !== normalizedModel
+  ) {
+    return null;
+  }
+  // 禮貌回覆／問候不是產品主題，不能把跨日 canonical topic 洗成「謝謝」。
+  // 這個守門放在 claims 前面，避免錯誤 Router 輸出替閒聊製造假主張。
+  if (isNonProductConversationTurn_(question)) {
+    return productState.topic || null;
+  }
+  const suppliedClaims = (Array.isArray(claims) ? claims : [])
+    .map(function (claim) {
+      return normalizePersistentTopicQuestion_(
+        claim && claim.question ? claim.question : "",
+        productState.model,
+      );
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+  const currentQuestion = normalizePersistentTopicQuestion_(
+    question,
+    productState.model,
+  );
+  const existingTopic = productState.topic || null;
+  const isElliptical = Boolean(
+    existingTopic &&
+      currentQuestion &&
+      isEllipticalEvidenceFollowUp_(currentQuestion),
+  );
+  const canonicalQuestion = suppliedClaims.length > 0
+    ? suppliedClaims.join("；")
+    : isElliptical
+      ? String(existingTopic.canonicalQuestion || "").trim()
+      : currentQuestion;
+  if (!canonicalQuestion) return existingTopic;
+  const canonicalClaimKey = computeReplyAnchor_(
+    `${normalizeModelForDisplay(productState.model)}|${normalizeAdvancedSourceTopicIdentity_(canonicalQuestion, productState.model)}`,
+  );
+  const nextState = Object.assign({}, productState, {
+    topic: {
+      canonicalQuestion: canonicalQuestion,
+      canonicalClaimKey: canonicalClaimKey,
+      lastQuestion: currentQuestion || canonicalQuestion,
+      claims: suppliedClaims,
+      updatedAt: Date.now(),
+    },
+    updatedAt: Date.now(),
+  });
+  return persistSourceProductState_(contextId, nextState);
+}
+
 function rememberSourceLastAdvanced_(contextId, source) {
   const existing = readSourceProductState_(contextId);
   if (!existing || !existing.model) return null;
@@ -6280,11 +6688,7 @@ function rememberSourceLastAdvanced_(contextId, source) {
     lastSource: String(source || ""),
     updatedAt: Date.now(),
   });
-  const key = getSourceProductKey_(contextId);
-  const payload = JSON.stringify(state);
-  CacheService.getScriptCache().put(key, payload, 21600);
-  PropertiesService.getScriptProperties().setProperty(key, payload);
-  return state;
+  return persistSourceProductState_(contextId, state);
 }
 
 function clearSourceProductState_(contextId) {
@@ -6565,6 +6969,10 @@ function normalizeAdvancedSourceTopicIdentity_(question, model) {
     return "恢復原廠";
   }
   let text = base
+    .replace(/(?:後面的|後方的|背後的|背面的|機背的)/g, "機背")
+    .replace(/(?:後方|背後|背面)/g, "機背")
+    .replace(/(?:RGB)?(?:環型|環形)燈(?:光|效)?|RGB燈圈|燈圈|背光燈效/g, "機背燈效")
+    .replace(/CORELIGHTING\+?/g, "機背燈效")
     .replace(/(?:如何用|怎麼用|怎樣用)/g, "")
     .replace(/(?:請|麻煩|幫我|再|一下|查詢|搜尋|搜|查|如何|怎麼|怎樣|那你|那)/g, "")
     .replace(/(?:零售模式|展示模式|商店模式|使用模式)/g, "零售模式")
@@ -6573,6 +6981,95 @@ function normalizeAdvancedSourceTopicIdentity_(question, model) {
     .replace(/(?:恢復原廠設定|回復原廠設定|原廠重設|重設出廠|重置)/g, "恢復原廠")
     .replace(/(?:藍牙耳機|BLUETOOTH耳機|藍牙音訊|BLUETOOTH音訊)/g, "藍牙裝置");
   return text.trim();
+}
+
+function getManualPdfKnowledgeFingerprint_(model) {
+  const props = PropertiesService.getScriptProperties();
+  const target = normalizeModelForDisplay(model || "");
+  if (!target) return "PDF_NO_MODEL";
+  const modelTokens = [target];
+  try {
+    const map = JSON.parse(
+      props.getProperty(CACHE_KEYS.KEYWORD_MAP) || "{}",
+    );
+    Object.keys(map || {}).forEach(function (alias) {
+      const mapped = String(map[alias] || "").toUpperCase();
+      if (
+        modelTokens.some(function (token) {
+          return token && mapped.indexOf(token) >= 0;
+        })
+      ) {
+        modelTokens.push(String(alias || "").toUpperCase());
+      }
+    });
+  } catch (error) {}
+
+  const readList = function (key) {
+    try {
+      const parsed = JSON.parse(props.getProperty(key) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  };
+  const matchingFiles = function (list) {
+    return (Array.isArray(list) ? list : []).filter(function (file) {
+      return (
+        isPdfKbFile(file) &&
+        modelTokens.some(function (token) {
+          return pdfFileNameMatchesModelToken_(file.name || "", token);
+        })
+      );
+    });
+  };
+  let files = matchingFiles(readList(CACHE_KEYS.KB_URI_LIST));
+  if (files.length === 0) {
+    files = matchingFiles(readList(CACHE_KEYS.KB_URI_LIST_BACKUP));
+  }
+  const identities = files.map(function (file) {
+    const stableIdentity = String(
+      file.driveFileId || file.identity || file.uri || "",
+    );
+    return [
+      String(file.name || "").toUpperCase(),
+      stableIdentity,
+      String(file.updatedAt || file.lastUpdated || ""),
+      Math.max(0, Number(file.sizeBytes || 0)),
+    ].join("|");
+  });
+  // 自動匯入 manifest 只補充版本變化訊號；它不是完整 PDF 索引，也不能
+  // 取代 KB_URI_LIST 的 Drive 身分。
+  try {
+    const manifest = JSON.parse(
+      props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}",
+    );
+    Object.keys(manifest || {}).forEach(function (sku) {
+      const item = manifest[sku] || {};
+      if (
+        isPdfModelTokenMatch_(normalizeModelForDisplay(sku), target) ||
+        pdfFileNameMatchesModelToken_(item.finalFileName || "", target)
+      ) {
+        identities.push(
+          [
+            "MANIFEST",
+            String(item.finalFileName || "").toUpperCase(),
+            String(item.sha256 || item.fileId || ""),
+            String(item.modifiedAt || ""),
+          ].join("|"),
+        );
+      }
+    });
+  } catch (error) {}
+  const canonical = identities.length > 0
+    ? identities.sort().join("||")
+    : `NO_PDF:${target}`;
+  return `PDF_${computeReplyAnchor_(canonical)}`;
+}
+
+function getAdvancedSourceKnowledgeFingerprint_(source, model) {
+  return String(source || "") === "manual"
+    ? getManualPdfKnowledgeFingerprint_(model)
+    : `WEB_${getSourceDateKey_()}`;
 }
 
 function isSameRecentSourceQuestion_(question, previousQuestion, model) {
@@ -6600,7 +7097,14 @@ function rememberRecentSourceQuestion_(
   preserveComparison,
 ) {
   const text = String(question || "").trim();
-  if (!text || text.startsWith("#") || text.startsWith("/")) return;
+  if (
+    !text ||
+    text.startsWith("#") ||
+    text.startsWith("/") ||
+    isNonProductConversationTurn_(text)
+  ) {
+    return;
+  }
   const explicitModels = getOrderedKnownFullModels_(text, 3);
   const comparisonModels = explicitModels.length === 2 ? explicitModels : [];
   if (comparisonModels.length === 2) {
@@ -6646,6 +7150,16 @@ function rememberRecentSourceQuestion_(
     SOURCE_RECENT_QUESTION_TTL_SECONDS,
   );
   PropertiesService.getScriptProperties().setProperty(key, payload);
+  // SRC_RECENT 只服務 Rich Menu 的 30 分鐘「目前問題」；真正的自然追問
+  // 主題另存於跨日 SRC_PRODUCT，短句不得把完整主題洗掉。
+  if (productState && productState.model && comparisonModels.length !== 2) {
+    rememberSourceCanonicalTopic_(
+      contextId,
+      text,
+      productState.model,
+      [],
+    );
+  }
 }
 
 function readRecentSourceQuestion_(contextId) {
@@ -6794,13 +7308,22 @@ function getAdvancedSourceOperationKey_(
   model,
   versionOverride,
   routePlanHash,
+  knowledgeFingerprint,
 ) {
+  // Router 的 claim hash 可能因同義改寫而變，也可能在極端情況下把不同題
+  // 壓成相同規劃；付費結果快取一律以使用者主題本身作身分。
+  const canonicalTopic = normalizeAdvancedSourceTopicIdentity_(query, model);
+  const fingerprint = String(
+    knowledgeFingerprint ||
+      getAdvancedSourceKnowledgeFingerprint_(source, model),
+  );
   const identity = [
-    String(versionOverride || GAS_VERSION),
+    ADVANCED_SOURCE_CACHE_SCHEMA,
+    getSourceDateKey_(),
     String(source || ""),
     normalizeModelForDisplay(model || ""),
-    normalizeAdvancedSourceTopicIdentity_(query, model),
-    String(routePlanHash || ""),
+    canonicalTopic,
+    fingerprint,
   ].join("|");
   const digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
@@ -6813,12 +7336,91 @@ function getAdvancedSourceOperationKey_(
   return `SRC_OP_${getSourceContextHash_(contextId)}_${hash}`;
 }
 
+function buildAdvancedSourceCacheQuery_(
+  source,
+  query,
+  model,
+  pendingState,
+  contextId,
+) {
+  const normalizedSource = String(source || "");
+  const state = pendingState && typeof pendingState === "object"
+    ? pendingState
+    : {};
+  const unresolvedIds = Array.isArray(state.unresolvedClaimIds)
+    ? state.unresolvedClaimIds.map(String).filter(Boolean)
+    : [];
+  const routeClaims = Array.isArray(state.routeClaims) ? state.routeClaims : [];
+  const sourceClaims = routeClaims
+    .filter(function (claim) {
+      const claimId = String(claim && claim.id ? claim.id : "");
+      if (unresolvedIds.length > 0 && unresolvedIds.indexOf(claimId) < 0) {
+        return false;
+      }
+      const evidenceNeed = String(
+        claim && claim.evidenceNeed ? claim.evidenceNeed : "",
+      );
+      return normalizedSource === "manual"
+        ? /^(?:manual_model_specific|local_stable|general_reasoning)$/.test(
+            evidenceNeed,
+          )
+        : /^(?:web_current|local_stable|general_reasoning)$/.test(evidenceNeed);
+    })
+    .map(function (claim) {
+      return stripInternalRoutingHints_(
+        claim && claim.question ? claim.question : "",
+      ).trim();
+    })
+    .filter(Boolean);
+  let canonicalQuery = sourceClaims.length > 0
+    ? sourceClaims.join("；")
+    : normalizedSource === "manual"
+      ? String(state.manualQuery || state.draftQuery || query || "")
+      : String(state.plannedWebQuery || state.draftQuery || query || "");
+  canonicalQuery = stripInternalRoutingHints_(canonicalQuery).trim();
+
+  // Router 若已把「那要怎麼開」補全成完整主張，以上會直接採用補全結果；
+  // 舊入口仍只有省略追問時，才使用跨日 canonical topic 補足快取身分。
+  if (
+    canonicalQuery &&
+    isEllipticalEvidenceFollowUp_(
+      stripKnownModelFromSourceQuestion_(canonicalQuery, model),
+    )
+  ) {
+    const persistentTopic = readSourceCanonicalTopic_(contextId);
+    if (persistentTopic && persistentTopic.canonicalQuestion) {
+      canonicalQuery = persistentTopic.canonicalQuestion;
+    }
+  }
+  return canonicalQuery || stripInternalRoutingHints_(query || "").trim();
+}
+
+function getPersistedAdvancedSourceOperation_(productState, source) {
+  if (!productState || typeof productState !== "object") return null;
+  const normalizedSource = String(source || "");
+  const bySource = productState.advancedBySource;
+  if (
+    bySource &&
+    typeof bySource === "object" &&
+    bySource[normalizedSource]
+  ) {
+    return bySource[normalizedSource];
+  }
+  // 舊版只有單一 lastAdvanced；僅在來源一致時讀取，之後完成新查詢便
+  // 自動遷移到 advancedBySource。
+  const legacy = productState.lastAdvanced;
+  return legacy && String(legacy.source || "") === normalizedSource
+    ? legacy
+    : null;
+}
+
 function readDoneAdvancedSourceOperation_(
   contextId,
   source,
   query,
   model,
   routePlanHash,
+  knowledgeFingerprint,
 ) {
   const key = getAdvancedSourceOperationKey_(
     contextId,
@@ -6827,15 +7429,35 @@ function readDoneAdvancedSourceOperation_(
     model,
     GAS_VERSION,
     routePlanHash,
+    knowledgeFingerprint,
   );
-  const existing = parseSourceStateJson_(
+  let existing = parseSourceStateJson_(
     CacheService.getScriptCache().get(key),
   );
+  if (!existing) {
+    const productState = readSourceProductState_(contextId);
+    const persisted = getPersistedAdvancedSourceOperation_(
+      productState,
+      source,
+    );
+    if (
+      persisted &&
+      persisted.key === key &&
+      persisted.date === getSourceDateKey_()
+    ) {
+      existing = persisted;
+      CacheService.getScriptCache().put(
+        key,
+        JSON.stringify(existing),
+        SOURCE_OPERATION_CACHE_TTL_SECONDS,
+      );
+    }
+  }
   if (
     !existing ||
     existing.status !== "done" ||
     !existing.finalText ||
-    Number(existing.expiresAt || 0) < Date.now()
+    existing.date !== getSourceDateKey_()
   ) {
     return null;
   }
@@ -6848,6 +7470,7 @@ function beginAdvancedSourceOperation_(
   query,
   model,
   routePlanHash,
+  knowledgeFingerprint,
 ) {
   const cache = CacheService.getScriptCache();
   const key = getAdvancedSourceOperationKey_(
@@ -6857,6 +7480,7 @@ function beginAdvancedSourceOperation_(
     model,
     GAS_VERSION,
     routePlanHash,
+    knowledgeFingerprint,
   );
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) {
@@ -6865,18 +7489,44 @@ function beginAdvancedSourceOperation_(
   try {
     const now = Date.now();
     let existing = parseSourceStateJson_(cache.get(key));
-    // 同版本、同聊天室、同來源、同題、同型號在 10 分鐘內沿用結果；
-    // 新版本可能修正回答或證據契約，絕不能重播上一版的錯誤結果。
-    if (existing && Number(existing.expiresAt || 0) >= Date.now()) {
+    if (!existing) {
+      const productState = readSourceProductState_(contextId);
+      const persisted = getPersistedAdvancedSourceOperation_(
+        productState,
+        source,
+      );
+      if (
+        persisted &&
+        persisted.key === key &&
+        persisted.date === getSourceDateKey_()
+      ) {
+        existing = persisted;
+      }
+    }
+    if (
+      existing &&
+      (existing.status === "done" || Number(existing.expiresAt || 0) >= Date.now())
+    ) {
       return Object.assign({ allowed: false, key: key }, existing);
     }
     const running = {
       status: "running",
+      key: key,
+      contextId: contextId,
+      source: String(source || ""),
+      model: normalizeModelForDisplay(model || ""),
+      date: getSourceDateKey_(),
+      canonicalTopic: normalizeAdvancedSourceTopicIdentity_(query, model),
+      canonicalQuery: stripInternalRoutingHints_(query || "").trim(),
+      knowledgeFingerprint: String(
+        knowledgeFingerprint ||
+          getAdvancedSourceKnowledgeFingerprint_(source, model),
+      ),
       createdAt: Date.now(),
       expiresAt: Date.now() + SOURCE_OPERATION_CACHE_TTL_SECONDS * 1000,
     };
     cache.put(key, JSON.stringify(running), SOURCE_OPERATION_CACHE_TTL_SECONDS);
-    return { allowed: true, key: key };
+    return Object.assign({ allowed: true }, running);
   } finally {
     lock.releaseLock();
   }
@@ -6887,8 +7537,15 @@ function finishAdvancedSourceOperation_(operation, finalText, model, ttlSeconds)
   const ttl = Math.max(30, Number(ttlSeconds || SOURCE_OPERATION_CACHE_TTL_SECONDS));
   const state = {
     status: "done",
+    key: operation.key,
+    contextId: operation.contextId || "",
+    source: String(operation.source || ""),
     finalText: String(finalText || ""),
     model: normalizeModelForDisplay(model || ""),
+    date: operation.date || getSourceDateKey_(),
+    canonicalTopic: String(operation.canonicalTopic || ""),
+    canonicalQuery: String(operation.canonicalQuery || ""),
+    knowledgeFingerprint: String(operation.knowledgeFingerprint || ""),
     createdAt: Date.now(),
     expiresAt: Date.now() + ttl * 1000,
   };
@@ -6897,11 +7554,66 @@ function finishAdvancedSourceOperation_(operation, finalText, model, ttlSeconds)
     JSON.stringify(state),
     ttl,
   );
+  // 短暫錯誤（ttl <= 60）不跨日保存；真正完成答案只保存目前產品
+  // 的最後一題，避免每題各建 Property 造成配額膨脹。
+  if (ttl > 60 && operation.contextId && state.model) {
+    const productState = readSourceProductState_(operation.contextId);
+    if (
+      productState &&
+      normalizeModelForDisplay(productState.model) === state.model
+    ) {
+      const advancedBySource = Object.assign(
+        { manual: null, web: null },
+        productState.advancedBySource || {},
+      );
+      const legacy = productState.lastAdvanced;
+      if (
+        legacy &&
+        legacy.source &&
+        !advancedBySource[String(legacy.source)]
+      ) {
+        advancedBySource[String(legacy.source)] = legacy;
+      }
+      advancedBySource[state.source] = state;
+      persistSourceProductState_(
+        operation.contextId,
+        Object.assign({}, productState, {
+          advancedBySource: advancedBySource,
+          lastAdvanced: null,
+        }),
+      );
+    }
+  }
 }
 
 function clearAdvancedSourceOperation_(operation) {
   if (operation && operation.key) {
     CacheService.getScriptCache().remove(operation.key);
+    if (operation.contextId) {
+      const productState = readSourceProductState_(operation.contextId);
+      const persisted = getPersistedAdvancedSourceOperation_(
+        productState,
+        operation.source,
+      );
+      if (
+        productState &&
+        persisted &&
+        persisted.key === operation.key
+      ) {
+        const advancedBySource = Object.assign(
+          { manual: null, web: null },
+          productState.advancedBySource || {},
+        );
+        advancedBySource[String(operation.source || "")] = null;
+        persistSourceProductState_(
+          operation.contextId,
+          Object.assign({}, productState, {
+            advancedBySource: advancedBySource,
+            lastAdvanced: null,
+          }),
+        );
+      }
+    }
   }
 }
 
@@ -7159,8 +7871,13 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
   }
 
   const recent = readRecentSourceQuestion_(contextId);
-  const previousQuestion = recent ? recent.question : "";
   const persistentProduct = readSourceProductState_(contextId);
+  const canonicalTopic = readSourceCanonicalTopic_(contextId);
+  const recentQuestion = recent ? String(recent.question || "").trim() : "";
+  const previousQuestion =
+    recentQuestion && canonicalTopic && isEllipticalEvidenceFollowUp_(recentQuestion)
+      ? canonicalTopic.canonicalQuestion
+      : recentQuestion;
   const previousModel = normalizeModelForDisplay(
     (recent && recent.model) || (persistentProduct && persistentProduct.model) || "",
   );
@@ -8098,8 +8815,10 @@ function isLikelyLocalSpecRuleQuestion_(query) {
   ) {
     return false;
   }
-  return /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|底座|支架|升降|高度調整|左右旋轉|垂直旋轉|PIVOT|轉直|比較|差異|差別|差在哪|哪一台|比一比|NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB|閃爍|黑屏|無畫面|沒畫面|無訊號|護眼|低藍光|EYE SAVER|重設|恢復原廠|出廠設定|重置|防烙印|SAFEGUARD)/i.test(
-    text,
+  return (
+    /(規格|支援|有沒有|是否有|有嗎|尺寸|吋|解析度|更新率|刷新率|Hz|HDR|介面|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|藍牙|BLUETOOTH|WI[\s-]*FI|無線網路|耳機孔|喇叭|鏡頭|攝影機|遙控器|VESA|重量|底座|支架|升降|高度調整|左右旋轉|垂直旋轉|PIVOT|轉直|CORE\s*SYNC|CORE\s*LIGHTING\s*\+|INFINITY\s*CORE(?:\s*LIGHTING)?|ECLIPSE\s*(?:LIGHTING|SYNC)|比較|差異|差別|差在哪|哪一台|比一比|NETFLIX|YOUTUBE|DISNEY|SPOTIFY|APP|應用程式|蘋果|IPHONE|AIR[\s-]*PLAY|投影|投屏|鏡像|鏡射|直式|直向|直立|垂直|橫式|橫向|橫屏|直屏|手機畫面|手機投影|安裝|播|3D|裸視|裸眼3D|ODYSSEY\s*HUB|REALITY\s*HUB|閃爍|黑屏|無畫面|沒畫面|無訊號|護眼|低藍光|EYE SAVER|重設|恢復原廠|出廠設定|重置|防烙印|SAFEGUARD)/i.test(
+      text,
+    ) || Boolean(findRuleTermOntologyMatch_(text))
   );
 }
 
@@ -8110,6 +8829,7 @@ function isPotentialMultiClaimQuestion_(query) {
     .replace(/(?:LS)?S\d{2}[A-Z0-9]{5,16}/gi, "")
     .trim();
   if (isInterfaceDisplayTimingQuery_(text)) return true;
+  if (findRuleTermOntologyMatches_(text).length >= 2) return true;
   if (!/(?:和|與|及|、|以及|還有|同時|加上|並且)/.test(text)) return false;
   const subjectSignals = [
     /繁體中文|中文介面|語言/i,
@@ -8582,6 +9302,16 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/RJ[\s-]*45|乙太網路|網路孔/i, /RJ[\s-]*45|乙太網路|網路孔/i);
   addPattern(/喇叭|揚聲器/i, /喇叭|揚聲器/i);
   addPattern(/藍牙|BLUETOOTH/i, /藍牙|BLUETOOTH/i);
+  addPattern(/CORE\s*SYNC/i, /CORE\s*SYNC/i);
+  addPattern(/CORE\s*LIGHTING\s*\+/i, /CORE\s*LIGHTING\s*\+/i);
+  addPattern(
+    /INFINITY\s*CORE(?:\s*LIGHTING)?/i,
+    /INFINITY\s*CORE(?:\s*LIGHTING)?/i,
+  );
+  addPattern(
+    /ECLIPSE\s*(?:LIGHTING|SYNC)/i,
+    /ECLIPSE\s*(?:LIGHTING|SYNC)/i,
+  );
   addPattern(/WI[\s-]*FI|無線網路/i, /WI[\s-]*FI|無線網路/i);
   // 3.5mm 必須是獨立音訊規格，不能誤中「263.5mm」這類外觀尺寸尾數。
   addPattern(
@@ -8593,6 +9323,14 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/尺寸|大小|幾吋/i, /吋|尺寸/i);
   addPattern(/HAS|底座|升降|支架|高度調整/i, /HAS|升降|支架|高度調整/i);
   addPattern(/旋轉|轉向|PIVOT|轉直|直立|直式/i, /左右旋轉|垂直旋轉|旋轉|PIVOT/i);
+
+  // Samsung 官網功能詞彙由 CLASS_RULES ontology 動態擴充。這裡只允許
+  // 擷取同一完整型號規格列真的出現的欄位，術語列本身永遠不是能力證據。
+  findRuleTermOntologyMatches_(text).forEach(function (matchedRuleTerm) {
+    if (matchedRuleTerm && matchedRuleTerm.evidence) {
+      patterns.push(matchedRuleTerm.evidence);
+    }
+  });
 
   if (patterns.length === 0) return "";
 
@@ -8607,10 +9345,12 @@ function buildDeterministicExactRuleReply_(query, model) {
         !/^L?[SCF]\d{2}[A-Z0-9]+$/i.test(field) &&
         !/^型號[:：]/.test(field) &&
         !isUnaskedAccessoryField &&
-        pattern.test(field) &&
-        selected.indexOf(field) < 0
+        pattern.test(field)
       ) {
-        selected.push(field);
+        const visibleField = sanitizeExactRuleReplyField_(field, text);
+        if (visibleField && selected.indexOf(visibleField) < 0) {
+          selected.push(visibleField);
+        }
       }
     });
   });
@@ -9053,7 +9793,7 @@ function buildSafeNoEvidenceNextStep_(query, model) {
         .trim();
     }
     return [
-      `${modelPrefix}我把手冊和公開網頁都查過了，仍沒有足夠證據直接回答「${cleanQuestion || "這一點"}」的數字或結論。`,
+      `${modelPrefix}目前沒有足夠可靠的資料直接回答「${cleanQuestion || "這一點"}」。`,
       wholeDeviceBoundary
         ? `${wholeDeviceBoundary} 這是整機規格，不能直接當成分割模式下每一側的上限。`
         : "我先不猜數字或功能結論，避免現場拿到錯答案。",
@@ -9084,34 +9824,9 @@ function buildSafeNoEvidenceNextStep_(query, model) {
 }
 
 function buildTentativeManualFallback_(rawResponse, model, question) {
-  if (isExactProductFactQuestion_(question)) {
-    return [
-      buildSafeNoEvidenceNextStep_(question, model),
-      "",
-      "這是手冊與公開網頁都沒有直接證據時的保守終點，不代表三星已證實未記載的數值。",
-    ].join("\n");
-  }
-  let tentative = stripAnySourceTags(
-    formatForLineMobile(String(rawResponse || "")),
-  )
-    .replace(/\[手冊證據:[^\]]+\]/gi, "")
-    .replace(/\[MANUAL_[A-Z0-9_:-]+\]/gi, "")
-    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
-    .replace(/\[型號[:：][^\]]+\]/g, "")
-    .trim();
-  if (
-    !tentative ||
-    isApiFailureReply(tentative) ||
-    isManualEvidenceFailureReply_(tentative)
-  ) {
-    tentative = buildSafeNoEvidenceNextStep_(question, model);
-  }
-  return [
-    `目前最可能的處理方向${model ? `（${model}）` : ""}：`,
-    tentative,
-    "",
-    "這段是手冊與公開網頁都未取得可核對證據後的保守參考，不代表三星官方已證實。",
-  ].join("\n");
+  // 手冊或 Web 都沒有可核對證據時，不得再把模型草稿包裝成
+  // 「最可能做法」。只留下不含產品事實的安全下一步。
+  return buildSafeNoEvidenceNextStep_(question, model);
 }
 
 function isMonitorUsbMediaWebQuestion_(query) {
@@ -9174,106 +9889,9 @@ function sanitizeTentativeWebActionLine_(rawLine) {
 }
 
 function buildTentativeWebFallback_(rawResponse, query, model) {
-  const isMonitorUsbMedia = isMonitorUsbMediaWebQuestion_(query);
-  if (isExactProductFactQuestion_(query)) {
-    return [
-      buildSafeNoEvidenceNextStep_(query, model),
-      "",
-      "這是公開網頁沒有直接證據時的保守終點，不把搜尋片段或其他型號經驗當成答案。",
-    ].join("\n");
-  }
-  const rawText = String(rawResponse || "");
-  const declaredNoEvidence =
-    rawText === "[NO_RELEVANT_WEB_EVIDENCE]" ||
-    /(?:沒有|未能|找不到)[^。\n]{0,100}(?:資料|資訊|結果|解法|步驟|說明|網頁|結論|證據)/i.test(
-      rawText,
-    ) ||
-    /無法[^。\n]{0,80}找到[^。\n]{0,80}(?:資料|資訊|結果|解法|步驟|說明|網頁)/i.test(
-      rawText,
-    ) ||
-    /(?:沒有|未能|找不到)[^。\n]{0,100}(?:直接|明確)[^。\n]{0,40}(?:提到|回答|核對)/i.test(
-      rawText,
-    );
-  const rawActionCandidateLines = rawText
-    .split(/\n+/)
-    .filter((line) => /^\s*(?:\d+[.、)]|[•*-])\s*/.test(line));
-  const rawSafeActionLines = rawActionCandidateLines
-    .map(sanitizeTentativeWebActionLine_)
-    .filter(Boolean);
-  if (
-    rawSafeActionLines.length === 0 &&
-    (declaredNoEvidence || rawActionCandidateLines.length > 0)
-  ) {
-    return [
-      `${model ? `${model}：` : ""}這次公開網頁沒有足夠證據回答這題，我先不拿其他型號或「一般來說」的經驗當答案。`,
-      "這類型號操作問題以官方手冊較可靠，可直接點下方「官方手冊」查同一題，不用重打型號。",
-    ].join("\n");
-  }
-  let lines = stripAnySourceTags(
-    formatForLineMobile(String(rawResponse || "")),
-  )
-    .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEW_TOPIC)\]/gi, "")
-    .replace(/\[型號[:：][^\]]+\]/g, "")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter(
-      (line) =>
-        !/^(?:透過|根據)(?:本次)?網路搜尋|^以下(?:是|為)(?:搜尋|找到)/i.test(
-          line,
-        ),
-    )
-    .filter(
-      (line) =>
-        !isMonitorUsbMedia ||
-        !/(?:Windows[^。]{0,30}USB|USB[^。]{0,30}選擇性暫停|主機板|電腦端[^。]{0,20}USB)/i.test(
-          line,
-        ),
-    )
-    .filter(
-      (line) =>
-        !/(?:非官方|第三方)[^。]{0,20}(?:韌體|firmware)[^。]{0,20}(?:下載|安裝|更新)/i.test(
-          line,
-        ),
-    );
-
-  // LINE 手機閱讀以五個具體處理方向為上限，避免模型引言或尾段把答案撐長。
-  const numbered = lines.filter((line) => /^\d+[.、)]\s*/.test(line));
-  const actionableFromFormatted = lines
-    .filter((line) => /^(?:\d+[.、)]|[•*-])\s*/.test(line))
-    .map(sanitizeTentativeWebActionLine_)
-    .filter(Boolean);
-  const actionable =
-    rawSafeActionLines.length > 0
-      ? rawSafeActionLines
-      : actionableFromFormatted;
-  if (isMonitorUsbMedia && numbered.length < 3) {
-    // Search grounding 偶爾會以 MAX_TOKENS 只留下半個步驟；不可把殘句當完成答案。
-    lines = [];
-  } else if (actionable.length > 0) {
-    lines = actionable.slice(0, 5);
-  } else if (numbered.length > 0) {
-    lines = numbered.slice(0, 5);
-  } else {
-    lines = lines.slice(0, 6);
-  }
-  let tentative = lines.join("\n").trim();
-  if (!tentative || isApiFailureReply(tentative)) {
-    tentative = isMonitorUsbMedia
-      ? [
-          "1. 先把隨身碟改用 FAT32 或 exFAT，並用另一支隨身碟交叉測試。",
-          "2. 直接插螢幕 USB 埠，不經 Hub 或延長線，並改測另一個 USB 埠。",
-          "3. 用單一、常見格式的小檔案測試；若只有特定檔案中斷，優先檢查影片編碼與檔案損壞。",
-          "4. 若不同隨身碟與檔案都會中斷，記下發生時間與檔案格式，再聯絡三星檢查 USB 埠或系統異常。",
-        ].join("\n")
-      : buildSafeNoEvidenceNextStep_(query, model);
-  }
-  return [
-    `目前可先嘗試的方向${model ? `（${model}）` : ""}：`,
-    tentative,
-    "",
-    "以上是低風險排查方向，並非已由三星手冊或公開來源證實。",
-  ].join("\n");
+  // Grounding 沒有支持句時，rawResponse 只是一份未驗證草稿；
+  // 無論寫得多像答案都不能轉交前線店員。
+  return buildSafeNoEvidenceNextStep_(query, model);
 }
 
 function normalizeGroundedModelIdentity_(value) {
@@ -9667,80 +10285,163 @@ function buildGroundedSupportedAnswer_(
   rawResponse,
   allowPartial,
 ) {
-  const unique = [];
-  const seen = {};
-  (Array.isArray(segments) ? segments : []).forEach(function (rawSegment) {
-    const segment = compactGroundedWebAnswer_(
-      expandGroundedSupportToCompleteLine_(rawResponse, rawSegment),
-    );
-    if (
-      !segment ||
-      /(?:非官方)?推測|這(?:表示|暗示)|通常|有些|部分|可能|一般來說/i.test(
-        segment,
-      )
-    ) {
-      return;
-    }
-    const key = segment.replace(/\s+/g, "").toUpperCase();
-    if (!seen[key]) {
-      seen[key] = true;
-      unique.push(segment);
-    }
-  });
   const normalizedModel = normalizeModelForDisplay(model || "");
-  let supportedIdentity = "none";
-  if (normalizedModel) {
-    supportedIdentity = matchGroundedModelIdentity_(
-      unique.join("\n"),
-      normalizedModel,
-    );
-    const rawIdentity = matchGroundedModelIdentity_(
-      rawResponse,
-      normalizedModel,
-    );
-    // 完整型號若只是在模型開場重複使用者問題，不能單獨證明外部來源適用；
-    // 只有 grounding 支持句段本身含型號／系列，或完整回應明確對上 RULE
-    // 已確認的正式系列別稱，才允許把低風險步驟整理給目前型號。
-    const safeFamilyFallback =
-      rawIdentity === "family" &&
-      !isExactProductFactQuestion_(originalQuestion) &&
-      isLowRiskGroundedTroubleshooting_(unique.join("\n"), originalQuestion);
-    if (
-      isExactProductFactQuestion_(originalQuestion) &&
-      supportedIdentity !== "exact"
-    ) {
-      return "";
-    }
-    if (supportedIdentity === "none" && !safeFamilyFallback) {
-      return "";
-    }
-  }
-  const focusTokens = getGroundedQuestionFocusTokens_(
-    originalQuestion,
-    normalizedModel,
-  );
-  if (focusTokens.length > 0) {
-    const combined = unique.join("\n").toUpperCase();
-    const matchedFocus = focusTokens.filter(function (token) {
-      return combined.indexOf(token.toUpperCase()) >= 0;
+  const grouped = {};
+  (Array.isArray(segments) ? segments : []).forEach(function (rawItem, index) {
+    const isStructured =
+      rawItem && typeof rawItem === "object" && !Array.isArray(rawItem);
+    const rawSegment = isStructured
+      ? String(rawItem.text || rawItem.segment || "")
+      : String(rawItem || "");
+    // 舊測試／舊快取的純字串視為同一組；正式 grounding 一律帶 chunk id。
+    const sourceIds = isStructured && Array.isArray(rawItem.sourceIds)
+      ? rawItem.sourceIds.map(String).filter(Boolean)
+      : ["legacy"];
+    const rawLabels = isStructured && Array.isArray(rawItem.sourceLabels)
+      ? rawItem.sourceLabels.map(function (label) {
+          return String(label || "").trim();
+        })
+      : [];
+    const ids = sourceIds.length > 0 ? sourceIds : [`support:${index}`];
+    const uniqueIds = ids.filter(function (id, idIndex) {
+      return ids.indexOf(id) === idIndex;
     });
-    const requiredMatches = focusTokens.length >= 3 ? 2 : 1;
-    if (matchedFocus.length < requiredMatches) {
-      return "";
+    // 一個 grounding support 若由多個 chunk 共同支持，必須以完整
+    // source-set 當成不可拆的原子證據。禁止複製到每個單一來源，否則
+    // 產品身分與規格事實可能被錯拼成同來源證據。
+    const groupKey = uniqueIds.slice().sort().join("&&");
+    if (!grouped[groupKey]) {
+      grouped[groupKey] = {
+        segments: [],
+        sourceIds: uniqueIds.slice(),
+        labelById: {},
+        invalidLabelBinding: false,
+      };
     }
+    const group = grouped[groupKey];
+    group.segments.push(rawSegment);
+    if (
+      isStructured &&
+      (!Array.isArray(rawItem.sourceLabels) ||
+        rawLabels.length !== ids.length ||
+        ids.some(function (_id, idIndex) {
+          return !rawLabels[idIndex];
+        }))
+    ) {
+      group.invalidLabelBinding = true;
+    }
+    ids.forEach(function (id, idIndex) {
+      const label = rawLabels[idIndex] || "";
+      if (!label) return;
+      if (group.labelById[id] && group.labelById[id] !== label) {
+        group.invalidLabelBinding = true;
+        return;
+      }
+      group.labelById[id] = label;
+    });
+  });
+
+  const evaluateGroup = function (group) {
+    if (group.invalidLabelBinding) return null;
+    const unique = [];
+    const seen = {};
+    (group.segments || []).forEach(function (rawSegment) {
+      const segment = compactGroundedWebAnswer_(
+        expandGroundedSupportToCompleteLine_(rawResponse, rawSegment),
+      );
+      if (
+        !segment ||
+        /(?:非官方)?推測|這(?:表示|暗示)|通常|有些|部分|可能|一般來說/i.test(
+          segment,
+        )
+      ) {
+        return;
+      }
+      const key = segment.replace(/\s+/g, "").toUpperCase();
+      if (!seen[key]) {
+        seen[key] = true;
+        unique.push(segment);
+      }
+    });
+    if (unique.length === 0) return null;
+
+    let supportedIdentity = "none";
+    if (normalizedModel) {
+      supportedIdentity = matchGroundedModelIdentity_(
+        unique.join("\n"),
+        normalizedModel,
+      );
+      // 產品身分和產品事實必須來自同一個 grounding chunk。
+      // rawResponse 可能混有另一個網站或只是重述問題，不能拿來補身分。
+      if (
+        isExactProductFactQuestion_(originalQuestion) &&
+        supportedIdentity !== "exact"
+      ) {
+        return null;
+      }
+      if (supportedIdentity === "none") return null;
+    }
+
+    const focusTokens = getGroundedQuestionFocusTokens_(
+      originalQuestion,
+      normalizedModel,
+    );
+    if (focusTokens.length > 0) {
+      const combined = unique.join("\n").toUpperCase();
+      const matchedFocus = focusTokens.filter(function (token) {
+        return combined.indexOf(token.toUpperCase()) >= 0;
+      });
+      const requiredMatches = focusTokens.length >= 3 ? 2 : 1;
+      if (matchedFocus.length < requiredMatches) return null;
+    }
+
+    let answer = unique.slice(0, 5).join("\n").trim();
+    if (answer && normalizedModel && supportedIdentity !== "exact") {
+      const profile = getGroundedModelIdentityProfile_(normalizedModel);
+      const identityLabel = profile.familyLabel
+        ? `${normalizedModel}（${profile.familyLabel}）`
+        : normalizedModel;
+      answer = `${identityLabel} 可先這樣排除：\n${answer}`;
+    }
+    const complete = doesGroundedAnswerCompleteQuestion_(
+      answer,
+      originalQuestion,
+    );
+    if (!complete && allowPartial !== true) return null;
+    return {
+      answer: answer,
+      labels: (group.sourceIds || [])
+        .map(function (id) {
+          return group.labelById && group.labelById[id]
+            ? group.labelById[id]
+            : "";
+        })
+        .filter(Boolean),
+      score:
+        (supportedIdentity === "exact" ? 20 : supportedIdentity === "family" ? 10 : 0) +
+        (complete ? 5 : 0) +
+        Math.min(unique.length, 5),
+    };
+  };
+
+  const candidates = Object.keys(grouped)
+    .map(function (id) {
+      return evaluateGroup(grouped[id]);
+    })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      return b.score - a.score;
+    });
+  if (candidates.length === 0) {
+    lastWebAcceptedSources = [];
+    lastSearchSources = [];
+    return "";
   }
-  let answer = unique.slice(0, 5).join("\n").trim();
-  if (answer && normalizedModel && supportedIdentity !== "exact") {
-    const profile = getGroundedModelIdentityProfile_(normalizedModel);
-    const identityLabel = profile.familyLabel
-      ? `${normalizedModel}（${profile.familyLabel}）`
-      : normalizedModel;
-    answer = `${identityLabel} 可先這樣排除：\n${answer}`;
-  }
-  return doesGroundedAnswerCompleteQuestion_(answer, originalQuestion) ||
-    allowPartial === true
-    ? answer
-    : "";
+  lastWebAcceptedSources = candidates[0].labels.slice(0, 5);
+  // accepted support 的來源必須覆蓋 broad groundingChunks 清單；即使為空
+  // 也要清空，不能沿用前一次搜尋或未被採納的來源。
+  lastSearchSources = lastWebAcceptedSources.slice();
+  return candidates[0].answer;
 }
 
 function runManualWebRescue_(
@@ -9824,21 +10525,14 @@ function runManualWebRescue_(
         remaining: rescueGrant.remaining,
       };
     }
-    const tentativeText = buildTentativeWebFallback_(
-      rawWebDraft,
-      originalQuestion,
-      model,
-    );
     writeLog(
-      `[Source Rescue v29.6.192] evidence=${lastWebEvidenceValid ? 1 : 0} rawDraftChars=${rawWebDraft.length} tentative=${/(?:^|\n)•\s/.test(tentativeText) ? 1 : 0}`,
+      `[Source Rescue v29.6.280] evidence=${lastWebEvidenceValid ? 1 : 0} rawDraftChars=${rawWebDraft.length} tentative=0`,
     );
     return {
       attempted: true,
       success: false,
       text: "",
-      tentativeText: /(?:^|\n)•\s/.test(tentativeText)
-        ? tentativeText
-        : "",
+      tentativeText: "",
       sources: [],
       userQuotaCharged: !systemRescue && Boolean(rescueGrant.reserved),
       remaining: rescueGrant.remaining,
@@ -9921,29 +10615,7 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     );
     return buildSafeNoEvidenceNextStep_(question, model);
   }
-  if (!rescue || !rescue.attempted) {
-    return [
-      "官方手冊與公開網頁目前都沒有可核對的結論，我先整理最保守、可逆的排查方式：",
-      "",
-      buildTentativeManualFallback_(manualResponse, model, question),
-    ].join("\n");
-  }
-  if (rescue.tentativeText) {
-    const practicalText = String(rescue.tentativeText).replace(
-      /\n\n以上是低風險排查方向，並非已由三星手冊或公開來源證實。\s*$/,
-      "",
-    );
-    return [
-      "官方手冊與公開網頁都沒有可核對的結論；以下只是不涉及風險的可能做法，不代表三星已證實：",
-      "",
-      practicalText,
-    ].join("\n");
-  }
-  return [
-    "官方手冊與公開網頁都沒有可核對的結論，我先整理最保守、可逆的排查方式：",
-    "",
-    buildTentativeManualFallback_(manualResponse, model, question),
-  ].join("\n");
+  return buildSafeNoEvidenceNextStep_(question, model);
 }
 
 /**
@@ -10383,6 +11055,17 @@ function executeAdvancedSourceQuery_(
     pendingState,
     `semantic_router_to_${normalizedSource}`,
   );
+  const sourceKnowledgeFingerprint = getAdvancedSourceKnowledgeFingerprint_(
+    normalizedSource,
+    primaryModel || selectedModel,
+  );
+  const sourceCacheQuery = buildAdvancedSourceCacheQuery_(
+    normalizedSource,
+    normalizedQuery,
+    primaryModel || selectedModel,
+    pendingState,
+    contextId,
+  );
 
   // 完成結果快取必須早於來源額度檢查；同題已付過就能免費重播，即使
   // 今日 5／10 次剛好用完。唯讀命中前不建立 running，避免額度用完時
@@ -10390,9 +11073,10 @@ function executeAdvancedSourceQuery_(
   let sourceOperation = readDoneAdvancedSourceOperation_(
     contextId,
     normalizedSource,
-    originalQuestion,
+    sourceCacheQuery,
     primaryModel || selectedModel,
     pendingState && pendingState.routePlanHash,
+    sourceKnowledgeFingerprint,
   );
   if (!sourceOperation && remainingBefore <= 0) {
     clearPendingSourceState_(contextId);
@@ -10419,9 +11103,10 @@ function executeAdvancedSourceQuery_(
     sourceOperation = beginAdvancedSourceOperation_(
       contextId,
       normalizedSource,
-      originalQuestion,
+      sourceCacheQuery,
       primaryModel || selectedModel,
       pendingState && pendingState.routePlanHash,
+      sourceKnowledgeFingerprint,
     );
   }
   if (!sourceOperation.allowed) {
@@ -11983,7 +12668,7 @@ function getManualStructuredResponseSchema_() {
               type: "STRING",
               enum: ["型號明確", "全檔共通", "依型號而異"],
               description:
-                "共用手冊的圖、表或註記若只列部分型號，必須選型號明確或依型號而異；只有內容真正適用全檔所有型號才可選全檔共通",
+                "全檔共通必須有正面依據；不能因附近沒看到限制就推定。若摘錄寫依型號而定、部分型號或可能不支援，不得選全檔共通",
             },
             evidenceExcerpt: {
               type: "STRING",
@@ -12033,6 +12718,13 @@ function extractManualEvidenceModels_(excerpt) {
   return [...new Set(matches.map(normalizeManualEvidenceModel_).filter(Boolean))];
 }
 
+function manualEvidenceHasModelApplicabilityCaveat_(text) {
+  const compact = String(text || "").replace(/\s+/g, "");
+  return /(?:依|視|按|根據|按照).{0,8}(?:型號|機型|機種|產品).{0,18}(?:而定|不同|有所不同)|(?:可能|未必|不一定).{0,8}(?:不支援|無法使用|未提供|不適用)|(?:部分|某些|特定).{0,6}(?:型號|機型|機種|產品)|並非(?:所有|每一?).{0,6}(?:型號|機型|機種|產品).{0,10}(?:支援|適用|提供|具有)/i.test(
+    compact,
+  );
+}
+
 /**
  * 共用 PDF 的型號適用範圍必須可由摘錄自體驗證。
  * 例：S32HG806ES 不得使用只標示 S32HG802SC 的 USB-C 圖說。
@@ -12041,9 +12733,14 @@ function manualEvidenceSupportsTargetModel_(evidence, targetModel) {
   const target = normalizeManualEvidenceModel_(targetModel);
   if (!target) return true;
 
+  const excerpt = String((evidence && evidence.excerpt) || "");
+  // 條件式免責句不是目前型號的正向證據。即使模型自行把 scope 寫成
+  // 全檔共通，也不能拿「可能不支援」反過來證明本機型具備該功能。
+  if (manualEvidenceHasModelApplicabilityCaveat_(excerpt)) return false;
+
   const targetBase = getManualEvidenceRegionalBase_(target);
   const evidenceModels = extractManualEvidenceModels_(
-    evidence && evidence.excerpt,
+    excerpt,
   );
   if (evidenceModels.length > 0) {
     return evidenceModels.some((evidenceModel) =>
@@ -12299,6 +12996,81 @@ function manualSupportedAnswerMatchesExcerpt_(answerText, excerptText, questionT
   };
   const answerForCriticalTokens = stripProductIdentity(answer);
   const excerptForCriticalTokens = stripProductIdentity(excerpt);
+
+  const getNamedFeatureTokens = function (value) {
+    const normalized = String(value || "")
+      .toUpperCase()
+      .replace(/無限核心(?:照明|燈效)?/g, " INFINITYCORELIGHTING ")
+      .replace(/日蝕(?:照明|燈效)?/g, " ECLIPSELIGHTING ")
+      .replace(/核心照明/g, " CORELIGHTING ")
+      .replace(/核心同步/g, " CORESYNC ")
+      .replace(/INFINITY\s*CORE(?:\s*LIGHTING)?/g, " INFINITYCORELIGHTING ")
+      .replace(/ECLIPSE\s*LIGHTING/g, " ECLIPSELIGHTING ")
+      .replace(/CORE\s*LIGHTING\s*\+?/g, " CORELIGHTING ")
+      .replace(/CORE\s*SYNC/g, " CORESYNC ")
+      .replace(/AUTO\s*SOURCE\s*SWITCH\s*\+?/g, " AUTOSOURCESWITCH ")
+      .replace(/AI\s*MODE/g, " AIMODE ")
+      .replace(/G[\s-]*SYNC/g, " GSYNC ")
+      .replace(/FREE\s*SYNC/g, " FREESYNC ");
+    const ignored = {
+      SAMSUNG: true,
+      MONITOR: true,
+      DISPLAY: true,
+      DISPLAYPORT: true,
+      HDMI: true,
+      USB: true,
+      USBC: true,
+      TYPE: true,
+      MODE: true,
+      MENU: true,
+      SETTING: true,
+      SETTINGS: true,
+      SUPPORT: true,
+      SOFTWARE: true,
+      UPDATE: true,
+      POWER: true,
+      SCREEN: true,
+      PICTURE: true,
+      SOUND: true,
+      INPUT: true,
+      OUTPUT: true,
+      PORT: true,
+      GAME: true,
+      PAGE: true,
+      GUIDE: true,
+      PRODUCT: true,
+      MODEL: true,
+      OLED: true,
+      QLED: true,
+      UHD: true,
+      QHD: true,
+      FHD: true,
+    };
+    return [
+      ...new Set(
+        (normalized.match(/[A-Z][A-Z0-9+.-]{2,}/g) || [])
+          .map(function (token) {
+            return token.replace(/[^A-Z0-9]/g, "");
+          })
+          .filter(function (token) {
+            return token && !ignored[token];
+          }),
+      ),
+    ];
+  };
+  const answerFeatureTokens = getNamedFeatureTokens(
+    answerForCriticalTokens,
+  );
+  const excerptFeatureTokens = getNamedFeatureTokens(
+    excerptForCriticalTokens,
+  );
+  if (
+    answerFeatureTokens.some(function (token) {
+      return excerptFeatureTokens.indexOf(token) < 0;
+    })
+  ) {
+    return false;
+  }
 
   const normalizeCriticalToken = function (token) {
     return String(token || "").toUpperCase().replace(/\s+/g, "");
@@ -13198,6 +13970,7 @@ let lastLlmCallAttempted = false;
 let lastSearchSources = null;
 let lastWebEvidenceValid = false;
 let lastWebSupportedSegments = [];
+let lastWebAcceptedSources = [];
 let lastWebEvidenceConflict = false;
 let lastWebSearchAttempted = false;
 let lastWebUnverifiedDraft = "";
@@ -13595,6 +14368,33 @@ function pdfFileNameMatchesModels(fileName, exactModels) {
   });
 }
 
+function buildDrivePdfIdentity_(driveFileId, updatedAtValue, sizeBytes) {
+  const timestamp = updatedAtValue instanceof Date
+    ? updatedAtValue.getTime()
+    : Number(updatedAtValue) || Date.parse(String(updatedAtValue || "")) || 0;
+  return `${String(driveFileId || "")}:${timestamp}:${Math.max(0, Number(sizeBytes || 0))}`;
+}
+
+function isKbPdfUriFreshForDriveCandidate_(kbItem, driveCandidate) {
+  const existing = kbItem || {};
+  const candidate = driveCandidate || {};
+  if (!existing.uri || !candidate.driveFileId) return false;
+  const expectedIdentity = buildDrivePdfIdentity_(
+    candidate.driveFileId,
+    candidate.updatedAtMs || candidate.updatedAt,
+    candidate.sizeBytes,
+  );
+  if (String(existing.identity || "") !== expectedIdentity) return false;
+  const uploadedAt = Date.parse(String(existing.fileApiUploadedAt || "")) || 0;
+  const driveUpdatedAt =
+    Number(candidate.updatedAtMs || 0) ||
+    Date.parse(String(candidate.updatedAt || "")) ||
+    0;
+  // 舊紀錄沒有上傳時間時先沿用；若已知 URI 上傳時間早於 Drive 修改，
+  // 代表 metadata 已變新但實際 URI 還是舊 PDF，必須重新上傳。
+  return !uploadedAt || !driveUpdatedAt || uploadedAt >= driveUpdatedAt;
+}
+
 function recoverRelevantPdfUrisFromDrive(
   exactModels,
   primaryModel,
@@ -13613,11 +14413,11 @@ function recoverRelevantPdfUrisFromDrive(
   }
 
   const maxFiles = Math.max(1, Math.min(Number(limit) || 1, 2));
-  const existingNames = {};
+  const existingByName = {};
   (Array.isArray(existingCandidates) ? existingCandidates : []).forEach(
     function (item) {
       const name = String((item && item.name) || "").trim().toUpperCase();
-      if (name) existingNames[name] = true;
+      if (name) existingByName[name] = item;
     },
   );
 
@@ -13653,6 +14453,7 @@ function recoverRelevantPdfUrisFromDrive(
           driveFileId: file.getId(),
           sizeBytes: Number(file.getSize()) || 0,
           updatedAt: file.getLastUpdated().toISOString(),
+          updatedAtMs: file.getLastUpdated().getTime(),
           _driveFile: file,
         };
         const key = fileName.trim().toUpperCase();
@@ -13693,6 +14494,7 @@ function recoverRelevantPdfUrisFromDrive(
               driveFileId: item.driveFileId,
               sizeBytes: item.sizeBytes,
               updatedAt: item.updatedAt,
+              updatedAtMs: item.updatedAtMs,
             };
           }),
         ),
@@ -13708,7 +14510,9 @@ function recoverRelevantPdfUrisFromDrive(
   }
 
   const selectedCandidates = candidates.slice(0, maxFiles).filter(function (item) {
-    return !existingNames[String(item.name || "").trim().toUpperCase()];
+    const existing =
+      existingByName[String(item.name || "").trim().toUpperCase()];
+    return !isKbPdfUriFreshForDriveCandidate_(existing, item);
   });
   if (selectedCandidates.length === 0) {
     return [];
@@ -13753,6 +14557,11 @@ function recoverRelevantPdfUrisFromDrive(
         driveFileId: candidate.driveFileId,
         sizeBytes: fileSize,
         updatedAt: candidate.updatedAt,
+        identity: buildDrivePdfIdentity_(
+          candidate.driveFileId,
+          candidate.updatedAtMs || candidate.updatedAt,
+          fileSize,
+        ),
       });
     } else if (fileSize <= INLINE_PDF_FALLBACK_MAX_BYTES) {
       recovered.push({
@@ -13763,6 +14572,11 @@ function recoverRelevantPdfUrisFromDrive(
         driveFileId: candidate.driveFileId,
         sizeBytes: fileSize,
         updatedAt: candidate.updatedAt,
+        identity: buildDrivePdfIdentity_(
+          candidate.driveFileId,
+          candidate.updatedAtMs || candidate.updatedAt,
+          fileSize,
+        ),
       });
       writeLog(
         `[PDF Recovery] File API 無 URI，改用 inline PDF fallback: ${candidate.name} (${fileSize} bytes)`,
@@ -14320,8 +15134,8 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
                               * S27BM70x / S32BM70x = Smart Monitor M7 系列 (M70)
                               * S27DG80x / S32DG80x = Odyssey OLED G8 系列 (G80SD/G81SF)
                               * S27DG60x = Odyssey OLED G6 系列 (G60SD)
-                              * S27FG90x = Odyssey 3D G9 系列 (G90XF)
-                              * S57CG95x = Odyssey G9 系列 (G95SC)
+                              * S27FG90x = Odyssey 3D 系列 (G90XF，非 G9 系列)
+                              * S57CG95x = Odyssey Neo G9 系列 (G95NC)
                               * S27C90x / S32C90x = ViewFinity S9 系列
 
                               【價格查詢原則】(最高優先級)
@@ -14359,7 +15173,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         // 匹配 LS...XZW 格式 或 型號：... 格式 (搜尋全行)
         const lsMatches =
           rowText.match(/LS\d{2}[A-Z]{2}\d{3}[A-Z]{2}(XZW)?/gi) || [];
-        const labelMatches = rowText.match(/型號[：:][\s]*([\w-]+)/gi) || [];
+        const labelMatches = rowText.match(/(?:型號[：:]|model=)[\s]*([\w-]+)/gi) || [];
 
         lsMatches.forEach((m) => {
           const clean = m.toUpperCase().replace(/^LS/, "S").replace(/XZW$/, "");
@@ -14367,7 +15181,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         });
         labelMatches.forEach((m) => {
           const clean = m
-            .replace(/型號[：:]/i, "")
+            .replace(/(?:型號[：:]|model=)/i, "")
             .trim()
             .toUpperCase();
           if (clean && !allExistModels.includes(clean))
@@ -14417,6 +15231,10 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
         } else if (key.startsWith("LS")) {
           isModelRow = true;
           sModel = key.replace(/^LS/, "S").replace(/XZW$/, "");
+        } else if (key.startsWith("能力_")) {
+          isModelRow = true;
+          sModel = key.replace(/^能力_/, "").trim();
+          key = sModel;
         }
 
         if (isModelRow) {
@@ -14545,6 +15363,8 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     lightChunks.forEach((chunk, index) => {
       cache.put(`${CACHE_KEYS.KB_RULES_LIGHT_PREFIX}${index}`, chunk, 21600);
     });
+    // RULE 詞彙可能由每日官網同步新增；讓下一題重建 ontology，避免等 6 小時。
+    cache.remove("RULE_TERM_ONTOLOGY_V1");
     syncLogs.push(`Light: ${lightChunks.length}`);
 
     // 規格層 (Specs - 各型號詳細規格) - 僅在需要時載入 (~100KB)
@@ -14594,7 +15414,12 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
           const file = files.next();
           const fileName = file.getName();
           const fileSize = file.getSize();
-          const fileIdentity = `${file.getId()}:${file.getLastUpdated().getTime()}:${fileSize}`;
+          const fileUpdatedAt = file.getLastUpdated();
+          const fileIdentity = buildDrivePdfIdentity_(
+            file.getId(),
+            fileUpdatedAt,
+            fileSize,
+          );
           const normalizedDriveName = fileName.trim().toUpperCase();
           drivePdfNameCounts[normalizedDriveName] =
             Number(drivePdfNameCounts[normalizedDriveName] || 0) + 1;
@@ -14615,12 +15440,20 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
             mimeType: "application/pdf",
             driveFileId: file.getId(),
             sizeBytes: fileSize,
-            updatedAt: file.getLastUpdated().toISOString(),
+            updatedAt: fileUpdatedAt.toISOString(),
             identity: fileIdentity,
           });
 
-          if (existingFilesMap.has(fileName)) {
-            const existingFileItem = existingFileItemsMap.get(fileName) || {};
+          const existingFileItem = existingFileItemsMap.get(fileName) || {};
+          const canReuseExistingUri =
+            existingFilesMap.has(fileName) &&
+            isKbPdfUriFreshForDriveCandidate_(existingFileItem, {
+              driveFileId: file.getId(),
+              sizeBytes: fileSize,
+              updatedAt: fileUpdatedAt.toISOString(),
+              updatedAtMs: fileUpdatedAt.getTime(),
+            });
+          if (canReuseExistingUri) {
             newKbList.push({
               name: fileName,
               uri: existingFilesMap.get(fileName),
@@ -14629,11 +15462,16 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
               fileApiUploadedAt: existingFileItem.fileApiUploadedAt || "",
               driveFileId: file.getId(),
               sizeBytes: fileSize,
-              updatedAt: file.getLastUpdated().toISOString(),
+              updatedAt: fileUpdatedAt.toISOString(),
               identity: fileIdentity,
             });
             skipCount++;
           } else {
+            if (existingFilesMap.has(fileName)) {
+              writeLog(
+                `[Sync v29.6.280] Drive PDF 已更新，重新上傳而非沿用舊 URI: ${fileName}`,
+              );
+            }
             const pdfUri = uploadFileToGemini(
               apiKey,
               file.getBlob(),
@@ -14650,7 +15488,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
                 fileApiUploadedAt: new Date().toISOString(),
                 driveFileId: file.getId(),
                 sizeBytes: fileSize,
-                updatedAt: file.getLastUpdated().toISOString(),
+                updatedAt: fileUpdatedAt.toISOString(),
                 identity: fileIdentity,
               });
               uploadedFiles.push(fileName);
@@ -16992,7 +17830,7 @@ function constructLeanDynamicPromptV159_(
 
 先直接回答，再列必要步驟或條件。不得引用 QA、RULE、網路或內建知識。規格、操作與故障題都必須提供 PDF 顯示頁碼。
 【故障與操作題嚴格匹配】若問題為故障排除（如閃爍、黑屏、無畫面、無訊號），必須尋找手冊中的「故障排除 (Troubleshooting)」章節；嚴禁將無關之「支架安裝與高度調整」等無關章節當作故障排除回答！若手冊無該問題之排查段落，誠實說明手冊未記載該故障。
-後續會用 JSON Schema 接收 answer 與 evidence；只依 schema 回傳，不要另加文字標記。若內容明載適用整本手冊才可標為全檔共通；依型號而異或找不到時如實標示。不得猜頁碼；找不到可核對段落時只建議下一步，不可自行聯網。`;
+後續會用 JSON Schema 接收 answer 與 evidence；只依 schema 回傳，不要另加文字標記。全檔共通必須有正面依據，不能只因附近沒看到限制就推定；若摘錄含依／視型號而定、部分型號、可能不支援或不一定提供，此主張不得當成目前型號的確定答案。supportedAnswer 的專有功能名稱必須原樣或以明確等價名稱出現在同一筆 evidenceExcerpt；CoreSync、Core Lighting(+)、Infinity Core Lighting、Eclipse Lighting 不得互換。依型號而異或找不到時如實標示。不得猜頁碼；找不到可核對段落時只建議下一步，不可自行聯網。`;
   } else {
     dynamicPrompt = buildDynamicContext(messages, userId, false);
     const c3Prompt = getRuntimePromptConfig_().c3Prompt;
@@ -17188,13 +18026,13 @@ function constructDynamicPromptLegacyV158_(
 
     // v29.6.032: 中性立場鐵律 (不攻擊它牌、不過度自誇三星)
     dynamicPrompt += `\n【⚖️ 中性立場與競品拒答鐵律 (v29.6.038 強制)】
-你是「台灣三星官方客服」, 但**不代表可以攻擊它牌或過度自誇**。
+你是「三星螢幕門市店員的內部同儕助手」, **不能攻擊它牌或過度自誇**。
 1. **絕對禁止攻擊它牌** — 不能說「它牌比較差」「它牌沒這個功能」「它牌面板扭曲」這類比較性貶抑。
 2. **絕對禁止過度自誇** — 不能說「三星是業界最好」「三星獨家領先」「最佳選擇」這類行銷話術。
 3. **客觀描述事實** — 只能根據規格庫/QA/PDF 內的具體數據陳述, 不能用形容詞包裝 (例: 「它的曲面設計更舒服」→ 改為「它的曲率是 1000R」)。
 4. **比較題預設中立** — 若用戶問「Odyssey 跟它牌曲面差在哪」, 你只能列出三星規格庫內有的資訊, 它牌的特性**一律不評論**。
 5. **避免主觀判斷** — 「不扭曲」「比較舒服」「比較好」「比較強」這類主觀詞禁用, 改用具體數字 (例: 「曲率 1000R」「對比 2500:1」)。
-6. **🚫 競品問題婉轉拒答 (v29.6.038 新增)** — 若用戶詢問**它牌產品** (如 LG/BENQ/ASUS/Acer/Dell/HP 螢幕或型號), 你**禁止**回答它牌規格/評價/比較/推薦。必須**婉轉拒答**: 「不好意思, 我是三星螢幕客服, 主要服務三星產品, LG/BENQ 的資訊我這邊沒有喔。如果你有三星螢幕的問題, 我很樂意幫你查!」。**不可**貶抑它牌, **不可**推薦三星替代品, 只要**禮貌轉回三星**即可。
+6. **🚫 競品問題中立收斂 (v29.6.278)** — 若店員詢問**它牌產品** (如 LG/BENQ/ASUS/Acer/Dell/HP 螢幕或型號), 你**禁止**回答它牌規格/評價/比較/推薦。直接說：「它牌規格我沒有可靠資料，先不亂比；如果要查三星型號，我可以接著幫你看。」**不可**貶抑它牌，**不可**推薦三星替代品，也不要使用制式客服道歉。
 \n`;
 
     // v29.6.032: 封閉式鐵律強化 - 任何回答都必須有來源
@@ -17216,7 +18054,7 @@ function constructDynamicPromptLegacyV158_(
 1. **無 QA 與規格資料時，嚴禁瞎編回答**：當前為「極速模式（未加載 PDF 手冊）」。若用戶詢問具體的設定步驟、故障排除、展示據點、台中展示店、服務時間、電話號碼、產品規格等任何具體資訊，且當前的【精選 QA & 規格】中**沒有**現成的答案，你**絕對、100% 嚴格禁止**憑藉你自己的通用常識/一般知識瞎編任何地址、電話、營業時間或設定步驟！
 2. **誠實引導與自動升級**：
    - 針對**操作設定、故障排除**等深度問題，且資料庫無記載：只輸出 \`[AUTO_SEARCH_PDF]\` 暗號，由程式直接接續官方手冊；不要先寫資料不足，也不要詢問是否要查。
-   - 針對**展示店、據點、服務時間、新品規格、其他一般客服**等非操作問題，且資料庫無記載：你**絕對不准瞎編任何據點或地址**，你必須老實表示目前資料庫中沒有相關資訊，並**在回答最後輸出 \`[AUTO_SEARCH_WEB]\` 暗號**！系統會自動強行攔截，提示並詢問用戶是否要擴大搜尋網路，用戶點擊同意後才會啟動聯網搜尋。
+   - 針對**展示店、據點、服務時間、新品規格、其他時效資訊**等非操作問題，且資料庫無記載：只輸出 \`[AUTO_SEARCH_WEB]\` 暗號，由程式接續既有 Web 成本與證據守門；不要先寫資料不足，也不要再問店員是否要搜尋。
 3. **來源標記真實誠實原則**：回答最末尾的來源標記必須與你的參考來源 100% 實事求是：
    - 僅當引用了 QA 資料庫的內容時，標註 \`[來源:QA庫]\`。
    - 僅當引用了 CLASS_RULES 的一般產品規格時，標註 \`[來源:官方規格庫]\`。
@@ -17812,7 +18650,7 @@ ${recentOfficialManualAnswer}
     // 會占用 maxOutputTokens，曾把合法 JSON 截在第 37 token；關閉後把
     // 1,200 tokens 全留給 answer/page/evidence，一次呼叫完成且更省成本。
     genConfig.thinkingConfig = { thinkingBudget: 0 };
-    dynamicPrompt += `\n\n【PDF 結構化輸出】目前鎖定完整型號：${normalizeManualEvidenceModel_(targetModelName) || "未提供"}。只輸出 schema 指定的 JSON。先把問題拆成所有明示對象、條件與要求；每一項都必須有直接證據才可把 coverage 設為 full。只找到相關背景、預防方式、開啟後選項，卻沒有回答使用者問的入口、故障處理、特定裝置／模式條件或每個比較項時，coverage 必須是 partial 並在 unresolvedQuestion 寫出缺口，不能用相關段落冒充完整答案。檢索時先把使用者口語需求轉成手冊中的裝置類別、連接介面、功能名稱與同義詞；先看目錄找到功能章節，再閱讀該章節與相鄰頁，不可只比對原句字面。若問「在哪裡／哪個選單」，supportedAnswer 必須寫出手冊實際呈現的「功能分類 → 設定項目」路徑；只寫「開啟此功能」不算回答。found=true 時，將答案拆成最多 5 個可獨立驗證的主張；每筆 evidence 的 supportedAnswer 只能寫同一筆 evidenceExcerpt 直接支持的一句自然繁中答案或必要步驟，選單入口也必須和其證據放在同一筆，且 supportedAnswer 不要重複完整型號或自行加頁碼。程式會逐筆驗證並丟棄不適用目前型號的主張，所以不得把其他頁、其他型號或常識混在同一 supportedAnswer。共用手冊中，若目前章節與主張附近沒有「僅限某型號／某型號適用」等限制，scope 應填「全檔共通」；只有附近明列目前型號時才填「型號明確」或「依型號而異」，且 evidenceExcerpt 必須連同最近的適用型號限定一併摘錄。只列其他型號時不得回答成目前型號，封面或型號清單也不能補當功能證據。手冊確定沒有直接證據時才回 found=false、coverage=none、notFoundReason 說明缺口且 evidence=[]。格式錯誤、讀取逾時或不確定，不得假裝 found=false。`;
+    dynamicPrompt += `\n\n【PDF 結構化輸出】目前鎖定完整型號：${normalizeManualEvidenceModel_(targetModelName) || "未提供"}。只輸出 schema 指定的 JSON。先把問題拆成所有明示對象、條件與要求；每一項都必須有直接證據才可把 coverage 設為 full。只找到相關背景、預防方式、開啟後選項，卻沒有回答使用者問的入口、故障處理、特定裝置／模式條件或每個比較項時，coverage 必須是 partial 並在 unresolvedQuestion 寫出缺口，不能用相關段落冒充完整答案。檢索時先把使用者口語需求轉成手冊中的裝置類別、連接介面、功能名稱與同義詞；先看目錄找到功能章節，再閱讀該章節與相鄰頁，不可只比對原句字面。若問「在哪裡／哪個選單」，supportedAnswer 必須寫出手冊實際呈現的「功能分類 → 設定項目」路徑；只寫「開啟此功能」不算回答。found=true 時，將答案拆成最多 5 個可獨立驗證的主張；每筆 evidence 的 supportedAnswer 只能寫同一筆 evidenceExcerpt 直接支持的一句自然繁中答案或必要步驟，選單入口也必須和其證據放在同一筆，且 supportedAnswer 不要重複完整型號或自行加頁碼。程式會逐筆驗證並丟棄不適用目前型號的主張，所以不得把其他頁、其他型號或常識混在同一 supportedAnswer。全檔共通必須有正面依據，不能只因附近沒看到限制就推定；若摘錄含依／視型號而定、部分型號、可能不支援或不一定提供，此主張不得當成目前型號的確定答案。supportedAnswer 的專有功能名稱必須原樣或以明確等價名稱出現在同一筆 evidenceExcerpt；CoreSync、Core Lighting(+)、Infinity Core Lighting、Eclipse Lighting 不得互換。只有附近明列目前型號時才填「型號明確」或「依型號而異」，且 evidenceExcerpt 必須連同最近的適用型號限定一併摘錄。只列其他型號時不得回答成目前型號，封面或型號清單也不能補當功能證據。手冊確定沒有直接證據時才回 found=false、coverage=none、notFoundReason 說明缺口且 evidence=[]。格式錯誤、讀取逾時或不確定，不得假裝 found=false。`;
     writeLog(
       `[PDF Config v29.6.177] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingBudget=0`,
     );
@@ -18274,6 +19112,7 @@ ${recentOfficialManualAnswer}
             lastSearchSources = null;
             lastWebEvidenceValid = false;
             lastWebSupportedSegments = [];
+            lastWebAcceptedSources = [];
 
             // v29.5.109: 完整記錄 Grounding Metadata (Web Search 結果)
             if (grounding) {
@@ -18316,16 +19155,52 @@ ${recentOfficialManualAnswer}
                     )
                       ? support.groundingChunkIndices
                       : [];
-                    return indices.some((index) =>
-                      nonOfficialChunkIndexes.has(index),
+                    // support 可能同時依賴多個來源；只要其中一個是被排除的
+                    // Samsung 官網，就不能刪掉該來源後假裝其餘非官方 chunk
+                    // 單獨支持整句。
+                    return (
+                      indices.length > 0 &&
+                      indices.every((index) =>
+                        nonOfficialChunkIndexes.has(index),
+                      )
                     );
                 })
                 : [];
               lastWebSupportedSegments = nonOfficialGroundingSupports
                 .map(function (support) {
-                  return support && support.segment
+                  const text = support && support.segment
                     ? String(support.segment.text || "")
                     : "";
+                  const sourceIndexes = Array.isArray(
+                    support && support.groundingChunkIndices,
+                  )
+                    ? support.groundingChunkIndices.filter(function (index) {
+                        return nonOfficialChunkIndexes.has(index);
+                      })
+                    : [];
+                  const sourceLabels = sourceIndexes.map(function (index) {
+                      const chunk = allGroundingChunks[index] || {};
+                      const web = chunk.web || {};
+                      const title = String(web.title || "").trim().toLowerCase();
+                      if (title && title.indexOf(".") >= 0 && title.length < 50) {
+                        return title;
+                      }
+                      const uriMatch = String(web.uri || "").match(
+                        /https?:\/\/([^/]+)/i,
+                      );
+                      return uriMatch
+                        ? uriMatch[1].replace(/^www\./i, "").toLowerCase()
+                        : "";
+                    });
+                  return text && sourceIndexes.length > 0
+                    ? {
+                        text: text,
+                        sourceIds: sourceIndexes.map(function (index) {
+                          return `chunk:${index}`;
+                        }),
+                        sourceLabels: sourceLabels,
+                      }
+                    : null;
                 })
                 .filter(Boolean);
               if (
@@ -19276,6 +20151,7 @@ function handleMessage(event) {
     lastSearchSources = null;
     lastWebEvidenceValid = false;
     lastWebSupportedSegments = [];
+    lastWebAcceptedSources = [];
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
     lastWebUnverifiedDraft = "";
@@ -19356,6 +20232,7 @@ function handleMessage(event) {
     let semanticRouterControlsThisTurn = false; // conditional 有效時，舊暗號不得再成為第二個決策者
     let semanticRouteResult = null;
     let recentSourceQuestionBeforeTurn = null; // rememberRecentSourceQuestion_ 覆寫前的上一題
+    let canonicalTopicBeforeTurn = null; // 跨日產品主題；省略追問的第一順位上下文
     let aiSearchQuery = null; // v29.4.22: AI-driven search query
     let hasPdfForModel = false; // v29.5.123: 追蹤該型號是否有 PDF（控制 Quick Reply 按鈕）
 
@@ -19730,6 +20607,7 @@ function handleMessage(event) {
     } else if (!msg.startsWith("#")) {
       clearLegacyAdvancedRouteState_(cache, userId, contextId);
       recentSourceQuestionBeforeTurn = readRecentSourceQuestion_(contextId);
+      canonicalTopicBeforeTurn = readSourceCanonicalTopic_(contextId);
       const rememberedModels = extractFullModelLikeTokens(msg);
       const productBeforeQuestion = readSourceProductState_(contextId);
       if (
@@ -20254,6 +21132,7 @@ function handleMessage(event) {
     const shouldCacheMeaningfulQuery =
       !isCommand &&
       !isQuickCommand &&
+      !isNonProductConversationTurn_(msg) &&
       msg.length >= 2 &&
       !/^(?:1|2|3)$/.test(msg) &&
       !/不滿意這回答請繼續擴大搜尋/.test(msg) &&
@@ -20844,6 +21723,12 @@ function handleMessage(event) {
           : selectedModel;
         msg = queryText;
         userMessage = queryText;
+        // 選型 postback 只是介面事件，後續所有路由必須改讀原題＋已選型號。
+        // 三者少更新任何一個，都會讓 Router／PDF 看見「#型號:...」而遺失問題。
+        routingQuestion = queryText;
+        primaryModel = normalizeModelForDisplay(selectedModel);
+        resolvedConversationModel = primaryModel;
+        rememberRecentSourceQuestion_(contextId, normalizedTopic || queryText, primaryModel);
         skipAliasFeatureGuard = true;
 
         cache.remove(`${userId}:pending_topic`);
@@ -21428,9 +22313,23 @@ function handleMessage(event) {
         return;
       }
 
+      const savedEnvelope = readAnswerEnvelope_(contextId);
+      const persistentElaborationTopic = readSourceCanonicalTopic_(contextId);
+      const cachedElaborationQuestion = String(
+        cache.get(`${userId}:last_meaningful_query`) || "",
+      ).trim();
       const previousQuestionForElaboration = String(
-        cache.get(`${userId}:last_meaningful_query`) ||
+        (savedEnvelope &&
+          savedEnvelope.originalQuestion &&
+          !isNonProductConversationTurn_(savedEnvelope.originalQuestion) &&
+          savedEnvelope.originalQuestion) ||
+          (persistentElaborationTopic &&
+            (persistentElaborationTopic.canonicalQuestion ||
+              persistentElaborationTopic.lastQuestion)) ||
           getPreviousMeaningfulUserQuestion_(historyForContinue) ||
+          (!isNonProductConversationTurn_(cachedElaborationQuestion)
+            ? cachedElaborationQuestion
+            : "") ||
           "",
       ).trim();
       if (!previousQuestionForElaboration) {
@@ -21449,7 +22348,6 @@ function handleMessage(event) {
       );
       elaborationReplyAnchor = replyAnchor;
 
-      const savedEnvelope = readAnswerEnvelope_(contextId);
       const savedEnvelopeMatches = Boolean(
         savedEnvelope &&
           savedEnvelope.originalQuestion &&
@@ -21688,7 +22586,9 @@ function handleMessage(event) {
         ? getHistoryFromCacheOrSheet(contextId)
         : null;
     const earlySemanticPreviousTopic = String(
-      (recentSourceQuestionBeforeTurn &&
+      (canonicalTopicBeforeTurn &&
+        canonicalTopicBeforeTurn.canonicalQuestion) ||
+        (recentSourceQuestionBeforeTurn &&
         recentSourceQuestionBeforeTurn.question) ||
         (earlySemanticHistory
           ? getPreviousMeaningfulUserQuestion_(earlySemanticHistory)
@@ -22215,7 +23115,7 @@ function handleMessage(event) {
     const hasSelectedPdf = cachedDirectModels.length > 0; // 現在絕對安全
 
     // v29.6.277：只有 deterministic QA／RULE 已無法完整終止、且題目確實
-    // 模糊／複合／像追問時，才用一次 Flash-Lite 拆主張。Router 不回答事實、
+    // 模糊／複合／像追問時，才用一次 3.7 Flash（low thinking）拆主張。Router 不回答事實、
     // 不掛 PDF／Web 工具，也不能自行扣額度；程式仍是唯一來源決策者。
     const semanticCandidates = dedupDisplayModels(
       cachedDirectModels
@@ -22344,6 +23244,49 @@ function handleMessage(event) {
     }
     if (
       semanticRouteResult.mode === "conditional" &&
+      semanticRouteResult.attempted &&
+      (!semanticRouteResult.valid ||
+        !semanticRouteResult.analysis ||
+        semanticRouteResult.analysis.confidence !== "high") &&
+      semanticConfirmedModel &&
+      (isOperationOrTroubleshootQuery(routingQuestion) ||
+        isManualVerificationRequiredQuery(routingQuestion))
+    ) {
+      // 語意規劃器暫時失敗或不夠確定時，已鎖定型號的操作題仍依固定
+      // QA/RULE→PDF→Web 順序完成，不能退回無證據 Fast 草稿。
+      const fallbackHeldCharge = resumedFromSemanticClarification
+        ? heldSemanticClarificationCharge
+        : incomingMessageWasModelSelection || resumedFromPlainModelClarification
+          ? consumeDailyQuestionModelSelectionHold_(userId)
+          : false;
+      let fallbackDailyQuestionCharge = "";
+      if (dailyQuestionReservedThisMessage) {
+        fallbackDailyQuestionCharge = "current";
+        dailyQuestionReservedThisMessage = false;
+      } else if (fallbackHeldCharge) {
+        fallbackDailyQuestionCharge = "model_hold";
+      }
+      semanticRouterControlsThisTurn = true;
+      rememberRecentSourceQuestion_(
+        contextId,
+        routingQuestion,
+        semanticConfirmedModel,
+      );
+      writeLog(
+        `[Semantic Router v29.6.280] 規劃器未達接管門檻；已鎖定型號操作題改走安全手冊 fallback model=${semanticConfirmedModel}`,
+      );
+      executeAutomaticManualFallback_(
+        routingQuestion,
+        semanticConfirmedModel,
+        contextId,
+        userId,
+        replyToken,
+        { dailyQuestionCharge: fallbackDailyQuestionCharge },
+      );
+      return;
+    }
+    if (
+      semanticRouteResult.mode === "conditional" &&
       semanticRouteResult.valid &&
       semanticRouteResult.analysis &&
       semanticRouteResult.analysis.confidence === "high"
@@ -22353,6 +23296,14 @@ function handleMessage(event) {
         semanticRouteResult,
         semanticRouterInput,
       );
+      if (semanticExecution.model || semanticConfirmedModel) {
+        rememberSourceCanonicalTopic_(
+          contextId,
+          routingQuestion,
+          semanticExecution.model || semanticConfirmedModel,
+          semanticRouteResult.analysis.claims,
+        );
+      }
       if (currentRequestAudit) {
         currentRequestAudit.selectedModel = normalizeModelForDisplay(
           semanticExecution.model || semanticConfirmedModel || "",
@@ -22393,6 +23344,12 @@ function handleMessage(event) {
             contextId,
             semanticExecution.model,
             `semantic_router_${semanticExecution.action}`,
+          );
+          rememberSourceCanonicalTopic_(
+            contextId,
+            routingQuestion,
+            semanticExecution.model,
+            semanticRouteResult.analysis.claims,
           );
         }
         rememberRecentSourceQuestion_(
@@ -28960,6 +29917,141 @@ function assertTestUiAuthorized_(token) {
   if (!isTestUiAccessTokenValid_(token)) {
     throw new Error("TestUI 未授權或工作階段已過期");
   }
+}
+
+/**
+ * 維護者專用：從已授權 TestUI 將本機已審核的術語／型號能力列
+ * 以 key upsert 回正式 Sheet，並更新 QA2 證據列。只接受術語_、能力_
+ * 與 QA2：資料；不會刪除雲端其他型號規格。這不是 LINE 使用者路由。
+ */
+function syncReviewedEvidenceRowsFromTestUi(payload, testUiAccessToken) {
+  assertTestUiAuthorized_(testUiAccessToken);
+  if (!isEditorOnlyDevelopmentWebApp_()) {
+    throw new Error("證據資料同步只允許 Apps Script 編輯者 /dev TestUI");
+  }
+  const source = payload && typeof payload === "object" ? payload : {};
+  const ruleRows = (Array.isArray(source.ruleRows) ? source.ruleRows : [])
+    .map(function (row) {
+      return String(row || "").trim();
+    })
+    .filter(Boolean);
+  const qa2Rows = (Array.isArray(source.qa2Rows) ? source.qa2Rows : [])
+    .map(function (row) {
+      return String(row || "").trim();
+    })
+    .filter(Boolean);
+  const obsoleteQaPrefixes = (
+    Array.isArray(source.obsoleteQaPrefixes) ? source.obsoleteQaPrefixes : []
+  )
+    .map(function (prefix) {
+      return String(prefix || "").trim();
+    })
+    .filter(Boolean);
+
+  if (
+    ruleRows.length === 0 ||
+    ruleRows.some(function (row) {
+      return !/^(?:術語_|能力_)[^,，\s]+[,，]/.test(row);
+    })
+  ) {
+    throw new Error("只能同步已審核的術語_或能力_資料列");
+  }
+  if (
+    qa2Rows.some(function (row) {
+      return !/^QA2:\{/.test(row);
+    })
+  ) {
+    throw new Error("QA 同步只接受 QA2 結構化資料列");
+  }
+  if (
+    obsoleteQaPrefixes.some(function (prefix) {
+      return prefix.length < 12 || prefix.length > 180;
+    })
+  ) {
+    throw new Error("要停用的 QA 前綴長度不合理");
+  }
+
+  const spreadsheet = ss || SpreadsheetApp.getActiveSpreadsheet();
+  const ruleSheet = spreadsheet.getSheetByName(SHEET_NAMES.CLASS_RULES);
+  const qaSheet = spreadsheet.getSheetByName(SHEET_NAMES.QA);
+  if (!ruleSheet || !qaSheet) {
+    throw new Error("找不到 CLASS_RULES 或 QA Sheet");
+  }
+
+  const existingRuleValues = ruleSheet.getRange(
+    1,
+    1,
+    Math.max(1, ruleSheet.getLastRow()),
+    1,
+  ).getValues();
+  const ruleKeyToRow = {};
+  existingRuleValues.forEach(function (row, index) {
+    const key = String(row[0] || "").split(/[,，]/, 1)[0].trim();
+    if (key && !ruleKeyToRow[key]) ruleKeyToRow[key] = index + 1;
+  });
+  let updatedRules = 0;
+  let appendedRules = 0;
+  ruleRows.forEach(function (line) {
+    const key = line.split(/[,，]/, 1)[0].trim();
+    if (ruleKeyToRow[key]) {
+      existingRuleValues[ruleKeyToRow[key] - 1][0] = line;
+      updatedRules += 1;
+    } else {
+      existingRuleValues.push([line]);
+      ruleKeyToRow[key] = existingRuleValues.length;
+      appendedRules += 1;
+    }
+  });
+  ruleSheet
+    .getRange(1, 1, existingRuleValues.length, 1)
+    .setValues(existingRuleValues);
+
+  let retiredQaRows = 0;
+  if (obsoleteQaPrefixes.length > 0 && qaSheet.getLastRow() > 0) {
+    const qaValues = qaSheet
+      .getRange(1, 1, qaSheet.getLastRow(), 1)
+      .getValues();
+    qaValues.forEach(function (row, index) {
+      const current = String(row[0] || "").trim();
+      if (
+        obsoleteQaPrefixes.some(function (prefix) {
+          return current.indexOf(prefix) === 0;
+        })
+      ) {
+        qaSheet.getRange(index + 1, 1).clearContent();
+        retiredQaRows += 1;
+      }
+    });
+  }
+  const qaResult = qa2Rows.length > 0
+    ? qaKnowledgeUpsertRows_(qa2Rows)
+    : { appended: 0, updated: 0, total: 0 };
+
+  SpreadsheetApp.flush();
+  const cache = CacheService.getScriptCache();
+  cache.remove("RULE_TERM_ONTOLOGY_V2");
+  ruleRows.forEach(function (line) {
+    if (!line.startsWith("能力_")) return;
+    const modelMatch = line.match(/(?:^|[;；,，])model=([^;；,，]+)/i);
+    if (modelMatch && modelMatch[1]) {
+      cache.remove(
+        `EXACT_RULE_LINE_V3_${normalizeModelForDisplay(modelMatch[1])}`,
+      );
+    }
+  });
+  scheduleImmediateRebuild();
+  writeLog(
+    `[Evidence Sync v29.6.280] rules=${ruleRows.length} updated=${updatedRules} appended=${appendedRules} qa2=${qaResult.total} retiredQa=${retiredQaRows}`,
+  );
+  return {
+    success: true,
+    ruleRows: ruleRows.length,
+    updatedRules: updatedRules,
+    appendedRules: appendedRules,
+    qa2: qaResult,
+    retiredQaRows: retiredQaRows,
+    rebuildScheduled: true,
+  };
 }
 
 // 1. 網頁入口（健康檢查 + 受保護 TestUI）

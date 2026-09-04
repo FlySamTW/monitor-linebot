@@ -1,8 +1,35 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
+## v29.6.280 現行最高優先契約：語意規劃、術語本體與原子證據
+
+> 本節優先於下方全部歷史版本。舊版中的「Router 使用 2.5 Flash-Lite」、「來源快取綁 GAS_VERSION」、「相似燈效名稱可視為同義」或「共用手冊全檔內容可直接證明所有型號」均已失效。
+
+- 固定入口順序：控制／產品身分／精準 QA／完整 RULE／人工核對 Evidence 先行，完整命中立即結束，`routerCalls=0`。只有模糊型號或系列、複合 claims、省略式自然追問、部分覆蓋或規則衝突，才可呼叫一次條件式 Router。
+- Router 為 `models/gemini-3.7-flash`，只用 `thinkingLevel: low`、Structured Output、短 context，無搜尋／PDF／Web／其他工具，也不允許 `answer` 欄位。它只能拆主張、判斷話題關係與從程式候選 index 選型；不能產生產品事實、決定扣次、指定文件或覆寫持久狀態。
+- 回答模型維持分流：Fast=`models/gemini-2.5-flash-lite`；PDF／Web=`models/gemini-2.5-flash`。來源政策仍由程式按 `QA／RULE／verified Evidence → PDF → Web` 執行；本版未遷移 Google File Search、未增加背景搜尋或第二次潤飾。
+- 已知完整型號的未解操作／手冊型問題，Router 高信心分類或安全 fallback 都只能交 manual，不得回 Fast 猜答案。精準 QA／RULE 已完整回答則不可再呼叫 Router、PDF 或 Web。
+- 術語資料採三層契約：`definition` 只解釋名詞；系列／型號 `capability` 必須精確 scope；`operation` 必須再綁同一 canonical 型號的官方手冊路徑證據。CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting／Eclipse Sync 不得互換，也不得由 definition 推論機種支援。
+- 2026-09-04 Samsung 台灣官網盤點快照為 151 筆 `術語_` 與 9 筆 `能力_完整型號`。術語列可新增正式名與口語 aliases，但不能回答型號支援；首頁的 FHD、更新率、反應時間、曲面、內建喇叭、Smart TV、USB-C 視訊等上位詞也是 definition-only。能力列必須含 canonical `model`、`capabilities`、`checkedAt` 與官方 `source`。Pro／Plus／Premium 等後綴及相似功能必須分列，系列 alias 只產生候選。
+- 共用手冊 evidence 只要含「依型號而定／可能不支援／部分型號」而同段沒有正向綁定目標完整型號，即判為不適用，不能支持 capability 或 operation。功能名稱也須同一 canonical feature，不得用另一種燈效回答。
+- Web support/chunk 必須保留來源 ID；只有同一來源同時支持 canonical 型號與本題主張才可輸出肯定結論。禁止用不同網站跨站拼 evidence，也禁止將無引用模型草稿改寫成「可能做法」交付。
+- `SRC_PRODUCT` 跨日保留 confirmed model、canonical topic 與最近成功 advanced result；新完整型號或管理員 `/重啟` 清除。省略追問先還原持久型號與主題，不可只存問題文字或借錯前題。
+- 進階結果的重用身分為 `Asia/Taipei 日期＋來源＋canonical 型號＋正規化主題＋Evidence schema＋來源 fingerprint`，不再以 `GAS_VERSION` 或臨時 route-plan hash 當內容身分。相同身分可跨輪免重複呼叫／扣次；新題、新型號、新日期、schema 或來源 fingerprint 變更即失效。
+- PDF fingerprint 必須包含 Drive fileId、updatedAt、size／identity；同步時若 Drive 文件內容／時間／大小改變，即使檔名相同也須重新上傳並刷新 Gemini Files URI。禁止重用與 Drive 現況不一致的舊 URI 或舊回答。
+- G9 後方燈效事故的 LOG 有五次 PDF 呼叫；根因是舊證據適用性與術語等價契約，不是 PDF 完全沒有執行或只靠模型升級即可解決。v29.6.280 目標是結構性阻斷這批已知錯誤類型，不得對外宣稱能根除所有幻覺；無足夠證據仍須明示未知並走安全終點。
+
+## v29.6.279 競品範圍守門前移
+
+- 競品螢幕比較是 deterministic 資料邊界，必須在一般「含螢幕／配件字樣即放行」之前攔截；跨裝置連接三星螢幕的問題仍屬專案範圍。
+- 攔截後以店員同儕口吻說明缺乏可靠它牌資料，零 Router／Fast／PDF／Web 呼叫，且不得顯示「再查網路」形成無終點流程。這是全域分類修復，禁止再塞品牌或題目特例到 Prompt。
+
+## v29.6.278 店員同儕角色一致化
+
+- Fast、Router 與終端安全訊息的唯一使用者角色是三星螢幕門市店員的內部同儕助手，不得再以「台灣三星官方客服」自居或套客服道歉範本。
+- 時效資訊缺本機證據時直接交程式既有 Web 守門，不再要求店員二次確認；此變更不新增模型、搜尋工具或來源呼叫。
+
 ## v29.6.277 條件式 RouteAnalysisV1 主張規劃器
 
-> **本節是現行最高優先契約**：與下方歷史版本的「再按一次才授權 PDF」、「AUTO_SEARCH 正式決策」或「每題只能一個進階來源」衝突時，以本節為準。歷史段落不得拿來覆蓋 v29.6.277。
+> **v29.6.277 當時契約（歷史）**：保留當時設計背景；現行實作若有衝突，以最上方 v29.6.280 契約為準。
 
 - 角色是店員內部同儕助手，不是對外客服。用台灣口語、可自然直呼 Sam，不使用制式敬語；稱呼要自然且節制。客戶不可看到 Router、claim、schema、confidence、fallback、token 或其他程式術語。
 - 不得每題先呼叫 Router。指令、postback、明確來源按鍵、精準 QA、完整 RULE 與人工核對片段都由 deterministic path 直接完成，`routerCalls=0`；只有模糊型號／系列、自然追問、複合主張、局部覆蓋或規則衝突才可呼叫一次。

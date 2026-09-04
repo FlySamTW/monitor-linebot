@@ -6,7 +6,7 @@
 系列_ViewFinity,高解析度/創作者系列，針對設計師、創作者與商務人士的高解析度螢幕系列，強調色彩準確度與多工處理。
 系列_SmartMonitor,智慧聯網螢幕，內建TizenOS智慧系統，有三星專屬的APP(與Android TV的APP不同)，不需接電腦即可看Netflix/YouTube，可當電視用的螢幕。包含M5、M7、M8、M9等型號。
 術語_Smart系列,指內建三星Tizen智慧系統的螢幕。主要是Smart Monitor系列(M5、M7、M8、M9)，但部分高階電競機種也有內建Smart功能，例如：ARK、Odyssey 3D(G90XF / S27FG900XC)、G70NC、G80SD、G95SC、G65B等。這類會稱為「電競螢幕內建Smart」或「3D螢幕內建Smart」，而非Smart Monitor。簡言之，Smart Monitor一定有Smart，但有Smart不一定是Smart Monitor。
-術語_OdysseyHub,Odyssey 3D (G90XF / S27FG900XC) 專屬功能，可將2D內容轉為3D，或觀看原生3D內容，是3D螢幕的核心功能之一。
+術語_Odyssey3DHub,canonical=game.odyssey_3d_hub；aliases=Odyssey 3D Hub、Odyssey Hub；類別=3D 內容管理軟體；管理相容的 3D 遊戲與內容；definition_only=true；不得由此列證明任何型號支援或推定所有 2D 內容皆可轉換；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
 別稱_Odyssey3D,裸視3D電競螢幕(G90XF / S27FG900XC)，全球首款不需3D眼鏡的4K電競螢幕，利用眼球追蹤與雙凸透鏡技術呈現立體影像，支援Odyssey Hub能將2D影片轉3D，或觀看原生3D影片，遊玩支援三星3D的3A遊戲大作。型號模式為：Odyssey3D,3D,G90XF,S27FG900*
 別稱_G9,Odyssey G9旗艦電競，有包含49吋32:9超寬曲面電競螢幕、NeoG9(MiniLED)與OLEDG9。型號模式為：G9,S49?G9*,S57?G9*
 別稱_G8,Odyssey G8高階電競，有包含34吋OLED及32吋4K高階電競螢幕。型號模式為：G8,S27?G8*,S32?G8*,S34?G8*
@@ -20,31 +20,164 @@
 別稱_S9,ViewFinity S9(5K)，針對Mac用戶設計的27吋5K(5120x2880)螢幕，全金屬機身，霧面面板。型號模式為：S9,S90,S27?S9*
 別稱_S8,ViewFinity S8(4K)，專業4K螢幕，適合繪圖設計，支援98%DCI-P3色域。型號模式為：S8,S80,S##?8*
 別稱_S6,ViewFinity S6(2K)，商務與多工用途的2K螢幕，常具備100Hz更新率與LAN網路孔。型號模式為：S6,S60,S##?6*
-術語_QD-OLED,量子點OLED面板技術，結合QuantumDot與OLED，提供比傳統OLED更高的亮度與更鮮豔的色彩，同時保留純黑特性。
-術語_OLED,OLED自發光面板，特色是純黑表現、無限對比度與極速0.03ms反應時間，無光暈(Blooming)問題。
-術語_MiniLED,MiniLED背光技術(QuantumMiniLED)，亮度極高(可達2000nits)，HDR效果優異，包括Neo G9、Neo G8、Neo G7。
-術語_GlareFree,抗眩光霧面技術，三星獨家的OLED霧面面板(他牌皆為亮面)，通過UL認證，能大幅減少環境光反射，提升觀看舒適度與黑色層次。
-術語_DisplayHDR,VESA DisplayHDR認證標準，螢幕亮度與動態範圍認證。等級包含HDR400、HDR600、HDR1000與OLED專用的TrueBlack400(極致黑位)。
-術語_PantoneValidated,Pantone彩通認證，代表螢幕能精準還原Pantone標準色彩(含SkinTone膚色)，適合專業設計與影像編輯。
-術語_240Hz,每秒刷新240張畫面，提供極高流暢度，適合FPS射擊與競速遊戲。
-術語_360Hz,每秒刷新360張畫面，極致流暢度規格。
-術語_1000R,曲度半徑1000mm，最接近人眼視野的曲度，提供強烈包覆感與沉浸體驗。
-術語_4K,UHD解析度3840x2160，畫質細膩度為FHD的4倍。
-術語_2K,QHD/WQHD解析度2560x1440，畫質優於FHD，且硬體效能需求低於4K。
-術語_5K,解析度5120x2880，提供極高像素密度，適合細膩修圖與文字工作。
-術語_DQHD,DualQHD解析度5120x1440，相當於兩台2K螢幕無縫拼接，32:9超寬比例。
-術語_DUHD,DualUHD解析度7680x2160，相當於兩台4K螢幕無縫拼接，提供極致寬闊的高解析視野。
-術語_SmartThings,SmartThings IoT中樞，內建IoT控制晶片，可透過螢幕直接控制支援SmartThings的智慧家電。
-術語_CoreSync,CoreLighting+核心照明，螢幕背後的RGB燈效，具備燈光同步功能，可偵測遊戲畫面顏色並同步發光。
-術語_MultiView,多重視窗功能，支援分割畫面(PBP)或子母畫面(PIP)，可同時顯示多個訊號源，相當於軟體的螢幕分割。
-術語_KVM,KVM切換器，內建切換功能，允許使用一組鍵盤滑鼠控制連接到螢幕的兩台電腦。三星32:9超寬螢幕可分左右兩個獨立畫面，內建KVM特別實用。
-術語_SolarCell,太陽能遙控器，配備太陽能板，可透過室內光線充電，減少電池更換。
-術語_AIUpscaling,AI影像升頻功能，利用AI處理器將低解析度訊號來源提升至類4K畫質。
-術語_Type-C,USB-C介面(含供電)，支援影像傳輸、資料傳輸及裝置充電(常見規格為65W或90W)。
-術語_Thunderbolt4,Thunderbolt4高速傳輸介面(40Gbps)，支援菊鏈(DaisyChain)串接多螢幕。
-術語_HDMI2.1,HDMI2.1高頻寬傳輸介面，支援4K120Hz/144Hz或8K60Hz，適合次世代遊戲主機。
-術語_DP2.1,DisplayPort2.1最新一代DP介面，提供超高頻寬，支援DUHD240Hz傳輸。S57?G9*有支援。
-術語_HAS,HAS可調式支架(HeightAdjustableStand)，支援高度升降、傾斜、旋轉與垂直使用的支架設計。
+術語_QD-OLED,canonical=panel.qd_oled；aliases=QD-OLED、量子點 OLED、金屬量子點顯色；類別=面板技術；結合量子點色彩轉換與 OLED 自發光特性；definition_only=true；不得單憑此列推定亮度、反應時間或任一型號採用；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_OLED,canonical=panel.oled；aliases=OLED、自發光面板；類別=面板技術；像素可自行發光並呈現深黑與高對比；definition_only=true；反應時間、亮度與防烙印措施須看完整型號；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_FastIPS,canonical=panel.fast_ips；aliases=Fast IPS、快速 IPS；類別=面板技術；著重較快像素反應的 IPS 類型；definition_only=true；不得推定任一型號的反應時間或更新率；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-g8-g80hf-27-inch-dual-mode-5k-180hz-qhd-360hz-ls27hg806efxzw/
+術語_QuantumMiniLED,canonical=backlight.quantum_mini_led；aliases=Quantum Mini LED、量子 Mini LED、Mini LED；類別=背光技術；以較小型 LED 與分區控光改善亮暗控制；definition_only=true；分區數與峰值亮度須看完整型號；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_QuantumMatrix,canonical=image.quantum_matrix；aliases=Quantum Matrix Technology、量子矩陣技術；類別=影像與背光控制；用於控制相容 Quantum Mini LED 顯示器的亮暗層次；definition_only=true；不得推定所有 Mini LED 型號都支援同一版本；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_GlareFree,canonical=image.glare_free；aliases=Glare Free、無反光技術、抗眩光；類別=表面抗反射技術；用於降低環境光反射；definition_only=true；不得宣稱為所有 OLED 標配或他牌皆無；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_MatteDisplay,canonical=image.matte_display；aliases=Matte Display、霧面螢幕；類別=表面抗反射設計；用於降低光線反射與眩光干擾；definition_only=true；不得與 Glare Free 自動視為同一技術或推定型號支援；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_PantoneValidated,canonical=color.pantone_validated；aliases=Pantone Validated、Pantone 彩通認證、膚色色票認證；類別=色彩認證；代表產品通過對應 Pantone 色彩測試；definition_only=true；實際認證範圍須看完整型號；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_DisplayHDR,canonical=hdr.displayhdr；aliases=VESA DisplayHDR、DisplayHDR；類別=HDR 認證家族；不同數字或 True Black 後綴代表不同等級；definition_only=true；各等級不可互換且須看完整型號。
+術語_DisplayHDRTrueBlack400,canonical=hdr.displayhdr_true_black_400；aliases=VESA DisplayHDR True Black 400、DisplayHDR True Black 400；類別=HDR 認證等級；definition_only=true；不得推定其他 DisplayHDR 或 OLED 型號具備；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_HDR10,canonical=hdr.hdr10；aliases=HDR10；類別=HDR 格式；definition_only=true；支援與輸入條件須看完整型號規格。
+術語_HDR10Plus,canonical=hdr.hdr10_plus；aliases=HDR10+；類別=HDR 格式；definition_only=true；不得與 HDR10+ Gaming 自動互換。
+術語_HDR10PlusGaming,canonical=hdr.hdr10_plus_gaming；aliases=HDR10+ Gaming、HDR10 Plus Gaming；類別=遊戲 HDR 格式；definition_only=true；不得由 HDR10 或 HDR10+ 推定支援；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_240Hz,canonical=timing.refresh_240hz；aliases=240Hz、240 赫茲；類別=更新率；每秒最多更新 240 次畫面；definition_only=true；能否在特定解析度或介面達成須查該型號訊號時序。
+術語_360Hz,canonical=timing.refresh_360hz；aliases=360Hz、360 赫茲；類別=更新率；每秒最多更新 360 次畫面；definition_only=true；能否在特定解析度或介面達成須查該型號訊號時序。
+術語_1000R,canonical=shape.curvature_1000r；aliases=1000R、1000R 曲率；類別=曲率；代表半徑約 1000 mm 的曲面幾何；definition_only=true；舒適度與沉浸感屬使用情境，不能當絕對事實。
+術語_4K,canonical=resolution.uhd_4k；aliases=4K、UHD、3840x2160；類別=解析度；常見電腦螢幕 4K UHD 為 3840×2160；definition_only=true。
+術語_2K,canonical=resolution.qhd；aliases=2K、QHD、WQHD、2560x1440；類別=解析度；本專案口語 2K 通常指 2560×1440 QHD；definition_only=true；遇到標準定義爭議須以實際像素數回答。
+術語_5K,canonical=resolution.5k；aliases=5K、5120x2880；類別=解析度；常見 5K 為 5120×2880；definition_only=true。
+術語_DQHD,canonical=resolution.dual_qhd；aliases=DQHD、Dual QHD、5120x1440；類別=解析度；常見為 32:9 的 5120×1440；definition_only=true。
+術語_DUHD,canonical=resolution.dual_uhd；aliases=DUHD、Dual UHD、7680x2160；類別=解析度；常見為 32:9 的 7680×2160；definition_only=true。
+術語_VRR,canonical=sync.vrr；aliases=VRR、Variable Refresh Rate、可變更新率；類別=畫面同步；讓顯示更新率配合來源幀率以降低撕裂；definition_only=true；不得單憑此列推定 FreeSync 或 G-SYNC 支援。
+術語_FreeSync,canonical=sync.freesync；aliases=AMD FreeSync、FreeSync；類別=畫面同步家族；definition_only=true；Premium 與 Premium Pro 是不同等級，不可互換。
+術語_FreeSyncPremium,canonical=sync.freesync_premium；aliases=AMD FreeSync Premium、FreeSync Premium；類別=畫面同步等級；definition_only=true；不得推定 Premium Pro。
+術語_FreeSyncPremiumPro,canonical=sync.freesync_premium_pro；aliases=AMD FreeSync Premium Pro、FreeSync Premium Pro；類別=畫面同步等級；definition_only=true；支援須看完整型號；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_GSyncCompatible,canonical=sync.gsync_compatible；aliases=G-SYNC Compatible、G-Sync 相容、G-Sync Compatible；類別=畫面同步相容性；definition_only=true；不得改稱內建 G-SYNC 模組；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_SmartThings,canonical=smart.smartthings；aliases=SmartThings、SmartThings Hub、智慧家庭中樞；類別=智慧平台；用於連結與管理相容智慧裝置；definition_only=true；螢幕是否具 Hub 或可控制的裝置範圍須看完整型號。
+術語_CoreSync,canonical=lighting.coresync；aliases=CoreSync、Core Sync、畫面同步環境燈效；類別=燈效同步；將畫面主要色彩延伸到相容螢幕的機背燈效；definition_only=true；conflictsWith=Edge Lighting、Core Lighting+、Infinity Core Lighting、Eclipse Lighting；功能支援只看完整型號列；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_EdgeLighting,canonical=lighting.edge_lighting；aliases=Edge Lighting、底部燈效、底部燈光；類別=燈效；讓相容螢幕底部燈光呼應畫面色彩；definition_only=true；conflictsWith=CoreSync、Eclipse Lighting；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
+術語_CoreLightingPlus,canonical=lighting.core_lighting_plus；aliases=Core Lighting+、CoreLighting+、Core Lighting Plus；類別=legacy 手冊燈效詞；definition_only=true；目前 Samsung TW 螢幕產品頁未找到現行型號能力證據；只能由適用該完整型號的台灣手冊另行證明；不得與 CoreSync、Infinity Core Lighting 或 Eclipse Lighting 互換。
+術語_InfinityCoreLighting,canonical=lighting.infinity_core_lighting；aliases=Infinity Core Lighting、Infinity Core；類別=legacy 手冊燈效詞；definition_only=true；目前 Samsung TW 螢幕產品頁未找到現行型號能力證據；只能由適用該完整型號的台灣手冊另行證明；不得由 G9 系列名稱推定。
+術語_EclipseLighting,canonical=lighting.eclipse_lighting；aliases=Eclipse Lighting、Eclipse 燈光；類別=Odyssey Ark 燈效系統；definition_only=true；conflictsWith=CoreSync、Edge Lighting、Core Lighting+、Infinity Core Lighting；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_EclipseSync,canonical=lighting.eclipse_sync；aliases=Eclipse Sync；類別=legacy 手冊模式詞；definition_only=true；目前 Samsung TW 官網查到的正式頁面用詞為 Eclipse Lighting；只有適用完整型號的台灣手冊直接出現時才可採用；不得改稱 CoreSync。
+術語_ActiveAmbient,canonical=lighting.active_ambient；aliases=Active Ambient；類別=Odyssey Ark 環境燈效模式；definition_only=true；不得套用到其他 Odyssey；官方來源=https://www.samsung.com/tw/support/displays/samsung-odyssey-ark-gaming-display-game-tools-instructions/
+術語_OLEDSafeguardPlus,canonical=oled.safeguard_plus；aliases=Samsung OLED Safeguard+、OLED Safeguard+、OLED 防烙印保護；類別=OLED 保護功能集合；definition_only=true；實際子功能與支援型號須看完整型號；官方來源=https://www.samsung.com/tw/monitors/oled/
+術語_DynamicCoolingSystem,canonical=oled.dynamic_cooling；aliases=Dynamic Cooling System、動態冷卻系統；類別=OLED 保護；以散熱機制協助降低面板熱量；definition_only=true；不得推定所有 OLED 皆有；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_ThermalModulationSystem,canonical=oled.thermal_modulation；aliases=Thermal Modulation System、熱調節系統；類別=OLED 保護；依面板溫度調節亮度；definition_only=true；不得推定所有 OLED 皆有；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_LogoTaskbarDetection,canonical=oled.logo_taskbar_detection；aliases=Logo and Taskbar Detection、標誌偵測、工作列偵測；類別=OLED 保護；偵測固定標誌或工作列並調整亮度；definition_only=true；不得推定所有 OLED 皆有；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_GameBar2,canonical=game.game_bar_2；aliases=Game Bar 2.0、遊戲設定列；類別=遊戲介面；快速查看與調整遊戲顯示設定；definition_only=true；選項與路徑依完整型號而異；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_UltrawideGameView,canonical=game.ultrawide_game_view；aliases=Ultrawide Game View、超寬遊戲螢幕；類別=遊戲畫面模式；將相容遊戲畫面切換為超寬比例；definition_only=true；支援比例與來源條件須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_VirtualAimPoint,canonical=game.virtual_aim_point；aliases=Virtual Aim Point、虛擬準星、虛擬準心；類別=遊戲輔助；在畫面中央顯示瞄準標記；definition_only=true；不得推定型號支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_BlackEqualizer,canonical=game.black_equalizer；aliases=Black Equalizer、黑平衡、黑色等化器；類別=遊戲影像調整；用於調整暗部可視度；definition_only=true；不得與 Dynamic Black Equalizer 自動互換。
+術語_DynamicBlackEqualizer,canonical=game.dynamic_black_equalizer；aliases=Dynamic Black Equalizer、動態黑色等化器；類別=遊戲影像調整；用於動態調整暗部可視度；definition_only=true；不得由一般黑平衡推定支援；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-g7-g70d-32-inch-144hz-1ms-4k-uhd-ls32dg702ecxzw/
+術語_MiniMapZoom,canonical=game.minimap_zoom；aliases=Mini Map Zoom、小地圖放大；類別=遊戲輔助；放大遊戲中的小地圖區域；definition_only=true；不得套用到所有 Game Bar；官方來源=https://www.samsung.com/tw/support/displays/samsung-odyssey-ark-gaming-display-game-tools-instructions/
+術語_DualMode,canonical=game.dual_mode；aliases=Dual Mode、雙模式；類別=遊戲顯示模式；讓同一螢幕切換不同解析度與更新率組合；definition_only=true；每組數值須由完整型號規格或手冊時序證明；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-g8-g80hf-27-inch-dual-mode-5k-180hz-qhd-360hz-ls27hg806efxzw/
+術語_AI3DConversion,canonical=image.ai_3d_conversion；aliases=AI 3D 影像轉換、2D 轉 3D；類別=3D 影像功能；把相容 2D 內容轉換成 3D 效果；definition_only=true；內容與硬體限制須看完整型號；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
+術語_GlassesFree3D,canonical=image.glasses_free_3d；aliases=裸視 3D、裸眼 3D、Glasses-Free 3D；類別=3D 顯示；以眼球追蹤與視角映射呈現不需眼鏡的 3D；definition_only=true；不得推定所有 Odyssey 支援；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
+術語_SamsungVisionAI,canonical=smart.samsung_vision_ai；aliases=Samsung Vision AI、三星 Vision AI；類別=智慧顯示功能品牌；definition_only=true；旗下功能與支援範圍須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_OneUITizen,canonical=smart.one_ui_tizen；aliases=One UI Tizen、One UI；類別=智慧操作介面；definition_only=true；不得由 Tizen 自動推定使用此介面版本；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_Tizen,canonical=smart.tizen；aliases=Tizen、Tizen OS、智慧型 Tizen 作業系統；類別=智慧作業系統；definition_only=true；App、版本與功能須看完整型號。
+術語_AIPictureOptimizer,canonical=image.ai_picture_optimizer；aliases=AI Picture Optimizer、AI 影像最佳化；類別=AI 影像；依內容類型調整顯示設定；definition_only=true；不得推定所有智慧螢幕支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_4KAIUpscaling,canonical=image.ai_upscaling_4k；aliases=4K AI Upscaling、4K AI 升頻、AI 影像升頻；類別=AI 影像；將低解析內容提升至接近 4K 的顯示效果；definition_only=true；不得與 Pro 版本互換；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_4KAIUpscalingPro,canonical=image.ai_upscaling_4k_pro；aliases=4K AI Upscaling Pro、4K AI 升頻 Pro；類別=AI 影像；Pro 版本升頻功能；definition_only=true；不得由一般版推定支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_AISoccerMode,canonical=smart.ai_soccer_mode；aliases=AI Soccer Mode、AI 足球模式；類別=內容最佳化；針對足球內容調整影像與聲音；definition_only=true；不得與 Pro 版本互換；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_AISoccerModePro,canonical=smart.ai_soccer_mode_pro；aliases=AI Soccer Mode Pro、AI 專業足球模式；類別=內容最佳化；Pro 版本足球內容最佳化；definition_only=true；不得由一般版推定支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_ActiveVoiceAmplifierPro,canonical=audio.active_voice_amplifier_pro；aliases=Active Voice Amplifier Pro、智慧抗噪模式；類別=智慧音效；分析環境噪音並加強對話聲；definition_only=true；不得與 Adaptive Sound 系列互換；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_AdaptivePicture,canonical=image.adaptive_picture；aliases=Adaptive Picture、智慧偵測環境光源、自動畫質；類別=環境影像調整；依環境光線調整畫面；definition_only=true；不得由名稱推定完整調整範圍。
+術語_AdaptiveSound,canonical=audio.adaptive_sound；aliases=Adaptive Sound、智慧偵測音效；類別=智慧音效；依內容或環境調整相容螢幕的音效；definition_only=true；不得推定為 + 或 Pro 版本，確切能力須看完整型號。
+術語_AdaptiveSoundPlus,canonical=audio.adaptive_sound_plus；aliases=Adaptive Sound+、Adaptive Sound Plus；類別=智慧音效；definition_only=true；不得與一般版或 Pro 版本互換，確切能力須看完整型號。
+術語_AdaptiveSoundPro,canonical=audio.adaptive_sound_pro；aliases=Adaptive Sound Pro；類別=智慧音效；definition_only=true；不得由一般版或 + 版本推定支援，確切能力須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_3DMapView,canonical=smart.map_view_3d；aliases=3D Map View、3D 地圖檢視；類別=SmartThings；以空間圖呈現與管理相容裝置；definition_only=true；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_KnoxVault,canonical=security.knox_vault；aliases=Samsung Knox Vault、Knox Vault；類別=安全；以隔離式硬體保護敏感資料；definition_only=true；不得由 Knox 名稱推定完整能力；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_Workspace,canonical=work.workspace；aliases=Workspace、工作空間；類別=生產力；整合遠端電腦與相容生產力服務；definition_only=true；服務內容須看完整型號與地區；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_MultiControl,canonical=work.multi_control；aliases=Multi Control、多功能操控；類別=跨裝置操控；以一組鍵鼠控制相容 Galaxy 裝置；definition_only=true；相容條件須看完整型號與裝置；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_GamingHub,canonical=smart.gaming_hub；aliases=Samsung Gaming Hub、三星遊戲中心、Gaming Hub；類別=遊戲服務入口；整合相容雲端或主機遊戲服務；definition_only=true；服務可用性依地區與型號；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_MultiView,canonical=connection.multi_view；aliases=Multi View、多重視窗；類別=多畫面功能家族；可同時顯示多個來源或應用內容；definition_only=true；不得自動等同 PIP 或 PBP；來源組合與數量須看完整型號。
+術語_PIP,canonical=connection.pip；aliases=PIP、Picture in Picture、子母畫面；類別=多畫面模式；在主畫面內顯示第二來源小視窗；definition_only=true；不得由 Multi View 推定型號支援；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_PBP,canonical=connection.pbp；aliases=PBP、Picture by Picture、分割畫面；類別=多畫面模式；並排顯示多個輸入來源；definition_only=true；不得由 Multi View 推定型號支援；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_KVM,canonical=connection.kvm_switch；aliases=KVM、KVM Switch、內建 KVM 切換器；類別=輸入裝置切換；用一組鍵鼠在多台來源裝置間切換；definition_only=true；不得由 PBP 或 USB Hub 推定支援；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h802efaxzw/
+術語_AutoSourceSwitchPlus,canonical=connection.auto_source_switch_plus；aliases=Auto Source Switch+、自動來源切換+；類別=輸入切換；偵測新啟用輸入並自動切換來源；definition_only=true；不帶加號的版本不可自動視為相同；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_AutoSourceSwitch,canonical=connection.auto_source_switch；aliases=Auto Source Switch、自動來源切換；類別=輸入切換；偵測輸入來源變化並切換；definition_only=true；不得由此列推定為 Auto Source Switch+。
+術語_HDMI-CEC,canonical=connection.hdmi_cec；aliases=HDMI-CEC、Anynet+；類別=裝置控制協定；允許相容 HDMI 裝置傳遞部分控制指令；definition_only=true；支援範圍須看完整型號。
+術語_Type-C,canonical=connection.usb_c；aliases=USB-C、USB Type-C、Type-C；類別=實體介面；definition_only=true；接頭外形不能證明具備影像、資料或供電功能，各能力須看完整型號。
+術語_USBCPowerDelivery,canonical=connection.usb_c_pd；aliases=USB-C Power Delivery、USB-C PD、USB-C 供電；類別=USB-C 功能；definition_only=true；影像、資料與瓦數各自須看完整型號；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h802efaxzw/
+術語_LAN,canonical=connection.lan；aliases=LAN、RJ-45、乙太網路、網路孔；類別=有線網路介面；definition_only=true；不得由 USB-C 或 KVM 推定具備。
+術語_AirPlay,canonical=connection.airplay；aliases=AirPlay、Apple AirPlay、蘋果無線投放；類別=無線投放；definition_only=true；相容版本、地區與裝置條件須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_WirelessDisplay,canonical=connection.wireless_display；aliases=Wireless Display、無線顯示、無線投影；類別=無線投放；definition_only=true；不得與 AirPlay 或手機鏡像自動互換。
+術語_WirelessDeX,canonical=connection.wireless_dex；aliases=Wireless DeX、無線 DeX；類別=Galaxy 桌面模式；definition_only=true；相容裝置與型號須分別查證。
+術語_RemoteAccess,canonical=work.remote_access；aliases=Remote Access、遠端存取；類別=遠端工作；definition_only=true；服務與協定依型號、地區及軟體版本而異。
+術語_MobileToScreen,canonical=connection.mobile_to_screen；aliases=Mobile to Screen、移動裝置螢幕投射、手機投影；類別=手機投放；definition_only=true；不得與 AirPlay、Tap View 或 Screen Mirroring 自動互換。
+術語_ScreenInitiatedMirroring,canonical=connection.screen_initiated_mirroring；aliases=Screen initiate mirroring、Screen Initiated Mirroring、螢幕啟動鏡像；類別=跨裝置鏡像；definition_only=true；不得由一般無線顯示推定。
+術語_SoundMirroring,canonical=connection.sound_mirroring；aliases=Sound Mirroring、聲音鏡像、音效鏡像；類別=跨裝置音訊；definition_only=true；不得由畫面鏡像推定。
+術語_WirelessOn,canonical=connection.wireless_on；aliases=Wireless On、無線喚醒；類別=跨裝置連線；definition_only=true；不得由 Wi-Fi 功能推定。
+術語_TapView,canonical=connection.tap_view；aliases=Tap View、輕觸投影；類別=手機投放；definition_only=true；不得與一般螢幕鏡像自動互換。
+術語_Thunderbolt4,canonical=connection.thunderbolt_4；aliases=Thunderbolt 4、TB4；類別=高速連接介面；definition_only=true；頻寬、菊鏈、供電與顯示能力須看完整型號。
+術語_Thunderbolt5,canonical=connection.thunderbolt_5；aliases=Thunderbolt 5、TB5；類別=高速連接介面；definition_only=true；頻寬、供電與顯示能力須看完整型號；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s85th-40-inch-5k2k-curved-wuhd-ls40h850tacxzw/
+術語_HDMI2.1,canonical=connection.hdmi_2_1；aliases=HDMI 2.1、HDMI2.1；類別=連接規格；definition_only=true；版本名稱不能保證特定解析度與更新率組合，須查型號訊號時序。
+術語_DP2.1,canonical=connection.displayport_2_1；aliases=DisplayPort 2.1、DP 2.1、DP2.1；類別=連接規格；definition_only=true；版本名稱不能保證特定解析度與更新率組合，須查型號訊號時序。
+術語_SamsungDisplayManager,canonical=software.samsung_display_manager；aliases=Samsung Display Manager、三星顯示器管理程式；類別=桌面軟體；用於相容型號的畫面分割、亮度、KVM、PIP/PBP 或校色等管理；definition_only=true；實際項目依型號與作業系統；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h802efaxzw/
+術語_MAPT,canonical=network.mapt；aliases=MAPT、MAC Address Pass Through、MAC 位址穿透；類別=網路管理；讓網路端辨識連接裝置的 MAC 位址；definition_only=true；支援須看完整型號；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h802efaxzw/
+術語_EasySettingBox,canonical=software.easy_setting_box；aliases=Easy Setting Box、Easy Setting Box 軟體；類別=Windows 視窗管理軟體；用於桌面視窗分割與排列；definition_only=true；不是螢幕硬體 PIP/PBP；官方來源=https://www.samsung.com/tw/monitors/high-resolution/wqhd-clamp-type-monitor-with-space-saving-design-and-144hz-refresh-rate-27-inch-ls27r750qecxzw/
+術語_SlimFitCamera,canonical=camera.slimfit_camera；aliases=SlimFit Camera、磁吸式視訊鏡頭；類別=攝影機配件；definition_only=true；是否隨附、解析度與相容型號須看完整型號。
+術語_Builtin4KCamera,canonical=camera.builtin_4k_camera；aliases=內建 4K 相機、內建 4K 攝影機；類別=攝影機；definition_only=true；不得由 Smart Monitor 系列名稱推定。
+術語_CockpitMode,canonical=ergonomics.cockpit_mode；aliases=Cockpit Mode、駕駛艙模式；類別=Odyssey Ark 人體工學模式；將相容 Ark 旋轉為直向使用；definition_only=true；不得套用到一般 Pivot 螢幕；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_ArkDial,canonical=ergonomics.ark_dial；aliases=Ark Dial；類別=Odyssey Ark 專用控制器；definition_only=true；不得推定其他 Odyssey 支援；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_FlexMoveScreen,canonical=ergonomics.flex_move_screen；aliases=Flex Move Screen、畫面最適化；類別=Odyssey Ark 畫面調整；用於調整顯示畫面大小與位置；definition_only=true；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+術語_EasySetupStand,canonical=ergonomics.easy_setup_stand；aliases=Easy Setup Stand、簡易安裝底座；類別=底座安裝設計；definition_only=true；不得推定包含升降、旋轉或 Pivot；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s85th-40-inch-5k2k-curved-wuhd-ls40h850tacxzw/
+術語_HAS,canonical=ergonomics.has；aliases=HAS、Height Adjustable Stand、高度調整底座；類別=底座調整；僅表示可調高度；definition_only=true；Tilt、Swivel、Pivot 必須分別由完整型號規格證明。
+術語_Pivot,canonical=ergonomics.pivot；aliases=Pivot、垂直旋轉、轉直；類別=底座調整；表示面板可旋轉成直向；definition_only=true；不得由 HAS 推定。
+術語_Swivel,canonical=ergonomics.swivel；aliases=Swivel、左右旋轉；類別=底座調整；表示底座可左右旋轉；definition_only=true；不得由 HAS 推定。
+術語_Tilt,canonical=ergonomics.tilt；aliases=Tilt、前後傾斜；類別=底座調整；表示可調整前後傾角；definition_only=true；不得由 HAS 推定。
+術語_EyeSaverMode,canonical=eye.eye_saver_mode；aliases=Eye Saver Mode、低藍光護眼模式、低藍光模式；類別=護眼；降低部分藍光輸出；definition_only=true；不得宣稱醫療效果；官方來源=https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s3-s30gd-24-inch-fhd-ips-100hz-ls24d300gacxzw/
+術語_FlickerFree,canonical=eye.flicker_free；aliases=Flicker Free、零閃屏、低閃屏；類別=護眼；減少肉眼不易察覺的畫面閃爍；definition_only=true；不得宣稱完全消除眼睛疲勞；官方來源=https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s3-s30gd-24-inch-fhd-ips-100hz-ls24d300gacxzw/
+術語_EcoSavingPlus,canonical=sustainability.eco_saving_plus；aliases=Eco Saving Plus、省電模式自由選；類別=省電功能；依畫面與設定降低耗電；definition_only=true；不得推定所有型號支援；官方來源=https://www.samsung.com/tw/monitors/full-hd-1080p/essential-monitor-s3-s30gd-24-inch-fhd-ips-100hz-ls24d300gacxzw/
+術語_SolarCell,canonical=accessory.solarcell_remote；aliases=SolarCell Remote、太陽能智慧遙控器、太陽能遙控器；類別=遙控器；可透過環境光協助充電；definition_only=true；是否隨附須看完整型號。
+術語_ScreenProtectionMode,canonical=oled.screen_protection_mode；aliases=Screen Protection Mode、螢幕保護模式、閒置自動調暗；類別=OLED 保護；螢幕閒置一段時間後自動調暗並在偵測操作後恢復；definition_only=true；不得推定所有 OLED 支援或固定等待時間；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+術語_MultiDeviceExperience,canonical=smart.multi_device_experience；aliases=Multi Device Experience、多裝置體驗、跨裝置智能生活；類別=跨裝置功能集合；可包含 Mobile to Screen、Screen initiate mirroring、Sound Mirroring、Wireless On 與 Tap View；definition_only=true；各子功能與支援裝置須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_SmartCalibration,canonical=color.smart_calibration；aliases=Smart Calibration、智慧校色；類別=校色；使用相容 Galaxy 行動裝置協助校色；definition_only=true；基本或專業等級、相容裝置與步驟須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_LongDistanceVoiceRecognition,canonical=voice.long_distance_recognition；aliases=Long-distance Voice Recognition、長距離語音辨識、長距離語音辨識技術；類別=語音控制；讓相容智慧螢幕接收較遠距離的語音指令；definition_only=true；語音助理、語言與地區可用性須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+術語_ImageSize,canonical=image.image_size；aliases=Image Size、影像尺寸、畫面尺寸調整；類別=畫面顯示；依來源與模式調整顯示比例或畫面尺寸；definition_only=true；可選比例須看完整型號與目前輸入模式。
+術語_OffTimerPlus,canonical=power.off_timer_plus；aliases=Off Timer Plus、定時關機加強版、定時關機；類別=電源管理；可依設定時間關閉螢幕；definition_only=true；不得與閒置省電或螢幕保護模式混用。
+術語_FactoryCalibration,canonical=color.factory_calibration；aliases=Factory Calibration、工廠出廠調校、工廠出廠校正報告；類別=色彩校正；代表產品出廠時經校正或附校正報告；definition_only=true；是否附報告與校正範圍須看完整型號。
+術語_MyContents,canonical=smart.my_contents；aliases=My Contents、我的內容；類別=智慧內容；讓相容智慧螢幕在閒置或待機情境顯示個人化內容；definition_only=true；內容來源與支援條件須看完整型號；官方來源=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s9-5k-27-inch-ls27c900pacxzw/
+術語_Bixby,canonical=voice.bixby；aliases=Bixby、Bixby 語音助理；類別=語音助理；三星語音助理；definition_only=true；語言、地區與型號支援須分別查證；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g80sd-32-inch-oled-240hz-ls32dg802scxzw/
+術語_SamsungTVPlus,canonical=smart.samsung_tv_plus；aliases=Samsung TV Plus、三星免費影音平台；類別=串流服務；三星的網路影音服務入口；definition_only=true；頻道、地區與型號可用性可能變動，須再查當下服務資訊。
+術語_Microsoft365,canonical=work.microsoft_365；aliases=Microsoft 365、Office 365；類別=生產力服務；讓相容智慧螢幕存取 Microsoft 雲端生產力服務；definition_only=true；帳號、訂閱與地區條件須另行確認。
+術語_NiftyGateway,canonical=smart.nifty_gateway；aliases=Nifty Gateway、NFT Nifty Gateway；類別=legacy 智慧服務；definition_only=true；屬可能變動或停止的第三方服務，不得只憑舊規格宣稱目前可用。
+術語_VESAAdaptiveSync,canonical=sync.vesa_adaptive_sync；aliases=VESA Adaptive-Sync、Adaptive-Sync；類別=畫面同步認證；VESA 的可變更新率顯示認證；definition_only=true；不得自動等同 FreeSync 或 G-SYNC Compatible。
+術語_EcoLightSensor,canonical=sustainability.eco_light_sensor；aliases=Eco Light Sensor、節能光源感測；類別=節能感測；依環境光線協助調整耗電或亮度；definition_only=true；不得與 Adaptive Picture 視為同一功能。
+術語_LowInputLag,canonical=game.low_input_lag；aliases=Low Input Lag、低輸入延遲、低輸入延遲技術；類別=遊戲反應；用於降低來源輸入到畫面顯示的延遲；definition_only=true；不得推定具體延遲數值。
+術語_RefreshRateOptimizer,canonical=game.refresh_rate_optimizer；aliases=Refresh Rate Optimizer、更新頻率調整；類別=遊戲顯示；調整相容機型的更新率設定；definition_only=true；可選值與訊號條件須查完整型號。
+術語_SuperArenaGamingUX,canonical=game.super_arena_gaming_ux；aliases=Super Arena Gaming UX、超級電競模式 UX、超級電競模式UX；類別=遊戲介面；三星部分 Odyssey 機型使用的遊戲設定介面名稱；definition_only=true；不得推定所有 Odyssey 皆有。
+術語_DaisyChain,canonical=connection.daisy_chain；aliases=Daisy Chain、菊鏈、DisplayPort Out、DP Out；類別=多螢幕連接；透過 DisplayPort 輸出串接下一台相容螢幕；definition_only=true；數量、解析度與 MST 條件須看完整型號。
+術語_USBHub,canonical=connection.usb_hub；aliases=USB Hub、USB 集線器；類別=連接；讓螢幕提供 USB 下行連接；definition_only=true；埠數、速率與上行方式須看完整型號。
+術語_QuantumAIProcessor,canonical=image.quantum_ai_processor；aliases=Quantum AI Processor、量子 AI 高效處理器；類別=影像處理；三星部分高階顯示器的影像處理器名稱；definition_only=true；版本與功能須看完整型號。
+術語_MagicRotationAuto,canonical=ergonomics.magic_rotation_auto；aliases=Samsung MagicRotation Auto、MagicRotation Auto；類別=畫面旋轉；讓相容螢幕配合實體旋轉調整顯示方向；definition_only=true；不得由一般 Pivot 推定支援。
+術語_OneConnect,canonical=connection.one_connect；aliases=One Connect、美型集線器；類別=外接集線盒；將部分輸入與連接埠集中於外接盒；definition_only=true；是否隨附及介面配置須看完整型號。
+術語_DolbyAtmos,canonical=audio.dolby_atmos；aliases=Dolby Atmos、杜比全景聲；類別=音訊格式；提供相容內容的空間音效體驗；definition_only=true；喇叭配置與內容支援須看完整型號。
+術語_UltrawideMonitor,canonical=category.ultrawide_monitor；aliases=超寬顯示器、超寬螢幕、Ultrawide Monitor；類別=顯示器類型；實體螢幕比例通常較寬，可增加橫向工作空間；definition_only=true；不得與 Ultrawide Game View 畫面模式互換；實際比例須看完整型號；官方來源=https://www.samsung.com/tw/monitors/
+術語_CurvedDisplay,canonical=shape.curved_display；aliases=曲面顯示器、曲面螢幕、Curved Monitor；類別=螢幕形狀；面板為曲面設計；definition_only=true；曲率數值及舒適或沉浸效果須看型號與使用情境；官方來源=https://www.samsung.com/tw/monitors/
+術語_ScreenResolution,canonical=resolution.screen_resolution；aliases=螢幕解析度、顯示解析度、Screen Resolution；類別=影像規格；表示畫面橫向×縱向的像素數；definition_only=true；高解析度不等於尺寸較大，實際像素數須看完整型號；官方來源=https://www.samsung.com/tw/monitors/
+術語_FullHD,canonical=resolution.full_hd；aliases=Full HD、FHD、1920×1080、1920x1080、1080p；類別=解析度；常見 16:9 解析度為 1920×1080；definition_only=true；不得由此推定任一型號採用；官方來源=https://www.samsung.com/tw/monitors/
+術語_AspectRatio,canonical=display.aspect_ratio；aliases=螢幕比例、畫面比例、長寬比、Aspect Ratio；類別=畫面格式；表示畫面寬與高的比例；definition_only=true；21:9 或 32:9 能否使用須看完整型號與輸入來源；官方來源=https://www.samsung.com/tw/monitors/
+術語_RefreshRate,canonical=timing.refresh_rate；aliases=更新頻率、更新率、刷新率、Refresh Rate、Hz；類別=顯示時序；每秒重新繪製畫面的次數；definition_only=true；具體數值與解析度、介面的同時條件須查完整型號訊號時序；官方來源=https://www.samsung.com/tw/monitors/
+術語_ResponseTime,canonical=timing.response_time；aliases=反應時間、響應時間、Response Time；類別=顯示時序；表示像素狀態改變所需時間；definition_only=true；數字必須連同 GtG、MPRT 等測量方法與完整型號回答；官方來源=https://www.samsung.com/tw/monitors/
+術語_BuiltInSpeakers,canonical=audio.built_in_speakers；aliases=內建喇叭、內置喇叭、Built-in Speakers；類別=音訊硬體；表示螢幕機身內建音訊輸出；definition_only=true；是否具備、功率及聲道須看完整型號；官方來源=https://www.samsung.com/tw/monitors/
+術語_IPS,canonical=panel.ips；aliases=IPS、In-Plane Switching、IPS 面板；類別=LCD 面板技術；常見特性為較寬視角與穩定色彩；definition_only=true；不得推定具體反應時間、色域或對比值；官方來源=https://www.samsung.com/tw/monitors/
+術語_VA,canonical=panel.va；aliases=VA、Vertical Alignment、VA 面板；類別=LCD 面板技術；常見特性為較深黑位與較高原生對比；definition_only=true；不得推定具體對比或反應時間；官方來源=https://www.samsung.com/tw/monitors/
+術語_HDR,canonical=hdr.high_dynamic_range；aliases=HDR、High Dynamic Range、高動態範圍；類別=影像概念；用於擴展亮度、對比與色彩表現；definition_only=true；不得由此推定 HDR10、HDR10+ 或 DisplayHDR 等級；官方來源=https://www.samsung.com/tw/monitors/
+術語_GSync,canonical=sync.gsync；aliases=G-SYNC、G-Sync；類別=畫面同步家族；NVIDIA 畫面同步技術的上位名稱；definition_only=true；不得自動等同 G-SYNC Compatible 或內建 G-SYNC 模組；官方來源=https://www.samsung.com/tw/monitors/
+術語_SmartTV,canonical=smart.smart_tv；aliases=Smart TV、智慧電視、智慧電視功能；類別=智慧平台；螢幕內建網路應用與影音功能；definition_only=true；不等於內建電視選台器或同軸輸入；官方來源=https://www.samsung.com/tw/monitors/
+術語_StreamingServices,canonical=smart.streaming_services；aliases=內建串流服務、串流影音服務、Streaming Services；類別=智慧影音；可直接使用相容影音 App；definition_only=true；服務、帳號、訂閱與地區可用性可能變動，不得推定任一型號當下可用；官方來源=https://www.samsung.com/tw/monitors/
+術語_VoiceControl,canonical=voice.voice_control；aliases=語音指令、語音控制、Voice Control；類別=語音交互；用語音操作相容功能；definition_only=true；不得由此推定 Bixby、語言或遠距收音能力；官方來源=https://www.samsung.com/tw/monitors/
+術語_IoTIntegration,canonical=smart.iot_integration；aliases=IoT 整合、物聯網整合、IoT Integration；類別=智慧裝置；表示與相容智慧裝置聯動的上位概念；definition_only=true；SmartThings 是平台實例，不可將兩者完全互換；官方來源=https://www.samsung.com/tw/monitors/
+術語_NetworkConnectivity,canonical=connection.network_connectivity；aliases=網路連線、網路連接、Network Connectivity；類別=網路；表示螢幕可透過某種網路介面使用線上功能；definition_only=true；不得由此推定是 Wi-Fi 或 LAN；官方來源=https://www.samsung.com/tw/monitors/
+術語_USBCVideo,canonical=connection.usb_c_video；aliases=USB-C 影片輸出、USB-C 影像輸出、USB-C DisplayPort 視訊、DisplayPort over USB-C；類別=連接；表示 USB-C 連接可承載 DisplayPort 影像訊號；definition_only=true；只有 Type-C 接頭不能證明支援；官方來源=https://www.samsung.com/tw/monitors/
+術語_HDMI,canonical=connection.hdmi；aliases=HDMI、高畫質多媒體介面；類別=數位影音連接；可傳輸數位影像與音訊；definition_only=true；接頭尺寸、版本、數量與時序能力須看完整型號；官方來源=https://www.samsung.com/tw/monitors/
+術語_DisplayPort,canonical=connection.displayport；aliases=DisplayPort、DP；類別=數位影音連接；可傳輸數位影像與音訊；definition_only=true；版本、數量、MST 與時序能力須看完整型號；官方來源=https://www.samsung.com/tw/monitors/
+術語_ErgonomicDesign,canonical=ergonomics.adjustability；aliases=人體工學設計、Ergonomic Design、可調式支架；類別=人體工學上位概念；可能包含高度、傾斜、左右或垂直旋轉調整；definition_only=true；不得由此推定 HAS、Pivot、Swivel 或 Tilt 的任一項；官方來源=https://www.samsung.com/tw/monitors/
+能力_S49DG952SC,model=S49DG952SC；aliases=G95SD、LS49DG952SCXZW；capabilities=CoreSync；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g9-49-inch-oled-dual-qhd-ls49dg952scxzw/
+能力_S27FG812SC,model=S27FG812SC；aliases=G81SF、LS27FG812SCXZW；capabilities=QD-OLED、Glare Free、Samsung OLED Safeguard+、Dynamic Cooling System、Thermal Modulation System、Logo and Taskbar Detection、Screen Protection Mode、VESA DisplayHDR True Black 400、AMD FreeSync Premium Pro、G-SYNC Compatible、CoreSync、PIP、Ultrawide Game View、Auto Source Switch+；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/gaming/odyssey-oled-g8-g81sf-27-inch-240hz-oled-uhd-ls27fg812scxzw/
+能力_S27FG900XC,model=S27FG900XC；aliases=G90XF、LS27FG900XCXZW；capabilities=Odyssey 3D Hub、AI 3D 影像轉換、裸視 3D、Edge Lighting；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
+能力_S32FM902SC,model=S32FM902SC；aliases=M90SF、LS32FM902SCXZW；capabilities=QD-OLED、Samsung Vision AI、One UI Tizen、AI Picture Optimizer、4K AI Upscaling Pro、AI Soccer Mode Pro、Active Voice Amplifier Pro、Multi Device Experience、Multi View、Smart Calibration 基本、Knox Vault、Remote Access、Wireless Display、Game Bar 2.0、Auto Source Switch+、Adaptive Picture、Adaptive Sound Pro、Ultrawide Game View、USB-C Power Delivery 90W；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
+能力_S32FM803UC,model=S32FM803UC；aliases=M80F、LS32FM803UCXZW；capabilities=Samsung Vision AI、One UI Tizen、AI Picture Optimizer、4K AI Upscaling、AI Soccer Mode、SmartThings Hub、Multi Device Experience、Multi View、Smart Calibration 基本、Knox Vault、Remote Access、Game Bar 2.0、Adaptive Sound Pro、Ultrawide Game View；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+能力_S27H802EFA,model=S27H802EFA；aliases=S80HF、LS27H802EFAXZW；capabilities=PIP、PBP、KVM Switch、Auto Source Switch+、USB-C Power Delivery 90W、LAN、Samsung Display Manager、MAPT、HAS、Pivot、Swivel、Tilt；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/high-resolution/viewfinity-s8-s80hf-27-inch-5k-usb-c-easy-connection-ls27h802efaxzw/
+能力_S57CG952NC,model=S57CG952NC；aliases=G95NC、LS57CG952NCXZW；capabilities=Quantum Mini LED、Quantum Matrix Technology、AMD FreeSync Premium Pro、PIP、PBP、Auto Source Switch+；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+能力_S55BG970NC,model=S55BG970NC；aliases=Odyssey Ark、Ark、LS55BG970NCXZW；capabilities=Matte Display、Eclipse Lighting、Active Ambient、Mini Map Zoom、Cockpit Mode、Ark Dial、Flex Move Screen、Samsung Gaming Hub、Multi View；evidence=official_support_and_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
+能力_S32DG702EC,model=S32DG702EC；aliases=G70D、LS32DG702ECXZW；capabilities=Dynamic Black Equalizer；evidence=official_product_page；checkedAt=2026-09-04；source=https://www.samsung.com/tw/monitors/gaming/odyssey-g7-g70d-32-inch-144hz-1ms-4k-uhd-ls32dg702ecxzw/
 WA21A8377GV,型號：WA21A8377GV,噴射雙潔淨直立洗衣機 21 KG,松木黑,洗衣容量21.0kg,BubbleStorm™泡泡淨科技,數位變頻馬達,Active Bubble™超能旋風泡泡淨,Dual Storm™雙渦流洗衣盤,Speed Spray™噴射快洗,蒸氣除菌(去除99.9%細菌),強力洗淨+,VRT™減震靜音技術,極致鑽石鋼槽,不鏽鋼洗衣盤,旋鈕+觸控面板顯示,強化玻璃上蓋,緩降式設計,環保槽洗淨(去除99%細菌),Smart Control智慧控制,Smart Check簡易故障排除,支援SmartThings App,Wifi連接,溫水去汙,嬰兒衣物,床單,輕柔衣物,10段水位調整,預約/兒童鎖/門鎖,金級省水標章,VDE馬達20年壽命認證,Intertek認證,馬達20年保固,NCC認證ID:CCAO20LP0130T2,機身尺寸700x1131x748mm,淨重61kg。
 LS27FG706ECXZW,型號：S27FG706EC,27吋Odyssey G7 平面電競顯示器 G70F,27吋16:9 IPS平面螢幕,4K UHD(3840x2160)/FHD雙模式可切換,最大4K 180Hz更新頻率及FHD 360Hz更新頻率,1ms(GtG)反應時間,HDR10+ Gaming,350/280 cd㎡亮度(典型/最小),原生對比1000:1,178°寬廣視角,10.7億色彩支援,sRGB 99%,節能模式,低藍光模式,零閃屏,Windows 11認證,支援AMD FreeSync Premium,Off Timer Plus,黑平衡,虛擬準心,超級電競模式UX,自動來源切換+,影像尺寸調整,PIP、PBP畫面分割功能,介面：DisplayPort 1.4 x1(HDCP 2.2)、HDMI 2.1 x2(HDCP 2.2)、耳機孔、USB-B上行x1、USB-A下行x2(3.2 Gen1),操作環境溫度10–40℃、濕度10–80%,工廠出廠色彩校正與報告,黑色機身與底座(HAS PIVOT底座，120mm高度調整),前後傾斜-2°~25°、左右旋轉-30°~30°、垂直旋轉-92°~92°,VESA 100x100mm壁掛,電源AC 100–240V外接電源變壓器,最大耗電78W,尺寸含底座613x553.2x263.5mm,不含底座613x361.5x73.8mm,包裝尺寸695x159x478mm,重量含底座7.1kg、不含底座3.9kg、包裝重量8.9kg,配件1.5m電源線,HDMI線,DP線,USB 3.0線
 LS27FG532ECXZW,型號：S27FG532EC,OdysseyG5 G53F 27吋平面電競顯示器,27吋16:9 IPS平面螢幕,QHD(2560x1440),HDR10,亮度300/240 cd㎡,對比1000:1,178°視角,16.7M色,NTSC 72%,更新頻率200Hz,反應時間1ms(MPRT),支援AMD FreeSync Premium,低藍光模式,省電模式自由選,Off Timer Plus,黑平衡,虛擬準心,更新頻率調整,超級電競模式UX,自動來源切換,介面:DisplayPort 1.4 x1(HDCP 2.2),HDMI 2.0 x2(HDCP 2.2),耳機孔 x1,操作環境:溫度10–40℃/濕度10–80%,設計:黑色機身與簡約型底座,前後傾斜-2~20°,VESA壁掛75x75mm,電源:AC100–240V 50/60Hz,最大耗電48W,外接電源變壓器,尺寸含底座:613.2x463.1x217.4mm,尺寸不含底座:613.2x364.5x50.4mm,包裝尺寸:707x162x430mm,重量含底座:3.9kg,不含底座:3.5kg,包裝重量:5.7kg,配件:1.5m電源線,HDMI連接線,DP連接線。

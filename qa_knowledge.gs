@@ -8,7 +8,7 @@
 
 var QA_KNOWLEDGE_PREFIX_ = "QA2:";
 var QA_KNOWLEDGE_SCHEMA_VERSION_ = 2;
-var QA_KNOWLEDGE_CACHE_GENERATION_ = "V3";
+var QA_KNOWLEDGE_CACHE_GENERATION_ = "V4";
 var QA_KNOWLEDGE_CACHE_TTL_SECONDS_ = 21600;
 // CacheService 每個值上限約 100 KB；中文在 UTF-8 可能佔 3 bytes。
 // 保守以 8 筆/片及 24K 字元索引片段保存，避免資料量增加後才在正式環境爆掉。
@@ -243,6 +243,11 @@ function qaKnowledgeNormalizeRecord_(input, rowIndex, rawText) {
     terms: qaKnowledgeUniqueStrings_(input.terms || input.tags || []),
     excludeTerms: qaKnowledgeUniqueStrings_(input.excludeTerms || []),
     requiresAction: input.requiresAction === true,
+    claimKind: String(input.claimKind || "answer").trim().toLowerCase(),
+    scopePolicy: String(input.scopePolicy || "").trim().toLowerCase(),
+    featureIds: qaKnowledgeUniqueStrings_(input.featureIds || []).map(function (value) {
+      return value.toLowerCase();
+    }),
     answer: answer,
     evidence: {
       type: String(evidence.type || input.sourceType || "qa").toLowerCase(),
@@ -303,6 +308,9 @@ function qaKnowledgeSerializeRecord_(record) {
     terms: normalized.terms,
     excludeTerms: normalized.excludeTerms,
     requiresAction: normalized.requiresAction,
+    claimKind: normalized.claimKind,
+    scopePolicy: normalized.scopePolicy,
+    featureIds: normalized.featureIds,
     answer: normalized.answer,
     evidence: normalized.evidence,
     priority: normalized.priority,
@@ -311,6 +319,9 @@ function qaKnowledgeSerializeRecord_(record) {
   if (stored.excludeTerms.length === 0) delete stored.excludeTerms;
   if (stored.intents.length === 0) delete stored.intents;
   if (!stored.requiresAction) delete stored.requiresAction;
+  if (!stored.claimKind || stored.claimKind === "answer") delete stored.claimKind;
+  if (!stored.scopePolicy) delete stored.scopePolicy;
+  if (stored.featureIds.length === 0) delete stored.featureIds;
   return QA_KNOWLEDGE_PREFIX_ + JSON.stringify(stored);
 }
 
@@ -344,6 +355,7 @@ function qaKnowledgeIndexTokensForRecord_(record) {
   var parts = [record.question]
     .concat(record.terms || [])
     .concat(record.intents || [])
+    .concat(record.featureIds || [])
     .concat((record.scope && record.scope.models) || [])
     .concat((record.scope && record.scope.aliases) || [])
     .concat((record.scope && record.scope.families) || []);
@@ -662,6 +674,36 @@ function qaKnowledgeScoreRecord_(record, query, options) {
     return null;
   }
 
+  var claimKind = String(record.claimKind || "answer").toLowerCase();
+  var scopePolicy = String(record.scopePolicy || "").toLowerCase();
+  var asksProductCapabilityOrOperation =
+    hasQueryProductIdentity &&
+    /(?:有沒有|是否|支援|具備|內建|怎麼|如何|哪裡|在哪|設定|操作|開啟|啟用|關閉|選單|路徑|步驟)/i.test(
+      String(query || ""),
+    );
+  // 通用術語列只能說明名詞，不能因關鍵字相同就替某台型號證明
+  // 「有這功能」或借出操作路徑。
+  if (claimKind === "definition" && asksProductCapabilityOrOperation) {
+    return null;
+  }
+  if (
+    claimKind === "capability" &&
+    /(?:怎麼|如何|哪裡|在哪|設定|操作|開啟|啟用|關閉|選單|路徑|步驟)/i.test(
+      String(query || ""),
+    )
+  ) {
+    return null;
+  }
+  // capability／operation 的 exact_model_required 只接受完整型號，或資料列
+  // 明列的一對一市場別名；G9、Odyssey 這種一對多系列不在資料列就不放行。
+  if (
+    scopePolicy === "exact_model_required" &&
+    !modelHit &&
+    aliasHits === 0
+  ) {
+    return null;
+  }
+
   var termHits = 0;
   (record.terms || []).forEach(function (term) {
     var normalizedTerm = qaKnowledgeNormalizeText_(term);
@@ -792,9 +834,10 @@ function qaKnowledgePromptLine_(record) {
   return [
     "QA#" + record.id,
     scope.length > 0 ? "適用=" + qaKnowledgeUniqueStrings_(scope).join("/") : "適用=通用",
+    record.claimKind === "definition" ? "用途=術語定義，不可當型號能力或操作證據" : "",
     "問題=" + record.question,
     "答案=" + answer,
-  ].join(" | ");
+  ].filter(Boolean).join(" | ");
 }
 
 function qaKnowledgeSelectPromptContext_(query, injectedModels, isPdfMode) {

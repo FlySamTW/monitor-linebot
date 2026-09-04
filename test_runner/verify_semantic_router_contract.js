@@ -70,7 +70,7 @@ const context = {
   SEMANTIC_ROUTER_VERSION: "RouteAnalysisV1",
   SEMANTIC_ROUTER_MODE_DEFAULT: "conditional",
   SEMANTIC_ROUTER_MAX_CLAIMS: 5,
-  GEMINI_MODEL_FAST: "models/gemini-2.5-flash-lite",
+  GEMINI_MODEL_ROUTER: "models/gemini-3.7-flash",
   stripInternalRoutingHints_: (value) => String(value || ""),
   normalizeModelForDisplay: (value) =>
     String(value || "").toUpperCase().replace(/^LS/, "S"),
@@ -476,18 +476,20 @@ assert.strictEqual(runResult.attempted, false);
 
 const runnerSource = `${extractFunction(linebot, "runConditionalRouteAnalysis_")}\n${extractFunction(linebot, "callSemanticRouter_")}`;
 assert(
-  /GEMINI_MODEL_FAST/.test(runnerSource),
-  "Router 只能使用既有 Gemini 2.5 Flash-Lite 快速模型常數",
+  /GEMINI_MODEL_ROUTER/.test(runnerSource) &&
+    /models\/gemini-3\.7-flash/.test(linebot),
+  "Router 必須使用獨立 Gemini 3.7 Flash 模型常數，不得偷換 PDF／Web 模型",
 );
 assert(
-  /calculateGeminiUsageCost_\(\s*usage,\s*PRICE_FAST_INPUT,\s*PRICE_FAST_OUTPUT/s.test(
+  /calculateGeminiUsageCost_\(\s*usage,\s*PRICE_ROUTER_INPUT,\s*PRICE_ROUTER_OUTPUT/s.test(
     runnerSource,
   ) && /routerCostTwd/.test(linebot),
-  "Router 必須沿用 Flash-Lite 官方費率並獨立留下 routerCostTwd",
+  "Router 必須使用自己的官方費率並獨立留下 routerCostTwd",
 );
 assert(
-  /thinkingBudget\s*[:=]\s*0/.test(runnerSource),
-  "Router 必須固定 thinkingBudget=0",
+  /thinkingLevel\s*:\s*["']low["']/.test(runnerSource) &&
+    !/thinkingBudget\s*[:=]/.test(runnerSource),
+  "3.7 Router 必須使用 low thinkingLevel，不得沿用 2.5 thinkingBudget",
 );
 assert(
   !/google_search|googleSearch|grounding|FileSearch|file_data/i.test(runnerSource),
@@ -562,6 +564,15 @@ assert(
       terminalSafetySource,
     ),
   `終端安全訊息可以自然提 Sam，但不得退回制式客服道歉語氣：${terminalToneContext.terminalReply}`,
+);
+assert(
+  !/你是「台灣三星官方客服」/.test(linebot) &&
+    !/必須\*\*婉轉拒答\*\*:\s*「不好意思,\s*我是三星螢幕客服/.test(
+      linebot,
+    ) &&
+    /你是「三星螢幕門市店員的內部同儕助手」/.test(linebot) &&
+    /不要再問店員是否要搜尋/.test(linebot),
+  "Fast 主提示不得殘留對外客服角色或要求店員再次確認 Web；角色必須是門市同儕助手",
 );
 assert(
   /semanticExecution\.action === "manual"/.test(handleSource) &&

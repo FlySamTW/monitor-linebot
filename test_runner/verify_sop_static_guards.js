@@ -170,8 +170,8 @@ assertStep(
 const executableLinebot = stripNonExecutableComments(linebot);
 
 assertStep(
-  !/["']models\/gemini-(?!2\.5-flash(?:-lite)?["'])[^"']+["']/i.test(executableLinebot),
-  "executable GAS code must only hard-code reviewed stable Gemini 2.5 Flash/Flash-Lite models",
+  !/["']models\/gemini-(?!2\.5-flash(?:-lite)?["']|3\.7-flash["'])[^"']+["']/i.test(executableLinebot),
+  "executable GAS code must only hard-code reviewed 2.5 answer models and the 3.7 semantic router",
 );
 
 assertStep(
@@ -1281,7 +1281,7 @@ assertStep(
 );
 
 assertStep(
-  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;\s*lastWebSupportedSegments\s*=\s*\[\];\s*lastWebEvidenceConflict\s*=\s*false;\s*lastWebSearchAttempted\s*=\s*false;/.test(
+  /lastTokenUsage\s*=\s*null;\s*lastLlmCallAttempted\s*=\s*false;\s*lastSearchSources\s*=\s*null;\s*lastWebEvidenceValid\s*=\s*false;\s*lastWebSupportedSegments\s*=\s*\[\];\s*lastWebAcceptedSources\s*=\s*\[\];\s*lastWebEvidenceConflict\s*=\s*false;\s*lastWebSearchAttempted\s*=\s*false;/.test(
     extractFunction(linebot, "handleMessage"),
   ),
   "each new user message must reset token/search/LLM usage before calculating the current reply cost",
@@ -1866,6 +1866,50 @@ assertStep(
 assertStep(
   fs.existsSync(path.join(root, "test_runner", "run_current_test.js")),
   "run_current_test.js must exist as the guarded online TestUI wrapper",
+);
+
+const handleMessageSource = extractFunction(linebot, "handleMessage");
+assertStep(
+  /S27FG90x = Odyssey 3D 系列 \(G90XF，非 G9 系列\)/.test(linebot) &&
+    /S57CG95x = Odyssey Neo G9 系列 \(G95NC\)/.test(linebot) &&
+    !/S57CG95x = Odyssey G9 系列 \(G95SC\)/.test(linebot),
+  "the model guide must not mix Odyssey 3D/G90XF with G9 or rename G95NC as G95SC",
+);
+assertStep(
+  /const shouldCacheMeaningfulQuery\s*=\s*[\s\S]{0,180}!isNonProductConversationTurn_\(msg\)/.test(
+    handleMessageSource,
+  ) &&
+    /const savedEnvelope = readAnswerEnvelope_\(contextId\);[\s\S]{0,900}const previousQuestionForElaboration = String\([\s\S]{0,260}savedEnvelope\.originalQuestion[\s\S]{0,260}persistentElaborationTopic\.canonicalQuestion[\s\S]{0,260}getPreviousMeaningfulUserQuestion_\(historyForContinue\)/.test(
+      handleMessageSource,
+    ),
+  "acknowledgements must not overwrite the meaningful topic, and elaboration must prefer AnswerEnvelope/canonical state over history/cache",
+);
+
+const reviewedEvidenceSyncStart = linebot.indexOf(
+  "function syncReviewedEvidenceRowsFromTestUi",
+);
+const reviewedEvidenceSyncEnd = linebot.indexOf(
+  "\n// 1. 網頁入口",
+  reviewedEvidenceSyncStart,
+);
+const reviewedEvidenceSyncSource = linebot.slice(
+  reviewedEvidenceSyncStart,
+  reviewedEvidenceSyncEnd,
+);
+assertStep(
+  reviewedEvidenceSyncStart >= 0 &&
+    reviewedEvidenceSyncEnd > reviewedEvidenceSyncStart &&
+    /assertTestUiAuthorized_\(testUiAccessToken\)/.test(
+    reviewedEvidenceSyncSource,
+  ) &&
+    /!isEditorOnlyDevelopmentWebApp_\(\)/.test(
+      reviewedEvidenceSyncSource,
+    ) &&
+    /\^\(\?:術語_\|能力_\)/.test(reviewedEvidenceSyncSource) &&
+    /\^QA2:/.test(reviewedEvidenceSyncSource) &&
+    /scheduleImmediateRebuild\(\)/.test(reviewedEvidenceSyncSource) &&
+    !/syncGeminiKnowledgeBase\(true\)/.test(reviewedEvidenceSyncSource),
+  "the evidence sync maintenance function must require a short-lived TestUI token, accept only reviewed data rows, and schedule rather than block on rebuild",
 );
 
 console.log("PASS: verify_sop_static_guards");

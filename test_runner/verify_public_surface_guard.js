@@ -72,7 +72,16 @@ assertStep(
     /function testMessage\(msg, userId, testUiAccessToken, semanticRouterMode\)/.test(linebot) &&
     /function clearTestSession\(userId, testUiAccessToken\)/.test(linebot) &&
     /function saveDraftToSheet\(draft\)[\s\S]{0,260}IS_TEST_MODE/.test(linebot),
-  "TestUI requests require a short-lived token and cannot write QA or RULE data",
+  "normal TestUI requests require a short-lived token and cannot write QA or RULE data",
+);
+
+assertStep(
+  /function syncReviewedEvidenceRowsFromTestUi\(payload, testUiAccessToken\)[\s\S]{0,180}assertTestUiAuthorized_\(testUiAccessToken\)[\s\S]{0,180}!isEditorOnlyDevelopmentWebApp_\(\)/.test(
+    linebot,
+  ) &&
+    /只能同步已審核的術語_或能力_資料列/.test(linebot) &&
+    /QA 同步只接受 QA2 結構化資料列/.test(linebot),
+  "knowledge writes through TestUI must be restricted to editor-only /dev plus a short-lived token and reviewed row types",
 );
 
 assertStep(

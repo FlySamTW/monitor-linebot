@@ -1,8 +1,45 @@
 # 開發對話紀錄
 
+## 2026-09-04（v29.6.280 / G9 燈效幻覺的全局 Evidence 根治）
+
+### 事故證據與真正根因
+
+- 使用者以 G9 系列進入 `S49DG952SC` 後追問背面彩色環形燈與開啟方式；雲端 LOG 顯示 PDF 實際執行了五次，不是「按了卻沒有讀 PDF」。舊回答先後混入眼睛保護、OSD、Infinity Core 與 Eclipse Lighting，既重複耗費也沒有穩定完成原題。
+- 對照實際共用手冊後確認：Core Lighting／Eclipse 相關段落含「依型號而定，可能不支援此功能」，並未在同段正向綁定 `S49DG952SC`。舊 validator 卻允許模型以「全檔共通」通過；同時術語資料把 CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting 等相近名稱視為可替換，造成錯功能、錯系列與假選單路徑。
+- 因此定案為證據契約與術語本體問題，而非單純「2.5 Flash-Lite／Flash 智力太低」。若只升級整條回答模型，仍可能把不適用段落說得更流暢；修復必須發生在資料 scope、claim-to-evidence、文件身分與狀態層。
+
+### v29.6.280 實作決策
+
+- 條件式 Router 改用 `models/gemini-3.7-flash`、`thinkingLevel: low`；只處理模糊型號／系列、複合主張、省略式追問、部分覆蓋與規則衝突。Router 採 Structured Output，沒有任何工具與 `answer` 欄位，不得回答產品事實。精準 QA、完整 RULE、人工驗證 Evidence、指令與明確來源按鍵維持 `routerCalls=0`。
+- Fast 保持 `models/gemini-2.5-flash-lite`；PDF／Web 保持 `models/gemini-2.5-flash`。程式仍先終止完整 QA／RULE，再依未解 claim 走 PDF → Web；沒有將較貴模型套用到所有問題，也未導入 File Search、背景搜尋或額外潤飾呼叫。
+- 術語改為資料分層：`definition` 只可解釋名詞；系列／型號 `capability` 需要精確適用 scope；操作路徑須另有同一 canonical 型號的官方手冊 evidence。CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting／Eclipse Sync 明確列為不可互換。
+- 主動巡查 Samsung 台灣顯示器入口、現行代表產品頁與官方支援頁，將可供店員提問的正式功能名與首頁上位概念整理為 151 筆 `術語_`，並為本輪有直接產品頁證據的 G95SD、G81SF、G90XF、M90SF、M80F、S80HF、G95NC、Ark、G70D 建立 9 筆 `能力_完整型號`。首頁新補 FHD、畫面比例、更新率、反應時間、IPS／VA、HDR、Smart TV、內建喇叭、網路連線、USB-C 視訊等 21 個可問概念。名稱定義與型號能力分開存放；頁面明示「功能可能因型號而異」，因此未把官網出現過的詞擴散成系列能力。
+- 手冊 schema 與 validator 改為 fail-closed：相關摘錄若含「依型號而定／可能不支援／部分型號」，卻沒有同段正向目標型號，就不能支持 capability 或 operation；具名功能也需 canonical feature 一致，不再讓模型以 `全檔共通` 借用別款功能。
+- Web grounding evidence 保留 support/chunk 來源 ID；canonical 型號與回答主張必須由同一來源共同支持，禁止跨網站拼接。沒有可稽核引用時不輸出未驗證模型草稿，只提供不冒充事實的安全終點。
+- 持久產品狀態新增 canonical topic 與最近完成 advanced result；型號與話題跨日延續，遇到新完整型號或管理員 `/重啟` 一起清除。這使「那要去哪裡開？」可還原原始主題，又避免新機借用舊機證據。
+- advanced operation cache 身分改為 `台北日期＋來源＋型號＋正規化主題＋Evidence schema＋來源 fingerprint`；不再由 `GAS_VERSION` 或臨時 route-plan hash 決定。相同證據結果可免重複供應商與扣次，內容／日期／型號／主題變更時則必須重查。
+- PDF fingerprint 取自 Drive fileId、updatedAt、size／identity。增量同步若發現同名 PDF 已更新，必須重新上傳並刷新 Gemini Files URI，避免 Gemini 端仍讀舊內容、operation cache 又重播舊答。
+
+### 完成範圍
+
+- 本版以全局契約阻斷已知的錯型號、相似術語偷換、條件式共用手冊誤採、跨站 evidence 拼接、舊 URI／快取與跨日追問斷裂；不新增 G9 單題路由或長 Prompt 特例。
+- 不能宣稱模型從此不會產生任何幻覺。完成標準是：沒有同題同型號證據就不輸出肯定產品事實、同一主張不重複燒五次 PDF、來源失敗仍到安全終點，並由正式 TestUI／雲端 LOG 驗證呼叫、掛檔、證據與費用。
+
+## 2026-08-28（v29.6.279 / 競品範圍守門前移）
+
+- v29.6.278 發布後以正式 TestUI 真人提問「LG 螢幕跟三星哪個比較好？」；LOG 顯示 `routerCalls=0 / pdfCalls=0 / webCalls=0`，但仍多花一次 Fast 約 NT$0.0042，之後 AnswerEnvelope 丟棄無證據草稿，只留下「再查網路」。因此不把這題列為通過。
+- 根因是 `isOutOfProjectScopeQuery` 先以「含螢幕」直接回傳範圍內，後面的競品判斷永遠無法執行；已將競品螢幕判斷前移，並保留跨裝置接三星螢幕的既有例外。
+- 新增契約覆蓋競品比較、三星內部比較與回覆語氣；競品比較現在零模型、零來源費用、零二次網搜 CTA。未換模型、未新增搜尋或 Prompt 題型特例。
+
+## 2026-08-28（v29.6.278 / 店員同儕角色一致化）
+
+- 逐行複核發現 v29.6.277 雖已有「熟朋友」口吻守門，Fast 主提示仍殘留「台灣三星官方客服」與制式競品拒答範本；兩者語意衝突，可能讓模型偶發回到客服腔。
+- 本版只移除上述殘留並把時效 Web fallback 改為直接交程式既有守門，不新增題型特例、不新增 Prompt 規則層、不換模型，也不增加 PDF／Web 呼叫。
+- 新增契約，禁止對外客服角色復發，並要求缺本機時效證據時不得再問店員是否搜尋。
+
 ## 2026-08-28（v29.6.277 / 條件式 RouteAnalysisV1 主張規劃器）
 
-> 本紀錄是 v29.6.277 的現行路由決策；若下方歷史版本仍記載「必須再按來源」、「AUTO_SEARCH 決策」或「每題僅一個進階來源」，只代表當時設計，不能覆蓋本節。
+> 本紀錄是 v29.6.277 當時的路由決策，保留作演進背景；現行實作以最上方 v29.6.280 紀錄與契約為準。
 
 - 人設定案：Bot 是店員內部同儕工具，不採對外客服式敬語；可自然稱呼 Sam，但不強行每句帶名字。所有 Router／claim／schema／confidence 等實作語彙只留 LOG，LINE 回覆必須是一般店員看得懂的自然說法。
 - 歷史回歸顯示，長尾失敗主要集中在 G8／Smart 等模糊身分、自然追問、複合問題與 QA／RULE 部分覆蓋；每題一律先問 Router 會讓零成本直答變慢並增加故障點，因此採「deterministic fast path 先行、僅模糊題呼叫一次」的條件式設計。
