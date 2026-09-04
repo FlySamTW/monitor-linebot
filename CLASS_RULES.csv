@@ -7,6 +7,7 @@
 系列_SmartMonitor,智慧聯網螢幕，內建TizenOS智慧系統，有三星專屬的APP(與Android TV的APP不同)，不需接電腦即可看Netflix/YouTube，可當電視用的螢幕。包含M5、M7、M8、M9等型號。
 術語_Smart系列,指內建三星Tizen智慧系統的螢幕。主要是Smart Monitor系列(M5、M7、M8、M9)，但部分高階電競機種也有內建Smart功能，例如：ARK、Odyssey 3D(G90XF / S27FG900XC)、G70NC、G80SD、G95SC、G65B等。這類會稱為「電競螢幕內建Smart」或「3D螢幕內建Smart」，而非Smart Monitor。簡言之，Smart Monitor一定有Smart，但有Smart不一定是Smart Monitor。
 術語_Odyssey3DHub,canonical=game.odyssey_3d_hub；aliases=Odyssey 3D Hub、Odyssey Hub；類別=3D 內容管理軟體；管理相容的 3D 遊戲與內容；definition_only=true；不得由此列證明任何型號支援或推定所有 2D 內容皆可轉換；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
+術語_OdysseyHub,canonical=game.odyssey_3d_hub；aliases=Odyssey Hub、Odyssey 3D Hub；類別=legacy 相容別名；舊雲端 key 僅導向 Odyssey 3D Hub 的術語定義；definition_only=true；不得由此列證明任何型號支援、推定內容相容性或更名正式 key；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-3d-g90xf-27-inch-165hz-uhd-ls27fg900xcxzw/
 別稱_Odyssey3D,裸視3D電競螢幕(G90XF / S27FG900XC)，全球首款不需3D眼鏡的4K電競螢幕，利用眼球追蹤與雙凸透鏡技術呈現立體影像，支援Odyssey Hub能將2D影片轉3D，或觀看原生3D影片，遊玩支援三星3D的3A遊戲大作。型號模式為：Odyssey3D,3D,G90XF,S27FG900*
 別稱_G9,Odyssey G9旗艦電競，有包含49吋32:9超寬曲面電競螢幕、NeoG9(MiniLED)與OLEDG9。型號模式為：G9,S49?G9*,S57?G9*
 別稱_G8,Odyssey G8高階電競，有包含34吋OLED及32吋4K高階電競螢幕。型號模式為：G8,S27?G8*,S32?G8*,S34?G8*
@@ -24,6 +25,7 @@
 術語_OLED,canonical=panel.oled；aliases=OLED、自發光面板；類別=面板技術；像素可自行發光並呈現深黑與高對比；definition_only=true；反應時間、亮度與防烙印措施須看完整型號；官方來源=https://www.samsung.com/tw/monitors/oled/
 術語_FastIPS,canonical=panel.fast_ips；aliases=Fast IPS、快速 IPS；類別=面板技術；著重較快像素反應的 IPS 類型；definition_only=true；不得推定任一型號的反應時間或更新率；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-g8-g80hf-27-inch-dual-mode-5k-180hz-qhd-360hz-ls27hg806efxzw/
 術語_QuantumMiniLED,canonical=backlight.quantum_mini_led；aliases=Quantum Mini LED、量子 Mini LED、Mini LED；類別=背光技術；以較小型 LED 與分區控光改善亮暗控制；definition_only=true；分區數與峰值亮度須看完整型號；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
+術語_MiniLED,canonical=backlight.quantum_mini_led；aliases=Mini LED、Quantum Mini LED、量子 Mini LED；類別=legacy 相容別名；舊雲端 key 僅導向 Quantum Mini LED 的術語定義；definition_only=true；不得將泛指 Mini LED 當作任何三星型號支援 Quantum Mini LED 的證據，分區數與亮度仍須看完整型號；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
 術語_QuantumMatrix,canonical=image.quantum_matrix；aliases=Quantum Matrix Technology、量子矩陣技術；類別=影像與背光控制；用於控制相容 Quantum Mini LED 顯示器的亮暗層次；definition_only=true；不得推定所有 Mini LED 型號都支援同一版本；官方來源=https://www.samsung.com/tw/monitors/gaming/odyssey-neo-g9-g95nc-57-inch-240hz-curved-dual-uhd-ls57cg952ncxzw/
 術語_GlareFree,canonical=image.glare_free；aliases=Glare Free、無反光技術、抗眩光；類別=表面抗反射技術；用於降低環境光反射；definition_only=true；不得宣稱為所有 OLED 標配或他牌皆無；官方來源=https://www.samsung.com/tw/monitors/oled/
 術語_MatteDisplay,canonical=image.matte_display；aliases=Matte Display、霧面螢幕；類別=表面抗反射設計；用於降低光線反射與眩光干擾；definition_only=true；不得與 Glare Free 自動視為同一技術或推定型號支援；官方來源=https://www.samsung.com/tw/support/displays/2022-how-to-use-your-samsung-odyssey-ark-gaming-monitor/
@@ -72,6 +74,7 @@
 術語_Tizen,canonical=smart.tizen；aliases=Tizen、Tizen OS、智慧型 Tizen 作業系統；類別=智慧作業系統；definition_only=true；App、版本與功能須看完整型號。
 術語_AIPictureOptimizer,canonical=image.ai_picture_optimizer；aliases=AI Picture Optimizer、AI 影像最佳化；類別=AI 影像；依內容類型調整顯示設定；definition_only=true；不得推定所有智慧螢幕支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
 術語_4KAIUpscaling,canonical=image.ai_upscaling_4k；aliases=4K AI Upscaling、4K AI 升頻、AI 影像升頻；類別=AI 影像；將低解析內容提升至接近 4K 的顯示效果；definition_only=true；不得與 Pro 版本互換；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
+術語_AIUpscaling,canonical=image.ai_upscaling_4k；aliases=AI Upscaling、AI 影像升頻、4K AI Upscaling、4K AI 升頻；類別=legacy 相容別名；舊雲端 key 僅導向一般版 4K AI Upscaling 的術語定義；definition_only=true；不得由泛指 AI Upscaling 證明任何型號支援、推定輸出解析度或當作 Pro 版本；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
 術語_4KAIUpscalingPro,canonical=image.ai_upscaling_4k_pro；aliases=4K AI Upscaling Pro、4K AI 升頻 Pro；類別=AI 影像；Pro 版本升頻功能；definition_only=true；不得由一般版推定支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/
 術語_AISoccerMode,canonical=smart.ai_soccer_mode；aliases=AI Soccer Mode、AI 足球模式；類別=內容最佳化；針對足球內容調整影像與聲音；definition_only=true；不得與 Pro 版本互換；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/
 術語_AISoccerModePro,canonical=smart.ai_soccer_mode_pro；aliases=AI Soccer Mode Pro、AI 專業足球模式；類別=內容最佳化；Pro 版本足球內容最佳化；definition_only=true；不得由一般版推定支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m9-32-inch-smart-tv-apps-4k-oled-ls32fm902scxzw/

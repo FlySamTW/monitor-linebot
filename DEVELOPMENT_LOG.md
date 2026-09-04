@@ -13,7 +13,7 @@
 - 條件式 Router 改用 `models/gemini-3.7-flash`、`thinkingLevel: low`；只處理模糊型號／系列、複合主張、省略式追問、部分覆蓋與規則衝突。Router 採 Structured Output，沒有任何工具與 `answer` 欄位，不得回答產品事實。精準 QA、完整 RULE、人工驗證 Evidence、指令與明確來源按鍵維持 `routerCalls=0`。
 - Fast 保持 `models/gemini-2.5-flash-lite`；PDF／Web 保持 `models/gemini-2.5-flash`。程式仍先終止完整 QA／RULE，再依未解 claim 走 PDF → Web；沒有將較貴模型套用到所有問題，也未導入 File Search、背景搜尋或額外潤飾呼叫。
 - 術語改為資料分層：`definition` 只可解釋名詞；系列／型號 `capability` 需要精確適用 scope；操作路徑須另有同一 canonical 型號的官方手冊 evidence。CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting／Eclipse Sync 明確列為不可互換。
-- 主動巡查 Samsung 台灣顯示器入口、現行代表產品頁與官方支援頁，將可供店員提問的正式功能名與首頁上位概念整理為 151 筆 `術語_`，並為本輪有直接產品頁證據的 G95SD、G81SF、G90XF、M90SF、M80F、S80HF、G95NC、Ark、G70D 建立 9 筆 `能力_完整型號`。首頁新補 FHD、畫面比例、更新率、反應時間、IPS／VA、HDR、Smart TV、內建喇叭、網路連線、USB-C 視訊等 21 個可問概念。名稱定義與型號能力分開存放；頁面明示「功能可能因型號而異」，因此未把官網出現過的詞擴散成系列能力。
+- 主動巡查 Samsung 台灣顯示器入口、現行代表產品頁與官方支援頁，將可供店員提問的正式功能名與首頁上位概念整理為 154 筆 `術語_`，並為本輪有直接產品頁證據的 G95SD、G81SF、G90XF、M90SF、M80F、S80HF、G95NC、Ark、G70D 建立 9 筆 `能力_完整型號`。其中 3 筆是舊雲端 key `術語_OdysseyHub`、`術語_MiniLED`、`術語_AIUpscaling` 的安全 legacy alias，只導向對應 canonical，不證明型號能力。首頁新補 FHD、畫面比例、更新率、反應時間、IPS／VA、HDR、Smart TV、內建喇叭、網路連線、USB-C 視訊等 21 個可問概念。名稱定義與型號能力分開存放；頁面明示「功能可能因型號而異」，因此未把官網出現過的詞擴散成系列能力。
 - 手冊 schema 與 validator 改為 fail-closed：相關摘錄若含「依型號而定／可能不支援／部分型號」，卻沒有同段正向目標型號，就不能支持 capability 或 operation；具名功能也需 canonical feature 一致，不再讓模型以 `全檔共通` 借用別款功能。
 - Web grounding evidence 保留 support/chunk 來源 ID；canonical 型號與回答主張必須由同一來源共同支持，禁止跨網站拼接。沒有可稽核引用時不輸出未驗證模型草稿，只提供不冒充事實的安全終點。
 - 持久產品狀態新增 canonical topic 與最近完成 advanced result；型號與話題跨日延續，遇到新完整型號或管理員 `/重啟` 一起清除。這使「那要去哪裡開？」可還原原始主題，又避免新機借用舊機證據。

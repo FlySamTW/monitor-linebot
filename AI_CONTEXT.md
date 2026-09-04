@@ -9,7 +9,7 @@
 - 回答模型維持分流：Fast=`models/gemini-2.5-flash-lite`；PDF／Web=`models/gemini-2.5-flash`。來源政策仍由程式按 `QA／RULE／verified Evidence → PDF → Web` 執行；本版未遷移 Google File Search、未增加背景搜尋或第二次潤飾。
 - 已知完整型號的未解操作／手冊型問題，Router 高信心分類或安全 fallback 都只能交 manual，不得回 Fast 猜答案。精準 QA／RULE 已完整回答則不可再呼叫 Router、PDF 或 Web。
 - 術語資料採三層契約：`definition` 只解釋名詞；系列／型號 `capability` 必須精確 scope；`operation` 必須再綁同一 canonical 型號的官方手冊路徑證據。CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting／Eclipse Sync 不得互換，也不得由 definition 推論機種支援。
-- 2026-09-04 Samsung 台灣官網盤點快照為 151 筆 `術語_` 與 9 筆 `能力_完整型號`。術語列可新增正式名與口語 aliases，但不能回答型號支援；首頁的 FHD、更新率、反應時間、曲面、內建喇叭、Smart TV、USB-C 視訊等上位詞也是 definition-only。能力列必須含 canonical `model`、`capabilities`、`checkedAt` 與官方 `source`。Pro／Plus／Premium 等後綴及相似功能必須分列，系列 alias 只產生候選。
+- 2026-09-04 Samsung 台灣官網盤點快照為 154 筆 `術語_` 與 9 筆 `能力_完整型號`；154 筆中包含 `術語_OdysseyHub`、`術語_MiniLED`、`術語_AIUpscaling` 三個舊雲端 key 的安全 legacy alias。術語列可新增正式名與口語 aliases，但不能回答型號支援；首頁的 FHD、更新率、反應時間、曲面、內建喇叭、Smart TV、USB-C 視訊等上位詞也是 definition-only。能力列必須含 canonical `model`、`capabilities`、`checkedAt` 與官方 `source`。Pro／Plus／Premium 等後綴及相似功能必須分列，系列 alias 只產生候選。
 - 共用手冊 evidence 只要含「依型號而定／可能不支援／部分型號」而同段沒有正向綁定目標完整型號，即判為不適用，不能支持 capability 或 operation。功能名稱也須同一 canonical feature，不得用另一種燈效回答。
 - Web support/chunk 必須保留來源 ID；只有同一來源同時支持 canonical 型號與本題主張才可輸出肯定結論。禁止用不同網站跨站拼 evidence，也禁止將無引用模型草稿改寫成「可能做法」交付。
 - `SRC_PRODUCT` 跨日保留 confirmed model、canonical topic 與最近成功 advanced result；新完整型號或管理員 `/重啟` 清除。省略追問先還原持久型號與主題，不可只存問題文字或借錯前題。

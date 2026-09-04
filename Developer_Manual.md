@@ -22,7 +22,7 @@
 - Samsung 螢幕專用術語應拆成多列、可稽核的資料，而不是繼續塞進 Prompt：`definition` 列只解釋名詞與同義詞／非同義詞；系列或型號 `capability` 列才可證明某機種具備某功能；「在哪裡開／怎麼設定」等 `operation` 還必須有同一 canonical 型號的官方手冊路徑或已核對操作 Evidence。
 - `CoreSync`、`Core Lighting+`、`Infinity Core Lighting`、`Eclipse Lighting`／`Eclipse Sync` 是不同功能或層級，不得因都和燈效有關就互換。definition 命中只能回答「這名詞是什麼」，不能據此推論 G9、G8、Ark 或任何完整型號支援該功能。
 - 系列層 capability 必須明載可套用的系列範圍；型號層 capability 必須精確列出 canonical model 或一對一官方別稱。使用者問的是操作時，單純 capability 不足以提供選單路徑，必須繼續查相同型號手冊；缺證據不得補一條看似合理的路徑。
-- 2026-09-04 已由 Samsung 台灣顯示器入口及其現行產品／支援頁盤點 151 筆 `術語_` 列，涵蓋面板、解析度、時序、HDR、同步、燈效、OLED 保護、遊戲、Smart、跨裝置、連接、軟體、人體工學、護眼、音效及配件；另以 9 筆 `能力_完整型號` 列保存已由產品頁直接查核的型號能力。首頁上位詞（如 FHD、更新率、反應時間、曲面、內建喇叭、Smart TV 與 USB-C 視訊）也必須是 `definition_only`，不能取代完整型號證據。這是本次查核快照，不代表官網未來新增詞會自動成立；新增或變更仍須更新 `checkedAt` 與官方 URL。
+- 2026-09-04 已由 Samsung 台灣顯示器入口及其現行產品／支援頁盤點 154 筆 `術語_` 列，涵蓋面板、解析度、時序、HDR、同步、燈效、OLED 保護、遊戲、Smart、跨裝置、連接、軟體、人體工學、護眼、音效及配件；其中 `術語_OdysseyHub`、`術語_MiniLED`、`術語_AIUpscaling` 是為了讓舊雲端 key 可被 upsert 的 `definition_only` legacy alias，不能證明型號能力；另以 9 筆 `能力_完整型號` 列保存已由產品頁直接查核的型號能力。首頁上位詞（如 FHD、更新率、反應時間、曲面、內建喇叭、Smart TV 與 USB-C 視訊）也必須是 `definition_only`，不能取代完整型號證據。這是本次查核快照，不代表官網未來新增詞會自動成立；新增或變更仍須更新 `checkedAt` 與官方 URL。
 - `術語_` 列只供理解正式名稱與店員口語，例如 `Adaptive Sound`、`Adaptive Sound+`、`Adaptive Sound Pro`、`Auto Source Switch`、`Auto Source Switch+` 均分列。`能力_` 列格式為 `model／aliases／capabilities／evidence／checkedAt／source`，只有其中 `model` 的完整規格查詢可使用；系列別稱只用來列候選，不能推論「整個系列都有」。
 - 正式執行階段仍以 Google Sheet 為資料源；本機 `CLASS_RULES.csv` / `QA.csv` 通過審查後，可從已授權的編輯者 `/dev?test=1` 工作階段呼叫 `syncReviewedEvidenceRowsFromTestUi`。它只允許 upsert `術語_`、`能力_` 與 `QA2:` 列，需短效 TestUI token，不會刪除雲端其他型號規格，且只排程重建，不在 LINE webhook 同步跑重工。
 

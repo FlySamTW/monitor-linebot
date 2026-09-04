@@ -390,13 +390,30 @@ const samsungTwHomepageCanonicalTerms = [
 ];
 const termRows = classRuleRows.filter((line) => line.startsWith("術語_"));
 assert(
-  termRows.length >= 151 &&
+  termRows.length >= 154 &&
     classRuleRows.some((line) => /canonical=game\.dual_mode/.test(line)) &&
     classRuleRows.some((line) => /canonical=oled\.safeguard_plus/.test(line)) &&
     classRuleRows.some((line) => /canonical=software\.samsung_display_manager/.test(line)) &&
     classRuleRows.some((line) => /canonical=oled\.screen_protection_mode/.test(line)) &&
     classRuleRows.some((line) => /canonical=smart\.multi_device_experience/.test(line)),
   "the Samsung TW monitor term ontology must cover the main gaming, OLED, smart, connection, and software features",
+);
+const legacyTermKeyMappings = {
+  "術語_OdysseyHub": "game.odyssey_3d_hub",
+  "術語_MiniLED": "backlight.quantum_mini_led",
+  "術語_AIUpscaling": "image.ai_upscaling_4k",
+};
+assert(
+  Object.entries(legacyTermKeyMappings).every(([key, canonical]) =>
+    termRows.some(
+      (line) =>
+        line.startsWith(`${key},`) &&
+        line.includes(`canonical=${canonical}`) &&
+        /definition_only=true/.test(line) &&
+        /不得[^,。；]*(?:證明|當作)/.test(line),
+    ),
+  ),
+  "legacy cloud term keys must remain exact-key definition-only aliases and never prove model capability",
 );
 assert(
   samsungTwHomepageCanonicalTerms.every((canonical) =>
