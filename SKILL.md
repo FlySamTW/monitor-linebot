@@ -7,7 +7,19 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
-- **v29.6.280 現行最高優先契約**：以下 v29.6.280 條款覆蓋本檔後方仍保留的歷史語句。條件式 `RouteAnalysisV1` 不是每題 Router：指令、postback、明確來源按鍵、精準 QA、完整 RULE、人工核對片段及 deterministic 資料邊界都必須 `routerCalls=0`；只有模糊型號／系列、自然追問、複合主張、部分覆蓋或規則衝突才可呼叫一次。
+- **v29.6.287 手冊完成守門**：已確認完整型號必須鎖定 PDF 選擇，最後附件再做 exact-model allowlist；M7／G95SD 分別只選 `S32CM703.pdf`／`S49DG952.pdf`，舊跨機型合併檔不得掛載。所有 URI recovery／refresh／sync 必須保留或以 blob 驗證 manifest SHA，support-page-only 缺 SHA、mismatch 或已知錯誤共用檔均 fail-closed。其 evidence 必填頁面標題與適用限制並參與 family/model scope 核對；基本人工輸入切換與 `Reset All／重設全部或所有設定` 才可使用通用步驟，不能推成規格能力。任何格式／頁碼／摘錄／適用範圍驗證失敗，都要在同一輪真正執行一次 Web rescue。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV6`。
+- 重設題 Query Rewrite 必須先用完整型號 RULE 判斷 Tizen 或一般 OSD；不得因題目寫「重設」就注入 Smart Monitor 選單詞，也不得用擴寫詞取代使用者原題。
+- 每日官方手冊發現：繁中 UM 永遠優先，只在 Samsung 台灣支援頁沒有繁中時才退到英文 UM；TW area、`UNI_TW`、UM、格式、首頁、SHA 與 provenance 守門不變。`S24F332.pdf` 的封面 `S24F33*` 只能精確綁定一碼家族並標記 `exactModelInDocument=false`；`NASCA DRM` 絕不得當 PDF 索引。
+- 手冊與 Web 都必須以原題判定完成度，不可拿擴寫搜尋詞代替。手冊答案漏掉明示功能、介面編號、操作或數值不得標 full；Web 必須保留 `full / partial / none + groundingPresent`，分清有網頁但不適用本型號與真正無 Grounding。
+- `系列_／別稱_` 僅建立候選。只有所有候選完整型號精確 RULE 的本題欄位都有且值一致時，才能回答系列共通規格；缺值、分歧、操作、排障、模式限定或可選功能一律不得套用系列共識。
+
+- **2026-09-04 手冊資產治理**：G95SD／`S49DG952SC` 官網最新版仍為 2024-10-02 v2312130 共用 e-Manual ZIP，繁中 PDF 與舊 `S32CM703,S49DG952.pdf` bytes 相同；舊合併檔只保留回復／稽核，正式選擇必須排除並優先單型號文件。因內文未明列 G95SD，不得作該型號專屬功能或操作證據。
+- M7／`S32CM703UC` 的 2026-01-16 v2510220 新繁中 PDF 已納入 `config/manual_registry.json`。空白封面手冊只有在官方支援頁 SKU、下載網址 `ModelName`、SHA／provenance 三向一致時才可納管，且必須標記 `exactModelInDocument=false`。
+- 共用手冊的「依型號可能不支援」必須有 QA／RULE 或同段完整型號正向證據才能肯定。ZIP 不得直接進 PDF index，須先解出與驗證 PDF；registry 的 schema、唯一鍵、來源、PDF header、SHA、provenance 任一不符即 fail-closed，索引須在 staging 通過後原子發布。
+- 每日自動查新手冊與 Files URI 更新不需要 `/重啟`。此治理不得藉機改 Router／Fast／PDF／Web 模型、增加模型呼叫或成本路徑。
+- 一對一 LINE 的文字、圖片與來源 postback 每個有效事件都須在路由前啟動一次等待動畫；同一事件只呼叫一次。群組／多人聊天室及 TestUI 不呼叫此 API，也禁止用 Push 假裝等待。
+- v29.6.281 現行每日額度固定為一般 10 題、官方手冊 2 次、網路解答 5 次；覆蓋後方歷史 20／5／10。三種額度獨立，選型、控制動作、preflight、快取命中與來源交接空輪不扣一般題。
+- **v29.6.281 現行最高優先契約**：以下條款覆蓋本檔後方仍保留的歷史語句。條件式 `RouteAnalysisV1` 不是每題 Router：指令、postback、明確來源按鍵、精準 QA、完整 RULE、人工核對片段及 deterministic 資料邊界都必須 `routerCalls=0`；只有模糊型號／系列、自然追問、複合主張、部分覆蓋或規則衝突才可呼叫一次。
 - 競品螢幕比較必須在一般「含螢幕／配件字樣即放行」之前由 Scope Guard 攔截，以店員同儕口吻零模型收斂；跨裝置接三星螢幕仍屬專案範圍。不得要求再按網路，也不得新增品牌單題 Prompt 特例。
 - Router 固定使用 `models/gemini-3.7-flash`、`thinkingLevel: low`、Structured Output，且**無工具／搜尋／PDF／Web與 `answer` 欄位**。它只從程式候選 index 選型、拆 claims 與判斷前後題關係；低信心、逾時、429、格式或應用驗證失敗即 fail-closed fallback，不得回答產品事實、扣額度、指定 PDF 或覆蓋持久型號。不得把 3.6+ 不支援的 `thinkingBudget`、`temperature`、`topP` 或 `topK` 塞入 Router payload。
 - 程式仍是唯一來源決策者，固定 `QA／RULE／verified Evidence → PDF → Web`。精準 QA／完整 RULE 先終止，禁止先問 Router 或再掛進階來源。`conditional` 接管後舊 `[AUTO_SEARCH_PDF]`／`[AUTO_SEARCH_WEB]`／`[NEED_DOC]` 只可作 fallback／稽核，禁止成為第二決策者。模式限 `off|shadow|conditional`，v29.6.280 正式預設 `conditional`；TestUI `?router=` 只能 request-scoped。
@@ -39,7 +51,7 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - RULE 明載的規格是硬事實。模型不得把 Smart／Tizen 型號的藍牙、喇叭或介面答成相反結論。
 - 系列別稱只是候選不是 confirmed model；規格欄位只能由完整型號自己的 RULE 終止回答。未明載就是 UNKNOWN，零 LLM 建議手冊，不得套用同系列。
 - 「再詳細說明」每個答案最多一次，是零一般額度的 control action；必須保留原題與 confirmed model，不得把內部補充指令寫回最近題目。
-- 系統要求補型號後，氣泡點選與直接輸入完整型號都要接回 pending original question，不新增 20 題計次。
+- 系統要求補型號後，氣泡點選與直接輸入完整型號都要接回 pending original question，不新增 10 題計次。
 - 使用者選定完整型號後，DirectDeep、RULE 與 PDF 候選只能使用該型號，不得由型號內的 G8／M8 片段重新展開同系列其他機種。
 - `術語_` RULE 只能解釋名詞，不是型號能力證據；完整型號列未明載時不得回答支援或不支援，應保留型號並建議手冊查證。
 - 能力守門的可見結論不得被來源流程模板洗掉；同一 plan 的免費證據先保留，只有未解 claim 才進 PDF，PDF 仍無證據才一次 Web 補救。不得因來源失敗回到同一按鍵形成迴圈。

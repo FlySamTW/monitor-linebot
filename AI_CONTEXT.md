@@ -1,8 +1,42 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.280 現行最高優先契約：語意規劃、術語本體與原子證據
+## v29.6.287 現行最高優先契約：手冊命名、新機自動納管、頁面適用性與通用操作證據
 
-> 本節優先於下方全部歷史版本。舊版中的「Router 使用 2.5 Flash-Lite」、「來源快取綁 GAS_VERSION」、「相似燈效名稱可視為同義」或「共用手冊全檔內容可直接證明所有型號」均已失效。
+- M7／`S32CM703UC` 只選 `S32CM703.pdf`；G95SD／`S49DG952SC` 只選 `S49DG952.pdf`。舊 `S32CM703,S49DG952.pdf` 為回復資產，不得進正式候選。
+- 繁中 UM 永遠優先；Samsung 台灣支援頁沒有繁中時才可退到英文 UM，但 TW area、`UNI_TW`、UM、格式、首頁、SHA 與 provenance 仍全部必須通過。`S24F332.pdf` 是正例；封面 `S24F33*` 只能在官方 SKU/download `ModelName` 精確一致且星號只對應一碼時綁定，並標記 `exactModelInDocument=false`。
+- `S27F612` 官方下載是 `NASCA DRM`、不是 PDF，禁止偽裝後進 RAG。`S27H802EFA` 完整型號能力列必須進 H 世代覆蓋稽核；系列、術語、短別稱與 key/model 錯配列不得污染 coverage。
+- support-page-only 共用手冊的 structured evidence 必須帶 `pageHeading` 與 `applicabilityExcerpt`，並與摘錄一起做 family／model scope 驗證；其他系列、其他型號與 Odyssey Ark 專屬頁 fail-closed。
+- 基本人工輸入切換可用通用「選擇已連接外部裝置／訊號源」段落回答使用者指定的 HDMI 1/2、DP 或 USB-C；不得藉此宣稱支援、埠數、版本、頻寬或任何規格，也不得套到 Auto Source、PIP／PBP、KVM。
+- `Reset All／重設所有設定`屬非選配的通用手冊操作，可在 support-page family pattern 的 SHA 驗證文件中採用全檔共通段落；選配功能仍要求型號級 QA／RULE 或同段型號證據。
+- 重設題的 PDF 搜尋詞必須依完整型號 RULE 分成 Tizen 與一般 OSD；未明載 Tizen 時不得注入 Smart Monitor 選單詞，也不得移除使用者原題。
+- `Reset All` 契約以「重設／還原動作＋全部／所有設定」組合判定，不可列舉單一中文詞序。
+- `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV6`；清除舊的錯誤未完成快取，模型與呼叫數不變。
+
+## v29.6.284 歷史契約：精確手冊鎖、證據驗證與來源完成度
+
+> 本節優先於下方全部歷史版本。v29.6.282 保留 PDF 選檔、provenance 與系列共識；手冊證據 validator 的 production dependency 與 Web 補救終點以本節為準。
+
+- 手冊 feature validator 使用的 regex escape 必須由正式程式提供並納入測試，不得只在測試 VM 注入 stub。
+- 任何手冊輸出格式、頁碼、摘錄或適用範圍驗證失敗，必須在同一輪觸發一次受控 Web rescue；禁止只回「接著補查」而沒有實際 `webCalls`。
+- evidence validator／完成狀態契約變更時必須提高 `ADVANCED_SOURCE_CACHE_SCHEMA`；不可只提高 `GAS_VERSION`，因來源快取刻意可跨程式版號重用。
+
+- 已確認完整型號是 PDF strict lock；KEYWORD_MAP／系列別稱不得再把兄弟機種加入附件。最終附件必須通過 exact-model allowlist，扁平 `PDF_MODEL_INDEX` 不得在實際 URI／inline 缺檔時宣稱可用。
+- PDF URI 的 recovery、rolling refresh、full sync 與 manual merge 必須走相同 provenance 契約：manifest 綁定文件利用本輪 blob SHA 驗證並保存 `officialSha256`；重用 URI 保留既有已驗證 SHA；support-page-only 缺 SHA 或 mismatch 即拒絕。已知錯誤共用檔預設排除，不能因沒有 focused manual 又重新掛回。
+- PDF evidence 驗證同時核對 original question：答案必須包含使用者明示的功能／介面編號、必要操作或數值；只有相近頁面或泛用控制說明不能算 full。
+- Web rescue 的 `originalQuestion` 與 `searchQuery` 分離，輸出 `full / partial / none`、`groundingPresent` 與 rejection reasons。有來源的低風險通用排除可作 partial；精確型號能力／數值仍要求同來源 exact-model evidence。不得把 grounded-but-not-targeted 誤寫成完全搜尋不到。
+- `系列_／別稱_` 只界定候選型號。系列技術／規格題只有在所有候選完整型號的精確 RULE 都有該欄且正規化值一致時才直答；任一缺值或不同即選型。操作、排障、模式限定與可選功能永遠不以系列共識代替 PDF／QA。
+- 本版不更換任何模型、不增加 Router／PDF／Web 呼叫，也不遷移 File Search。
+
+## v29.6.281 官方手冊來源鏈、術語本體與原子證據
+
+### 2026-09-04 手冊治理補充
+
+- 官網複核結果：G95SD／`S49DG952SC` 最新仍是 2024-10-02 v2312130 共用 e-Manual ZIP，繁中 PDF 與舊 `S32CM703,S49DG952.pdf` bytes 相同；舊合併檔保留回復，但正式選擇排除並以單型號文件優先。它未在內文明列 G95SD，不能作該型號 capability／operation 的專屬證據。
+- M7／`S32CM703UC` 已有 2026-01-16 v2510220 新繁中 PDF，並已加入 `config/manual_registry.json`。空白封面手冊必須同時核對官方支援頁 SKU、下載網址 `ModelName` 與 SHA／provenance，且記為 `exactModelInDocument=false`。
+- 「依型號可能不支援」只能在 QA／RULE 或同段型號明列另有正向證據時肯定；否則保留未知。ZIP 不得直接進 PDF index，須先解出並驗證 PDF。Registry/schema、唯一性、來源、PDF header、SHA 與來源綁定均 fail-closed，索引採 staging 驗證後原子發布。
+- 日常自動查新與 Files URI 更新不需 `/重啟`；本次手冊治理不變更 Router、Fast、PDF、Web 模型與呼叫策略，沒有新增成本路徑。
+- 所有會產生回覆的一對一 LINE 文字、圖片及來源 postback，都要在路由前啟動一次等待動畫；旗標必須每個 webhook 事件重設，不能只在 PDF／Web 分支啟動。群組／多人聊天室因 LINE API 不支援而略過，TestUI 不呼叫 LINE API；不得以 Push 模擬等待。
+- v29.6.281 起現行每日額度為一般 10 題、官方手冊 2 次、網路解答 5 次；本列覆蓋下方歷史 20／5／10。三者仍獨立計數，轉進階來源會退回本輪一般額度，系統 Web rescue 的每日 3 次上限不變。
 
 - 固定入口順序：控制／產品身分／精準 QA／完整 RULE／人工核對 Evidence 先行，完整命中立即結束，`routerCalls=0`。只有模糊型號或系列、複合 claims、省略式自然追問、部分覆蓋或規則衝突，才可呼叫一次條件式 Router。
 - Router 為 `models/gemini-3.7-flash`，只用 `thinkingLevel: low`、Structured Output、短 context，無搜尋／PDF／Web／其他工具，也不允許 `answer` 欄位。它只能拆主張、判斷話題關係與從程式候選 index 選型；不能產生產品事實、決定扣次、指定文件或覆寫持久狀態。
@@ -41,7 +75,7 @@
 - 每個主張的答案必須綁定同筆來源、型號範圍、頁碼／網址、摘錄與限定條件。PBP「兩側＋120Hz」須在同一證據明文形成關係，禁止把 PBP 段落與另一處整機最大更新率拼接成結論；partial 只把未解 claim 送下一來源。
 - Web 精確數值 evidence 必須命中 canonical 完整型號；系列名、同系列其他型號或相近產品只可支援低風險排除方向，不可證明本型號的更新率、尺寸、介面數量、功率或 PBP 每側數值。無 exact-model 關聯就標示未證實並停止肯定推論。
 - 多 claim 執行固定為：先收集免費 QA／RULE／verified Evidence anchors；未解的 `manual_model_specific` 合併成一次同型號 PDF；`web_current` 與 PDF 隔離，Web-only 直接一次 Web，手冊＋Web 混合題則 PDF 完成後只將計畫性 Web claims 合併查一次。不得逐 claim 重複呼叫同一來源，也不得讓 Web claim 污染 PDF prompt。
-- 配額固定為：Router／選型／preflight 零來源扣次；轉進階來源時一般 20 題 hold 只退一次；PDF 真送出扣手冊 1，計畫性 Web 真送出扣 Web 1。混合 plan 可扣手冊 1＋Web 1，但不可再扣一般題。手冊因無證據／缺檔／pipeline error 才產生的系統 Web rescue 不扣 Web 10 次，另受每日 3 次上限且不可回 PDF；原 plan 已有 `web_current` 時仍屬計畫性 Web，不能套用免額度。供應商送出後 no evidence 仍算一次；送出前守門失敗與 operation cache 命中不扣。
+- 配額固定為：Router／選型／preflight 零來源扣次；轉進階來源時一般 10 題 hold 只退一次；PDF 真送出扣手冊 1，計畫性 Web 真送出扣 Web 1。混合 plan 可扣手冊 1＋Web 1，但不可再扣一般題。手冊因無證據／缺檔／pipeline error 才產生的系統 Web rescue 不扣 Web 5 次，另受每日 3 次上限且不可回 PDF；原 plan 已有 `web_current` 時仍屬計畫性 Web，不能套用免額度。供應商送出後 no evidence 仍算一次；送出前守門失敗與 operation cache 命中不扣。
 - 現況仍是 Gemini Files API 選定單一正確 PDF 後以 `file_data` 掛入 2.5 Flash，不是 File Search。本版不換模型、不新增搜尋工具；File Search 必須另案以固定手冊題 A/B，不能與 Router 同版遷移。
 - 稽核需保留 `routerCalls、routerCacheHits、plannerLatencyMs、routerCostTwd、routePlanValid、claimRoutes、selectedModel、pdfCalls、webCalls、finalCoverage`。正式接管前須達 Router JSON 有效率 99%、單次成本不超過 NT$0.01、P95 額外延遲不超過 2 秒、固定 20 題至少 19 題到達正確終點，且所有安全關鍵題 100%。
 - Router 輸入邊界為原題 500 字、上一主題 300 字、候選 20、evidence ID 8；最多 5 claims，輸出上限 384 tokens，目標約 800～1,500 input／50～100 output。Flash-Lite Standard 單價為 US$0.10／M input、US$0.40／M output，常見估算約 NT$0.003～0.006，實際以 `usageMetadata` 為準。
@@ -365,7 +399,7 @@
 - 使用者選手冊後的免費前置檢查不得再呼叫 Fast 模型。只允許精準 QA、人工逐頁核對片段或程式從該完整型號 RULE 擷取的明載規格；操作／設定沒有現成證據時必須繼續顯示手冊確認並真的讀 PDF。
 - `S32HG806ES` 的 Dual Mode 已由官方手冊第 27／35／43 頁人工核對：OSD `Game → Dual Mode`、可設自訂鍵、48–165Hz／48–330Hz 與 6K 165Hz 規格。僅精準命中該型號與雙模意圖時可零成本回答，不得套到其他 G8。
 - USB 已核對片段只回答「如何播放」與格式限制；含斷線、中斷、不穩、異常、無法、故障或明確非官方／網路意圖時不得搶答，必須繼續到對應來源。
-- 自然問句已同時明確出現非官方／公開網頁來源與查找解法意圖時，不先呼叫 Fast；零成本顯示「這題再搜網路」並退回一般 20 題額度。使用者按下後才由 Web 專用模型搜尋。
+- 自然問句已同時明確出現非官方／公開網頁來源與查找解法意圖時，不先呼叫 Fast；零成本顯示「這題再搜網路」並退回一般 10 題額度。使用者按下後才由 Web 專用模型搜尋。
 - 使用者確認 PDF 後若整本手冊生成仍取不到可核對證據，路由層自動做一次非 Samsung 官網的 Web 補救，不要求重按且不扣 10 次網搜額度；每聊天室每日最多 3 次系統補救。同題不得再次重試，Web 仍無證據時提供明確標示未經證實的保守操作方向與官網連結，禁止只回沒答案或形成迴圈。
 
 - 完整型號是跨日產品狀態：沒有新完整型號前，數天後自然追問、手冊、網路都沿用。短系列名列候選，不覆蓋；只有換型號、新完整型號或管理員 `/重啟` 清除／取代。
@@ -394,12 +428,12 @@
 - 官網 URI 只能使用本題完整型號或本題明確解析的 `primaryModel`；不得借上一題 `direct_search_models`／suggested cache。
 - 每日重傳若部分 PDF 上傳失敗，保留前次完整 URI 與備份；Drive 掃描完整時以完整檔名目錄建立索引，掃描中途失敗則連正式索引也不覆蓋。兩種失敗都排程一分鐘後重試，TestUI／稽核不得把暫時失敗誤報成手冊缺口。
 
-- 「直接問」20 題只計規格／FAQ 實質回答；手冊與網路使用各自額度，不得雙重計次。
+- 「直接問」10 題只計規格／FAQ 實質回答；手冊與網路使用各自額度，不得雙重計次。
 - 一般回答若只產生手冊授權引導，必須退回該次一般提問額度。
 - 一般流程已鎖定的完整型號必須寫入持久產品狀態；內容不同的新題仍沿用產品型號，但不得沿用舊答案與來源授權。手冊、網路、再手冊跨來源都不得洗掉型號。
 - 常駐 Rich Menu 維持三格；只有準備沿用已知型號時，才顯示情境 Quick Reply「換型號」。換型號保留原問題、零計次、零來源呼叫。
 
-- Rich Menu 與 TestUI 三格使用雙排超大字：第一排 `直接問`／`查手冊`／`搜網路`，第二排 `20題/日`／`5次/日`／`10次/日`。禁止縮回單行小字或塞入長句。
+- Rich Menu 與 TestUI 三格使用雙排超大字：第一排 `直接問`／`查手冊`／`搜網路`，第二排 `10題/日`／`2次/日`／`5次/日`。禁止縮回單行小字或塞入長句。
 
 - `G8` 是 `CLASS_RULES` 已定義的 Odyssey 系列別稱。系列別稱遇到型號相關功能／操作／手冊題時，先從 RULE 列完整型號按鈕；只有涵蓋相同別稱的精準 QA 可直接回答，禁止泛用 Smart／其他型號資料搶答。選定完整型號後不得再次進入選型迴圈。
 - 手冊 `countTokens` 的 20K 是成本警戒而非拒絕線；先刪除無關歷史，只保留本輪完整問題。100K 是絕對 token ceiling，2.5 Flash 依現價計算的 NT$0.35 成本 ceiling 通常更早生效；超限先用 `MEDIA_RESOLUTION_LOW` 重算，仍超標才停止且不扣次。
@@ -410,13 +444,13 @@
 - 正式 TestUI 真人提問驗收守門：完整型號操作題不得誤判為缺型號；QA／RULE／已核對片段不足時要直接執行手冊完成鏈，不能只推薦「官方手冊」。真正送出 PDF 前才扣手冊次數。
 - 使用者直接輸入文字是新問題，但在沒有新完整型號前仍沿用持久產品型號。手冊可輸入系列別稱或型號前段；多個候選時顯示可點選型號，選型均零扣次。
 - 使用者雖選官方手冊，仍須先做高信心 QA／CLASS_RULES 預檢；本機答案足夠時直接回答，零 PDF、零手冊扣點。只有不足時才進已授權 PDF。
-- 實驗期每位 LINE 使用者每天 20 次有效提問；來源 postback、取消、補型號與型號選擇不重複計次。群組內仍按 userId 個別計算。
-- LINE 客戶版只顯示 `本次約 NT$...｜今日提問剩餘 N/20`；token、paidCalls 與詳細成本仍只留 Request Audit／TestUI Logs。
-- 每人 20 題使用短 UserLock，不得與 PDF 索引同步共用 ScriptLock；鎖忙碌時 fail closed，必須零計次、零供應商呼叫並顯示友善重試訊息。
+- 實驗期每位 LINE 使用者每天 10 次有效提問；來源 postback、取消、補型號與型號選擇不重複計次。群組內仍按 userId 個別計算。
+- LINE 使用者只顯示 `本次約 NT$...｜今日提問剩餘 N/10`；token、paidCalls 與詳細成本仍只留 Request Audit／TestUI Logs。
+- 每人 10 題使用短 UserLock，不得與 PDF 索引同步共用 ScriptLock；鎖忙碌時 fail closed，必須零計次、零供應商呼叫並顯示友善重試訊息。
 
-- 一般訊息永遠先走 `規格＆FAQ`；精準 QA、CLASS_RULES 與人工驗證片段優先回答，但實驗期間每位使用者每天最多送出 20 題。
+- 一般訊息永遠先走 `規格＆FAQ`；精準 QA、CLASS_RULES 與人工驗證片段優先回答，但實驗期間每位使用者每天最多送出 10 題。
 - `官方手冊` 可由一般提問的自動完成鏈、Rich Menu postback 或相容舊指令建立一次性 SourceOperation；`網路解答` 除 PDF 的一次系統 rescue 外，仍由網路按鍵或相容指令啟動。pending 10 分鐘只用於等待題目或型號，查完、失敗或取消後回到可直接提問狀態，但持久型號保留。
-- 每聊天室每日（Asia/Taipei）手冊 5 次、網路 10 次；只有 token／檔案等預檢通過、第一個生成請求送出前才原子扣次。
+- 每聊天室每日（Asia/Taipei）手冊 2 次、網路 5 次；只有 token／檔案等預檢通過、第一個生成請求送出前才原子扣次。
 - `[AUTO_SEARCH_PDF]` 在 QA／RULE／已核對片段不足且型號可解析時，必須匯入一次性 manual SourceOperation；缺型號只列正式 PDF 候選，選完即查。`[AUTO_SEARCH_WEB]` 不得讓 PDF 自行聯網，只能由 PDF 終點觸發一次系統 rescue，或顯示可由使用者啟動的 Web 選項。
 - 手冊模式不得開 `google_search`，網路模式不得掛 PDF。任何新增的 PDF／Web 呼叫都必須通過 `assertAdvancedSourceGrant_()`。
 - 正式 Rich Menu 資產在 `docs/rich_menu/`；業主於 2026-08-14 明確改為直接設定全體 default，不再使用 `ADMIN_USER_ID` pilot。發布必須保存舊 default ID、讀回新 ID，並保留 rollback 工具。

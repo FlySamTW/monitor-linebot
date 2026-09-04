@@ -1,11 +1,66 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "documents": [
+    {
+      "docKey": "M7_CM703_SUPPORT_MANUAL_2510220",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": ["S32CM703UC"],
+      "canary": false,
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32CM703UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32CM703UC&CttFileID=11238283&CDCttType=UM&VPath=UM%2F202601%2F20260117065426001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "sourceFormat": "pdf",
+      "fileId": "11238283",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C"
+    },
+    {
+      "docKey": "S33GF_F332_SUPPORT_MANUAL_250711",
+      "sourceFileName": "new/S24F332.pdf",
+      "models": ["S24F332EA", "S24F332EAC"],
+      "canary": false,
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page_family_pattern",
+      "exactModelInDocument": false,
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS24F332EACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S24F332EAC&CttFileID=11512139&CDCttType=UM&VPath=UM%2F202606%2F20260619095148692%2FWUG_S33GF_ASIA_MENA_AFRICA_ENG_250711.pdf",
+      "sourceArtifactName": "WUG_S33GF_ASIA_MENA_AFRICA_ENG_250711.pdf",
+      "sourceFormat": "pdf",
+      "fileId": "11512139",
+      "fileVersion": "1.0",
+      "publishedAt": "2026-06-19",
+      "sourcePdfSha256": "050F4BE1E7AB9F71A17BB7F65C9F447242F50B04C792898F5D7404AFEB2492A9"
+    },
+    {
+      "docKey": "G95SD_SUPPORT_EMANUAL_2312130",
+      "sourceFileName": "new/S49DG952.pdf",
+      "models": ["S49DG952SC"],
+      "canary": false,
+      "documentRole": "support_page_shared_emanual",
+      "modelBinding": "official_support_page_archive_entry",
+      "exactModelInDocument": false,
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS49DG952SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S49DG952SC&CttFileID=9899725&CDCttType=UM&VPath=UM%2F202410%2F20241003033941001%2FBN81-24349B-450_EM_SMGOPNEUC_EU+ASIA+AFRICA_L35_231213.0.zip",
+      "sourceArtifactName": "BN81-24349B-450_EM_SMGOPNEUC_EU ASIA AFRICA_L35_231213.0.zip",
+      "sourceFormat": "zip_entry_pdf",
+      "archiveEntry": "BN81-24349B-450_EM_SMGOPNEUC_EU ASIA AFRICA_TPE_231213.0.pdf",
+      "fileId": "9899725",
+      "fileVersion": "2312130",
+      "publishedAt": "2024-10-02",
+      "archiveSha256": "8D2068D342E2DF062E90F53479192CC748B55359A4C9A41C010ED5BB1B46EB61",
+      "sourcePdfSha256": "5E8E314921B56DC49DA2B785C8CA9D31EFC96D1C18A71B5D74427C556DFC0F32"
+    },
     {
       "docKey": "M8_FM70X_FM803",
       "sourceFileName": "S32FM702,S32FM703,S32FM803.pdf",
       "models": ["S32FM702UC", "S32FM703UC", "S32FM803UC"],
-      "canary": true
+      "canary": true,
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "616AA64F4E092145FFF926A63ECB703F0E252DD6B1269AB3B5735B5ACB56503E"
     },
     {
       "docKey": "G8_H_SERIES_2026",
@@ -21,7 +76,9 @@
         "S27HG806EF",
         "S32HG806ES"
       ],
-      "canary": true
+      "canary": true,
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "92E0E5DDEFF984B1CDE422143A0EE71A3265E3B31AFE37B84893223CF8B94CF2"
     }
   ]
 }

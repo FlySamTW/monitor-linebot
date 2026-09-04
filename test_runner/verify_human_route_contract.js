@@ -52,8 +52,8 @@ const renderContext = {
   CURRENT_REPLY_FOOTER_APPENDED: false,
   CURRENT_DAILY_QUESTION_REMAINING: null,
   LAST_SOURCE_TEST_STATE: null,
-  SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
-  USER_DAILY_QUESTION_LIMIT: 20,
+  SOURCE_DAILY_LIMITS: { manual: 2, web: 5 },
+  USER_DAILY_QUESTION_LIMIT: 10,
   lastLlmCallAttempted: false,
 };
 vm.createContext(renderContext);
@@ -129,6 +129,7 @@ vm.createContext(sourceEntryContext);
 vm.runInContext(
   [
     extractFunction(linebot, "parseExplicitSourceCommand_"),
+    extractFunction(linebot, "isPdfKbFile"),
     extractFunction(linebot, "limitManualPdfFiles_"),
   ].join("\n\n"),
   sourceEntryContext,
@@ -141,7 +142,11 @@ assert.strictEqual(
   sourceEntryContext.parseExplicitSourceCommand_("#這題再搜網路").source,
   "web",
 );
-const pdfs = [1, 2, 3].map((id) => ({ id, mimeType: "application/pdf" }));
+const pdfs = [1, 2, 3].map((id) => ({
+  id,
+  name: `S32TEST${id}.pdf`,
+  mimeType: "application/pdf",
+}));
 assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M8 沒畫面").length, 1);
 assert.strictEqual(sourceEntryContext.limitManualPdfFiles_(pdfs, "M7 與 M8 比較").length, 2);
 
@@ -199,7 +204,9 @@ const driveFiles = [
   getId: () => metadata.id,
   getSize: () => metadata.size,
   getLastUpdated: () => new Date(metadata.updatedAt),
-  getBlob: () => ({ getBytes: () => [1, 2, 3] }),
+  getBlob: () => ({
+    getBytes: () => [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31],
+  }),
 }));
 const driveIterator = () => {
   let index = 0;
@@ -238,7 +245,14 @@ const recoveryContext = {
     getFolderById: () => ({ getFilesByType: driveIterator }),
     getFileById: (id) => driveFiles.find((file) => file.getId() === id),
   },
-  Utilities: { base64Encode: () => "AQID" },
+  Utilities: {
+    base64Encode: () => "AQID",
+    DigestAlgorithm: { SHA_256: "SHA_256" },
+    computeDigest: () => Array(32).fill(0),
+  },
+  getOfficialManualManifestEntryByFileName_: () => null,
+  normalizeManualEvidenceModel_: (value) => String(value || "").toUpperCase(),
+  manualEvidenceModelMatchesTarget_: (left, right) => left === right,
   uploadFileToGemini: (_key, _blob, _size, _type) => {
     uploadedDriveFiles.push(_size);
     return "https://generativelanguage.googleapis.com/files/focused";
@@ -254,6 +268,9 @@ vm.runInContext(
     extractFunction(linebot, "getPdfFileModelTokens_"),
     extractFunction(linebot, "pdfFileNameMatchesModelToken_"),
     extractFunction(linebot, "pdfFileNameMatchesModels"),
+    extractFunction(linebot, "isKnownUnsafeLegacySharedManual_"),
+    extractFunction(linebot, "enrichPdfKbItemWithOfficialProvenance_"),
+    extractFunction(linebot, "filterUnsafeLegacySharedManualCandidates_"),
     extractFunction(linebot, "buildDrivePdfIdentity_"),
     extractFunction(linebot, "isKbPdfUriFreshForDriveCandidate_"),
     extractFunction(linebot, "isPdfKbFile"),

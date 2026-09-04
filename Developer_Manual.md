@@ -1,8 +1,66 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.280)
+# Samsung LINE Bot 完整流程解析 (v29.6.287)
 
-## 2026-09-04（v29.6.280 / 語意規劃、原子證據與跨日主題根治）
+## 2026-09-04（v29.6.287 / Reset All 詞序無關同義契約）
 
-> **現行最高優先契約**：本節取代下方歷史版本中與 Router 模型、術語證據、手冊適用性、Web 證據、跨日狀態及來源快取互相衝突的敘述。v29.6.279 以前內容保留作事故與決策沿革，不代表目前實作。
+- v29.6.286 重問原句「把螢幕設定全部重設」時，PDF 與 OSD 檢索詞已正確，但通用操作契約只覆蓋「重設所有設定」的詞序，仍以 `provenance=0` 拒絕。
+- 現改為語意組合：同一句只要同時有「重設／還原動作」與「全部／所有設定」即為 `Reset All` 通用操作，不依賴中文詞序。型號、SHA、頁碼、摘錄、scope 與選配功能守門不變。
+- 快取 schema 升為 `EvidenceV6`，避免重播 v29.6.286 的失敗結果。
+- v29.6.287 最終 TestUI 以原句驗收通過：鎖定 `S24F332EAC`、掛載 `S24F332.pdf`、`pdfCalls=1 / webCalls=0`，結構化證據 `1/1`、第 22 頁、`finalCoverage=supported`，回答 `Support → Reset All`，成本 NT$0.1029。
+
+## 2026-09-04（v29.6.286 / 新手冊實查與通用重設檢索完成鏈）
+
+- v29.6.285 正式 TestUI 實問 `S24F332EAC 要怎麼把螢幕設定全部重設？`，LOG 已證明系統正確鎖定 `S24F332EAC`、掛載 `S24F332.pdf`並真正發出一次 PDF 請求；失敗點是 evidence provenance 只認「恢復出廠」，漏了同義的「重設所有設定 / Reset All」，不是錯檔或沒有讀 PDF。
+- 通用操作分類現納入「重設／重置／恢復／還原全部或所有設定」與 `Reset All`；仍需同時通過官方支援頁 SKU、download `ModelName`、SHA、頁碼、摘錄與 scope，不會連帶放行 Eye Saver Mode 等可選功能。
+- PDF Query Rewrite 不再把所有「重設」題硬塞 Smart Monitor / Tizen 選單。只有完整型號 RULE 明載 Tizen 時才加入 `All Settings / General & Privacy`；一般或介面未知的螢幕改查 `System / Setup & Reset / Reset All / Factory Default`，且永遠保留原題。
+- 本修復不增加模型呼叫、不更換 Router／Fast／PDF／Web 模型，也不放寬錯型號或選配功能證據。因完成證據語意已修正，進階來源快取升為 `EvidenceV5`，避免重播 v29.6.285 的 S24 失敗結果。
+
+## 2026-09-04（v29.6.285 / 手冊命名、新機自動納管與共用頁面適用性完成鏈）
+
+- `S32CM703UC` 已改用 Samsung 台灣支援頁的 2026-01-16 v2510220 繁中手冊，以 `S32CM703.pdf` 綁定；`S49DG952SC` 則以官方 ZIP 內已核對 SHA 的繁中 PDF 建立 `S49DG952.pdf` 單型號 Files alias。舊 `S32CM703,S49DG952.pdf` 只保留回復用途，正式選檔一律排除，避免把 M7 與 G95SD 當成同一精確手冊。
+- `S24F332EAC` 已從 Samsung 台灣支援頁取得 2026-06-19 v1.0 的官方英文 User Manual，驗證為 31 頁標準 PDF，以 `S24F332.pdf` 納入 registry。封面只明載 `S24F33*`，因此只能在支援頁 SKU 與 download `ModelName` 精確一致、星號只對應一碼時，以 `official_support_page_family_pattern / exactModelInDocument=false` 綁定，不冒充封面精確型號證據。
+- 每日官方手冊發現改為「繁中永遠優先；台灣支援頁沒有繁中 UM 才退到官方英文 UM」。英文備援仍必須通過 TW area、`UNI_TW`、UM、PDF/ZIP 格式、第一頁、SHA 與 provenance 所有守門；回答仍由 Bot 轉為台灣繁中。
+- `S27F612EAC` 官方下載實體是 `NASCA DRM` 而非 `%PDF-`，故明確列為不可進 RAG，不改副檔名偽裝 PDF；規格題仍由 RULE，手冊型未解主張走原有 Web 補救終點。`S27H802EFA` 雖來自完整型號能力列，現也納入 H 世代手冊覆蓋稽核；系列、術語、短別稱或 key/model 錯配列不會污染統計。
+- 支援頁綁定的共用手冊證據新增必填 `pageHeading` 與 `applicabilityExcerpt`，程式把標題、適用限制與摘錄一起核對型號／系列。像「只有 Odyssey Ark」的頁面，即使模型省略限制句或同頁也提到訊號源，都不能再套到 M7。
+- 共用手冊只寫「選擇已連接的外部裝置／訊號源」時，可把使用者問題中的 `HDMI 1/2`、`DP` 或 `USB-C` 當成要選的目標，完成基本人工輸入切換回答；這項綁定只限操作步驟，不能反推介面存在、埠數、版本、頻寬或最高／最低規格，Auto Source、PIP／PBP 與 KVM 也不適用。
+- 這是證據契約調整，沒有增加模型呼叫或更換回答模型；Router／Fast／PDF／Web 仍分別為 3.7 Flash low、2.5 Flash-Lite、2.5 Flash、2.5 Flash。進階來源快取升為 `EvidenceV4`，淘汰不含新頁面適用欄位的舊結果。
+
+## 2026-09-04（v29.6.284 / 進階來源快取契約換版）
+
+- 進階來源快取升為 `EvidenceV3`。凡 evidence validator 或完成狀態語意改變，必須同步換版，避免重播舊版「查了但未完成」的結果而跳過 PDF／Web。
+- 快取仍用台北日期、來源、canonical 型號、主題與知識 fingerprint 去重；本次只淘汰不再符合新完成契約的舊結果，不增加正常題目的呼叫數。
+
+## 2026-09-04（v29.6.283 / 手冊證據驗證與補救終點修復）
+
+- v29.6.282 正式 TestUI 以 `S32CM703UC` 連續追問驗證時，已正確鎖定並掛載 `S32CM703.pdf`，模型也回傳第 14／28 頁證據；但共用 feature validator 誤呼叫未宣告的 `escapeRegExp`，使有效結果在解析階段被當成失敗。
+- 現在由正式共用 helper 負責正規表示式跳脫，測試不可再用 stub 掩蓋缺少的 production dependency。
+- 所有「證據格式或適用範圍未完整通過」的終點都必須帶內部 `AUTO_SEARCH_WEB` 訊號並被 failure detector 識別；使用者只看到最後整合結果，不能只收到「我會接著查」卻沒有後續。
+
+## 2026-09-04（v29.6.282 / 精確手冊鎖、系列 RULE 共識與來源完成度）
+
+> **現行最高優先契約**：本節補充並覆蓋 v29.6.281 中與 PDF 候選、URI provenance、系列別回答及 Web 無證據終點衝突的說明。
+
+- v29.6.281 正式 TestUI 實問先以 `S32CM703UC` 零成本答對 4K／60Hz，下一句「那要怎麼手動切到 HDMI 2？」卻把系列兄弟 `S32DM702.pdf` 掛給已鎖定的 `S32CM703UC`；PDF 與 Web 各呼叫一次，合計約 NT$0.2087，仍未完成原題。這是文件選擇、provenance 與完成度驗證的結構性錯誤，不是提高回答模型就能修復。
+- 最新使用者訊息或狀態機已帶完整型號時，該型號是 PDF strict lock；系列別稱只供理解，不能再展開兄弟機種。最終附件還要做一次 exact-model allowlist，找不到正確文件即不得掛相似型號。
+- `PDF_MODEL_INDEX` 不再只看扁平型號字串判定「有手冊」，而以仍有 URI／inline 資料的實際 PDF 清單為準；即時 Drive recovery、rolling refresh、完整 sync 與手動清單合併都必須保存同一份 manifest provenance。空白封面或 support-page-only 文件缺 SHA、SHA 不符或來源綁定不完整時 fail-closed；已驗證 SHA 不得被下一輪同步洗掉。
+- 已知錯誤共用檔 `S32CM703,S49DG952.pdf` 預設不得參與正式選檔；只有明確 manifest、檔名綁定與附件 SHA 同時通過，才可建立受限的單型號 alias，且仍不能把「依型號可能不支援」當正向能力證據。
+- PDF Structured Output 的 evidence 除了與摘錄一致，最後答案還必須回答原題明示的功能、介面、編號、動作或數值。問 HDMI 2 卻只說「開啟控制功能表」屬 `partial/none`，不得標成 `supported`。
+- Web 補救分開保存 `originalQuestion`（完成度驗證）與 `searchQuery`（搜尋擴寫），統一回傳 `full / partial / none` 與 `groundingPresent`。有來源的低風險通用排除可保留為 partial；精確型號能力、數值與規格仍須同一來源直接支持該完整型號。要區分「找到網頁但不適用這款」與「完全沒有 Grounding」，不得把兩者都說成搜尋不到。
+- RULE 的 `系列_／別稱_` 是系列別對應與候選集合，不是整系列能力證據。只有所有候選完整型號的精確 RULE 都含本題規格欄位，且正規化後值完全一致時，才可免問代別直接回答系列共通規格；任一缺值／不同即選型。操作路徑、故障排除、可選功能與模式限定值不使用系列共識，仍走精準 QA 或同型號 PDF。
+- 本版沒有更換模型或新增模型呼叫：Router 仍只在模糊／複合／追問題使用 3.7 Flash low；Fast 為 2.5 Flash-Lite；PDF／Web 為 2.5 Flash。正式 PDF 仍是 Files API 整本附件，不是 managed File Search。File Search 可另案做固定手冊 A/B，但不得在這次路由修復同時遷移。
+
+## 2026-09-04（v29.6.281 / 官方手冊來源鏈與最新檔治理）
+
+> **現行最高優先契約**：本節取代下方歷史版本中與 Router 模型、術語證據、手冊適用性、Web 證據、跨日狀態及來源快取互相衝突的敘述。v29.6.280 以前內容保留作事故與決策沿革，不代表目前實作。
+
+### 2026-09-04 官方手冊資產複核與治理
+
+- `S49DG952SC / G95SD` 的 Samsung 台灣支援頁最新版仍為 2024-10-02、v2312130 的多語共用 e-Manual ZIP；其中繁中 PDF 與既有 `S32CM703,S49DG952.pdf` 位元完全相同。該檔保留作回復與來源稽核，但正式選擇器排除舊合併檔並優先單型號別名；因文件內未明列 G95SD，不能視為 G95SD 型號專屬功能證據。
+- `S32CM703UC / M7` 的 Samsung 台灣支援頁已有 2026-01-16、v2510220 新繁中 PDF，已加入 `config/manual_registry.json`。空白型號封面的官方手冊只有在「支援頁 SKU＋下載網址 `ModelName`＋檔案 SHA／完整 provenance」三向一致時才可納管，且必須標記 `exactModelInDocument=false`。
+- 共用手冊若寫「依型號可能不支援」等保留語，只有同段明列目標型號，或 QA／RULE 已另有該完整型號的正向證據，才可肯定功能；否則只能回答通用操作或保留未知，不能把候選章節當支援證明。
+- ZIP 只可作官方來源包與 provenance；須先離線解出、驗證真正 PDF 後才能進索引，ZIP 本身不得進 PDF index。Registry 驗證採 fail-closed：schema、唯一鍵、來源檔、PDF header、SHA 或來源綁定任一不符即拒絕，並先在 staging 完整建置與檢索驗證，通過後才原子替換正式索引。
+- 每日例行工作會自動查新手冊並更新過期 Files URI；正常新增或換版不需要管理員執行 `/重啟`。本輪未變更 Fast／PDF／Web／Router 模型，也未增加模型或來源呼叫，因此沒有新增問答成本機制。
+- LINE 一對一聊天室的文字、圖片與來源 postback，必須在任何回答路由前各呼叫一次等待動畫；同一 webhook 事件最多一次。不得把動畫只放在 PDF／Web 慢路徑，否則 QA／RULE、錯誤收斂與按鍵回覆會看起來沒有處理。LINE 官方不支援群組／多人聊天室等待動畫，TestUI 也不得呼叫 LINE API；這項 UX 呼叫不增加 Gemini 成本。
+- **現行實驗額度自 v29.6.281 起為一般 10 題／日、官方手冊 2 次／日、網路解答 5 次／日**，以使用者或聊天室及 Asia/Taipei 日期分開持久計數。此列覆蓋下方歷史章節曾記載的 20／5／10；Router、補型號、來源按鍵、取消、preflight 與只轉交進階來源的空輪不扣一般額度，系統 Web rescue 仍使用獨立每日 3 次上限。
 
 ### 為何這次不是「再換一個更聰明的回答模型」
 
@@ -59,7 +117,7 @@
 - 程式仍是唯一來源決策者，順序固定為 `控制／身分／免費證據 → QA／RULE → PDF → Web`。`conditional` 接管後，舊 `[AUTO_SEARCH_PDF]`、`[AUTO_SEARCH_WEB]`、`[NEED_DOC]` 只能作 fallback／稽核，不得再成為第二個正式決策者或覆蓋 RouteAnalysisV1。
 - 一般使用者送出問題代表希望系統完成可核對答案；在 `conditional` 模式，通過應用端 schema、候選、信心與狀態驗證的 Router 分類可由**程式政策**自動執行必要 PDF／Web，不需要再要求使用者按一次來源。這不是 Router 自行授權：Router 只回傳分類，程式仍須通過型號、來源可用性、Evidence、配額、成本、冪等與供應商預檢。使用者明確按手冊／網路時則直接進該來源狀態機，`routerCalls=0`；缺型號只選一次，選完接回原題。
 - 分類仍不確定時只准問一次自然釐清，例如「你是要查這款的操作步驟，還是確認它有沒有這個功能？」；不得顯示 Router、claim、confidence、schema、fallback 等程式術語。釐清仍不足時要到安全終點，可用同儕口吻說「我先幫你記給 Sam」，但不得虛構已通知、已建立工單或已由 Sam 處理。
-- 待釐清／補型號狀態保存原題 10 分鐘；使用者在有效期內回答系列、完整型號或釐清選項時，必須接回原問題，不建立新題、不重扣一般 20 題。逾時後才視為新流程，但持久完整型號仍依既有跨日契約保存。
+- 待釐清／補型號狀態保存原題 10 分鐘；使用者在有效期內回答系列、完整型號或釐清選項時，必須接回原問題，不建立新題、不重扣一般 10 題。逾時後才視為新流程，但持久完整型號仍依既有跨日契約保存。
 
 ### RouteAnalysisV1 與 Evidence 契約
 
@@ -74,9 +132,9 @@
 1. 先依每個 claim 執行高信心 QA／精確 RULE／人工核對片段；命中的內容立即形成免費 evidence anchor，不再交給付費來源。
 2. 剩餘 `manual_model_specific` claims 合併成同一次、同一已確認型號的 PDF 查詢；不得每個 claim 各讀一次手冊。若缺完整型號，只顯示實際 PDF 索引候選，選定後接續同一 plan。
 3. `web_current` claims 不得混入 PDF prompt。只有 Web claims 時直接做一次 Web；同題同時有手冊與時效／第三方 Web claims 時，先保留本機 evidence、再查一次 PDF，最後只把計畫中的 Web claims 合併成一次 Web 查詢。
-4. 一般 20 題額度只保留於本機／Fast 已交付實質答案的情況；一旦該題轉入 PDF 或 Web，原本的一般題 hold 只退回一次。Router 呼叫、補型號、選型、快取命中與來源 preflight 都不扣一般、手冊或 Web 次數。
-5. 真正送出 PDF 供應商請求前才扣手冊 1 次；Web-only 或混合 plan 的「計畫性 Web claims」真正送出前才扣使用者 Web 1 次。混合 plan 可以是手冊 1＋Web 1，但不得再扣一般 20 題，也不得因 claims 數量重複扣同一來源。
-6. 「手冊本身無證據／缺檔／索引或供應商失敗」所觸發的 Web 是**系統補救**，不是原 plan 的 `web_current` claim：不扣使用者 Web 10 次額度，另受每聊天室每日 3 次系統補救上限；只能補救一次，不得再回 PDF。若同一 plan 原本已有 Web claims，該次 Web 仍屬計畫性 Web 並扣 Web 1 次，不能假借系統補救免額度。
+4. 一般 10 題額度只保留於本機／Fast 已交付實質答案的情況；一旦該題轉入 PDF 或 Web，原本的一般題 hold 只退回一次。Router 呼叫、補型號、選型、快取命中與來源 preflight 都不扣一般、手冊或 Web 次數。
+5. 真正送出 PDF 供應商請求前才扣手冊 1 次；Web-only 或混合 plan 的「計畫性 Web claims」真正送出前才扣使用者 Web 1 次。混合 plan 可以是手冊 1＋Web 1，但不得再扣一般 10 題，也不得因 claims 數量重複扣同一來源。
+6. 「手冊本身無證據／缺檔／索引或供應商失敗」所觸發的 Web 是**系統補救**，不是原 plan 的 `web_current` claim：不扣使用者 Web 5 次額度，另受每聊天室每日 3 次系統補救上限；只能補救一次，不得再回 PDF。若同一 plan 原本已有 Web claims，該次 Web 仍屬計畫性 Web 並扣 Web 1 次，不能假借系統補救免額度。
 7. 請求送出後即使 no evidence 或供應商回錯仍算該來源一次；送出前被型號、檔案、token、成本或額度守門擋下則不扣。相同 route plan／型號／問題命中 operation cache 時零供應商、零再次扣次。
 
 ### 模式、成本與稽核
@@ -740,7 +798,7 @@
 - 最近題目保存 30 分鐘，用於判定「同一題」與免重複查詢；已確認完整型號另存為持久產品狀態，不受 30 分鐘限制。
 - 沒有新完整型號前，數天後的自然追問、手冊、網路與跨來源查證都沿用已確認型號；只有「換型號」、新完整型號或管理員 `/重啟` 才清除／取代。
 - Rich Menu 永遠只有三格。「換型號」是已知型號準備被沿用時才出現的情境 Quick Reply，不得變成第四個常駐格。
-- 一般 20 題、手冊 5 次、網路 10 次是三個獨立額度。手冊已付費但無證據時可執行一次系統 Web 補救；補救不扣使用者網搜額度，另受每日 3 次供應商嘗試上限保護。
+- 一般 10 題、手冊 2 次、網路 5 次是三個獨立額度。手冊已付費但無證據時可執行一次系統 Web 補救；補救不扣使用者網搜額度，另受每日 3 次供應商嘗試上限保護。
 
 | 案例 | 使用者問法／操作 | 流程走向 | 計次與供應商 | 預期結果 |
 |---|---|---|---|---|
@@ -812,7 +870,7 @@
 - 顯示／沒畫面題只保留影像協定、輸入來源與必要線材；未問供電或攝影機時不混入 65W、充電、Power Delivery 或攝影機資訊。
 - Fast Mode 最多注入 8 筆相關 RULE，input 最多 12K、output 最多 800 tokens。完整 PDF 先移除無關歷史並以含 `file_uri` 的 `countTokens` 預檢；20K 僅記錄成本警戒，100K 是絕對 token ceiling，而 2.5 Flash 的 NT$0.35 成本 ceiling 通常更早拒絕送出；計數失敗仍 fail closed。
 - PDF output 最多 1200 tokens；PDF 失敗不得拔掉手冊後改用 AI 內建知識回答，必須進一次受控 Web rescue，再以可核對結果或明確後續選項結束。
-- `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；客戶版隱藏 token，只保留簡版 `本次約 NT$...｜今日提問剩餘 N/20`。
+- `Request Audit` 以 JSON 保存 `stage/model/paidCalls/pdfCalls/webCalls/inputTokens/outputTokens/estimatedCostTwd/sources`；LINE 使用者版隱藏 token，只保留簡版 `本次約 NT$...｜今日提問剩餘 N/10`。
 - `CLASS_RULES` 既有「型號：尚無資訊」未完成列會在同步時排除，不注入正式 prompt/index；Product Finder 會把對應型號轉進待審核清單，不直接刪除商用 Sheet 資料。
 
 - Fast Mode 只能使用 QA 與 CLASS_RULES，不可用 LLM 自身知識補規格、步驟、價格、據點或官方資訊。
@@ -859,9 +917,9 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.280）
+## ✅ 現行鐵律 SOP（v29.6.287）
 
-1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 20 題；若只引導查手冊則退回本次額度。
+1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 10 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：QA／RULE／已核對片段不足時，自動建立一次性 manual SourceOperation；「查官方手冊」按鍵則是使用者主動指定同一路徑。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限依既有頁面收斂／成本守門處理。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。
 3. **再網路搜尋**：價格/通路/活動/據點/最新資訊才由網路鍵直接查。使用者已確認 PDF 且 PDF 無證據時，系統自動補搜一次非官方 Web，不扣使用者網搜額度；結果必須標 `[來源:網路搜尋]`。
 4. **無證據仍要收斂**：QA、RULE、PDF 與一次性 Web 補救都無原子證據時，只保留已確認事實、指出仍缺的資料，並提供該款官網或請 Sam 補入 QA／RULE 的安全下一步；不得把模型草稿或「大概可試」改寫成產品能力／操作答案，也不得叫使用者反覆重搜。

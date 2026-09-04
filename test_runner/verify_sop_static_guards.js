@@ -1792,7 +1792,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,1800}Alias Family Identity v29\.6\.275[\s\S]{0,1800}Alias Selection Gate v29\.6\.116[\s\S]{0,16000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,3000}RULE Term Definition v29\.6\.280[\s\S]{0,1800}Alias Family Identity v29\.6\.275[\s\S]{0,1800}Alias Selection Gate v29\.6\.116[\s\S]{0,16000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(

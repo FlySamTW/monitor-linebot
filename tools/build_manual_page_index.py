@@ -13,13 +13,17 @@ import gzip
 import hashlib
 import json
 import math
+import os
 import re
 import statistics
 import sys
+import tempfile
 import time
 import unicodedata
 from collections import Counter, defaultdict
+from datetime import date
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import fitz
 
@@ -37,6 +41,14 @@ STOP_GRAMS = {
     "怎麼", "如何", "可以", "我要", "哪裡", "在哪", "設定", "使用",
     "產品", "功能", "顯示", "螢幕", "選擇", "進行", "支援", "依型",
 }
+SUPPORTED_REGISTRY_SCHEMA_VERSION = 2
+SUPPORTED_SOURCE_FORMATS = {"pdf", "zip_entry_pdf"}
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
+DOC_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+class RegistryValidationError(ValueError):
+    """Raised before artifact generation when manual provenance is unsafe."""
 
 
 def load_json(path: Path) -> dict:
@@ -67,6 +79,159 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def normalized_model_key(value: str) -> str:
+    model = normalize_text(value).upper()
+    if model.startswith("LS"):
+        model = model[1:]
+    return model
+
+
+def require_string(document: dict, field: str, doc_key: str) -> str:
+    value = document.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise RegistryValidationError(f"{doc_key}: {field} must be a non-empty string")
+    return value.strip()
+
+
+def require_sha256(document: dict, field: str, doc_key: str) -> str:
+    value = require_string(document, field, doc_key)
+    if not SHA256_RE.fullmatch(value):
+        raise RegistryValidationError(f"{doc_key}: {field} must be a 64-character SHA-256")
+    return value.lower()
+
+
+def safe_source_path(manual_dir: Path, source_file_name: str, doc_key: str) -> Path:
+    source_ref = Path(source_file_name)
+    if source_ref.is_absolute():
+        raise RegistryValidationError(f"{doc_key}: sourceFileName must be relative to manual-dir")
+    manual_root = manual_dir.resolve()
+    source_path = (manual_root / source_ref).resolve()
+    try:
+        source_path.relative_to(manual_root)
+    except ValueError as error:
+        raise RegistryValidationError(
+            f"{doc_key}: sourceFileName escapes manual-dir"
+        ) from error
+    if source_path.suffix.lower() != ".pdf":
+        raise RegistryValidationError(f"{doc_key}: sourceFileName must point to an extracted PDF")
+    if not source_path.is_file():
+        raise RegistryValidationError(f"{doc_key}: source PDF does not exist: {source_file_name}")
+    with source_path.open("rb") as handle:
+        if handle.read(5) != b"%PDF-":
+            raise RegistryValidationError(f"{doc_key}: source file is not a PDF")
+    return source_path
+
+
+def validate_https_url(document: dict, field: str, doc_key: str) -> str:
+    value = require_string(document, field, doc_key)
+    if not value.lower().startswith("https://"):
+        raise RegistryValidationError(f"{doc_key}: {field} must use https")
+    return value
+
+
+def validate_archive_metadata(document: dict, doc_key: str) -> None:
+    artifact_name = require_string(document, "sourceArtifactName", doc_key)
+    if not artifact_name.lower().endswith(".zip"):
+        raise RegistryValidationError(f"{doc_key}: zip_entry_pdf sourceArtifactName must end in .zip")
+
+    archive_entry = require_string(document, "archiveEntry", doc_key).replace("\\", "/")
+    entry_path = PurePosixPath(archive_entry)
+    if entry_path.is_absolute() or ".." in entry_path.parts or entry_path.suffix.lower() != ".pdf":
+        raise RegistryValidationError(f"{doc_key}: archiveEntry must be a safe PDF path")
+
+    archive_sha = require_sha256(document, "archiveSha256", doc_key)
+    source_sha = require_sha256(document, "sourcePdfSha256", doc_key)
+    if archive_sha == source_sha:
+        raise RegistryValidationError(f"{doc_key}: archiveSha256 cannot equal extracted PDF SHA-256")
+
+    download_url = validate_https_url(document, "downloadUrl", doc_key)
+    if ".zip" not in download_url.lower():
+        raise RegistryValidationError(f"{doc_key}: zip_entry_pdf downloadUrl must identify a ZIP")
+    validate_https_url(document, "supportUrl", doc_key)
+    require_string(document, "fileId", doc_key)
+    require_string(document, "fileVersion", doc_key)
+    published_at = require_string(document, "publishedAt", doc_key)
+    try:
+        date.fromisoformat(published_at)
+    except ValueError as error:
+        raise RegistryValidationError(
+            f"{doc_key}: publishedAt must be a valid ISO date"
+        ) from error
+
+
+def validate_registry(registry: dict, manual_dir: Path) -> None:
+    """Validate all registry provenance before any output artifact is written."""
+    if not isinstance(registry, dict):
+        raise RegistryValidationError("registry root must be an object")
+    if registry.get("schemaVersion") != SUPPORTED_REGISTRY_SCHEMA_VERSION:
+        raise RegistryValidationError(
+            f"unsupported registry schemaVersion: {registry.get('schemaVersion')!r}; "
+            f"expected {SUPPORTED_REGISTRY_SCHEMA_VERSION}"
+        )
+    documents = registry.get("documents")
+    if not isinstance(documents, list) or not documents:
+        raise RegistryValidationError("registry documents must be a non-empty array")
+
+    doc_keys: dict[str, int] = {}
+    model_owners: dict[str, str] = {}
+    for index, document in enumerate(documents):
+        if not isinstance(document, dict):
+            raise RegistryValidationError(f"documents[{index}] must be an object")
+        doc_key = require_string(document, "docKey", f"documents[{index}]")
+        if not DOC_KEY_RE.fullmatch(doc_key):
+            raise RegistryValidationError(f"{doc_key}: docKey contains unsafe characters")
+        folded_key = doc_key.casefold()
+        if folded_key in doc_keys:
+            raise RegistryValidationError(
+                f"duplicate docKey: {doc_key} conflicts with documents[{doc_keys[folded_key]}]"
+            )
+        doc_keys[folded_key] = index
+
+        source_format = require_string(document, "sourceFormat", doc_key)
+        if source_format not in SUPPORTED_SOURCE_FORMATS:
+            raise RegistryValidationError(
+                f"{doc_key}: unsupported sourceFormat {source_format!r}"
+            )
+        source_file_name = require_string(document, "sourceFileName", doc_key)
+        source_path = safe_source_path(manual_dir, source_file_name, doc_key)
+        declared_sha = require_sha256(document, "sourcePdfSha256", doc_key)
+        actual_sha = sha256_file(source_path)
+        if declared_sha != actual_sha:
+            raise RegistryValidationError(
+                f"{doc_key}: sourcePdfSha256 mismatch; declared={declared_sha}, actual={actual_sha}"
+            )
+
+        models = document.get("models")
+        if not isinstance(models, list) or not models:
+            raise RegistryValidationError(f"{doc_key}: models must be a non-empty array")
+        local_models: set[str] = set()
+        for model_index, model in enumerate(models):
+            if not isinstance(model, str) or not model.strip():
+                raise RegistryValidationError(
+                    f"{doc_key}: models[{model_index}] must be a non-empty string"
+                )
+            normalized = normalized_model_key(model)
+            if not normalized:
+                raise RegistryValidationError(f"{doc_key}: models[{model_index}] is invalid")
+            if normalized in local_models:
+                raise RegistryValidationError(f"{doc_key}: duplicate model alias {model!r}")
+            local_models.add(normalized)
+            owner = model_owners.get(normalized)
+            if owner:
+                raise RegistryValidationError(
+                    f"ambiguous model {model!r}: registered by both {owner} and {doc_key}; "
+                    "the current resolver permits exactly one active document per model"
+                )
+            model_owners[normalized] = doc_key
+
+        if source_format == "zip_entry_pdf":
+            validate_archive_metadata(document, doc_key)
+        elif "archiveEntry" in document or "archiveSha256" in document:
+            raise RegistryValidationError(
+                f"{doc_key}: archive metadata is only valid for sourceFormat=zip_entry_pdf"
+            )
 
 
 def normalize_text(value: str) -> str:
@@ -214,6 +379,10 @@ def build_document(document: dict, manual_dir: Path, output_dir: Path, lexicon: 
     if not source_path.exists():
         raise FileNotFoundError(f"Missing manual: {source_path}")
     source_sha = sha256_file(source_path)
+    if source_sha != str(document["sourcePdfSha256"]).lower():
+        raise RegistryValidationError(
+            f"{document['docKey']}: source PDF changed after registry validation"
+        )
     revision = source_sha[:12]
     doc_key = document["docKey"]
     pages = extract_pages(source_path)
@@ -435,6 +604,38 @@ def verify_cases(indexes: dict[str, dict], registry: dict, lexicon: dict, cases_
     }
 
 
+def publish_staged_artifacts(
+    staged_output: Path,
+    output_dir: Path,
+    external_report: tuple[Path, Path] | None = None,
+) -> None:
+    """Publish a complete validated generation; make the manifest visible last."""
+    manifest_name = "_manual-index-manifest.json"
+    staged_manifest = staged_output / manifest_name
+    if not staged_manifest.is_file():
+        raise RuntimeError("staged manifest is missing")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    staged_files = sorted(
+        path for path in staged_output.rglob("*")
+        if path.is_file() and path != staged_manifest
+    )
+    for staged_path in staged_files:
+        relative_path = staged_path.relative_to(staged_output)
+        destination = output_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(staged_path, destination)
+
+    if external_report:
+        staged_report, report_destination = external_report
+        report_destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(staged_report, report_destination)
+
+    # Consumers switch generations only through this file. Publishing it last
+    # prevents a failed build from pointing at incomplete shards.
+    os.replace(staged_manifest, output_dir / manifest_name)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manual-dir", type=Path, default=DEFAULT_MANUAL_DIR)
@@ -446,45 +647,77 @@ def main() -> int:
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
 
-    registry = load_json(args.registry)
+    try:
+        registry = load_json(args.registry)
+        validate_registry(registry, args.manual_dir)
+    except (RegistryValidationError, json.JSONDecodeError, OSError) as error:
+        print(json.dumps({
+            "error": "MANUAL_REGISTRY_VALIDATION_FAILED",
+            "detail": str(error),
+        }, ensure_ascii=False), file=sys.stderr)
+        return 2
+
     lexicon = load_json(args.lexicon)
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    indexes: dict[str, dict] = {}
-    manifest_documents: dict[str, dict] = {}
-    for document in registry.get("documents", []):
-        built = build_document(document, args.manual_dir, args.output_dir, lexicon, args.shard_size)
-        indexes[document["docKey"]] = built
-        manifest_documents[document["docKey"]] = {
-            "candidateRevision": built["revision"],
-            "status": "LOCAL_VALIDATED_PENDING_UPLOAD",
-            "sourcePdfSha256": built["sourcePdfSha256"],
-            "sourceFileName": built["sourceFileName"],
-            "meta": built["meta"],
+    staging_parent = args.output_dir.resolve().parent
+    staging_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".manual-index-stage-", dir=staging_parent) as temp_name:
+        staging_root = Path(temp_name)
+        staged_output = staging_root / "artifacts"
+        indexes: dict[str, dict] = {}
+        manifest_documents: dict[str, dict] = {}
+        for document in registry["documents"]:
+            built = build_document(document, args.manual_dir, staged_output, lexicon, args.shard_size)
+            indexes[document["docKey"]] = built
+            manifest_documents[document["docKey"]] = {
+                "candidateRevision": built["revision"],
+                "status": "LOCAL_VALIDATED_PENDING_UPLOAD",
+                "sourcePdfSha256": built["sourcePdfSha256"],
+                "sourceFileName": built["sourceFileName"],
+                "meta": built["meta"],
+            }
+
+        report = verify_cases(indexes, registry, lexicon, args.cases)
+        summary = {
+            "documents": len(indexes),
+            "goldenRecallAt5": report["goldenRecallAt5"],
+            "paraphraseRecallAt5": report["paraphraseRecallAt5"],
+            "negativePassRate": report["negativePassRate"],
+            "retrievalLatencyMs": report["retrievalLatencyMs"],
+            "failures": report["failures"],
+            "outputDir": str(args.output_dir),
         }
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        passed = (
+            report["goldenRecallAt5"] == 1.0 and
+            report["paraphraseRecallAt5"] >= 0.95 and
+            report["negativePassRate"] == 1.0 and
+            not report["failures"]
+        )
+        if not passed:
+            return 1
 
-    report = verify_cases(indexes, registry, lexicon, args.cases)
-    manifest = {"schemaVersion": 1, "generation": 1, "documents": manifest_documents}
-    write_json(args.output_dir / "_manual-index-manifest.json", manifest)
-    report_path = args.report or (args.output_dir / "shadow_validation_report.json")
-    write_json(report_path, report)
+        manifest = {"schemaVersion": 1, "generation": 1, "documents": manifest_documents}
+        write_json(staged_output / "_manual-index-manifest.json", manifest)
 
-    summary = {
-        "documents": len(indexes),
-        "goldenRecallAt5": report["goldenRecallAt5"],
-        "paraphraseRecallAt5": report["paraphraseRecallAt5"],
-        "negativePassRate": report["negativePassRate"],
-        "retrievalLatencyMs": report["retrievalLatencyMs"],
-        "failures": report["failures"],
-        "outputDir": str(args.output_dir),
-    }
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-    passed = (
-        report["goldenRecallAt5"] == 1.0 and
-        report["paraphraseRecallAt5"] >= 0.95 and
-        report["negativePassRate"] == 1.0 and
-        not report["failures"]
-    )
-    return 0 if passed else 1
+        external_report: tuple[Path, Path] | None = None
+        if args.report is None:
+            write_json(staged_output / "shadow_validation_report.json", report)
+        else:
+            report_destination = args.report.resolve()
+            output_root = args.output_dir.resolve()
+            try:
+                report_relative = report_destination.relative_to(output_root)
+            except ValueError:
+                staged_report = staging_root / "external-shadow-validation-report.json"
+                write_json(staged_report, report)
+                external_report = (staged_report, report_destination)
+            else:
+                if report_relative == Path("_manual-index-manifest.json"):
+                    raise ValueError("--report cannot overwrite the manual index manifest")
+                write_json(staged_output / report_relative, report)
+
+        publish_staged_artifacts(staged_output, args.output_dir.resolve(), external_report)
+        return 0
 
 
 if __name__ == "__main__":

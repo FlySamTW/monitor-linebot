@@ -1,12 +1,66 @@
 # 開發對話紀錄
 
-## 2026-09-04（v29.6.280 / G9 燈效幻覺的全局 Evidence 根治）
+## 2026-09-04（v29.6.287 / Reset All 詞序契約）
+
+- v29.6.286 正式同版 TestUI 再測「S24F332EAC 把螢幕設定全部重設」，已正確用一般 OSD 詞彙並找到手冊證據，但「設定全部重設」的詞序未被 v29.6.286 契約覆蓋，仍在最後 provenance 被誤拒。
+- 改為動作與對象分離判定，「重設所有設定」、「把設定全部重設」、`Reset All` 都進同一個通用契約；不牽動型號與選配功能政策。
+- 以使用者原句新增回歸測試，快取升為 `EvidenceV6`。
+- 發布至 Apps Script 1468 後再以全新 TestUI 身分實問原句：`S24F332.pdf / pdfCalls=1 / webCalls=0 / evidence=1/1 / page=22 / supported`，回答 `Support → Reset All`，費用 NT$0.1029。本輪 M7 與 S24 成功／失敗負例總成本 NT$0.6323，低於 NT$2 上限。
+
+## 2026-09-04（v29.6.286 / S24 新手冊實查與重設檢索修復）
+
+- 正式 v29.6.285 TestUI 以 `S24F332EAC 要怎麼把螢幕設定全部重設？` 實問：正確鎖定 `S24F332EAC`、掛載 `S24F332.pdf`、`pdfCalls=1`，但因「重設所有設定」未被視為通用 `Reset All` 操作，最後在 provenance 守門被拒絕。
+- 修復同義操作契約，並加入 S24 family-pattern 正例與 Eye Saver Mode 不得誤放行的負例；沒有整體放寬 support-page-only 證據。
+- 找到第二個全域根因：日前 Query Rewrite 將所有重設題都錨定在 Smart Monitor / Tizen。現以 exact RULE 分流：Tizen 才搜智慧選單，其餘改搜通用 OSD 中英文標題。
+- 新增六類 Query Rewrite 契約測試，並保留原有來源、型號、SHA、頁碼與摘錄守門。
+- 進階來源快取升為 `EvidenceV5`，只汰汰舊版未完成結果；正常題的模型與呼叫數不變。
+
+## 2026-09-04（v29.6.285 / 手冊命名、新機自動納管與頁面適用性）
+
+- M7 與 G95SD 已拆成 `S32CM703.pdf`、`S49DG952.pdf` 精確資產；舊跨機型合併檔退出正式選檔。
+- 新增 `S24F332.pdf`：Samsung 台灣 `LS24F332EACXZW` 支援頁 2026-06-19 v1.0 英文 User Manual，31 頁、標準 `%PDF-`、SHA-256 `050F4BE1E7AB9F71A17BB7F65C9F447242F50B04C792898F5D7404AFEB2492A9`。封面 `S24F33*` 以受限的 support-page family pattern 綁定，不冒充精確型號證據。
+- 自動發現現在繁中 UM 優先，台灣頁無繁中才選英文 UM；非 TW area、非 `UNI_TW`、非 UM、格式錯誤、錯 download `ModelName` 或過寬 wildcard 均 fail-closed。
+- `S27F612EAC` 官方檔頭是 `NASCA DRM`而非 PDF，禁止進 RAG；`S27H802EFA` 的完整型號能力列已納入手冊覆蓋稽核。
+- 離線五本 registry 全數建索引通過：`goldenRecall@5=1.0`、`paraphraseRecall@5=1.0`、`negativePassRate=1.0`，P95 約 2.2 ms。
+- PDF evidence 新增頁面標題與適用限制欄位；Odyssey Ark／其他系列頁不得跨機套用。
+- 通用訊號源步驟可回答使用者指定的 HDMI 1/2 等選擇目標，但不能提升成介面能力或規格證據。
+- 快取 schema 升為 `EvidenceV4`；沒有新增模型呼叫或提高 PDF／Web 模型。
+
+## 2026-09-04（v29.6.284 / 舊失敗快取淘汰）
+
+- v29.6.283 再測時正確進入自動手冊路由，卻命中 `EvidenceV2` 跨版本完成快取，重播 v29.6.282 的驗證失敗文字，造成 `pdfCalls=0`。
+- 快取 schema 升為 `EvidenceV3`；新契約仍保留同題去重，但不再把舊版未完成答覆當成完成答案。
+
+## 2026-09-04（v29.6.283 / 手冊驗證例外與 Web 補救修復）
+
+- v29.6.282 真人 TestUI 已證明 `S32CM703UC` 只掛 `S32CM703.pdf`，但模型找到第 14／28 頁後發生 `escapeRegExp is not defined`，因此有效手冊內容被誤丟棄。
+- 補上正式共用 `escapeRegExp`，並把 weak-scope／evidence failure 統一標記為必須立即執行 Web rescue，避免只回「接著查」卻沒有第二階段。
+
+## 2026-09-04（v29.6.282 / M7 錯手冊事故的全域修復）
+
+- v29.6.281 正式 TestUI 的 `S32CM703UC` 規格題先零成本答對；自然追問「那要怎麼手動切到 HDMI 2？」卻錯掛 `S32DM702.pdf`，再做一次 Web 補救仍未完成，總成本約 NT$0.2087。這證明已知型號在 PDF 選擇階段被系列展開覆蓋，且 evidence validator 沒有驗證答案是否真正回到原題。
+- v29.6.282 將完整型號變成 strict PDF lock，最後再以 exact-model allowlist 限制附件；可用性改查實際 URI／inline 清單，不採信只有型號字串的過期扁平索引。
+- 所有 PDF URI 寫入／換新統一維持 manifest SHA provenance，避免即時找回、rolling refresh 或完整同步將已驗證 hash 洗掉。已知錯誤共用檔不再因缺 focused manual 被重新採用。
+- 手冊答案新增原題功能／介面／動作／數值完成度驗證；Web rescue 分離 original question 與 search query，並輸出 full／partial／none 及是否真的有 grounding。低風險通用排除可保留為 partial，精確產品事實仍須 exact-model 同來源證據。
+- 系列別 RULE 採交集而非擴散：所有候選完整型號在本題欄位都有一致值才直接答；缺一列、值不同或屬操作／排障時才補問型號或讀同型號手冊。此變更為資料驅動，不增加單題 if、Prompt 或模型呼叫。
+- 本版模型分工不變，亦未遷移 managed File Search；避免把路由、檢索與模型同時更換而失去可歸因性。
+
+## 2026-09-04（v29.6.281 / 官方手冊來源鏈、最新檔與 G9 Evidence 根治）
 
 ### 事故證據與真正根因
 
 - 使用者以 G9 系列進入 `S49DG952SC` 後追問背面彩色環形燈與開啟方式；雲端 LOG 顯示 PDF 實際執行了五次，不是「按了卻沒有讀 PDF」。舊回答先後混入眼睛保護、OSD、Infinity Core 與 Eclipse Lighting，既重複耗費也沒有穩定完成原題。
 - 對照實際共用手冊後確認：Core Lighting／Eclipse 相關段落含「依型號而定，可能不支援此功能」，並未在同段正向綁定 `S49DG952SC`。舊 validator 卻允許模型以「全檔共通」通過；同時術語資料把 CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting 等相近名稱視為可替換，造成錯功能、錯系列與假選單路徑。
 - 因此定案為證據契約與術語本體問題，而非單純「2.5 Flash-Lite／Flash 智力太低」。若只升級整條回答模型，仍可能把不適用段落說得更流暢；修復必須發生在資料 scope、claim-to-evidence、文件身分與狀態層。
+
+### 官方手冊複核與資產治理決策
+
+- Samsung 台灣 G95SD／`S49DG952SC` 支援頁的最新版仍是 2024-10-02 v2312130 共用 e-Manual ZIP；其繁中 PDF 與舊 `S32CM703,S49DG952.pdf` bytes 相同，並非新的型號專屬手冊。舊合併檔保留作回復／稽核，但正式選擇排除且單型號文件優先；內文未明列 G95SD，因此不可拿來肯定該型號的可選功能。
+- M7／`S32CM703UC` 官網已有 2026-01-16 v2510220 新繁中 PDF，本機已加入 `config/manual_registry.json`。此類空白封面文件須以支援頁 SKU、下載網址 `ModelName`、SHA／provenance 三向綁定，並標示 `exactModelInDocument=false`。
+- 共用文件的「依型號可能不支援」不能轉成正向證據，除非同段明列完整型號或 QA／RULE 另有型號級證據。ZIP 不能直接進 PDF index；需先解出並驗證 PDF。Registry 驗證任何 schema、唯一鍵、來源檔、header、SHA 或 provenance 不符即 fail-closed，索引只在 staging 完整通過後原子替換。
+- 例行自動查新手冊與 Files URI 換新不需 `/重啟`。此批變更不調整 Router／Fast／PDF／Web 模型或呼叫次數，沒有新增成本來源。
+- 修正等待動畫覆蓋缺口：舊版只在部分慢路徑呼叫，Fast QA／RULE、來源 postback 與部分錯誤終點可能完全沒有等待提示；全域旗標也未以每個 webhook event 為邊界。現改為一對一文字、圖片及有效來源 postback 在路由前各啟動一次，同事件後續分支不得重複呼叫。群組／多人與 TestUI 依 LINE 能力邊界略過，且沒有新增 Gemini 呼叫或 LINE Push。
+- 依實驗人員管控需求，v29.6.281 將現行每日額度由 20／5／10 調整為一般 10 題、官方手冊 2 次、網路解答 5 次；計次時機、跨日重置、來源交接退款與系統 Web rescue 3 次上限不變。程式常數、TestUI、Rich Menu 資產及契約同步更新，避免畫面與後端不一致。
 
 ### v29.6.280 實作決策
 

@@ -727,13 +727,93 @@ assert(
   "Fast/PDF/Web 呼叫前不得重複同步讀 Prompt Sheet",
 );
 const loadingText = extractFunction(linebot, "showLoadingAnimation");
+const eventLoadingText = extractFunction(
+  linebot,
+  "startLoadingAnimationForLineEvent_",
+);
 assert(
   /IS_TEST_MODE/.test(loadingText) &&
     /LOADING_ANIMATION_SHOWN/.test(loadingText) &&
-    /function handleMessage\(event\)[\s\S]{0,1800}LOADING_ANIMATION_SHOWN = false;/.test(linebot) &&
-    !/⭐ 立即顯示 Loading 動畫（去重後、處理前）/.test(linebot),
-  "零成本路由不得先呼叫 LINE 動畫；同一事件動畫最多一次且 TestUI 完全略過",
+    /LOADING_ANIMATION_ALLOWED === false/.test(loadingText) &&
+    /LOADING_ANIMATION_SHOWN = false/.test(eventLoadingText) &&
+    /event\.source\.type !== "user"/.test(eventLoadingText) &&
+    /event\.message\.type === "text"/.test(eventLoadingText) &&
+    /event\.message\.type === "image"/.test(eventLoadingText) &&
+    /showLoadingAnimation\(chatId, 60\)/.test(eventLoadingText) &&
+    doPostText.indexOf("startLoadingAnimationForLineEvent_(event)") <
+      doPostText.indexOf("handleRichMenuPostback_(event)") &&
+    (doPostText.match(/startLoadingAnimationForLineEvent_\(event\)/g) || [])
+      .length === 2 &&
+    !/function handleMessage\(event\)[\s\S]{0,1800}LOADING_ANIMATION_SHOWN = false;/.test(
+      linebot,
+    ),
+  "一對一文字、圖片與來源 postback 必須在路由前顯示一次等待動畫；群組與 TestUI 不呼叫",
 );
+const loadingCalls = [];
+const loadingVm = {
+  IS_TEST_MODE: false,
+  LOADING_ANIMATION_SHOWN: false,
+  LOADING_ANIMATION_ALLOWED: null,
+  PropertiesService: {
+    getScriptProperties() {
+      return { getProperty: () => "LINE_TOKEN_FOR_TEST" };
+    },
+  },
+  UrlFetchApp: {
+    fetch(url, options) {
+      loadingCalls.push({ url, options });
+      return { getResponseCode: () => 202, getContentText: () => "{}" };
+    },
+  },
+  writeLog() {},
+};
+vm.runInNewContext(
+  [
+    extractFunction(linebot, "parsePostbackData_"),
+    eventLoadingText,
+    loadingText,
+  ].join("\n\n"),
+  loadingVm,
+);
+assert.strictEqual(
+  loadingVm.startLoadingAnimationForLineEvent_({
+    type: "message",
+    source: { type: "user", userId: "U1" },
+    message: { type: "text", text: "M7 規格" },
+  }),
+  true,
+);
+loadingVm.showLoadingAnimation("U1", 60);
+assert.strictEqual(loadingCalls.length, 1, "同一文字事件不得重複啟動動畫");
+loadingVm.startLoadingAnimationForLineEvent_({
+  type: "message",
+  source: { type: "user", userId: "U1" },
+  message: { type: "image", id: "IMG1" },
+});
+loadingVm.startLoadingAnimationForLineEvent_({
+  type: "postback",
+  source: { type: "user", userId: "U1" },
+  postback: { data: "rm_action=select_source&source=manual&v=1" },
+});
+assert.strictEqual(
+  loadingCalls.length,
+  3,
+  "不同的一對一文字、圖片與來源按鍵事件都必須各啟動一次動畫",
+);
+loadingVm.startLoadingAnimationForLineEvent_({
+  type: "message",
+  source: { type: "group", groupId: "G1", userId: "U1" },
+  message: { type: "text", text: "@bot M7 規格" },
+});
+loadingVm.showLoadingAnimation("U1", 60);
+assert.strictEqual(loadingCalls.length, 3, "群組不得誤送成員的一對一等待動畫");
+loadingVm.IS_TEST_MODE = true;
+loadingVm.startLoadingAnimationForLineEvent_({
+  type: "message",
+  source: { type: "user", userId: "U1" },
+  message: { type: "text", text: "TestUI" },
+});
+assert.strictEqual(loadingCalls.length, 3, "TestUI 不得呼叫 LINE 等待動畫 API");
 assert(
   !/flushLogs\(\)/.test(extractFunction(linebot, "writeLog")) &&
     !/SpreadsheetApp\.flush|deleteRows/.test(
@@ -872,7 +952,8 @@ assert(
     llmText.indexOf("refreshStalePdfAttachmentsFromDrive_(filesToAttach)") <
       llmText.indexOf("reserveAdvancedSourceUsage_(advancedGrant)") &&
     /persistManualPdfKbItem_\(refreshedItem\)/.test(targetedPdfRefreshText) &&
-    /wantedNames\[upperName\]/.test(targetedPdfRefreshText),
+    /driveNameToOutputNames\[upperName\]/.test(targetedPdfRefreshText) &&
+    /getOfficialManualManifestEntryByFileName_/.test(targetedPdfRefreshText),
   "過期手冊必須只按本題檔名更新，重跑預檢成功後才扣額度",
 );
 assert(
@@ -883,8 +964,16 @@ assert(
   "單檔修復只允許嘗試一次，避免過期 URI 無限重送",
 );
 assert(
-  /SOURCE_DAILY_LIMITS\s*=\s*\{\s*manual:\s*5,\s*web:\s*10\s*\}/.test(linebot),
-  "手冊 5 次、網路 10 次額度不可漂移",
+  /SOURCE_DAILY_LIMITS\s*=\s*\{\s*manual:\s*2,\s*web:\s*5\s*\}/.test(linebot),
+  "手冊 2 次、網路 5 次額度不可漂移",
+);
+assert(
+  /官方手冊｜今日剩餘 2\/2 次/.test(testUi) &&
+    /網路解答｜今日剩餘 5\/5 次/.test(testUi) &&
+    !/官方手冊｜今日剩餘 5\/5 次/.test(testUi) &&
+    !/網路解答｜今日剩餘 10\/10 次/.test(testUi) &&
+    !/官方手冊 5 次已用完|網路解答 10 次已用完/.test(linebot),
+  "TestUI 提示與額度耗盡文案必須同步 10／2／5，不得殘留舊 20／5／10",
 );
 assert(
   /PDF_INPUT_SOFT_WARNING_TOKENS:\s*20000/.test(linebot) &&
@@ -893,11 +982,11 @@ assert(
   "官方手冊不得再被舊 20K 任意上限終止；仍須保留可解釋的 100K 單次成本硬上限",
 );
 assert(
-  /USER_DAILY_QUESTION_LIMIT\s*=\s*20/.test(linebot) &&
+  /USER_DAILY_QUESTION_LIMIT\s*=\s*10/.test(linebot) &&
     /function reserveDailyQuestionUsage_/.test(linebot) &&
     /getUserLock\(\)/.test(extractFunction(linebot, "reserveDailyQuestionUsage_")) &&
     /USR_QDAY_/.test(linebot),
-  "每位使用者每日 20 次提問必須持久化並以鎖原子保留",
+  "每位使用者每日 10 次提問必須持久化並以鎖原子保留",
 );
 const dailyQuestionClassifierText = extractFunction(
   linebot,
@@ -914,7 +1003,7 @@ assert(
     !/const dailyQuota = reserveDailyQuestionOrReply_/.test(
       extractFunction(linebot, "handleRichMenuPostback_"),
     ),
-  "手冊／網路不得重複扣一般 20 題；自動轉手冊時必須退回一般額度",
+  "手冊／網路不得重複扣一般 10 題；自動轉手冊時必須退回一般額度",
 );
 assert(
   /function getSourceProductKey_/.test(linebot) &&
@@ -983,12 +1072,12 @@ const props = {
 };
 const context = {
   GAS_VERSION: "v29.6.253",
-  ADVANCED_SOURCE_CACHE_SCHEMA: "EvidenceV2",
+  ADVANCED_SOURCE_CACHE_SCHEMA: "EvidenceV6",
   SOURCE_PENDING_TTL_SECONDS: 600,
   SOURCE_RECENT_QUESTION_TTL_SECONDS: 1800,
   SOURCE_OPERATION_CACHE_TTL_SECONDS: 600,
-  SOURCE_DAILY_LIMITS: { manual: 5, web: 10 },
-  USER_DAILY_QUESTION_LIMIT: 20,
+  SOURCE_DAILY_LIMITS: { manual: 2, web: 5 },
+  USER_DAILY_QUESTION_LIMIT: 10,
   CURRENT_DAILY_QUESTION_REMAINING: null,
   Utilities: {
     DigestAlgorithm: { SHA_256: "sha256" },
@@ -1093,24 +1182,24 @@ assert.strictEqual(
   "同為 G8/M8 短稱但產品家族不同時不得放行",
 );
 
-for (let index = 0; index < 5; index += 1) {
+for (let index = 0; index < 2; index += 1) {
   context.reserveAdvancedSourceUsage_({ source: "manual", contextId: "C1" });
 }
 assert.strictEqual(context.getSourceRemaining_("C1", "manual"), 0);
 assert.throws(
   () => context.reserveAdvancedSourceUsage_({ source: "manual", contextId: "C1" }),
   /SOURCE_QUOTA_EXHAUSTED_MANUAL/,
-  "第 6 次手冊查詢必須被擋下",
+  "第 3 次手冊查詢必須被擋下",
 );
-for (let index = 0; index < 10; index += 1) {
+for (let index = 0; index < 5; index += 1) {
   context.reserveAdvancedSourceUsage_({ source: "web", contextId: "C1" });
 }
 assert.strictEqual(context.getSourceRemaining_("C1", "web"), 0);
 taipeiDate = "20260815";
-assert.strictEqual(context.getSourceRemaining_("C1", "manual"), 5);
-assert.strictEqual(context.getSourceRemaining_("C1", "web"), 10);
+assert.strictEqual(context.getSourceRemaining_("C1", "manual"), 2);
+assert.strictEqual(context.getSourceRemaining_("C1", "web"), 5);
 
-for (let index = 0; index < 20; index += 1) {
+for (let index = 0; index < 10; index += 1) {
   const result = context.reserveDailyQuestionUsage_("U1");
   assert.strictEqual(result.allowed, true);
 }
@@ -1118,17 +1207,17 @@ assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 0);
 assert.strictEqual(context.reserveDailyQuestionUsage_("U1").allowed, false);
 assert.strictEqual(
   context.getDailyQuestionRemaining_("U2"),
-  20,
+  10,
   "提問額度必須按使用者分開，不得由群組共用",
 );
 taipeiDate = "20260816";
-assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 20);
+assert.strictEqual(context.getDailyQuestionRemaining_("U1"), 10);
 context.reserveDailyQuestionUsage_("U3");
-assert.strictEqual(context.getDailyQuestionRemaining_("U3"), 19);
+assert.strictEqual(context.getDailyQuestionRemaining_("U3"), 9);
 context.refundDailyQuestionUsage_("U3", "contract_test");
 assert.strictEqual(
   context.getDailyQuestionRemaining_("U3"),
-  20,
+  10,
   "只引導進階來源時必須可原子退回一般提問額度",
 );
 
@@ -1416,11 +1505,11 @@ assert(
 );
 assert(
   /source-menu-title">直接問</.test(testUi) &&
-    /source-menu-quota">20題\/日</.test(testUi) &&
+    /source-menu-quota">10題\/日</.test(testUi) &&
     /source-menu-title">查手冊</.test(testUi) &&
-    /source-menu-quota">5次\/日</.test(testUi) &&
+    /source-menu-quota">2次\/日</.test(testUi) &&
     /source-menu-title">搜網路</.test(testUi) &&
-    /source-menu-quota">10次\/日</.test(testUi),
+    /source-menu-quota">5次\/日</.test(testUi),
   "TestUI 必須用雙排大字呈現功能與每日額度",
 );
 for (const manualText of [
@@ -1664,10 +1753,13 @@ assert(
 );
 
 assert(
-  /allowPartial/.test(extractFunction(linebot, "buildGroundedSupportedAnswer_")) &&
-    /partialWebText/.test(extractFunction(linebot, "runManualWebRescue_")) &&
+  /returnResult/.test(extractFunction(linebot, "buildGroundedSupportedAnswer_")) &&
+    /supportResult\.coverage/.test(extractFunction(linebot, "runManualWebRescue_")) &&
     /partial:\s*true/.test(extractFunction(linebot, "runManualWebRescue_")) &&
-    /rescue\.partial/.test(extractFunction(linebot, "buildManualWebRescueReply_")) &&
+    /rescueCoverage/.test(extractFunction(linebot, "buildManualWebRescueReply_")) &&
+    /groundedButNotTargeted/.test(
+      extractFunction(linebot, "buildManualWebRescueReply_"),
+    ) &&
     /status:\s*partial\s*\?\s*"partial"/.test(
       extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
     ) &&
@@ -1685,6 +1777,8 @@ const groundedSupportContext = {
   findExactModelRuleLine_: (model) =>
     String(model || "").toUpperCase() === "S32FM803UC"
       ? "LS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F"
+      : String(model || "").toUpperCase() === "S32CM703UC"
+        ? "LS32CM703UCXZW,型號：S32CM703UC,32吋 Smart Monitor M7 M70C"
       : String(model || "").toUpperCase() === "S32HG802SC"
         ? "LS32HG802SCXZW,型號：S32HG802SC,32吋 Odyssey OLED G8"
         : "",
@@ -1696,6 +1790,7 @@ vm.runInContext(
    ${extractFunction(linebot, "getGroundedModelIdentityProfile_")}
    ${extractFunction(linebot, "matchGroundedModelIdentity_")}
    ${extractFunction(linebot, "isLowRiskGroundedTroubleshooting_")}
+   ${extractFunction(linebot, "isModelIndependentManualOperation_")}
    ${extractFunction(linebot, "expandGroundedSupportToCompleteLine_")}
    ${extractFunction(linebot, "isExactProductFactQuestion_")}
    ${extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_")}
@@ -1776,7 +1871,23 @@ vm.runInContext(
     globalThis.conflictingLabelRejected = buildGroundedSupportedAnswer_([
       {text:"S27CG510EC 官方支援資料。",sourceIds:["chunk:0"],sourceLabels:["source-a.com"]},
       {text:"這款螢幕有 1 個 HDMI 埠。",sourceIds:["chunk:0"],sourceLabels:["source-b.com"]}
-    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");`,
+    ], "S27CG510EC", "S27CG510EC 有幾個 HDMI 埠？");
+    globalThis.lowRiskGroundedPartial = buildGroundedSupportedAnswer_([
+      {text:"HDMI 黑屏可能與線材接觸有關；可先更換線材交叉測試並重新開機。",sourceIds:["chunk:repair"],sourceLabels:["repair.example.com"]}
+    ], "S32CM703UC", "S32CM703UC 使用 HDMI 偶爾黑屏，怎麼排除？",
+       "HDMI 黑屏可能與線材接觸有關；可先更換線材交叉測試並重新開機。", true, true);
+    globalThis.otherModelExactMetricStillRejected = buildGroundedSupportedAnswer_([
+      {text:"Smart Monitor M8 的 VRR 最低為 48Hz。",sourceIds:["chunk:m8-vrr"],sourceLabels:["m8.example.com"]}
+    ], "S32CM703UC", "S32CM703UC 的 VRR 最低幾 Hz？",
+       "Smart Monitor M8 的 VRR 最低為 48Hz。", true, true);
+    globalThis.m7FamilyOperationAccepted = buildGroundedSupportedAnswer_([
+      {text:"Smart Monitor M7 可從首頁進入連接的裝置，再選擇 HDMI 2。",sourceIds:["chunk:m7-input"],sourceLabels:["m7-help.example.com"]}
+    ], "S32CM703UC", "S32CM703UC 要怎麼手動切到 HDMI 2？",
+       "Smart Monitor M7 可從首頁進入連接的裝置，再選擇 HDMI 2。", true, true);
+    globalThis.m7FamilySpecRejected = buildGroundedSupportedAnswer_([
+      {text:"Smart Monitor M7 有 2 個 HDMI 連接埠。",sourceIds:["chunk:m7-spec"],sourceLabels:["m7-help.example.com"]}
+    ], "S32CM703UC", "S32CM703UC 有幾個 HDMI 連接埠？",
+       "Smart Monitor M7 有 2 個 HDMI 連接埠。", true, true);`,
   groundedSupportContext,
 );
 assert(
@@ -1807,13 +1918,144 @@ assert(
     /S27CG510EC/.test(groundedSupportContext.sameSourceFactAccepted) &&
     /1 個 HDMI/.test(groundedSupportContext.sameSourceFactAccepted) &&
     /左側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete) &&
-    /右側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete),
+    /右側最高 120Hz/.test(groundedSupportContext.pbpPerSideMaximumComplete) &&
+    groundedSupportContext.lowRiskGroundedPartial.coverage === "partial" &&
+    /更換線材/.test(groundedSupportContext.lowRiskGroundedPartial.text) &&
+    Array.from(groundedSupportContext.lowRiskGroundedPartial.sources).join("|") ===
+      "repair.example.com" &&
+    groundedSupportContext.otherModelExactMetricStillRejected.coverage === "none" &&
+    groundedSupportContext.otherModelExactMetricStillRejected.rejectionReasons.includes(
+      "exact_identity_required",
+    ) &&
+    groundedSupportContext.m7FamilyOperationAccepted.coverage === "full" &&
+    /HDMI 2/.test(groundedSupportContext.m7FamilyOperationAccepted.text) &&
+    groundedSupportContext.m7FamilySpecRejected.coverage === "none" &&
+    groundedSupportContext.m7FamilySpecRejected.rejectionReasons.includes(
+      "exact_identity_required",
+    ),
   `Web 最終回答只能使用 groundingSupports 同時支持目前型號（或 RULE 已確認系列）與本題全部主張的句段: ${JSON.stringify(groundedSupportContext)}`,
 );
 assert(
   /groundingChunkIndices/.test(linebot) &&
     /sourceIds/.test(extractFunction(linebot, "buildGroundedSupportedAnswer_")),
   "Web groundingSupports 必須保留來源 ID；不同來源不得拼接成同一項型號事實",
+);
+
+const webRescueFlowContext = {
+  ACTIVE_ADVANCED_SOURCE_GRANT: null,
+  lastSearchSources: null,
+  lastWebEvidenceValid: false,
+  lastWebSupportedSegments: [],
+  lastWebAcceptedSources: [],
+  lastWebUnverifiedDraft: "",
+  rescueMode: "partial",
+  capturedSearchQuery: "",
+  buildCanonicalWebQuery_: (query, model) =>
+    `SEARCH:${String(model || "")}:${String(query || "")}`,
+  activateAdvancedSourceGrant_: () => ({ reserved: false, remaining: 3 }),
+  callLLMWithRetry: (query) => {
+    webRescueFlowContext.capturedSearchQuery = query;
+    webRescueFlowContext.lastWebEvidenceValid =
+      webRescueFlowContext.rescueMode !== "no_grounding";
+    webRescueFlowContext.lastWebSupportedSegments =
+      webRescueFlowContext.rescueMode === "no_grounding"
+        ? []
+        : [{ text: "grounded", sourceIds: ["chunk:0"] }];
+    webRescueFlowContext.lastWebUnverifiedDraft = "grounded draft";
+    return "grounded draft";
+  },
+  buildGroundedSupportedAnswer_: () => {
+    if (webRescueFlowContext.rescueMode === "partial") {
+      return {
+        coverage: "partial",
+        text: "HDMI 黑屏可能與線材接觸有關，可先更換線材交叉測試。",
+        sources: ["repair.example.com"],
+        identityLevel: "none",
+        lowRiskGeneric: true,
+        rejectionReasons: [],
+      };
+    }
+    return {
+      coverage: "none",
+      text: "",
+      sources: [],
+      identityLevel: "none",
+      lowRiskGeneric: false,
+      rejectionReasons:
+        webRescueFlowContext.rescueMode === "not_targeted"
+          ? ["exact_identity_required"]
+          : ["no_safe_segment"],
+    };
+  },
+  isGroundedWebAnswerRelevant_: () => false,
+  isApiFailureReply: () => false,
+  stripInternalRoutingHints_: (value) => String(value || ""),
+  buildSafeNoEvidenceNextStep_: () => "安全下一步",
+  isExactProductFactQuestion_: () => false,
+  normalizeModelForDisplay: (value) => String(value || ""),
+  writeLog: () => {},
+};
+vm.createContext(webRescueFlowContext);
+vm.runInContext(
+  `${extractFunction(linebot, "runManualWebRescue_")}
+   ${extractFunction(linebot, "buildManualWebRescueReply_")}
+   globalThis.partialRescue = runManualWebRescue_(
+     "S32CM703UC 使用 HDMI 偶爾黑屏，怎麼排除？",
+     "S32CM703UC",
+     "C-web-rescue",
+     "U-web-rescue",
+     {systemRescue:true, searchQuery:"HDMI 黑屏 線材 交叉測試", unresolvedQuestion:"原題未完全解決"}
+   );
+   globalThis.partialRescueReply = buildManualWebRescueReply_(
+     partialRescue, "", "S32CM703UC", "S32CM703UC 使用 HDMI 偶爾黑屏，怎麼排除？"
+   );
+   rescueMode = "not_targeted";
+   globalThis.notTargetedRescue = runManualWebRescue_(
+     "S32CM703UC 的 VRR 最低幾 Hz？", "S32CM703UC", "C-web-rescue", "U-web-rescue",
+     {systemRescue:true, searchQuery:"VRR minimum refresh rate"}
+   );
+   globalThis.notTargetedReply = buildManualWebRescueReply_(
+     notTargetedRescue, "", "S32CM703UC", "S32CM703UC 的 VRR 最低幾 Hz？"
+   );
+   rescueMode = "no_grounding";
+   globalThis.noGroundingRescue = runManualWebRescue_(
+     "S32CM703UC 的 VRR 最低幾 Hz？", "S32CM703UC", "C-web-rescue", "U-web-rescue",
+     {systemRescue:true, searchQuery:"VRR minimum refresh rate"}
+   );
+   globalThis.noGroundingWithManualReply = buildManualWebRescueReply_(
+     noGroundingRescue,
+     "手冊已確認可進入遊戲設定。\\n\\n手冊還沒直接回答：VRR 最低更新率。\\n\\n[AUTO_SEARCH_WEB]",
+     "S32CM703UC",
+     "S32CM703UC 的 VRR 最低幾 Hz？"
+   );`,
+  webRescueFlowContext,
+);
+assert(
+  webRescueFlowContext.capturedSearchQuery ===
+    "SEARCH:S32CM703UC:VRR minimum refresh rate" &&
+    webRescueFlowContext.partialRescue.coverage === "partial" &&
+    webRescueFlowContext.partialRescue.groundingPresent === true &&
+    /更換線材/.test(webRescueFlowContext.partialRescueReply) &&
+    /來源:網路搜尋/.test(webRescueFlowContext.partialRescueReply) &&
+    !/沒有取得可核對/.test(webRescueFlowContext.partialRescueReply) &&
+    webRescueFlowContext.notTargetedRescue.coverage === "none" &&
+    webRescueFlowContext.notTargetedRescue.groundingPresent === true &&
+    /有找到相關資料/.test(webRescueFlowContext.notTargetedReply) &&
+    !/沒有取得可核對/.test(webRescueFlowContext.notTargetedReply) &&
+    webRescueFlowContext.noGroundingRescue.groundingPresent === false &&
+    /沒有取得可核對的補充/.test(
+      webRescueFlowContext.noGroundingWithManualReply,
+    ),
+  `Web rescue 必須分離搜尋查詢與原題，並區分 partial、grounded-but-not-targeted、true no-grounding: ${JSON.stringify(webRescueFlowContext)}`,
+);
+assert(
+  /rescueOptions\.searchQuery\s*\|\|\s*originalQuestion/.test(
+    extractFunction(linebot, "runManualWebRescue_"),
+  ) &&
+    /buildGroundedSupportedAnswer_\([\s\S]*originalQuestion/.test(
+      extractFunction(linebot, "runManualWebRescue_"),
+    ),
+  "Web 可用擴充字串搜尋，但回答相關性與完整度只能對真正原題驗證",
 );
 
 const webFallbackContext = {
@@ -2053,7 +2295,22 @@ assert(
   "LINE 最後出口必須再次拒絕空 Quick Reply 陣列",
 );
 
-const manualUiContext = { writeLog: () => {} };
+const manualUiContext = {
+  writeLog: () => {},
+  getManualFeatureChecks_: () => [],
+  findExactModelRuleLine_: (model) =>
+    String(model || "").toUpperCase().includes("S55BG970")
+      ? "S55BG970NC,55吋 Odyssey Ark"
+      : String(model || "").toUpperCase().includes("S32CM703")
+        ? "S32CM703UC,32吋 Smart Monitor M7"
+        : "",
+  getGroundedModelIdentityProfile_: (model) =>
+    String(model || "").toUpperCase().includes("S55BG970")
+      ? { familyKind: "odyssey", familyAlias: "ARK" }
+      : String(model || "").toUpperCase().includes("S32CM703")
+        ? { familyKind: "smart", familyAlias: "M7" }
+        : { familyKind: "", familyAlias: "" },
+};
 vm.createContext(manualUiContext);
 vm.runInContext(
   `${extractFunction(linebot, "buildManualConsentPrompt_")}
@@ -2065,11 +2322,18 @@ vm.runInContext(
    ${extractFunction(linebot, "extractManualEvidenceModels_")}
    ${extractFunction(linebot, "manualEvidenceModelMatchesTarget_")}
    ${extractFunction(linebot, "manualEvidenceHasModelApplicabilityCaveat_")}
+   ${extractFunction(linebot, "manualEvidenceNamedFamilyMatchesTarget_")}
+   ${extractFunction(linebot, "getManualEvidenceScopeText_")}
    ${extractFunction(linebot, "manualEvidenceSupportsTargetModel_")}
+   ${extractFunction(linebot, "manualEvidenceExplicitlyTargetsModel_")}
+   ${extractFunction(linebot, "isModelIndependentManualOperation_")}
    ${extractFunction(linebot, "manualSupportedAnswerTargetsModel_")}
+   ${extractFunction(linebot, "isGenericManualInputTargetBinding_")}
    ${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}
    ${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}
+   ${extractFunction(linebot, "manualAnswerCoversQuestionFeatures_")}
    ${extractFunction(linebot, "selectManualEvidenceForQuestion_")}
+   ${extractFunction(linebot, "manualEvidenceAllowedByAttachmentProvenance_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
    ${extractFunction(linebot, "applyManualEvidenceGuard_")}
    ${extractFunction(linebot, "buildManualWebRescueReply_")}
@@ -2081,6 +2345,11 @@ vm.runInContext(
    globalThis.structuredDeduped = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"到 Support → Self Diagnosis。",pageNumber:36,scope:"型號明確",evidenceExcerpt:"Support → Self Diagnosis"},{supportedAnswer:"自我診斷期間不要關閉電源。",pageNumber:36,scope:"型號明確",evidenceExcerpt:"自我診斷期間不要關閉電源"},{supportedAnswer:"最後依照畫面指示檢查畫面。",pageNumber:37,scope:"型號明確",evidenceExcerpt:"依照畫面指示檢查畫面"}]})), "問題");
    globalThis.structuredNotFound = applyManualEvidenceGuard_(normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"手冊未記載第三方顯卡驅動衝突。",evidence:[]})), "問題");
    globalThis.formatError = applyManualEvidenceGuard_("[MANUAL_OUTPUT_FORMAT_ERROR]", "問題");
+   globalThis.weakScopeGuarded = applyManualEvidenceGuard_("按下底部按鈕開啟功能表。\\n\\n手冊重點：按下底部按鈕開啟控制功能表\\n[手冊證據:第19頁|範圍:依型號而異]", "S32CM703UC 要怎麼手動切到 HDMI 2？");
+   globalThis.weakScopeFailureDetected = isManualEvidenceFailureReply_(globalThis.weakScopeGuarded);
+   globalThis.genericM7HdmiSwitchAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"進入連接的裝置後選擇 HDMI 2。",pageNumber:14,scope:"全檔共通",evidenceExcerpt:"選擇已連接的外部裝置或訊號源",pageHeading:"連接的裝置",applicabilityExcerpt:""}]}), "S32CM703UC", "S32CM703UC 要怎麼手動切到 HDMI 2？", {supportPageOnly:true,hashMissing:false,hashMismatch:false});
+   globalThis.genericM7HdmiWithoutSelectionRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"進入連接的裝置後選擇 HDMI 2。",pageNumber:14,scope:"全檔共通",evidenceExcerpt:"按下遙控器的首頁按鈕",pageHeading:"連接的裝置",applicabilityExcerpt:""}]}), "S32CM703UC", "S32CM703UC 要怎麼手動切到 HDMI 2？", {supportPageOnly:true,hashMissing:false,hashMismatch:false});
+   globalThis.arkPageRejectedForM7 = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"進入連接的裝置後選擇 HDMI 2。",pageNumber:19,scope:"全檔共通",evidenceExcerpt:"選擇已連接的外部裝置或訊號源",pageHeading:"Odyssey Ark",applicabilityExcerpt:"僅適用 Odyssey Ark"}]}), "S32CM703UC", "S32CM703UC 要怎麼手動切到 HDMI 2？", {supportPageOnly:true,hashMissing:false,hashMismatch:false});
    globalThis.wrongSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32HG806ES 支援 USB-C 98W。",pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG802SC / S32HG802SC 可透過 USB Type-C 充電，最高 98W"}]}), "S32HG806ES");
    globalThis.rightSharedModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32HG806ES 的連接埠沒有 USB-C 影像輸入。",pageNumber:12,scope:"型號明確",evidenceExcerpt:"S27HG806EF / S32HG806ES 沒有 USB-C 影像輸入；連接埠為 HDMI、DP 與 USB Hub"}]}), "S32HG806ES");
    globalThis.regionalBaseModel = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"S32FM803UC 可使用藍牙揚聲器清單。",pageNumber:151,scope:"型號明確",evidenceExcerpt:"S32FM803 可使用藍牙揚聲器清單"}]}), "S32FM803UC");
@@ -2097,6 +2366,8 @@ vm.runInContext(
    globalThis.unsupportedNumber = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"USB-C 可供電 98W。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"USB-C 可供電 65W"}]}), "");
    globalThis.unsupportedNegative = normalizeManualStructuredResponse_(JSON.stringify({found:true,notFoundReason:"",evidence:[{supportedAnswer:"這款沒有耳機孔。",pageNumber:12,scope:"全檔共通",evidenceExcerpt:"連接埠列出 HDMI 與 DisplayPort"}]}), "");
    globalThis.conditionalCommonCaveat = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可使用 Eclipse Lighting 開啟機背燈效。",pageNumber:141,scope:"全檔共通",evidenceExcerpt:"Eclipse Lighting；依型號而定，可能不支援此功能"}]}), "S49DG952SC", "機背燈效怎麼開？");
+   globalThis.coreLightingPage115CommonRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可到 遊戲 → Core Lighting 開啟機背 LED 照明。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"功能表 → 設定 → 所有設定 → 遊戲 → Core Lighting。開啟或關閉產品正面和背面的 LED 照明。依型號而定，可能不支援此功能。"}]}), "S49DG952SC", "Core Lighting 在哪裡開？");
+   globalThis.coreLightingPage115ExactAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可到 遊戲 → Core Lighting 開啟機背 LED 照明。",pageNumber:115,scope:"型號明確",evidenceExcerpt:"S49DG952SC 機型適用：功能表 → 設定 → 所有設定 → 遊戲 → Core Lighting；開啟或關閉機背 LED 照明。依型號而定，其他機型可能不支援此功能。"}]}), "S49DG952SC", "Core Lighting 在哪裡開？");
    globalThis.coreSyncFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 CoreSync。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "CoreSync 在哪裡開？");
    globalThis.eclipseFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 Eclipse Lighting。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效叫什麼？");
    globalThis.coreLightingExactAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可到 Core Lighting+ 開啟機背燈效。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting+ 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效怎麼開？");
@@ -2120,6 +2391,16 @@ assert(
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
     /補查一次公開網頁/.test(manualUiContext.formatError) &&
+    /AUTO_SEARCH_WEB/.test(manualUiContext.weakScopeGuarded) &&
+    manualUiContext.weakScopeFailureDetected === true &&
+    /第14頁/.test(manualUiContext.genericM7HdmiSwitchAccepted) &&
+    /HDMI 2/.test(manualUiContext.genericM7HdmiSwitchAccepted) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.genericM7HdmiWithoutSelectionRejected,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.arkPageRejectedForM7,
+    ) &&
     /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(manualUiContext.wrongSharedModel) &&
     /第12頁/.test(manualUiContext.rightSharedModel) &&
     /第151頁/.test(manualUiContext.regionalBaseModel) &&
@@ -2168,6 +2449,14 @@ assert(
     /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
+assert(
+  /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+    manualUiContext.coreLightingPage115CommonRejected,
+  ) &&
+    /第115頁/.test(manualUiContext.coreLightingPage115ExactAccepted) &&
+    /Core Lighting/.test(manualUiContext.coreLightingPage115ExactAccepted),
+  "第 115 頁的依型號條件不得冒充 S49DG952SC 全檔共通路徑；只有摘錄直接綁定完整型號才可採納",
+);
 const partialRescueReply = manualUiContext.buildManualWebRescueReply_(
   {
     success: true,
@@ -2184,6 +2473,33 @@ assert(
     /公開網頁補充/.test(partialRescueReply) &&
     /來源:官方手冊、網路搜尋/.test(partialRescueReply),
   "PDF 只回答部分主張時，Web 補救必須保留已驗證的手冊證據",
+);
+const failedPartialRescueReply = manualUiContext.buildManualWebRescueReply_(
+  {
+    attempted: true,
+    success: false,
+    partial: false,
+    text: "",
+    sources: [],
+  },
+  "手冊已確認可進入 Game → PBP 設定。\n\n官方手冊：第34頁\n\n手冊還沒直接回答：兩側最高更新率。我接著補查一次公開網頁，不另扣網搜次數。\n\n[AUTO_SEARCH_WEB]",
+  "S57CG952NC",
+  "PBP 兩側最高更新率",
+);
+assert(
+  /手冊能確認/.test(failedPartialRescueReply) &&
+    /Game → PBP/.test(failedPartialRescueReply) &&
+    /第34頁/.test(failedPartialRescueReply) &&
+    /公開網頁目前沒有取得可核對的補充/.test(failedPartialRescueReply) &&
+    /來源:官方手冊/.test(failedPartialRescueReply) &&
+    !/來源:官方手冊、網路搜尋/.test(failedPartialRescueReply),
+  "PDF 已有通過驗證的部分主張時，Web 無可靠證據不得覆蓋或刪除手冊答案",
+);
+assert(
+  /const manualEvidencePartial\s*=/.test(advancedRouteText) &&
+    /manualEvidenceFailed = !manualEvidencePartial/.test(advancedRouteText) &&
+    /:\s*manualEvidencePartial\s*\?\s*"partial"/.test(advancedRouteText),
+  "手冊部分證據＋Web 失敗的完成狀態必須是 partial，不得降成 unsupported",
 );
 const manualContextVm = {
   extractFullModelLikeTokens: (text) =>
@@ -2207,7 +2523,7 @@ assert(
   "PDF 只在自然省略追問帶一行前題主題；獨立新題不得混入舊歷史",
 );
 assert(
-  /normalizeManualStructuredResponse_\(\s*text,\s*targetModelName,\s*query,?\s*\)/.test(
+  /normalizeManualStructuredResponse_\(\s*text,\s*targetModelName,\s*query,\s*manualAttachmentProvenance,?\s*\)/.test(
     linebot,
   ),
   "PDF 結構化證據必須帶入當前鎖定型號，不得在共用手冊跨型號套用",
@@ -2515,6 +2831,233 @@ assert(
       extractFunction(linebot, "handleRichMenuPostback_"),
     ),
   "新手冊須以台灣三星 UM、第一頁型號與舊尾碼規則自動命名入庫；失敗才隔離重試，且每日限量",
+);
+
+let legacyKbJson = JSON.stringify([
+  {
+    name: "S32CM703,S49DG952.pdf",
+    uri: "files/legacy-shared",
+    mimeType: "application/pdf",
+  },
+]);
+const legacyPdfGuardLogs = [];
+const legacyPdfGuardVm = {
+  CACHE_KEYS: { KB_URI_LIST: "KB_URI_LIST" },
+  SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
+  PropertiesService: {
+    getScriptProperties: () => ({ getProperty: () => legacyKbJson }),
+  },
+  getOfficialManualManifestEntryByFileName_: () => null,
+  normalizeManualEvidenceModel_: (value) => String(value || "").toUpperCase(),
+  manualEvidenceModelMatchesTarget_: (left, right) => left === right,
+  ss: {
+    getSheetByName: () => ({
+      getDataRange: () => ({
+        getValues: () => [
+          ["別稱_M7,Smart Monitor M7,型號模式為：S32CM70*"],
+          ["別稱_G9,Odyssey G9,型號模式為：S49DG95*"],
+        ],
+      }),
+    }),
+  },
+  writeLog: (message) => legacyPdfGuardLogs.push(message),
+};
+vm.createContext(legacyPdfGuardVm);
+vm.runInContext(
+  `${extractFunction(linebot, "normalizePdfModelToken_")}
+   ${extractFunction(linebot, "isPdfKbFile")}
+   ${extractFunction(linebot, "getPdfFileModelTokens_")}
+   ${extractFunction(linebot, "isPdfSalesSuffix_")}
+   ${extractFunction(linebot, "isPdfModelTokenMatch_")}
+   ${extractFunction(linebot, "isKnownUnsafeLegacySharedManual_")}
+   ${extractFunction(linebot, "enrichPdfKbItemWithOfficialProvenance_")}
+   ${extractFunction(linebot, "filterUnsafeLegacySharedManualCandidates_")}
+   ${extractFunction(linebot, "searchPdfByAliasPattern")}
+   globalThis.m7OnlyLegacy = searchPdfByAliasPattern("M7", "M7 怎麼設定？");
+   globalThis.g95sdOnlyLegacy = searchPdfByAliasPattern("G9", "S49DG952SC 怎麼開 CoreSync？");`,
+  legacyPdfGuardVm,
+);
+legacyKbJson = JSON.stringify([
+  {
+    name: "S32CM703,S49DG952.pdf",
+    uri: "files/legacy-shared",
+    mimeType: "application/pdf",
+  },
+  {
+    name: "S49DG952.pdf",
+    uri: "files/focused-g95sd",
+    mimeType: "application/pdf",
+  },
+]);
+vm.runInContext(
+  `globalThis.g95sdWithFocused = searchPdfByAliasPattern("G9", "S49DG952SC 怎麼開 CoreSync？");`,
+  legacyPdfGuardVm,
+);
+assert(
+  legacyPdfGuardVm.m7OnlyLegacy.matchedPdfs.length === 0,
+  "舊 S32CM703,S49DG952 共用手冊不得單獨回答 M7",
+);
+assert(
+  legacyPdfGuardVm.g95sdOnlyLegacy.matchedPdfs.length === 0,
+  "舊 S32CM703,S49DG952 共用手冊即使是 G95SD 唯一候選也不得靠檔名掛載",
+);
+assert(
+  legacyPdfGuardVm.g95sdWithFocused.matchedPdfs.length === 1 &&
+    legacyPdfGuardVm.g95sdWithFocused.matchedPdfs[0].name === "S49DG952.pdf",
+  `G95SD 單型號新手冊存在時，別稱搜尋必須排除舊共用檔: ${JSON.stringify(legacyPdfGuardVm.g95sdWithFocused)} ${JSON.stringify(legacyPdfGuardLogs)}`,
+);
+assert(
+  /filterUnsafeLegacySharedManualCandidates_/.test(
+    extractFunction(linebot, "getRelevantKBFiles"),
+  ),
+  "getRelevantKBFiles 必須套用錯綁舊手冊 scope guard",
+);
+assert(
+  /filterUnsafeLegacySharedManualCandidates_/.test(
+    extractFunction(linebot, "recoverRelevantPdfUrisFromDrive"),
+  ),
+  "Drive 復原與舊候選快取必須套用錯綁舊手冊 scope guard",
+);
+
+const strictPdfLockVm = {
+  extractFullModelLikeTokens: (text) =>
+    String(text || "").match(/\bS\d{2}[A-Z0-9]{6,}\b/g) || [],
+  dedupDisplayModels: (models, limit) => [...new Set(models)].slice(0, limit),
+};
+vm.createContext(strictPdfLockVm);
+vm.runInContext(
+  `${extractFunction(linebot, "getStrictPdfModelLocksFromMessages_")}
+   globalThis.locked = getStrictPdfModelLocksFromMessages_([
+     { role: "user", content: "M7 的規格" },
+     { role: "assistant", content: "請問完整型號" },
+     { role: "user", content: "那要怎麼切 HDMI 2？ (型號: S32CM703UC)" }
+   ]);`,
+  strictPdfLockVm,
+);
+assert(
+  JSON.stringify(strictPdfLockVm.locked) === JSON.stringify(["S32CM703UC"]),
+  `完整型號一旦確認，PDF 候選必須鎖死該型號: ${JSON.stringify(strictPdfLockVm.locked)}`,
+);
+const strictAttachmentVm = {
+  isPdfKbFile: (file) => /\.pdf$/i.test(String((file && file.name) || "")),
+  enrichPdfKbItemWithOfficialProvenance_: (file) => file,
+  pdfFileNameMatchesModels: (fileName, models) =>
+    models.some((model) =>
+      String(fileName || "")
+        .toUpperCase()
+        .startsWith(String(model || "").toUpperCase().slice(0, 8)),
+    ),
+};
+vm.createContext(strictAttachmentVm);
+vm.runInContext(
+  `${extractFunction(linebot, "enforcePdfAttachmentModelScope_")}
+   globalThis.withTarget = enforcePdfAttachmentModelScope_([
+     { name: "S32DM702.pdf" },
+     { name: "S32CM703.pdf" }
+   ], ["S32CM703UC"]);
+   globalThis.missingTarget = enforcePdfAttachmentModelScope_([
+     { name: "S32DM702.pdf" }
+   ], ["S32CM703UC"]);`,
+  strictAttachmentVm,
+);
+assert(
+  strictAttachmentVm.withTarget.length === 1 &&
+    strictAttachmentVm.withTarget[0].name === "S32CM703.pdf" &&
+    strictAttachmentVm.missingTarget.length === 0,
+  "PDF 最後出口必須拒絕同系列兄弟機種；目標檔缺席時要是零 PDF",
+);
+const relevantKbSource = extractFunction(linebot, "getRelevantKBFiles");
+assert(
+  /const pdfSelectionModels\s*=/.test(relevantKbSource) &&
+    /pdfFileNameMatchesModels\(file\.name, pdfSelectionModels\)/.test(
+      relevantKbSource,
+    ) &&
+    /exactModels:\s*pdfSelectionModels/.test(relevantKbSource),
+  "getRelevantKBFiles 必須用本輪完整型號同時約束可用性、掛檔與回傳型號",
+);
+
+const manualCoverageVm = {
+  findRuleTermOntologyMatch_: () => null,
+  findRuleTermOntologyMatches_: () => [],
+};
+vm.createContext(manualCoverageVm);
+vm.runInContext(
+  `${extractFunction(linebot, "isShortAliasModelToken")}
+   ${extractFunction(linebot, "extractFullModelLikeTokens")}
+   ${extractFunction(linebot, "escapeRegExp")}
+   ${extractFunction(linebot, "getExplicitCapabilityCheck_")}
+   ${extractFunction(linebot, "getAllExplicitCapabilityChecks_")}
+   ${extractFunction(linebot, "buildManualNamedFeatureCheck_")}
+   ${extractFunction(linebot, "getManualFeatureChecks_")}
+   ${extractFunction(linebot, "manualAnswerCoversQuestionFeatures_")}
+   globalThis.genericAnswerAccepted = manualAnswerCoversQuestionFeatures_(
+     "按下底部按鈕會顯示控制功能表",
+     "S32CM703UC 要怎麼手動切到 HDMI 2？"
+   );
+   globalThis.hdmiAnswerAccepted = manualAnswerCoversQuestionFeatures_(
+     "進入連接的裝置後選擇 HDMI 2",
+     "S32CM703UC 要怎麼手動切到 HDMI 2？"
+   );`,
+  manualCoverageVm,
+);
+assert(
+  manualCoverageVm.genericAnswerAccepted === false &&
+    manualCoverageVm.hdmiAnswerAccepted === true,
+  "手冊有相關段落仍不夠；最終答案必須真正覆蓋原題明說功能",
+);
+
+const removedBestDriveKeys = [];
+const legacyOverlapFile = { getName: () => "S32CM703,S49DG952.pdf" };
+const promotionFolder = {
+  getFilesByName: () => ({ hasNext: () => false }),
+  getFiles: () => {
+    let delivered = false;
+    return {
+      hasNext: () => !delivered,
+      next: () => {
+        delivered = true;
+        return legacyOverlapFile;
+      },
+    };
+  },
+  createFile: (blob) => ({ getId: () => `created:${blob.name}` }),
+};
+const focusedPromotionVm = {
+  CONFIG: { DRIVE_FOLDER_ID: "drive-folder" },
+  DriveApp: { getFolderById: () => promotionFolder },
+  CacheService: {
+    getScriptCache: () => ({
+      removeAll: (keys) => removedBestDriveKeys.push(...keys),
+    }),
+  },
+  normalizeModelForDisplay: (model) =>
+    String(model || "").replace(/^LS/, "S").replace(/XZW$/, ""),
+  persistOfficialManualManifest_: () => {},
+};
+vm.createContext(focusedPromotionVm);
+vm.runInContext(
+  `${extractFunction(linebot, "normalizePdfModelToken_")}
+   ${extractFunction(linebot, "getPdfFileModelTokens_")}
+   ${extractFunction(linebot, "isPdfSalesSuffix_")}
+   ${extractFunction(linebot, "isPdfModelTokenMatch_")}
+   ${extractFunction(linebot, "isKnownUnsafeLegacySharedManual_")}
+   ${extractFunction(linebot, "clearBestDrivePdfCandidateCaches_")}
+   ${extractFunction(linebot, "promoteOfficialManualToRoot_")}
+   globalThis.focusedPromotion = promoteOfficialManualToRoot_(
+     { copyBlob: () => ({ setName: function(name) { this.name = name; return this; } }) },
+     { fullSku: "LS49DG952SCXZW" },
+     "new-sha256",
+     "S49DG952.pdf"
+   );`,
+  focusedPromotionVm,
+);
+assert(
+  focusedPromotionVm.focusedPromotion.action === "CREATED" &&
+    focusedPromotionVm.focusedPromotion.driveFileId === "created:S49DG952.pdf" &&
+    removedBestDriveKeys.includes("PDF_BEST_DRIVE_V246:S32CM703") &&
+    removedBestDriveKeys.includes("PDF_BEST_DRIVE_V246:S49DG952") &&
+    removedBestDriveKeys.includes("PDF_BEST_DRIVE_V246:S49DG952SC"),
+  "經驗證的 G95SD 單型號手冊可與舊錯綁共用檔安全並存，且會清除相關 Drive 候選快取",
 );
 const autoRuleVm = {
   normalizeModelForDisplay: (model) =>

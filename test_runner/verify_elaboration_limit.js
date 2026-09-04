@@ -137,7 +137,7 @@ async function main() {
       ![t3, t4, t5].some((turn) =>
         hasPattern(turn.logs, /Daily Question Guard.*used=/),
       ),
-      "Step2 failed: #再詳細說明 不得重複扣一般 20 題額度。",
+      "Step2 failed: #再詳細說明 不得重複扣一般 10 題額度。",
     );
 
     console.log("\nPASS: verify_elaboration_limit");

@@ -8,7 +8,7 @@
 
 var QA_KNOWLEDGE_PREFIX_ = "QA2:";
 var QA_KNOWLEDGE_SCHEMA_VERSION_ = 2;
-var QA_KNOWLEDGE_CACHE_GENERATION_ = "V4";
+var QA_KNOWLEDGE_CACHE_GENERATION_ = "V5";
 var QA_KNOWLEDGE_CACHE_TTL_SECONDS_ = 21600;
 // CacheService 每個值上限約 100 KB；中文在 UTF-8 可能佔 3 bytes。
 // 保守以 8 筆/片及 24K 字元索引片段保存，避免資料量增加後才在正式環境爆掉。
@@ -120,13 +120,33 @@ function qaKnowledgeExtractFamilies_(values) {
   });
 }
 
+function qaKnowledgeIsInternalConstraint_(value) {
+  var text = String(value || "").trim();
+  if (!text) return false;
+  if (/^\[(?:INTERNAL|INTERNAL_ONLY|內部|僅供內部)\]/i.test(text)) return true;
+
+  // caution 是給店員看的使用提醒；「這一列／這項證據能不能證明什麼」
+  // 則是維護與推論邊界。後者可供程式審核，不得當成 LINE 回答。
+  var refersToKnowledgeMetadata =
+    /(?:這|此|該|本)(?:一)?(?:列|筆資料|項證據|筆證據|資料列)|(?:這|此|該|本)證據/.test(text);
+  var statesInferenceBoundary =
+    /(?:不能|不可|不得|只|僅).{0,30}(?:改稱|拿來|用來|當作|視為|判定|證明|提供|推定|解釋)/.test(text);
+  return refersToKnowledgeMetadata && statesInferenceBoundary;
+}
+
 function qaKnowledgeNormalizeAnswer_(answer) {
   var source = answer && typeof answer === "object" ? answer : {};
+  var sourceCautions = qaKnowledgeUniqueStrings_(source.cautions);
+  var internalConstraints = qaKnowledgeUniqueStrings_(source.internalConstraints)
+    .concat(sourceCautions.filter(qaKnowledgeIsInternalConstraint_));
   return {
     conclusion: String(source.conclusion || "").trim(),
     facts: qaKnowledgeUniqueStrings_(source.facts),
     steps: qaKnowledgeUniqueStrings_(source.steps),
-    cautions: qaKnowledgeUniqueStrings_(source.cautions),
+    cautions: sourceCautions.filter(function (item) {
+      return !qaKnowledgeIsInternalConstraint_(item);
+    }),
+    internalConstraints: qaKnowledgeUniqueStrings_(internalConstraints),
     alternatives: qaKnowledgeUniqueStrings_(source.alternatives),
     legacyText: String(source.legacyText || "").trim(),
   };
@@ -143,6 +163,7 @@ function qaKnowledgeStructureLegacyAnswer_(answerText) {
     facts: [],
     steps: [],
     cautions: [],
+    internalConstraints: [],
     alternatives: [],
     legacyText: "",
   };
@@ -207,6 +228,7 @@ function qaKnowledgeParseLegacyRow_(rawText, rowIndex) {
       facts: [],
       steps: [],
       cautions: [],
+      internalConstraints: [],
       alternatives: [],
       legacyText: answerText,
     },
@@ -255,6 +277,7 @@ function qaKnowledgeNormalizeRecord_(input, rowIndex, rawText) {
       pages: String(evidence.pages || input.pages || "").trim(),
       location: String(evidence.location || input.location || "").trim(),
       sourceUrl: String(evidence.sourceUrl || input.sourceUrl || "").trim(),
+      constraints: qaKnowledgeUniqueStrings_(evidence.constraints),
     },
     priority: Number(input.priority || 100),
     rowIndex: Number(rowIndex || input.rowIndex || 0),
@@ -269,6 +292,9 @@ function qaKnowledgeNormalizeRecord_(input, rowIndex, rawText) {
   record.sourceType = record.evidence.type === "manual_chunk" && record.location
     ? "official_html_manual"
     : record.evidence.type;
+  record.internalConstraints = qaKnowledgeUniqueStrings_(
+    record.answer.internalConstraints.concat(record.evidence.constraints),
+  );
   record.facts = [];
   if (record.answer.conclusion) record.facts.push(record.answer.conclusion);
   record.facts = record.facts.concat(record.answer.steps, record.answer.facts, record.answer.cautions);

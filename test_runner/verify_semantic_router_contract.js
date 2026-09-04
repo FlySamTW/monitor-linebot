@@ -760,7 +760,7 @@ for (const auditField of [
 const relationContext = {};
 vm.createContext(relationContext);
 vm.runInContext(
-  `${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}\n${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}`,
+  `${extractFunction(linebot, "isModelIndependentManualOperation_")}\n${extractFunction(linebot, "isGenericManualInputTargetBinding_")}\n${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}\n${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}`,
   relationContext,
 );
 const unboundPbpRate = relationContext.manualSupportedAnswerMatchesExcerpt_(

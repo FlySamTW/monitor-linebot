@@ -154,6 +154,14 @@ assert(
   lightingDefinition && lightingDefinition.qaId === "qa-odyssey-lighting-terminology",
   "純術語問題可用 definition QA 解釋，但不得證明特定型號能力",
 );
+assert(
+  /Samsung 台灣目前公開頁面/.test(lightingDefinition.answer) &&
+    !/這一列只解釋名詞/.test(lightingDefinition.answer) &&
+    lightingDefinition.record.internalConstraints.some((item) =>
+      /這一列只解釋名詞/.test(item),
+    ),
+  "店員需要的使用提醒要保留，資料列的內部推論邊界不得出現在 LINE 回答",
+);
 assert.strictEqual(
   context.qaKnowledgeFindLocalMatch_("G9 有 Infinity Core Lighting 嗎？"),
   null,
@@ -165,6 +173,24 @@ const g95CoreSync = context.qaKnowledgeFindLocalMatch_(
 assert(
   g95CoreSync && g95CoreSync.qaId === "qa-s49dg952-core-sync-capability",
   "完整型號能力題必須命中精確產品頁證據",
+);
+assert(
+  !/不可改稱|OSD 路徑需另/.test(g95CoreSync.answer) &&
+    g95CoreSync.record.internalConstraints.some((item) =>
+      /不可改稱/.test(item),
+    ) &&
+    !g95CoreSync.record.facts.some((item) => /不可改稱/.test(item)),
+  "evidence constraints 必須可供程式審核，但不得被當成使用者事實或回答輸出",
+);
+assert(
+  !/這一列只解釋名詞|不可改稱 Infinity Core Lighting/.test(
+    context.qaKnowledgeSelectPromptContext_(
+      "S49DG952SC CoreSync 和 Eclipse Lighting 有什麼差別？",
+      ["S49DG952SC"],
+      false,
+    ).text,
+  ),
+  "內部推論邊界不得進入 LLM prompt 後被逐字轉述",
 );
 assert.strictEqual(
   context.qaKnowledgeFindLocalMatch_("S49DG952SC 要去哪個選單開啟 CoreSync？"),
@@ -227,7 +253,7 @@ assert(selected.totalCount >= 30);
 assert(selected.text.includes("S27FM501EC"));
 assert(!selected.text.includes("manual-s32fm70x80x-bluetooth-audio"));
 
-cacheStore.delete("QA2_RECORDS_V4_0");
+cacheStore.delete("QA2_RECORDS_V5_0");
 const rebuiltAfterEviction = context.qaKnowledgeLoadAllRecords_(cache);
 assert.strictEqual(
   rebuiltAfterEviction.length,
@@ -252,11 +278,50 @@ assert(
 vm.runInContext(extractFunction(linebot, "isInterfaceDisplayTimingQuery_"), context);
 vm.runInContext(extractFunction(linebot, "isModeQualifiedDisplaySpecQuestion_"), context);
 vm.runInContext(extractFunction(linebot, "hasDirectModeQualifiedRuleEvidence_"), context);
+vm.runInContext(extractFunction(linebot, "extractRuleTermDefinition_"), context);
 vm.runInContext(extractFunction(linebot, "loadRuleTermOntology_"), context);
 vm.runInContext(extractFunction(linebot, "buildRuleTermAliasRegex_"), context);
 vm.runInContext(extractFunction(linebot, "findRuleTermOntologyMatches_"), context);
 vm.runInContext(extractFunction(linebot, "findRuleTermOntologyMatch_"), context);
+vm.runInContext(extractFunction(linebot, "isExplicitRuleTermDefinitionQuestion_"), context);
+vm.runInContext(extractFunction(linebot, "buildDeterministicRuleTermDefinitionReply_"), context);
+vm.runInContext(extractFunction(linebot, "isOperationOrTroubleshootQuery"), context);
 vm.runInContext(extractFunction(linebot, "isPotentialMultiClaimQuestion_"), context);
+assert.strictEqual(
+  context.extractRuleTermDefinition_(
+    "術語_Test,canonical=test；aliases=Test；類別=測試；definition_only=true；不得由此推定任一型號支援",
+  ),
+  "",
+  "ontology 的 definition_only 後方是內部推論邊界，不得誤當成使用者定義",
+);
+const displayTermDefinition = context.buildDeterministicRuleTermDefinitionReply_(
+  "FHD 跟更新率是什麼？",
+);
+assert(
+  /FHD：.*1920×1080/.test(displayTermDefinition) &&
+    /更新率：.*每秒重新繪製畫面的次數/.test(displayTermDefinition),
+  "多概念 what-is 題必須用 ontology 回答每個名詞，不要先要求型號",
+);
+assert.strictEqual(
+  context.isOperationOrTroubleshootQuery("FHD 跟更新率是什麼？"),
+  false,
+  "「更新率」不得因包含「更新」二字被誤判成軟體更新操作",
+);
+assert.strictEqual(
+  context.isOperationOrTroubleshootQuery("如何更新韌體？"),
+  true,
+  "真正的韌體更新操作仍必須維持手冊路由",
+);
+assert(
+  linebot.indexOf("const directRuleTermDefinition =") >= 0 &&
+    linebot.indexOf("const directRuleTermDefinition =") <
+      linebot.indexOf("const freshOperationNeedsModel ="),
+  "無型號術語定義必須在 operation guard 之前終止回答",
+);
+assert(
+  (linebot.match(/cache\.remove\("RULE_TERM_ONTOLOGY_V3"\)/g) || []).length >= 2,
+  "每日知識同步與維護同步後都必須清除當前 ontology cache",
+);
 assert.strictEqual(
   context.buildRuleTermAliasRegex_(["UHD"]).test("WUHD"),
   false,
@@ -452,6 +517,16 @@ context.findExactModelRuleLine_ = () =>
 vm.runInContext(extractFunction(linebot, "splitClassRuleFields_"), context);
 vm.runInContext(extractFunction(linebot, "sanitizeExactRuleReplyField_"), context);
 vm.runInContext(extractFunction(linebot, "buildDeterministicExactRuleReply_"), context);
+const persistedModelDefinitionReply = context.buildDeterministicExactRuleReply_(
+  "FHD 跟更新率是什麼？",
+  "S49DG952SC",
+);
+assert(
+  /FHD：.*1920×1080/.test(persistedModelDefinitionReply) &&
+    /更新率：.*每秒/.test(persistedModelDefinitionReply) &&
+    !/DQHD|240Hz/i.test(persistedModelDefinitionReply),
+  "已記住的型號不得讓整機 DQHD／240Hz 數值取代使用者要的 FHD／更新率定義",
+);
 assert.deepStrictEqual(
   Array.from(context.splitClassRuleFields_("S27TEST001,原生對比1,000:1,HAS升降底座")),
   ["S27TEST001", "原生對比1000:1", "HAS升降底座"],
