@@ -250,16 +250,19 @@ assertStep(
 );
 
 assertStep(
-  /looksLikeMissingDataReply[\s\S]*Auto Web Block v29\.6\.033[\s\S]*AUTO_SEARCH_WEB/.test(
+  /looksLikeMissingDataReply[\s\S]*Auto Web Signal v29\.6\.289[\s\S]*AUTO_SEARCH_WEB/.test(
     handleMessageSection,
   ),
-  "Fast Mode missing-data answers must be converted into the web-search confirmation flow",
+  "Fast Mode missing-data answers must be converted into the automatic Web SourceOperation flow",
 );
 
 assertStep(
-  /要我接著查三星官方網站嗎/.test(handleMessageSection) &&
+  /\[Auto Web v29\.6\.289\][\s\S]{0,700}executeAutomaticWebFallback_\(/.test(
+    handleMessageSection,
+  ) &&
+    !/要我接著查三星官方網站嗎/.test(handleMessageSection) &&
     !/\[來源:缺失\]/.test(handleMessageSection),
-  "web-search confirmation rewrite must use a natural opt-in question without inventing a missing-data source tag",
+  "missing-data Web flow must execute directly without an extra confirmation or invented source tag",
 );
 
 assertStep(

@@ -1,5 +1,27 @@
 # 開發對話紀錄
 
+## 2026-09-04（v29.6.291 / Web 搜尋結果的安全終點）
+
+- v29.6.290 正式實問證明 Search 回傳 5 組查詢、10 chunks、9 supports，但 exact-model／來源隔離守門將混合支持全部拒絕；真正問題是結果無法被安全採用，不是 Google 完全沒有搜尋結果。
+- 新增最後一層安全過濾：只在本輪確實執行 Google Search 後，保留不含推測、購買、跨型號、工程模式、韌體、產品能力、規格與數值的可逆排查動作；危險句整句丟棄，禁止切掉前提後留下半句。
+- 無安全句時仍以現場核對、官網／三星客服或 Sam QA 作終點，不顯示內部錯誤或要求重搜。模型與呼叫次數不變，schema 升為 `EvidenceV8`。
+
+## 2026-09-04（v29.6.290 / Grounded Web 有結果卻被丟棄）
+
+- 正式 v29.6.289 TestUI 問 `G8 的 PBP 怎麼開？`：G8 選型確實 `routerCalls=0 / NT$0`；選 `S32DG802SC` 後正確掛 PDF 並自動 Web。Web 取得 YouTube／Reddit、4 組搜尋詞、4 chunks、6 supports，卻因唯一支持句含保留語而被 `no_safe_segment` 全丟，最終仍只有官網。
+- 新增 grounding-only 安全降級：只從 support 句段提取低風險操作動作，排除規格斷言、數值、購買、工程模式與推測；標示非官方且不保證適用本款。未驗證全文與 exact-model 能力守門不放寬。
+- PDF rescue 與直接 Web 共用此邏輯；快取升為 `EvidenceV7`，避免重播 v29.6.289 的空白終點。模型與供應商呼叫數不變。
+
+## 2026-09-04（v29.6.289 / LINE 顯示實際模型與合計費用）
+
+- 每則回覆統一在最後顯示 `本次約 NT$…｜模型：…`；QA／RULE 零生成顯示 `未使用模型`。多泡泡由後往前渲染，費用不再落在回答中段。
+- Request audit 新增 `billableModels`，只以供應商成功回傳 usage metadata 的模型建立顯示；多階段 Router＋PDF／Web 會全部列出。若成功回應缺 usage metadata，顯示實際嘗試模型並把費用標為待確認。
+- 依 Google 官方 2026-09-04 Standard 價格重核：2.5 Flash-Lite 0.10／0.40、2.5 Flash 0.30／2.50、3.7 Flash 0.75／3.75 美元／百萬 tokens；candidate output 與 thinking 都依 output 費率計入，多階段費用由同一 request audit 累加。
+- 2.5 Google Search grounding 每日 1,500 次免費（Flash／Flash-Lite 共用），超出才 US$35／1,000 grounded prompts；依 20 名實驗人員的 10／2／5 額度與每日 3 次系統救援，仍低於免費上限。固定匯率 32 僅為約值，Cloud NT$90 強制門檻另負責總支出保護。
+- 移除 v29.5.220 遺留的「攔截 AUTO_SEARCH_WEB 後要求店員再按一次」旁路；Fast 明確要求 Web、AnswerEnvelope 無證據或只有部分證據且手冊不能直接完成時，現在都進同一個 Web SourceOperation。一般提問 charge 交由進階來源統一退款，Web 仍只扣每日 5 次且同題冪等。
+- 新增 `seriesAliasResolved`：G8／M8／M7 已由 CLASS_RULES 解出系列候選時，直接走 RULE 共識或型號選單，`routerCalls=0`。這防止 3.7 Router 花錢重做確定性的系列對照。
+- Web 仍維持 evidence-first；「有用終點」不等於把任何搜尋片段硬湊成事實。找不到精確證據或供應商失敗時，保留已知部分、提供明示未證實的低風險步驟與官網／Sam QA 路徑，不再回空白確認或重搜迴圈。
+
 ## 2026-09-04（v29.6.288 / Router 最小啟動與帳單校準）
 
 - Google Cloud `Sam-Paid-Project` 實帳：2026-07 NT$46.18、2026-08 NT$21.95、2026-09-01～03 NT$1.24；報表 `$` 為帳戶台幣顯示，已用 Gemini 2.5 Flash token 用量與官方單價交叉核對。

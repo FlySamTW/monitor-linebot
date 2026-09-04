@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.288"; // 2026-09-04 Router 最小啟動與連續追問沿用契約
-const BUILD_TIMESTAMP = "2026-09-04 18:27";
+const GAS_VERSION = "v29.6.291"; // 2026-09-04 網搜引用不足仍交付安全可試終點
+const BUILD_TIMESTAMP = "2026-09-04 19:57";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV6";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV8";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -2957,6 +2957,9 @@ function buildSemanticRouterInput_(options) {
     isElaboration: source.isElaboration === true,
     unknownModel: source.unknownModel === true,
     ambiguousAlias: source.ambiguousAlias === true,
+    // G8／M8 等已由 CLASS_RULES 解析出系列與候選時，產品身分並不模糊；
+    // 型號差異交給既有選型器，不能為了重做同一件事再呼叫 Router。
+    seriesAliasResolved: source.seriesAliasResolved === true,
     possibleFollowUp: source.possibleFollowUp === true,
     priorRoutePlanAvailable: source.priorRoutePlanAvailable === true,
     multiClaim: source.multiClaim === true,
@@ -3017,6 +3020,17 @@ function shouldRunSemanticRouter_(options) {
   );
   if (deterministicManualRoute || deterministicCurrentRoute) return false;
 
+  // 系列別稱已被 RULE 確定解析時：共同能力由 RULE 共識回答；其餘直接列
+  // 實際型號候選。這是確定性產品身分路由，不需要付費語意守門。
+  if (
+    input.seriesAliasResolved &&
+    !multiClaim &&
+    !ellipticalFollowup &&
+    !partialLocal
+  ) {
+    return false;
+  }
+
   // 同一主題已由 Router 拆過主張後，短句追問沿用既有 canonical topic／claims；
   // 除非本輪本身又是新的複合題或產品仍有歧義，否則不得逐輪重叫 3.7。
   if (
@@ -3050,6 +3064,7 @@ function buildSemanticRouterCacheKey_(inputValue) {
     localCoverage: input.localCoverage,
     localEvidenceIds: input.localEvidenceIds,
     manualAvailable: input.manualAvailable,
+    seriesAliasResolved: input.seriesAliasResolved,
     kbVersion: input.kbVersion,
   });
   return `SEM_ROUTE_V1_${computeReplyAnchor_(fingerprint)}`;
@@ -3171,7 +3186,7 @@ function callSemanticRouter_(inputValue) {
         PRICE_ROUTER_INPUT,
         PRICE_ROUTER_OUTPUT,
       );
-      addGenerationUsageToAudit_(usage, cost.costTWD);
+      addGenerationUsageToAudit_(usage, cost.costTWD, GEMINI_MODEL_ROUTER);
       currentRequestAudit.routerCostTwd += Number(cost.costTWD) || 0;
       lastTokenUsage = {
         input: cost.input,
@@ -10040,12 +10055,10 @@ function sanitizeTentativeWebActionLine_(rawLine) {
     .map((sentence) => sentence.trim())
     .filter(Boolean)
     .forEach(function (sentence) {
-      // 完整句本身安全時保留逗號前後的語意，不再切成「然後將其開啟」
-      // 這類失去主詞的殘句。只有句內混有推測／購買話術時，才逐逗號
-      // 拿掉不安全子句，並把可獨立成立的操作子句整理回完整指令。
-      const candidates = unsafe.test(sentence)
-        ? sentence.split(/[，,]+/)
-        : [sentence];
+      // 同一句一旦混有推測、購買、其他型號或工程模式，就整句淘汰；
+      // 不可把後半句拆出來，讓失去前提的殘句看起來像可靠建議。
+      if (unsafe.test(sentence)) return;
+      const candidates = [sentence];
       candidates.forEach(function (candidate) {
         let clause = String(candidate || "")
           .trim()
@@ -10072,9 +10085,54 @@ function sanitizeTentativeWebActionLine_(rawLine) {
 }
 
 function buildTentativeWebFallback_(rawResponse, query, model) {
-  // Grounding 沒有支持句時，rawResponse 只是一份未驗證草稿；
-  // 無論寫得多像答案都不能轉交前線店員。
+  // 找不到可逐句綁定的 grounding support 時，不能把全文當成已證實答案；
+  // 但只要本輪真的執行過 Google Search，可保留經安全過濾、且不含產品
+  // 能力／數值／購買／韌體／工程模式／推測的低風險動作，明示僅供排查。
+  const raw = String(rawResponse || "")
+    .replace(/\s+(?=\d+[.、)]\s*)/g, "\n")
+    .replace(/\s+(?=[•*-]\s+)/g, "\n");
+  const actions = [];
+  const seen = {};
+  raw.split(/[\r\n]+/).forEach(function (line) {
+    const action = sanitizeTentativeWebActionLine_(line);
+    const key = String(action || "").replace(/\s+/g, "").toUpperCase();
+    if (action && !seen[key]) {
+      seen[key] = true;
+      actions.push(action);
+    }
+  });
+  if (actions.length > 0) {
+    return [
+      "公開網頁沒有取得可逐句核對的引用，以下只當排查方向：",
+      actions.slice(0, 3).join("\n"),
+      "若機內找不到相同選單，就不要套用其他型號；這題也會留給 Sam 補進 QA。",
+    ].join("\n");
+  }
   return buildSafeNoEvidenceNextStep_(query, model);
+}
+
+/**
+ * Grounding 確實支持、但不足以證明「這個完整型號具備此能力」的句段，
+ * 仍可降級為不含規格斷言的低風險操作方向。只能從 grounding support
+ * 擷取，不能從未驗證全文擷取。
+ */
+function buildGroundedTentativeWebActions_(segments) {
+  const actions = [];
+  const seen = {};
+  (Array.isArray(segments) ? segments : []).forEach(function (item) {
+    const raw = item && typeof item === "object" ? item.text : item;
+    String(raw || "")
+      .split(/[\r\n]+/)
+      .forEach(function (line) {
+        const action = sanitizeTentativeWebActionLine_(line);
+        const key = String(action || "").replace(/\s+/g, "").toUpperCase();
+        if (action && !seen[key]) {
+          seen[key] = true;
+          actions.push(action);
+        }
+      });
+  });
+  return actions.slice(0, 3).join("\n");
 }
 
 function normalizeGroundedModelIdentity_(value) {
@@ -10734,6 +10792,12 @@ function runManualWebRescue_(
     );
     const groundingPresent = Boolean(lastWebEvidenceValid);
     const rawWebDraft = String(lastWebUnverifiedDraft || webResponse || "");
+    const broadGroundedSources = Array.isArray(lastSearchSources)
+      ? lastSearchSources.slice(0, 5)
+      : [];
+    const groundedTentativeActions = groundingPresent
+      ? buildGroundedTentativeWebActions_(lastWebSupportedSegments)
+      : "";
     const supportResult = buildGroundedSupportedAnswer_(
       lastWebSupportedSegments,
       model,
@@ -10790,6 +10854,27 @@ function runManualWebRescue_(
         remaining: rescueGrant.remaining,
       };
     }
+    if (groundingPresent && groundedTentativeActions) {
+      return {
+        attempted: true,
+        success: false,
+        partial: true,
+        tentative: true,
+        coverage: "partial",
+        groundingPresent: true,
+        text: groundedTentativeActions,
+        unresolvedQuestion: String(
+          rescueOptions.unresolvedQuestion || originalQuestion || "",
+        ).trim(),
+        sources: broadGroundedSources,
+        rejectionReasons:
+          supportResult && Array.isArray(supportResult.rejectionReasons)
+            ? supportResult.rejectionReasons.slice()
+            : [],
+        userQuotaCharged: !systemRescue && Boolean(rescueGrant.reserved),
+        remaining: rescueGrant.remaining,
+      };
+    }
     writeLog(
       `[Source Rescue v29.6.282] grounding=${groundingPresent ? 1 : 0} coverage=none accepted=0 reasons=${(supportResult && supportResult.rejectionReasons || []).join(",") || "none"} rawDraftChars=${rawWebDraft.length}`,
     );
@@ -10800,7 +10885,11 @@ function runManualWebRescue_(
       coverage: "none",
       groundingPresent: groundingPresent,
       text: "",
-      tentativeText: "",
+      tentativeText: buildTentativeWebFallback_(
+        rawWebDraft,
+        originalQuestion,
+        model,
+      ),
       sources: [],
       rejectionReasons:
         supportResult && Array.isArray(supportResult.rejectionReasons)
@@ -10864,13 +10953,19 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     return [
       hadPartialManualEvidence && partialManualBody
         ? `手冊能確認：\n${partialManualBody}`
-        : "官方手冊沒有直接寫出完整答案。",
+        : rescue.tentative
+          ? "這份手冊沒有直接寫出完整答案；公開網頁有一個可先試的方向："
+          : "官方手冊沒有直接寫出完整答案。",
       "",
-      `公開網頁目前只確認：\n${rescue.text}`,
+      rescue.tentative
+        ? `非官方做法（尚未確認完全適用這款）：\n${rescue.text}`
+        : `公開網頁目前只確認：\n${rescue.text}`,
       "",
-      unresolved
-        ? `目前仍沒有直接證據完整回答：「${unresolved}」。`
-        : "目前仍沒有直接證據完整回答這一點。",
+      rescue.tentative
+        ? "若機內找不到相同選單，就不要套用其他型號；可用下方官網再核對本款支援資訊。"
+        : unresolved
+          ? `目前仍沒有直接證據完整回答：「${unresolved}」。`
+          : "目前仍沒有直接證據完整回答這一點。",
       `參考：${rescue.sources.join("、")}（非官方，請斟酌）`,
       hadPartialManualEvidence
         ? "[來源:官方手冊、網路搜尋]"
@@ -10900,11 +10995,13 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     ].join("\n");
   }
   if (hadPartialManualEvidence && partialManualBody) {
-    const webNote = rescue && rescue.quotaExhausted
-      ? "公開網頁補查額度目前已用完；先保留手冊已確認的部分，不把未證實內容補成答案。"
-      : groundedButNotTargeted
-        ? "公開網頁有找到相關資料，但不足以確認適用這款；先保留手冊已確認的部分。"
-        : "公開網頁目前沒有取得可核對的補充；先保留手冊已確認的部分。";
+    const webNote = rescue && rescue.tentativeText
+      ? rescue.tentativeText
+      : rescue && rescue.quotaExhausted
+        ? "公開網頁補查額度目前已用完；先保留手冊已確認的部分，不把未證實內容補成答案。"
+        : groundedButNotTargeted
+          ? "公開網頁有找到相關資料，但不足以確認適用這款；先保留手冊已確認的部分。"
+          : "公開網頁目前沒有取得可核對的補充；先保留手冊已確認的部分。";
     return [
       "手冊能確認：",
       partialManualBody,
@@ -10912,6 +11009,12 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
       webNote,
       "[來源:官方手冊]",
     ].join("\n");
+  }
+  if (rescue && rescue.tentativeText) {
+    return [
+      "手冊沒有直接寫出完整答案，我把網路搜尋整理成可先排查的方向：",
+      rescue.tentativeText,
+    ].join("\n\n");
   }
   if (groundedButNotTargeted) {
     return [
@@ -11038,9 +11141,9 @@ function executeAutomaticManualFallback_(
 }
 
 /**
- * 條件式主張規劃器判定為時效／第三方資訊時的唯一自動 Web 入口。
+ * QA／RULE／手冊仍無法完成時的唯一自動 Web 入口。
  * Router 本身不扣額度；只有這裡真正送出供應商請求前，才由既有
- * executeAdvancedSourceQuery_ 以同一套冪等、10 次／日與成本守門計次。
+ * executeAdvancedSourceQuery_ 以同一套冪等、5 次／日與成本守門計次。
  */
 function executeAutomaticWebFallback_(
   query,
@@ -11095,7 +11198,7 @@ function executeAutomaticWebFallback_(
     draftQuery: webQuery,
     usePrevious: Boolean(selectedModel),
     automaticFallback: true,
-    semanticRouter: true,
+    semanticRouter: Boolean(routeAnalysis),
     semanticClaimsPrepared: Boolean(routeAnalysis),
     semanticRouteVersion: routeAnalysis ? SEMANTIC_ROUTER_VERSION : "",
     routePlanHash: routePlanHash,
@@ -11118,7 +11221,7 @@ function executeAutomaticWebFallback_(
     dailyQuestionRemaining: CURRENT_DAILY_QUESTION_REMAINING,
   };
   writeLog(
-    `[Automatic Web Fallback v29.6.277] Router 判定需查公開網頁；model=${selectedModel || "none"}`,
+    `[Automatic Web Fallback v29.6.289] 前序來源未完成，直接查公開網頁；model=${selectedModel || "none"}`,
   );
   return executeAdvancedSourceQuery_(
     "web",
@@ -11787,6 +11890,15 @@ function executeAdvancedSourceQuery_(
     }
   } else {
     finalText = sanitizeManualDeflection(finalText, normalizedQuery);
+    let groundedTentativeWebText = "";
+    const broadGroundedWebSources = Array.isArray(lastSearchSources)
+      ? lastSearchSources.slice(0, 5)
+      : [];
+    if (lastWebEvidenceValid) {
+      groundedTentativeWebText = buildGroundedTentativeWebActions_(
+        lastWebSupportedSegments,
+      );
+    }
     if (lastWebEvidenceValid) {
       const compactWebText = buildGroundedSupportedAnswer_(
         lastWebSupportedSegments,
@@ -11814,7 +11926,8 @@ function executeAdvancedSourceQuery_(
           "[Grounding Relevance v29.6.262] 搜尋支持句段沒有同時證明目前型號／RULE 系列身分與本題核心詞，不視為本題答案",
         );
         lastWebEvidenceValid = false;
-        lastWebUnverifiedDraft = "[NO_RELEVANT_WEB_EVIDENCE]";
+        // 保留本輪 Google Search 原始草稿，只供低風險動作過濾；
+        // 不得因此標成有引用的 Web 答案。
         finalText = "";
       } else if (partialWebText) {
         webEvidencePartial = true;
@@ -11842,11 +11955,21 @@ function executeAdvancedSourceQuery_(
       const officialPage = getSamsungOfficialModelPage_(
         primaryModel || selectedModel,
       );
-      finalText = buildTentativeWebFallback_(
-        lastWebUnverifiedDraft,
-        originalQuestion,
-        primaryModel || selectedModel,
-      );
+      finalText = groundedTentativeWebText
+        ? [
+            "公開網頁有提供可先試的方向，但尚未確認完全適用這款：",
+            groundedTentativeWebText,
+            broadGroundedWebSources.length > 0
+              ? `參考：${broadGroundedWebSources.join("、")}（非官方，請斟酌）`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        : buildTentativeWebFallback_(
+            lastWebUnverifiedDraft,
+            originalQuestion,
+            primaryModel || selectedModel,
+          );
       finalText += officialPage
         ? "\n\n下方保留「到這款官網」；這個連結只供查看產品資訊，不會拿官網內容冒充非官方搜尋結果。"
         : "\n\n相同題目不會再次搜尋或扣次。";
@@ -15023,6 +15146,7 @@ function resetRequestAudit_() {
   currentRequestAudit = {
     stages: [],
     model: "",
+    billableModels: [],
     attemptedCalls: 0,
     billableCalls: 0,
     paidCalls: 0,
@@ -15085,12 +15209,19 @@ function calculateGeminiUsageCost_(usage, priceInput, priceOutput) {
   };
 }
 
-function addGenerationUsageToAudit_(usage, costTWD) {
+function addGenerationUsageToAudit_(usage, costTWD, modelName) {
   if (!currentRequestAudit || !usage) return;
   currentRequestAudit.billableCalls++;
   // paidCalls 保留供既有 TestUI／稽核讀取，但語意改為有 usageMetadata 的
   // 實際可計費回應；HTTP 失敗只增加 attemptedCalls。
   currentRequestAudit.paidCalls = currentRequestAudit.billableCalls;
+  const billedModel = String(modelName || "").trim();
+  if (
+    billedModel &&
+    !currentRequestAudit.billableModels.includes(billedModel)
+  ) {
+    currentRequestAudit.billableModels.push(billedModel);
+  }
   currentRequestAudit.inputTokens += Number(usage.promptTokenCount) || 0;
   currentRequestAudit.outputTokens += Number(usage.candidatesTokenCount) || 0;
   currentRequestAudit.thoughtTokens += Number(usage.thoughtsTokenCount) || 0;
@@ -15110,6 +15241,7 @@ function writeRequestAuditOnce_(visibleText) {
   const payload = {
     stage: currentRequestAudit.stages.join("+") || "deterministic",
     model: currentRequestAudit.model || "none",
+    billableModels: currentRequestAudit.billableModels || [],
     attemptedCalls: currentRequestAudit.attemptedCalls,
     billableCalls: currentRequestAudit.billableCalls,
     paidCalls: currentRequestAudit.paidCalls,
@@ -21000,7 +21132,7 @@ ${recentOfficialManualAnswer}
 
             // v24.1.0: 儲存到全域變數，供測試模式顯示
             lastTokenUsage = usageCost;
-            addGenerationUsageToAudit_(usage, costTWD);
+            addGenerationUsageToAudit_(usage, costTWD, modelName);
           } else {
             // v27.0.0: 如果沒有 usage data，清除舊的 lastTokenUsage
             // 避免 LINE 上顯示上一次查詢的費用
@@ -21697,6 +21829,7 @@ function callOpenRouter(
             candidatesTokenCount: json.usage.completion_tokens,
           },
           costTWD,
+          OPENROUTER_MODEL,
         );
         writeLog(
           `[OpenRouter Tokens] In: ${json.usage.prompt_tokens}, Out: ${
@@ -21803,6 +21936,47 @@ function getNaturalCustomerSourceLabel_(rawSource) {
   return "";
 }
 
+function getCustomerModelUsageLabel_() {
+  const audit =
+    typeof currentRequestAudit !== "undefined" && currentRequestAudit
+      ? currentRequestAudit
+      : null;
+  let models = audit && Array.isArray(audit.billableModels)
+    ? audit.billableModels.slice()
+    : [];
+  // API 成功但供應商未回 usageMetadata 時，費用會標成待確認；仍要如實顯示
+  // 實際送出的模型，不能誤寫成「未使用模型」。
+  if (
+    models.length === 0 &&
+    audit &&
+    Number(audit.attemptedCalls || 0) > 0 &&
+    String(audit.model || "").trim()
+  ) {
+    models = [String(audit.model).trim()];
+  }
+  if (models.length === 0) return "未使用模型";
+
+  const labels = models.map(function (modelName) {
+    const normalized = String(modelName || "")
+      .replace(/^models\//i, "")
+      .toLowerCase();
+    if (normalized === "gemini-3.7-flash") {
+      return "Gemini 3.7 Flash（守門）";
+    }
+    if (normalized === "gemini-2.5-flash-lite") {
+      return "Gemini 2.5 Flash-Lite";
+    }
+    if (normalized === "gemini-2.5-flash") {
+      return "Gemini 2.5 Flash";
+    }
+    if (normalized === "qwen/qwen-2.5-7b-instruct") {
+      return "Qwen 2.5 7B";
+    }
+    return String(modelName || "").replace(/^models\//i, "");
+  });
+  return `模型：${[...new Set(labels.filter(Boolean))].join("＋")}`;
+}
+
 function renderCustomerFacingText_(text) {
   let body = String(text === null || text === undefined ? "" : text);
   const sourceLabels = [];
@@ -21864,6 +22038,7 @@ function renderCustomerFacingText_(text) {
     const costLabel = customerCost.indexOf("未知") >= 0
       ? "本次費用待確認"
       : `本次約 ${customerCost}`;
+    const modelLabel = getCustomerModelUsageLabel_();
     const advancedSource = LAST_SOURCE_TEST_STATE
       ? String(
           LAST_SOURCE_TEST_STATE.source ||
@@ -21885,13 +22060,13 @@ function renderCustomerFacingText_(text) {
       const quotaStatus = LAST_SOURCE_TEST_STATE.refunded
         ? `${quotaLabel}未扣，仍 ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`
         : `${quotaLabel} ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`;
-      body = `${body}\n\n${costLabel}｜${quotaStatus}`.trim();
+      body = `${body}\n\n${costLabel}｜${modelLabel}｜${quotaStatus}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     } else if (typeof CURRENT_DAILY_QUESTION_REMAINING === "number") {
-      body = `${body}\n\n${costLabel}｜直接問 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
+      body = `${body}\n\n${costLabel}｜${modelLabel}｜直接問 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
-    } else if (lastLlmCallAttempted || customerCost !== "NT$0.0000") {
-      body = `${body}\n\n${costLabel}`.trim();
+    } else {
+      body = `${body}\n\n${costLabel}｜${modelLabel}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     }
   }
@@ -21900,8 +22075,13 @@ function renderCustomerFacingText_(text) {
 
 function renderCustomerFacingPayload_(payload) {
   if (Array.isArray(payload)) {
-    return payload
-      .map((item) => renderCustomerFacingPayload_(item))
+    // 從最後一個訊息往前渲染，確保費用／模型頁尾落在整組回答最後的
+    // 文字泡泡，而不是第一個泡泡；輸出順序維持不變。
+    const rendered = new Array(payload.length);
+    for (let index = payload.length - 1; index >= 0; index--) {
+      rendered[index] = renderCustomerFacingPayload_(payload[index]);
+    }
+    return rendered
       .filter((item) => {
         if (typeof item === "string") return item.trim().length > 0;
         if (item && typeof item === "object" && item.type === "text") {
@@ -25235,6 +25415,10 @@ function handleMessage(event) {
           semanticCandidates.length > 1 &&
           !semanticConfirmedModel,
       ),
+      seriesAliasResolved: Boolean(
+        extractShortAliasModelTokens(routingQuestion).length > 0 &&
+          aliasSelectionBeforeQa.length > 0,
+      ),
       possibleFollowUp: Boolean(
         semanticPreviousTopic && isEllipticalEvidenceFollowUp_(routingQuestion),
       ),
@@ -25612,7 +25796,7 @@ function handleMessage(event) {
           !hasNeedDoc &&
           !isInPdfMode
         ) {
-          writeLog("[Auto Web Block v29.6.033] 偵測到 Fast Mode 查無資料但未輸出 WEB 暗號，補上網路搜尋確認流程");
+          writeLog("[Auto Web Signal v29.6.289] Fast 查無資料且漏掉 WEB 暗號，補上自動 Web SourceOperation 訊號");
           finalText = `${finalText}\n[AUTO_SEARCH_WEB]`;
         }
 
@@ -26220,39 +26404,39 @@ function handleMessage(event) {
           `[Flow Decision] hasExplicitTrigger:${hasExplicitTrigger}, containsWebSignal:${finalText.includes("[AUTO_SEARCH_WEB]")}`,
         );
 
-        // 🆕 v29.5.220: 全面封殺背景自動聯網，改為「主動詢問用戶『需要網路搜尋嗎？』」的零信任控制權機制
-        // 當 Fast Mode AI 判定需要網路搜尋 (含有 [AUTO_SEARCH_WEB]，通常表示官方資料庫中查無此機型或規格)，
-        // 我們拒絕在背景悄悄自動發起聯網。而是直接將回答改寫為誠實無資料的警示引導，
-        // 並主動提供 LINE 底部 [🌐 這題再搜網路] 按鈕，交由用戶決定是否進行網路搜尋。
+        // v29.6.289：Fast 只用可驗證資料回答；它明確回報需要 Web 時，
+        // 直接交給唯一 Web SourceOperation 完成，不再先回「資料不足」再要
+        // 店員多按一次。配額、防連點與成本仍由既有狀態機守門。
         if (
           !semanticRouterControlsThisTurn &&
           finalText.includes("[AUTO_SEARCH_WEB]")
         ) {
-          webSourceRecommended = true;
-          writeLog("[Auto Web Block] 🛑 偵測到 AI 企圖背景聯網，強行攔截改寫為『主動詢問用戶』");
-          
-          let specHint = "";
-          if (/6K|8K/i.test(userMessage)) {
-            specHint = "目前台灣三星官方規格庫中，尚未登記任何 6K 或 8K 的螢幕規格資訊。";
-          } else {
-            specHint = "官方規格庫與 QA 資料庫中目前查無此相關資訊。";
+          const automaticWebModel = normalizeModelForDisplay(
+            primaryModel ||
+              (cachedDirectModels.length === 1 ? cachedDirectModels[0] : ""),
+          );
+          let automaticWebDailyCharge = "";
+          if (dailyQuestionReservedThisMessage) {
+            automaticWebDailyCharge = "current";
+            dailyQuestionReservedThisMessage = false;
           }
-          
-          const availableAnswer = finalText
-            .replace(/\[AUTO_SEARCH_WEB\]/gi, "")
-            .trim();
-          finalText = [
-            availableAnswer,
-            availableAnswer ? "" : specHint,
-            "目前資料還不足。要我接著查三星官方網站嗎？",
-          ]
-            .filter(Boolean)
-            .join("\n\n");
-          
-          // 清除任何暗號標記，乾淨呈現在 UI 上
-          finalText = finalText.replace(/\[AUTO_SEARCH_WEB\]/gi, "").trim();
-          replyText = finalText;
-          isDualBubbleComplete = false; // 允許正常後續流程去產生 Quick Reply
+          rememberRecentSourceQuestion_(
+            contextId,
+            routingQuestion,
+            automaticWebModel,
+          );
+          writeLog(
+            `[Auto Web v29.6.289] QA/RULE 不足，直接交由 Web SourceOperation；model=${automaticWebModel || "none"}`,
+          );
+          executeAutomaticWebFallback_(
+            routingQuestion,
+            automaticWebModel,
+            contextId,
+            userId,
+            replyToken,
+            { dailyQuestionCharge: automaticWebDailyCharge },
+          );
+          return;
         } else if (hasExplicitTrigger) {
           // 只有 Trigger 但沒型號? (可能是 AI 忘了給型號，或依賴 Context)
           // 這裡維持原本邏輯 (可能後續會走 Auto Search PDF)
@@ -27190,6 +27374,33 @@ function handleMessage(event) {
               );
               return;
             }
+            const canCompleteWithWebNow = Boolean(
+              webSourceRecommended && !isInPdfMode,
+            );
+            if (canCompleteWithWebNow) {
+              let automaticWebDailyCharge = "";
+              if (dailyQuestionReservedThisMessage) {
+                automaticWebDailyCharge = "current";
+                dailyQuestionReservedThisMessage = false;
+              }
+              rememberRecentSourceQuestion_(
+                contextId,
+                routingQuestion,
+                envelopeModel,
+              );
+              writeLog(
+                `[Answer Envelope v29.6.289] Fast 無可信證據且無可直接執行手冊，改由 Web 完成；model=${envelopeModel || "none"}`,
+              );
+              executeAutomaticWebFallback_(
+                routingQuestion,
+                envelopeModel,
+                contextId,
+                userId,
+                replyToken,
+                { dailyQuestionCharge: automaticWebDailyCharge },
+              );
+              return;
+            }
             finalText = buildEvidenceHandoffReply_(activeAnswerEnvelope);
             replyText = finalText;
             if (incomingMessageWasElaboration && elaborationReplyAnchor) {
@@ -27206,6 +27417,55 @@ function handleMessage(event) {
               activeAnswerEnvelope.allowedActions.includes("manual");
             webSourceRecommended =
               activeAnswerEnvelope.allowedActions.includes("web");
+            const canCompletePartialWithManualNow = Boolean(
+              manualSourceRecommended &&
+                envelopeModel &&
+                !isInPdfMode &&
+                hasOfficialManualForModel_(envelopeModel),
+            );
+            const canCompletePartialWithWebNow = Boolean(
+              !canCompletePartialWithManualNow &&
+                webSourceRecommended &&
+                !isInPdfMode,
+            );
+            if (canCompletePartialWithManualNow || canCompletePartialWithWebNow) {
+              let advancedDailyQuestionCharge = "";
+              if (dailyQuestionReservedThisMessage) {
+                advancedDailyQuestionCharge = "current";
+                dailyQuestionReservedThisMessage = false;
+              }
+              rememberRecentSourceQuestion_(
+                contextId,
+                routingQuestion,
+                envelopeModel,
+              );
+              if (canCompletePartialWithManualNow) {
+                writeLog(
+                  `[Answer Envelope v29.6.289] Fast 僅部分有證據，直接以手冊完成未解部分；model=${envelopeModel}`,
+                );
+                executeAutomaticManualFallback_(
+                  routingQuestion,
+                  envelopeModel,
+                  contextId,
+                  userId,
+                  replyToken,
+                  { dailyQuestionCharge: advancedDailyQuestionCharge },
+                );
+              } else {
+                writeLog(
+                  `[Answer Envelope v29.6.289] Fast 僅部分有證據且無可直接執行手冊，改由 Web 完成；model=${envelopeModel || "none"}`,
+                );
+                executeAutomaticWebFallback_(
+                  routingQuestion,
+                  envelopeModel,
+                  contextId,
+                  userId,
+                  replyToken,
+                  { dailyQuestionCharge: advancedDailyQuestionCharge },
+                );
+              }
+              return;
+            }
             const verifiedPartialText = sanitizeUnverifiedExternalClaims_(
               stripAnySourceTags(replyText),
             );

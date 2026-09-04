@@ -1033,12 +1033,16 @@ assert(
 );
 assert(
   /本次約 \$\{customerCost\}/.test(linebot) &&
+    /return "Gemini 3\.7 Flash（守門）"/.test(linebot) &&
+    /return `模型：\$\{/.test(linebot) &&
+    /未使用模型/.test(linebot) &&
+    /billableModels/.test(linebot) &&
     /直接問 \$\{CURRENT_DAILY_QUESTION_REMAINING\}\/\$\{USER_DAILY_QUESTION_LIMIT\}/.test(linebot) &&
     /advancedSource === "manual" \? "手冊" : "網搜"/.test(linebot) &&
     /currentRequestAudit\.estimatedCostTwd/.test(
       extractFunction(linebot, "buildReplyCostAuditText_"),
     ),
-  "正式 LINE 必須顯示簡版合計費用與今日剩餘，詳細 token 僅留稽核",
+  "正式 LINE 必須顯示簡版合計費用、實際模型與今日剩餘，詳細 token 僅留稽核",
 );
 assert(
   /SOURCE_PENDING_TTL_SECONDS\s*=\s*600/.test(linebot) &&
@@ -1707,10 +1711,10 @@ assert(
     /lastWebUnverifiedDraft \|\| webResponse/.test(
       extractFunction(linebot, "runManualWebRescue_"),
     ) &&
-    !/buildTentativeWebFallback_\(/.test(
+    /buildTentativeWebFallback_\(/.test(
       extractFunction(linebot, "runManualWebRescue_"),
     ) &&
-    /tentativeText:\s*""/.test(
+    /tentativeText:\s*buildTentativeWebFallback_/.test(
       extractFunction(linebot, "runManualWebRescue_"),
     ) &&
     /userWebQuotaCharged=0/.test(linebot) &&
@@ -1739,7 +1743,10 @@ assert(
     ) &&
     /Grounding Support v29\.6\.167/.test(linebot) &&
     /lastWebSupportedSegments/.test(advancedRouteText) &&
-    /lastWebEvidenceValid = false;[\s\S]*lastWebUnverifiedDraft = "\[NO_RELEVANT_WEB_EVIDENCE\]"/.test(
+    /lastWebEvidenceValid = false;[\s\S]*保留本輪 Google Search 原始草稿/.test(
+      advancedRouteText,
+    ) &&
+    !/lastWebUnverifiedDraft = "\[NO_RELEVANT_WEB_EVIDENCE\]"/.test(
       advancedRouteText,
     ) &&
     advancedRouteText.indexOf("beginAdvancedSourceOperation_(") <
@@ -1991,6 +1998,8 @@ const webRescueFlowContext = {
   isApiFailureReply: () => false,
   stripInternalRoutingHints_: (value) => String(value || ""),
   buildSafeNoEvidenceNextStep_: () => "安全下一步",
+  buildGroundedTentativeWebActions_: () => "",
+  buildTentativeWebFallback_: () => "安全下一步",
   isExactProductFactQuestion_: () => false,
   normalizeModelForDisplay: (value) => String(value || ""),
   writeLog: () => {},
@@ -2040,10 +2049,9 @@ assert(
     !/沒有取得可核對/.test(webRescueFlowContext.partialRescueReply) &&
     webRescueFlowContext.notTargetedRescue.coverage === "none" &&
     webRescueFlowContext.notTargetedRescue.groundingPresent === true &&
-    /有找到相關資料/.test(webRescueFlowContext.notTargetedReply) &&
-    !/沒有取得可核對/.test(webRescueFlowContext.notTargetedReply) &&
+    /安全下一步/.test(webRescueFlowContext.notTargetedReply) &&
     webRescueFlowContext.noGroundingRescue.groundingPresent === false &&
-    /沒有取得可核對的補充/.test(
+    /安全下一步/.test(
       webRescueFlowContext.noGroundingWithManualReply,
     ),
   `Web rescue 必須分離搜尋查詢與原題，並區分 partial、grounded-but-not-targeted、true no-grounding: ${JSON.stringify(webRescueFlowContext)}`,
@@ -2072,6 +2080,7 @@ vm.runInContext(
    ${extractFunction(linebot, "buildSafeNoEvidenceNextStep_")}
    ${extractFunction(linebot, "sanitizeTentativeWebActionLine_")}
    ${extractFunction(linebot, "buildTentativeWebFallback_")}
+   ${extractFunction(linebot, "buildGroundedTentativeWebActions_")}
    globalThis.noEvidence = buildTentativeWebFallback_(
      "沒有找到這個型號的明確資料。一般來說，可能採免工具設計。",
      "底座需要工具嗎？",
@@ -2103,8 +2112,12 @@ vm.runInContext(
      "S49DG932SC"
    );
    globalThis.danglingDisplayRejected = sanitizeTentativeWebActionLine_(
-     "* 建議使用高品質的 Display。"
-   );`,
+      "* 建議使用高品質的 Display。"
+    );
+   globalThis.supportedPbpAction = buildGroundedTentativeWebActions_([
+     {text:"進入螢幕選單，選擇 PIP/PBP Mode，再選 On。", sourceIds:["chunk:1"]},
+     {text:"部分使用者可能可以使用其他型號的工程模式。", sourceIds:["chunk:2"]}
+   ]);`,
   webFallbackContext,
 );
 assert(
@@ -2112,14 +2125,14 @@ assert(
     /先不套用其他型號/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
     /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
-    /沒有足夠證據/.test(webFallbackContext.safeTerminal) &&
-    !/使用數位機上盒|諮詢業者|其他型號可能/.test(
+    /使用數位機上盒|諮詢業者/.test(webFallbackContext.safeTerminal) &&
+    !/其他型號可能/.test(
       webFallbackContext.safeTerminal,
     ) &&
     /沒有足夠證據/.test(webFallbackContext.noPurchase) &&
     !/購買|通常|HDMI 線連接/.test(webFallbackContext.noPurchase) &&
-    /沒有足夠證據/.test(webFallbackContext.pbpCoherent) &&
-    !/PIP\/PBP Mode|Multi-View|然後將其開啟/.test(
+    /PIP\/PBP Mode|Multi-View/.test(webFallbackContext.pbpCoherent) &&
+    !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)/.test(
       webFallbackContext.pbpCoherent,
     ) &&
     /沒有足夠(?:可靠的資料|證據)/.test(
@@ -2129,6 +2142,8 @@ assert(
       webFallbackContext.numericGuessRejected,
     ) &&
     webFallbackContext.danglingDisplayRejected === "" &&
+    /PIP\/PBP Mode/.test(webFallbackContext.supportedPbpAction) &&
+    !/工程模式|其他型號/.test(webFallbackContext.supportedPbpAction) &&
     !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)[。\s]*(?:\n|$)/.test(
       webFallbackContext.pbpCoherent,
     ),
@@ -2139,6 +2154,16 @@ assert(
     pbpCoherent: webFallbackContext.pbpCoherent,
     numericGuessRejected: webFallbackContext.numericGuessRejected,
   })}`,
+);
+
+assert(
+  /buildGroundedTentativeWebActions_\(lastWebSupportedSegments\)/.test(
+    extractFunction(linebot, "runManualWebRescue_"),
+  ) &&
+    /groundedTentativeWebText[\s\S]{0,1800}buildTentativeWebFallback_/.test(
+      advancedRouteText,
+    ),
+  "PDF→Web 與直接 Web 都必須保留 grounding 支持的低風險方向，不得把『無法證明完整型號』誤寫成『網路沒結果』",
 );
 
 assert(

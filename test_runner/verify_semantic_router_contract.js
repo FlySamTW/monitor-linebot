@@ -230,6 +230,19 @@ assert.strictEqual(
   false,
   "同一主題已由 Router 規劃後，省略式連續追問必須沿用 claims，不得逐輪付費",
 );
+assert.strictEqual(
+  context.shouldRunSemanticRouter_({
+    mode: "conditional",
+    question: "G8 的 PBP 怎麼開？",
+    candidateModels: ["S32DG802SC", "S32HG806ES"],
+    identityKind: "alias",
+    ambiguousAlias: true,
+    seriesAliasResolved: true,
+    localCoverage: "none",
+  }),
+  false,
+  "G8 等已由 CLASS_RULES 解析的系列別稱應直接走 RULE 共識或型號選單，不得多叫 Router",
+);
 
 for (const testCase of fixture.validAnalyses) {
   const routeInput = invocationById.get(testCase.inputCaseId).input;
@@ -502,7 +515,9 @@ assert.strictEqual(runResult.attempted, false);
 const runnerSource = `${extractFunction(linebot, "runConditionalRouteAnalysis_")}\n${extractFunction(linebot, "callSemanticRouter_")}`;
 assert(
   /GEMINI_MODEL_ROUTER/.test(runnerSource) &&
-    /models\/gemini-3\.7-flash/.test(linebot),
+    /models\/gemini-3\.7-flash/.test(linebot) &&
+    /PRICE_ROUTER_INPUT\s*=\s*0\.75/.test(linebot) &&
+    /PRICE_ROUTER_OUTPUT\s*=\s*3\.75/.test(linebot),
   "Router 必須使用獨立 Gemini 3.7 Flash 模型常數，不得偷換 PDF／Web 模型",
 );
 assert(
@@ -620,8 +635,20 @@ assert(
   ) &&
     /if\s*\(\s*!semanticRouterControlsThisTurn\s*&&\s*finalText\.includes\("\[AUTO_SEARCH_WEB\]"\)/s.test(
       handleSource,
+    ) &&
+    /\[Auto Web v29\.6\.289\][\s\S]{0,700}executeAutomaticWebFallback_\(/.test(
+      handleSource,
     ),
-  "conditional 接管後，後置 Evidence／能力 guard 即使重新產生 AUTO_SEARCH，也不得再被舊 PDF/Web parser 執行",
+  "conditional 接管後舊 parser 不得重跑；非 Router 的 AUTO_SEARCH_WEB 必須直接進唯一 Web SourceOperation",
+);
+assert(
+  /activeAnswerEnvelope\.status === "unsupported"[\s\S]{0,2600}executeAutomaticWebFallback_\(/.test(
+    handleSource,
+  ) &&
+    /activeAnswerEnvelope\.status === "partial"[\s\S]{0,3000}executeAutomaticWebFallback_\(/.test(
+      handleSource,
+    ),
+  "Fast 無證據或部分證據且手冊無法直接完成時，必須自動 Web 到達終點，不得只回來源按鈕",
 );
 
 const semanticExecutionStart = handleSource.indexOf(

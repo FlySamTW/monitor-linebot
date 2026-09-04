@@ -55,6 +55,7 @@ const renderContext = {
   SOURCE_DAILY_LIMITS: { manual: 2, web: 5 },
   USER_DAILY_QUESTION_LIMIT: 10,
   lastLlmCallAttempted: false,
+  currentRequestAudit: null,
 };
 vm.createContext(renderContext);
 vm.runInContext(
@@ -62,7 +63,9 @@ vm.runInContext(
     extractFunction(linebot, "formatListSpacing"),
     extractFunction(linebot, "formatForLineMobile"),
     extractFunction(linebot, "getNaturalCustomerSourceLabel_"),
+    extractFunction(linebot, "getCustomerModelUsageLabel_"),
     extractFunction(linebot, "renderCustomerFacingText_"),
+    extractFunction(linebot, "renderCustomerFacingPayload_"),
     extractFunction(linebot, "sanitizeHistoryContent"),
   ].join("\n\n"),
   renderContext,
@@ -79,6 +82,37 @@ const customerReply = renderContext.renderCustomerFacingText_(
 );
 assert(!/您|\[費用|In:|\[AUTO_|\[來源|QA庫|QA資料庫|CLASS_RULES|規格庫/.test(customerReply), "客戶回覆仍外洩內部資訊");
 assert(/資料來源：三星官方手冊/.test(customerReply), "手冊來源沒有轉成自然頁尾");
+assert(/本次約 NT\$0\.1234｜未使用模型/.test(customerReply), "沒有模型呼叫時仍須顯示未使用模型");
+
+renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
+renderContext.currentRequestAudit = {
+  attemptedCalls: 2,
+  paidCalls: 2,
+  model: "models/gemini-2.5-flash",
+  billableModels: ["models/gemini-3.7-flash", "models/gemini-2.5-flash"],
+};
+const routedCustomerReply = renderContext.renderCustomerFacingText_(
+  "已查到操作步驟。\n[費用:NT$0.2345（合計 2 次生成請求）]",
+);
+assert(
+  /本次約 NT\$0\.2345｜模型：Gemini 3\.7 Flash（守門）＋Gemini 2\.5 Flash/.test(
+    routedCustomerReply,
+  ),
+  "Router 與回答模型必須依實際稽核一起顯示",
+);
+renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
+renderContext.currentRequestAudit = null;
+
+const multiBubbleReply = renderContext.renderCustomerFacingPayload_([
+  "第一段答案",
+  "第二段答案\n[費用:NT$0.0000（未呼叫 LLM）]",
+]);
+assert(
+  !/本次約/.test(multiBubbleReply[0]) &&
+    /第二段答案[\s\S]*本次約 NT\$0\.0000｜未使用模型/.test(multiBubbleReply[1]),
+  "多泡泡回答的費用與模型必須放在最後一個文字泡泡",
+);
+renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
 
 const mergedSourceReply = renderContext.renderCustomerFacingText_(
   "已確認規格：\n有 2 個 HDMI。\n[來源:官方規格庫]\n\n手冊補充：\n請用 HDMI 線連接訊號源。\n官方手冊：第23、24頁\n[來源:S32FM501.pdf]\n[費用:NT$0.1441]",

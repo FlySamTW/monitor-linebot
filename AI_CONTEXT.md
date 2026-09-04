@@ -1,6 +1,26 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.288 現行最高優先契約：Router 最小啟動、手冊命名與通用操作證據
+## v29.6.291 現行最高優先契約：網搜不可空轉，也不可把猜測冒充答案
+
+- 真正執行 Google Search 後，即使供應商沒有回傳可逐句綁定的非官方引用，也必須從本輪草稿中只保留低風險、可逆的排查動作；凡含「可能／通常」、購買、其他型號、工程模式、韌體、產品能力、規格或數值的整句全部淘汰，不能拆掉危險前提後留下半句。
+- 若沒有任何安全動作，就依題型給不靠猜測的現場驗證方式、官網／三星客服或請 Sam 補 QA；不得顯示內部搜尋失敗，不得要求同來源重按。精確產品事實仍需 QA／RULE、正確 PDF 證據或 Web 同來源支持。
+- PDF rescue 與直接 Web 共用相同終點；模型、Router 啟動頻率與來源呼叫數皆不增加。證據完成語意已變更，`ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV8`。
+
+## v29.6.290 歷史契約：Grounded Web 安全有用終點
+
+- `groundingChunks + groundingSupports` 已存在但 exact-model／完整主張驗證未通過時，不得說成「網路沒結果」。只能從支持句段抽取不含產品能力、規格、數值、購買、韌體、工程模式與推測的低風險操作動作，明示非官方且型號適用性未完全確認。
+- 未驗證 `rawResponse` 仍不可轉交；精確產品事實仍需 exact-model 同來源支持。PDF rescue 與直接 Web 共用此降級契約，`ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV7`。
+
+## v29.6.289：Router 最小啟動、實際模型與合計費用可見
+
+- G8／M8／M7 等短稱一旦由 CLASS_RULES 解出系列與候選，`seriesAliasResolved=true`，不得呼叫 Router 重做產品身分分類。RULE 共識可直接答；型號相依題由確定性候選選單處理。
+- 一般提問的完成鏈為 `QA／RULE／已驗證片段 → 可用手冊 → Web`。Fast 的 `[AUTO_SEARCH_WEB]`、AnswerEnvelope `unsupported/partial` 且無可直接執行手冊時，必須自動進唯一 Web SourceOperation，不再產生「是否搜尋」確認輪。正常自動 Web 計每日 5 次；PDF 失敗的同次 rescue 仍不扣使用者 Web 額度、每日最多 3 次。
+- Web 有 grounding 才能把產品事實當答案；沒有精確證據時禁止假稱已證實，但使用者端不得只看到搜尋失敗。終點至少包含已確認部分、明確標示未證實的低風險排查方向、官網或請 Sam 補 QA，且不可顯示同來源重試形成迴圈。
+
+- 每則正式回覆最後一行必須由 request audit 顯示合計費用與實際模型；零生成顯示 `未使用模型`。不得讓模型自行聲稱使用哪個模型，也不得只顯示最後一階段而漏掉 Router。
+- 成本以 `usageMetadata` 的 input、candidate output 與 thinking（按 output 計價）累加。2026-09-04 官方 Standard 價格已複核：2.5 Flash-Lite 0.10／0.40、2.5 Flash 0.30／2.50、3.7 Flash 0.75／3.75 美元／百萬 tokens；3.7 優惠至 2026-12-31，屆時必須重新校價。台幣匯率 32 為近似值，對外固定顯示「約」。
+
+## v29.6.288 歷史契約：Router 最小啟動、手冊命名與通用操作證據
 
 - Router 不是每題必經站。完整型號的明確手冊題與明確時效 Web 題由程式直接決定來源，`routerCalls=0`；只有真正語意歧義、尚未規劃的省略追問、模糊產品或複合主張才用一次 3.7。
 - 同一 canonical topic 已保存 claims 後，後續短句追問沿用既有規劃，不得每輪重叫 Router。Google Cloud 實帳 2026-07／08 分別為 NT$46.18／NT$21.95，成本評估必須用台幣月總額，不得把帳單 `$` 誤當美元或只用單次倍數製造錯誤印象。
