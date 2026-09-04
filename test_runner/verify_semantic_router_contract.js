@@ -68,6 +68,7 @@ const context = {
   console,
   GAS_VERSION: "v29.6.277",
   SEMANTIC_ROUTER_VERSION: "RouteAnalysisV1",
+  SEMANTIC_ROUTER_POLICY_VERSION: "GatePolicyV2",
   SEMANTIC_ROUTER_MODE_DEFAULT: "conditional",
   SEMANTIC_ROUTER_MAX_CLAIMS: 5,
   GEMINI_MODEL_ROUTER: "models/gemini-3.7-flash",
@@ -175,6 +176,13 @@ assert.deepStrictEqual(
   ["keep_confirmed", "choose_candidate", "none"],
 );
 assert(
+  schema.properties.topicRelation.description &&
+    schema.properties.productAction.description &&
+    schema.properties.claims.items.properties.intent.description &&
+    schema.properties.claims.items.properties.evidenceNeed.description,
+  "Structured Output 關鍵欄位需有簡短語意描述，不能只靠 enum 名稱猜測",
+);
+assert(
   schema.properties.claims &&
     String(schema.properties.claims.type).toLowerCase() === "array" &&
     schema.properties.claims.items &&
@@ -187,6 +195,10 @@ assert(
 
 const invocationById = new Map(
   fixture.invocationCases.map((testCase) => [testCase.id, testCase]),
+);
+assert(
+  fixture.invocationCases.length >= 20,
+  "Router 啟動契約至少覆蓋 20 種真實提問／追問情境",
 );
 propertyStore.set("SEMANTIC_ROUTER_MODE", "conditional");
 for (const testCase of fixture.invocationCases) {
@@ -338,16 +350,112 @@ const confirmedChooseNullValidation = context.validateRouteAnalysis_(
   confirmedChooseNullInput,
 );
 assert(
-  validationFailed(confirmedChooseNullValidation),
-  "已確認完整型號時，Router 不得再以 choose_candidate(null) 把對話退回選型",
+  validationPassed(confirmedChooseNullValidation) &&
+    confirmedChooseNullValidation.analysis.productAction === "keep_confirmed" &&
+    confirmedChooseNullValidation.analysis.candidateIndex === null,
+  "已確認完整型號時，應用程式必須把 Router 的重選要求校正為沿用原型號",
+);
+
+const currentInfoMisclassified = context.normalizeRouteAnalysis_(
+  {
+    version: "RouteAnalysisV1",
+    topicRelation: "new",
+    productAction: "keep_confirmed",
+    candidateIndex: 0,
+    claims: [
+      {
+        id: "stock",
+        question: "S32FM703UC 現在有庫存嗎？",
+        intent: "current_info",
+        evidenceNeed: "local_stable",
+        answerShape: "fact",
+      },
+    ],
+    confidence: "high",
+    reasonCode: "current_info",
+  },
+  invocationById.get("current_info_deterministic_bypass").input,
+);
+const currentInfoValidation = context.validateRouteAnalysis_(
+  currentInfoMisclassified,
+  invocationById.get("current_info_deterministic_bypass").input,
 );
 assert(
-  confirmedChooseNullValidation.errors.some((error) =>
-    /confirmed|candidate|selection/i.test(String(error || "")),
-  ),
-  `choose_candidate(null) 應回傳可稽核錯誤碼：${JSON.stringify(
-    confirmedChooseNullValidation,
-  )}`,
+  validationPassed(currentInfoValidation) &&
+    currentInfoValidation.analysis.claims[0].evidenceNeed === "web_current",
+  "時效資訊即使被 Router 錯標本機資料，也必須由應用程式改回 Web",
+);
+
+const operationMisclassified = context.normalizeRouteAnalysis_(
+  {
+    version: "RouteAnalysisV1",
+    topicRelation: "new",
+    productAction: "none",
+    candidateIndex: null,
+    claims: [
+      {
+        id: "pbp_steps",
+        question: "S32DG802SC 的 PBP 怎麼開？",
+        intent: "operation",
+        evidenceNeed: "general_reasoning",
+        answerShape: "steps",
+      },
+    ],
+    confidence: "high",
+    reasonCode: "other",
+  },
+  {
+    question: "S32DG802SC 的 PBP 怎麼開？",
+    confirmedModel: "S32DG802SC",
+    candidateModels: ["S32DG802SC"],
+    localCoverage: "none",
+  },
+);
+const operationValidation = context.validateRouteAnalysis_(
+  operationMisclassified,
+  {
+    question: "S32DG802SC 的 PBP 怎麼開？",
+    confirmedModel: "S32DG802SC",
+    candidateModels: ["S32DG802SC"],
+    localCoverage: "none",
+  },
+);
+assert(
+  validationPassed(operationValidation) &&
+    operationValidation.analysis.productAction === "keep_confirmed" &&
+    operationValidation.analysis.claims[0].evidenceNeed ===
+      "manual_model_specific",
+  "型號操作題不得被 general_reasoning 放行，且已確認型號不得被洗掉",
+);
+
+const orphanFollowup = context.normalizeRouteAnalysis_(
+  {
+    version: "RouteAnalysisV1",
+    topicRelation: "followup",
+    productAction: "none",
+    candidateIndex: null,
+    claims: [
+      {
+        id: "orphan",
+        question: "那兩邊呢？",
+        intent: "spec",
+        evidenceNeed: "local_stable",
+        answerShape: "fact",
+      },
+    ],
+    confidence: "high",
+    reasonCode: "elliptical_followup",
+  },
+  { question: "那兩邊呢？", previousTopic: "" },
+);
+const orphanFollowupValidation = context.validateRouteAnalysis_(
+  orphanFollowup,
+  { question: "那兩邊呢？", previousTopic: "" },
+);
+assert(
+  validationFailed(orphanFollowupValidation) &&
+    orphanFollowupValidation.errors.includes("followup_topic_missing"),
+  "沒有 previousTopic 時不得把孤立短句冒充成可承接追問",
 );
 
 const mediumConfidenceAction = context.getSemanticRouteExecution_(
@@ -525,6 +633,17 @@ assert(
     runnerSource,
   ) && /routerCostTwd/.test(linebot),
   "Router 必須使用自己的官方費率並獨立留下 routerCostTwd",
+);
+assert(
+  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["']GatePolicyV2["']/.test(
+    linebot,
+  ) &&
+    /policyVersion:\s*SEMANTIC_ROUTER_POLICY_VERSION/.test(
+      extractFunction(linebot, "buildSemanticRouterCacheKey_"),
+    ) &&
+    /const\s+SEMANTIC_ROUTER_COST_ALERT_TWD\s*=\s*0\.1/.test(linebot) &&
+    /cost\.costTWD[\s\S]*SEMANTIC_ROUTER_COST_ALERT_TWD/.test(runnerSource),
+  "Router 語意政策變更必須汰換舊快取，並以實際 usage 超過 NT$0.10 記錄警示",
 );
 assert(
   /thinkingLevel\s*:\s*["']low["']/.test(runnerSource) &&
@@ -812,7 +931,7 @@ for (const auditField of [
 const relationContext = {};
 vm.createContext(relationContext);
 vm.runInContext(
-  `${extractFunction(linebot, "isModelIndependentManualOperation_")}\n${extractFunction(linebot, "isGenericManualInputTargetBinding_")}\n${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}\n${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}`,
+  `${extractFunction(linebot, "isModelIndependentManualOperation_")}\n${extractFunction(linebot, "isGenericManualInputTargetBinding_")}\n${extractFunction(linebot, "isExplicitManualAlternativeAnswer_")}\n${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}\n${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}`,
   relationContext,
 );
 const unboundPbpRate = relationContext.manualSupportedAnswerMatchesExcerpt_(

@@ -1,4 +1,77 @@
-# Samsung LINE Bot 完整流程解析 (v29.6.292)
+# Samsung LINE Bot 完整流程解析 (v29.6.302)
+
+## 2026-09-05（v29.6.302 / 單一操作完成權由程式判定）
+
+- v29.6.301 真人 LOG 已能正確鎖定 S32DG802SC、命中官方手冊第 101 頁並扣 1 次手冊額度，但頁級模型仍把純名稱差異回成 `partial`，導致再跑一次 Web：頁級整理約 NT$0.0038，Web 約 NT$0.0842，整題約 NT$0.0880。這是完成狀態誤判，不是檢索失敗。
+- 當「原題用詞＋精確型號官方 RULE＋手冊實際名稱」三方均通過人工 lexicon，且題目是單一選單路徑、證據含可執行入口時，程式直接判為 full，不再讓模型保守的 `partial` 觸發 Web。複合題、數值、限制、非操作題或證據不完整一律不得套用。
+- 顯示層把手冊 OCR 的方向鍵與選單文字整理成店員可直接照做的說法；不顯示內部階段名稱。預期路徑為 `routerCalls=0 / pdfCalls=1 / webCalls=0`，只使用一次 2.5 Flash-Lite 頁級整理。
+
+## 2026-09-05（v29.6.301 / 頁級 RAG 配額對齊）
+
+- v29.6.299 真人 LOG 顯示頁級 RAG 已送出 Flash-Lite 請求，但因新 fast path 沒有經過 `callLLMWithRetry()` 內的配額保留點，回覆誤顯示「未送出供應商請求」與手冊 2/2。
+- `callManualPageRag_()` 現在於 `UrlFetchApp.fetch` 前強制共用 `reserveAdvancedSourceUsage_()`。配額不足時不送出；已送出就正確計 1 次；HTTP／格式失敗也沿用既有政策，不重複扣次。
+
+## 2026-09-05（v29.6.300 / RULE 支持的手冊同義完成判定）
+
+- v29.6.299 真人旅程已在 1.3 秒的頁級檢索中正確找到 S32DG802SC 官方手冊第 101 頁，但完成度守門把 RULE 的 `PIP/PBP 多畫面分割` 與手冊 UI 名稱 `多重視窗` 視為兩個未解主張，因此多跑一次 Web，總價約 NT$0.0473，並追加「證據不足」。檢索成功卻被完成判定降級，是最後的無效花費根因。
+- 新契約不讓模型自行宣告同義。只有 `使用者問法 + 精確型號官方 RULE + 手冊實際名稱` 三者同時命中人工核定的 lexicon 群，而且該群明確開啟 `allowRuleBackedAliasCompletion` 時，名稱差異才可標為 full。任一錨點缺失、數值／限制／多主張未解時仍須 partial 與 Web 補救。
+- 頁級成功回答改為店員可直接使用的兩段自然說法，不再顯示「已確認規格／手冊補充」等程式階段。同一題預期僅一次 2.5 Flash-Lite 頁級證據整理；不叫 3.7 Router、不附整本 PDF、不叫 Web。
+- Router 設計審查結果維持不變：3.7 Flash low 只是模糊／複合／未規劃追問／部分覆蓋／路由衝突的一次主張規劃器；精確 QA、完整 RULE、已解析系列、已確認型號單一操作、明確來源按鍵與既有 route plan 均為 `routerCalls=0`。
+
+## 2026-09-05（v29.6.299 / 型號綁定頁級 RAG）
+
+- v29.6.298 正式 TestUI 以相同 `G8 → S32DG802SC → PBP` 旅程驗證 medium 整本 PDF：`routerCalls=0`，但 PDF 階段仍花約 NT$0.5155、耗時約 43 秒，只回 5 筆錯誤第 1 頁內容；提高解析度沒有改善召回。官方 `LS32DG802SCXZW` 支援頁的 v2510220 手冊實際答案在 PDF 第 101 頁「設定 → 多重視窗」。因此根因是「整本文件沒有先檢索」，不是 Router 或回答模型不夠強。
+- 新流程為 `精確型號 registry → 本機 BM25 頁面召回 → 家族／功能詞硬門檻 → 最多 3 段官方原文 → 2.5 Flash-Lite 結構化整理 → 程式回填頁碼、摘錄與 SHA`。模型只能選 `evidenceId`，不能創造頁碼、引用或 PDF 身分；命中頁級索引後不再附整本 `file_data`。
+- BM25 一定會有「最近的一頁」，但最近不代表相關。產生器新增通用拒絕門檻：候選頁及最後 evidence 必須實際含 lexicon 中的手冊 canonical alias；沒有就不建立該功能群組，交回整本 PDF／Web。這防止沒有 Dual Mode、Smart View 的手冊仍被硬塞無關頁面，不是為 PBP 增加單題特例。
+- 整本 PDF 只保留作尚未納入頁級索引的長尾 fallback。v29.6.298 的 NT$0.60 放寬已撤回為 NT$0.35；先以官方建議 `MEDIUM` 預檢，超標再免費試 `LOW`，實際生成仍最多一次。常見操作改送少量文字後，PDF 階段使用 2.5 Flash-Lite、`thinkingBudget:0`、`temperature:0`，而非提高模型或視覺 token。
+- Router 契約不變：精準 QA、完整 RULE、G8 等已解析系列、已確認型號單一操作題、來源按鍵與已規劃追問皆 `routerCalls=0`；只有真正模糊產品、複合主張、未規劃省略追問、部分覆蓋或規則衝突才可使用一次 `gemini-3.7-flash` low。Structured Output 只保證格式，因此仍由程式驗證候選、來源與持久型號。
+- Google 現行 managed File Search 確實會自動 chunk／index、提供 citation；儲存與 query embedding 免費，首次 indexing embedding 收費，取回片段按一般 input token 計費。但 current API 支援 3.x，legacy 只另列 2.5 Flash-Lite、不列本專案整本 PDF 用的 2.5 Flash；File Search 與 Google Search 也不能同請求並用，且 2.5 路線不能同時使用 File Search＋Structured Output。故本版採可稽核、零查詢費的本機頁級檢索；managed File Search 只能日後以同手冊同題庫 A/B 後另案遷移。[File Search](https://ai.google.dev/gemini-api/docs/file-search)｜[Legacy File Search](https://ai.google.dev/gemini-api/docs/generate-content/file-search)｜[Structured Output](https://ai.google.dev/gemini-api/docs/structured-output)｜[PDF Media Resolution](https://ai.google.dev/gemini-api/docs/generate-content/media-resolution)｜[RAG 評估](https://cloud.google.com/blog/products/ai-machine-learning/optimizing-rag-retrieval)
+
+## 2026-09-05（v29.6.298 / PDF 實際 medium 與 Web 型號隔離）
+
+- 正式 v29.6.297 的 `G8 → S32DG802SC → PBP 怎麼開` 已證明 Router 與選檔皆正確（`routerCalls=0`、正確一份 PDF），但 244 頁 PDF 因 NT$0.35 ceiling 被降成 `LOW`，只產生錯誤第 1 頁證據；官方手冊真正入口在第 101 頁。根因是文件召回品質，不是再加 Router 或換回答模型。
+- PDF 第一次 `countTokens` 與生成現在明確固定 `MEDIA_RESOLUTION_MEDIUM`；依現行 2.5 Flash 價格，把單次最壞 ceiling 調為 NT$0.60，足以容納該手冊約 NT$0.565 worst case。只有 medium 真正超標才測一次 low，實際生成仍最多一次。
+- Web 降級證據改以同一 `sourceIds` 群組驗證。型號特定操作必須在同一來源同時出現完整 canonical model 與步驟；只寫 Odyssey G8／其他代、或用「例如／像是」帶入 Mini DP、Micro HDMI 的內容全部拒絕。重設、人工輸入切換及不含具名產品的低風險排障仍可保留。
+- Router 維持 `gemini-3.7-flash` low、條件式啟動；Fast 仍為 2.5 Flash-Lite，PDF／Web 仍為 2.5 Flash。沒有新增模型呼叫、第二次潤飾或搜尋階段。
+- 依 Google 官方實務，RAG 必須分開量測 retrieval、groundedness、answer relevance 與有效答案成本；Structured Output 也必須由應用程式驗證語意。現行 File Search 的 current API 僅列 3.x，legacy `generateContent` 雖列 2.5 Flash-Lite，仍不含本專案 PDF 用的 2.5 Flash，因此只適合另案同題 A/B，不能直接遷移。[Media Resolution](https://ai.google.dev/gemini-api/docs/generate-content/media-resolution)｜[Structured Output](https://ai.google.dev/gemini-api/docs/structured-output)｜[File Search](https://ai.google.dev/gemini-api/docs/generate-content/file-search)｜[RAG 評估](https://cloud.google.com/blog/products/ai-machine-learning/optimizing-rag-retrieval)
+
+## 2026-09-05（v29.6.297 / PDF medium 優先、成本仍封頂）
+
+- v29.6.296 真人旅程正確完成 `G8 → S32DG802SC` 選型且 `routerCalls=0`，但整本 PDF 在 `MEDIA_RESOLUTION_LOW` 產生 5 筆錯誤第 1 頁 evidence，全部被守門拒絕；最後靠 Web 補救。這證明低解析度長文件召回是獨立瓶頸。
+- Google 官方 Media Resolution 現行建議 PDF 使用 `medium`。成本救援改為原始品質超標後先免費 `countTokens` 測 medium，medium 超過原 NT$0.35 才降 low；不新增生成、不提高單次上限、不換 2.5 Flash。
+- 官方 File Search 文件已更新：legacy `generateContent` 可查、PDF 可回頁碼、storage／query embedding 免費；首次索引 embedding US$0.15／M token，取回內容按模型 input 計費。但支援表沒有現行 `gemini-2.5-flash`，只列 2.5 Flash-Lite 與 3.5+，故須另做隔離 A/B，不能直接遷移。
+- 依 RAG 實務分開驗證 retrieval hit、groundedness、答案完成度、延遲與總成本；本版只修 resolution 策略，保持問題歸因單一。[Media Resolution](https://ai.google.dev/gemini-api/docs/media-resolution)｜[File Search](https://ai.google.dev/gemini-api/docs/generate-content/file-search)｜[RAG 評估](https://cloud.google.com/blog/products/ai-machine-learning/optimizing-rag-retrieval)
+
+## 2026-09-05（v29.6.296 / QA metadata 與語意相關性分離）
+
+- 正式 TestUI 發現 `G8 的 PBP 怎麼開？` 在已鎖定 `S32DG802SC` 時，被同型號 `OLED Safeguard+` QA 搶答。根因是 QA ranking 把 model／alias／family 命中同時當成 scope 與 intent 證據。
+- QA 檢索改為兩階段：產品身分只做 metadata filter；題意必須另命中非身分、非泛用動詞的功能詞。精準直答與 Fast Prompt 注入共用同一 gate，避免被拒絕直答的錯 QA 又從 Prompt 偷渡。
+- 「Netflix＋安裝」仍可命中 App QA；只有「開啟／安裝／顯示」等泛用動詞則不可。這是全域檢索契約，不是 PBP／G8 特例；沒有新增 LLM、來源呼叫、模型或費用。
+
+## 2026-09-04（v29.6.295 / 能力事實與手冊相近操作分層）
+
+- 新的事故證據顯示，`S32DG802SC` 的精確 RULE 明載 PIP／PBP，但適用手冊全文只以「多重視窗」說明左右畫面入口。舊版把兩者硬判成完全無關，結果同時丟掉正確能力事實與可操作路徑；這是 evidence merge 缺口，不是再換模型可解。
+- 操作題現在先從同一完整型號的 `CLASS_RULES` 動態保留已明載能力，再由 PDF 回答入口。能力欄位沿用術語 ontology 自動取值，不新增 PBP、G8 或特定型號路由。
+- 手冊用語不同時，只允許固定句型「手冊中可查到的相近操作是……」保留可逐頁核對的入口；不得寫成等同、就是或同一功能，並強制 `coverage=partial`，只把原題仍未證實的部分送 Web。數值、每側限制與模式規格不能使用此降級。
+- `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV10`，避免沿用舊版已丟失 RULE anchor 的答案。Router、Fast、PDF、Web 模型與每輪呼叫上限均未改；Router 仍只在真正語意歧義／複合／未規劃追問啟動。
+
+## 2026-09-04（v29.6.294 / 操作題不得讀了個寂寞）
+
+- 事故證據：實際手冊第 80 頁同時包含「若要啟動多重視窗，前往首頁 → 設定 → 多重視窗」與啟動後的畫面控制；長文件模型只擷取後者，導致「怎麼開」沒被回答。因此只檢查 `found=true`、關鍵字或頁碼並不足夠，還要驗證 answer shape 是否完成原始 intent。
+- 實作是跨題型契約，不是 G8/PBP 特例：`isManualActionPathQuestion_()` 統一辨識「怎麼開、如何連接、哪個選單」；`isDirectManualActionEvidence_()` 要求入口路徑或具體選擇動作，並拒絕只有「正在執行時」的後續控制。
+- 功能本體同時綁定：PBP、PIP、Multi View／多重視窗各自需在同一證據出現，不得用相似功能補答。PDF 沒有入口或名稱不合時改為 partial，自動只搜未解主張。
+- Web 的操作題輸出限制為「第一句入口＋2–4 步、320 中文字內」，避免重複定義、優點、預覽或系統內部運作。本版不增加 API 呼叫，不換模型，不變更額度。
+- 這是現行整本 `file_data` 方式的回答完成度保護，不代表已改成 Google managed File Search。若仍出現相同頁面漏擷，下一個獨立案應接上已有的逐頁索引，先召回 top-K 頁面再合成；不再無限堆 Prompt 或升級回答模型。
+
+## 2026-09-04（v29.6.293 / Router 業界實務複核與成本收旂）
+
+- 路由模式維持條件式，不改成每題必經：已確認型號的單一操作／故障題、已由 CLASS_RULES 解析的系列別稱、明確時效題、精準 QA／完整 RULE 與來源按鍵均為 `routerCalls=0`。只有未解的身分／句意歧義、新的省略追問、複合主張、部分證據或真正路由衝突才使用一次 3.7。
+- 已確認完整型號後，舊候選清單不再觸發 `ambiguousProduct`；Router 回傳 `none／choose_candidate`時也由應用程式改為 `keep_confirmed`，不讓店員配合選完後又被問一次。
+- 語意 validator 不只檢查 JSON 合法性：`current_info` 錯標成本機資料時固定改為 Web；型號操作／故障題錯標為一般推理時改為手冊；沒有 `previousTopic` 的孤立短句不允許作為可承接追問。這些都是跨題型不變式，不是新增單題 regex。
+- Structured Output 關鍵欄位增加簡短 `description`，仍保留應用程式校驗與 fail-closed fallback。Google 官方明示 JSON schema 只確保格式，不保證語意正確：[Structured Output](https://ai.google.dev/gemini-api/docs/structured-output)。
+- Router 維持 `models/gemini-3.7-flash` 與最低可用的 `thinkingLevel: low`，不改用較便宜的 3.5 Flash-Lite；後者只有結構化分類能力與定價證據，尚無本專案 A/B 證明同等準確。Google 將 `low` 定位為降低延遲與成本的層級：[Thinking](https://ai.google.dev/gemini-api/docs/thinking)。
+- 成本估算經官方現價重算：3.7 Flash 至 2026-12-31 為 US$0.75／3.75 per 1M input／output（thinking 計 output）；800–1,500 input 與 50–100 output 的常見 Router 約 NT$0.025–0.048，不是舊文件的 NT$0.003–0.006。保留 384 output 上限是避免五個 claims JSON 截斷，單次實際超過 NT$0.10 時寫入警示：[官方價格](https://ai.google.dev/gemini-api/docs/pricing)。
+- RAG 不與 Router 同時遷移。繼續把「正確文件召回、claim-to-evidence groundedness、完成度、冗長度」分開測量，符合 Google 對 RAG 評估的建議：[RAG 評估實務](https://cloud.google.com/blog/products/ai-machine-learning/optimizing-rag-retrieval)。本版不改 PDF／Web 模型、不增加任何供應商呼叫。
 
 ## 2026-09-04（v29.6.292 / Web 降級文案人性化）
 
@@ -952,7 +1025,7 @@
 - 網搜只能回答非官方 grounding 證據直接支援的內容；所有外部做法都要標示「非官方，請斟酌參考」，不得以「可能／通常／常見／依賴」延伸出無證據的設定、鏡像選項、系統功能或相容性推測。
 - 手冊後的網搜整合回答不得再叫使用者自行參考手冊或官網；既然系統已完成手冊查證，就應直接保留已查出的操作條件並移除推諉句。可見文案一律稱「官方手冊」。
 
-## ✅ 現行鐵律 SOP（v29.6.292）
+## ✅ 現行鐵律 SOP（v29.6.302）
 
 1. **先本機庫**：讀取 Google Sheet 的 QA、CLASS_RULES、官方活動 RULE 與 `Prompt!C3` 指令；`/紀錄` 會讓本機庫持續長大。只有產生規格／FAQ 實質回答才計入一般 10 題；若只引導查手冊則退回本次額度。
 2. **再官方手冊**：QA／RULE／已核對片段不足時，自動建立一次性 manual SourceOperation；「查官方手冊」按鍵則是使用者主動指定同一路徑。缺完整型號不等於要求手打完整字串：先以系列／前段列出實際 PDF 索引候選，選完直接查；PDF 生成階段只讀手冊；單次最壞 NT$0.35，超限依既有頁面收斂／成本守門處理。已鎖定型號跨日沿用，直到新完整型號、換型號或管理員 `/重啟`。

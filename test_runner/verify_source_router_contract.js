@@ -2073,6 +2073,18 @@ const webFallbackContext = {
   formatForLineMobile: (value) => String(value || ""),
   isApiFailureReply: () => false,
   buildDeterministicExactRuleReply_: () => "",
+  normalizeModelForDisplay: (value) => String(value || "").toUpperCase(),
+  isManualActionPathQuestion_: (value) => /怎麼|如何|在哪|哪裡/.test(String(value || "")),
+  isModelIndependentManualOperation_: (value) => /切換輸入源|恢復原廠/.test(String(value || "")),
+  isLowRiskGroundedTroubleshooting_: (text, question) =>
+    /沒聲音|無訊號/.test(String(question || "")) &&
+    /重新|檢查|重插/.test(String(text || "")),
+  matchGroundedModelIdentity_: (text, model) => {
+    const body = String(text || "").toUpperCase();
+    if (body.includes(String(model || "").toUpperCase())) return "exact";
+    if (/ODYSSEY\s*G8/i.test(body)) return "family";
+    return "none";
+  },
 };
 vm.createContext(webFallbackContext);
 vm.runInContext(
@@ -2115,9 +2127,12 @@ vm.runInContext(
       "* 建議使用高品質的 Display。"
     );
    globalThis.supportedPbpAction = buildGroundedTentativeWebActions_([
-     {text:"進入螢幕選單，選擇 PIP/PBP Mode，再選 On。", sourceIds:["chunk:1"]},
+     {text:"S32DG802SC：進入螢幕選單，選擇 PIP/PBP Mode，再選 On。", sourceIds:["chunk:1"], sourceLabels:["S32DG802SC guide"]},
      {text:"部分使用者可能可以使用其他型號的工程模式。", sourceIds:["chunk:2"]}
-   ]);`,
+   ], "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
+   globalThis.familyPbpRejected = buildGroundedTentativeWebActions_([
+     {text:"Odyssey G8 可進入選單，選擇 Multi View；例如使用 Mini DP 或 Micro HDMI。", sourceIds:["chunk:3"], sourceLabels:["Odyssey G8 discussion"]}
+   ], "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");`,
   webFallbackContext,
 );
 assert(
@@ -2133,7 +2148,10 @@ assert(
     ) &&
     /沒有足夠證據/.test(webFallbackContext.noPurchase) &&
     !/購買|通常|HDMI 線連接/.test(webFallbackContext.noPurchase) &&
-    /PIP\/PBP Mode|Multi-View/.test(webFallbackContext.pbpCoherent) &&
+    /沒有足夠證據/.test(webFallbackContext.pbpCoherent) &&
+    !/PIP\/PBP Mode|Multi-View|Mini DP|Micro HDMI/.test(
+      webFallbackContext.pbpCoherent,
+    ) &&
     !/逐句核對|grounding|；，/i.test(webFallbackContext.pbpCoherent) &&
     !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)/.test(
       webFallbackContext.pbpCoherent,
@@ -2146,6 +2164,7 @@ assert(
     ) &&
     webFallbackContext.danglingDisplayRejected === "" &&
     /PIP\/PBP Mode/.test(webFallbackContext.supportedPbpAction) &&
+    webFallbackContext.familyPbpRejected === "" &&
     !/工程模式|其他型號/.test(webFallbackContext.supportedPbpAction) &&
     !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)[。\s]*(?:\n|$)/.test(
       webFallbackContext.pbpCoherent,
@@ -2160,7 +2179,7 @@ assert(
 );
 
 assert(
-  /buildGroundedTentativeWebActions_\(lastWebSupportedSegments\)/.test(
+  /buildGroundedTentativeWebActions_\([\s\S]{0,180}lastWebSupportedSegments,[\s\S]{0,120}model,[\s\S]{0,120}originalQuestion/.test(
     extractFunction(linebot, "runManualWebRescue_"),
   ) &&
     /groundedTentativeWebText[\s\S]{0,1800}buildTentativeWebFallback_/.test(
@@ -2357,6 +2376,9 @@ vm.runInContext(
    ${extractFunction(linebot, "isModelIndependentManualOperation_")}
    ${extractFunction(linebot, "manualSupportedAnswerTargetsModel_")}
    ${extractFunction(linebot, "isGenericManualInputTargetBinding_")}
+   ${extractFunction(linebot, "isManualActionPathQuestion_")}
+   ${extractFunction(linebot, "isDirectManualActionEvidence_")}
+   ${extractFunction(linebot, "isExplicitManualAlternativeAnswer_")}
    ${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}
    ${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}
    ${extractFunction(linebot, "manualAnswerCoversQuestionFeatures_")}
@@ -2399,6 +2421,12 @@ vm.runInContext(
    globalThis.coreSyncFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 CoreSync。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "CoreSync 在哪裡開？");
    globalThis.eclipseFromCoreLightingRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可開啟 Eclipse Lighting。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效叫什麼？");
    globalThis.coreLightingExactAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"S49DG952SC 可到 Core Lighting+ 開啟機背燈效。",pageNumber:115,scope:"全檔共通",evidenceExcerpt:"Core Lighting+ 可開啟或關閉機背燈效"}]}), "S49DG952SC", "機背燈效怎麼開？");
+   globalThis.postStartOnlyPbpRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"當多重視窗正在執行時，按下選擇按鈕。",pageNumber:80,scope:"全檔共通",evidenceExcerpt:"當多重視窗正在執行時，按下選擇按鈕"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
+   globalThis.directPbpPathAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"到 PIP/PBP → PIP/PBP Mode 開啟。",pageNumber:34,scope:"型號明確",evidenceExcerpt:"S32DG802SC：PIP/PBP → PIP/PBP Mode；開啟或關閉 PIP/PBP 模式"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
+   globalThis.multiViewCannotAnswerPbp = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"到 設定 → 多重視窗開啟。",pageNumber:80,scope:"全檔共通",evidenceExcerpt:"前往 設定 → 多重視窗，再從新增檢視中選擇項目"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
+   globalThis.explicitMultiViewAlternativeAccepted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"手冊中可查到的相近操作是「多重視窗」：到 首頁 → 設定 → 多重視窗開啟。",pageNumber:80,scope:"全檔共通",evidenceExcerpt:"若要啟動多重視窗，請前往首頁 → 設定 → 多重視窗，再從新增檢視中選擇項目"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
+   globalThis.ruleBackedMultiViewAlternativeCompleted = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"手冊中可查到的相近操作是「多重視窗」：到 首頁 → 設定 → 多重視窗開啟。",pageNumber:80,scope:"全檔共通",evidenceExcerpt:"若要啟動多重視窗，請前往首頁 → 設定 → 多重視窗，再從新增檢視中選擇項目"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？", null, {allowRuleBackedAliasCompletion:true});
+   globalThis.falseEquivalentMultiViewRejected = normalizeManualStructuredResponse_(JSON.stringify({found:true,coverage:"full",unresolvedQuestion:"",notFoundReason:"",evidence:[{supportedAnswer:"PBP 就是多重視窗：到 首頁 → 設定 → 多重視窗開啟。",pageNumber:80,scope:"全檔共通",evidenceExcerpt:"若要啟動多重視窗，請前往首頁 → 設定 → 多重視窗，再從新增檢視中選擇項目"}]}), "S32DG802SC", "S32DG802SC 的 PBP 怎麼開？");
    globalThis.contradictoryNotFound = normalizeManualStructuredResponse_(JSON.stringify({found:false,notFoundReason:"沒有答案",evidence:[{supportedAnswer:"其實有答案。",pageNumber:1,scope:"全檔共通",evidenceExcerpt:"其實有答案"}]}), "");`,
   manualUiContext,
 );
@@ -2474,6 +2502,36 @@ assert(
     ) &&
     /第115頁/.test(manualUiContext.coreLightingExactAccepted) &&
     /Core Lighting\+/.test(manualUiContext.coreLightingExactAccepted) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.postStartOnlyPbpRejected,
+    ) &&
+    /PIP\/PBP → PIP\/PBP Mode/.test(
+      manualUiContext.directPbpPathAccepted,
+    ) &&
+    !/MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.directPbpPathAccepted,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.multiViewCannotAnswerPbp,
+    ) &&
+    /手冊中可查到的相近操作是「多重視窗」/.test(
+      manualUiContext.explicitMultiViewAlternativeAccepted,
+    ) &&
+    /MANUAL_EVIDENCE_PARTIAL/.test(
+      manualUiContext.explicitMultiViewAlternativeAccepted,
+    ) &&
+    /AUTO_SEARCH_WEB/.test(
+      manualUiContext.explicitMultiViewAlternativeAccepted,
+    ) &&
+    /\[手冊證據:第80頁/.test(
+      manualUiContext.ruleBackedMultiViewAlternativeCompleted,
+    ) &&
+    !/MANUAL_EVIDENCE_PARTIAL|AUTO_SEARCH_WEB/.test(
+      manualUiContext.ruleBackedMultiViewAlternativeCompleted,
+    ) &&
+    /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
+      manualUiContext.falseEquivalentMultiViewRejected,
+    ) &&
     /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
   "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
 );
@@ -2484,6 +2542,12 @@ assert(
     /第115頁/.test(manualUiContext.coreLightingPage115ExactAccepted) &&
     /Core Lighting/.test(manualUiContext.coreLightingPage115ExactAccepted),
   "第 115 頁的依型號條件不得冒充 S49DG952SC 全檔共通路徑；只有摘錄直接綁定完整型號才可採納",
+);
+assert(
+  /【操作題短答】/.test(linebot) &&
+    /手冊中可查到的相近操作是/.test(linebot) &&
+    /不得寫成等同、就是、完全相同或同一功能/.test(linebot),
+  "PDF 與 Web 作答都必須保留操作入口、短步驟與功能名稱邊界；名稱不同只能明標相近操作",
 );
 const partialRescueReply = manualUiContext.buildManualWebRescueReply_(
   {
@@ -3017,6 +3081,9 @@ vm.runInContext(
    ${extractFunction(linebot, "getAllExplicitCapabilityChecks_")}
    ${extractFunction(linebot, "buildManualNamedFeatureCheck_")}
    ${extractFunction(linebot, "getManualFeatureChecks_")}
+   ${extractFunction(linebot, "isManualActionPathQuestion_")}
+   ${extractFunction(linebot, "isDirectManualActionEvidence_")}
+   ${extractFunction(linebot, "isExplicitManualAlternativeAnswer_")}
    ${extractFunction(linebot, "manualAnswerCoversQuestionFeatures_")}
    globalThis.genericAnswerAccepted = manualAnswerCoversQuestionFeatures_(
      "按下底部按鈕會顯示控制功能表",
@@ -3200,10 +3267,17 @@ assert(
 );
 const deterministicRuleVm = {
   normalizeModelForDisplay: (model) => model,
-  findRuleTermOntologyMatches_: () => [],
+  findRuleTermOntologyMatches_: (query) =>
+    /PBP/i.test(String(query || ""))
+      ? [{ label: "PIP／PBP", evidence: /PIP\/PBP/i }]
+      : [],
+  getAllExplicitCapabilityChecks_: (query) =>
+    /PBP/i.test(String(query || ""))
+      ? [{ label: "PIP／PBP", evidence: /PIP\/PBP/i }]
+      : [],
   sanitizeExactRuleReplyField_: (field) => field,
   findExactModelRuleLine_: () =>
-    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,HDMI 2.1 x2,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
+    "LS32HG806ESXZW,型號：S32HG806ES,32吋 Odyssey IPS G8,雙模 6K 165Hz / 3K 330Hz,1ms反應時間,HDMI 2.1 x2,PIP/PBP多畫面分割,VESA 100x100mm壁掛,HAS人體工學升降底座(120mm),左右旋轉-30.0°~30.0°,垂直旋轉-92.0°~92.0°",
 };
 vm.createContext(deterministicRuleVm);
 vm.runInContext(
@@ -3222,6 +3296,10 @@ vm.runInContext(
   'globalThis.connectorOperationAnchor = buildKnownRuleAnchorForMixedOperation_("桌機用 DP、筆電用 Type-C，同一組鍵盤滑鼠要怎麼設定才會跟著切？", "S32HG806ES");',
   deterministicRuleVm,
 );
+vm.runInContext(
+  'globalThis.capabilityOperationAnchor = buildKnownRuleAnchorForMixedOperation_("S32HG806ES 的 PBP 怎麼開？", "S32HG806ES");',
+  deterministicRuleVm,
+);
 assert(
   deterministicRuleVm.operation === "" &&
     /雙模 6K 165Hz \/ 3K 330Hz/.test(deterministicRuleVm.fact),
@@ -3237,6 +3315,9 @@ assert(
   /HDMI/.test(deterministicRuleVm.mixedAnchor) &&
     deterministicRuleVm.operationOnlyAnchor === "" &&
     deterministicRuleVm.connectorOperationAnchor === "" &&
+    /PIP\/PBP多畫面分割/.test(
+      deterministicRuleVm.capabilityOperationAnchor,
+    ) &&
     /已確認規格/.test(deterministicRuleVm.mixedFinal) &&
     /手冊補充/.test(deterministicRuleVm.mixedFinal) &&
     (deterministicRuleVm.mixedFinal.match(/2 個 HDMI/g) || []).length === 1 &&
@@ -3246,7 +3327,7 @@ assert(
     ) &&
     !/1 個 HDMI/.test(deterministicRuleVm.mixedConflict) &&
     /以上方已確認規格為準/.test(deterministicRuleVm.mixedConflict),
-  "操作＋規格複合題必須保留 RULE 已知事實、去除 PDF 重複句，只把未解操作交手冊",
+  "操作＋規格或能力複合題必須保留 RULE 已知事實、去除 PDF 重複句，只把未解操作交手冊",
 );
 const unsafeRuleVm = {
   normalizeModelForDisplay: (model) => model,

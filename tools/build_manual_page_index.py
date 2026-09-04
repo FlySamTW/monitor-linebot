@@ -34,6 +34,7 @@ DEFAULT_OUTPUT_DIR = ROOT / "output" / "manual_page_index"
 DEFAULT_REGISTRY = ROOT / "config" / "manual_registry.json"
 DEFAULT_LEXICON = ROOT / "config" / "manual_lexicon.json"
 DEFAULT_CASES = ROOT / "test_runner" / "manual_golden_cases.json"
+DEFAULT_RUNTIME_CATALOG = ROOT / "manual_page_rag_data.gs"
 
 CJK_RE = re.compile(r"[\u3400-\u9fff]+")
 ASCII_RE = re.compile(r"[a-z0-9]+(?:[.][a-z0-9]+)?")
@@ -530,6 +531,175 @@ def retrieve_pages(index: dict, query: str, lexicon: dict, top_k: int = 5) -> li
     ]
 
 
+def phrase_occurs_in_text(text: str, phrase: str) -> bool:
+    """Match a curated manual term without ASCII substring false positives."""
+    normalized_text = normalize_text(text)
+    normalized_phrase = normalize_text(phrase)
+    if not normalized_text or not normalized_phrase:
+        return False
+    if re.fullmatch(r"[a-z0-9 .+/-]+", normalized_phrase, re.IGNORECASE):
+        escaped = re.escape(normalized_phrase).replace(r"\ ", r"\s+")
+        return re.search(
+            rf"(?:^|[^a-z0-9]){escaped}(?:$|[^a-z0-9])",
+            normalized_text,
+            re.IGNORECASE,
+        ) is not None
+    return normalized_phrase in normalized_text
+
+
+def page_has_curated_group_evidence(page: dict, group: dict) -> bool:
+    """Reject nearest-neighbour pages when the manual never names the feature.
+
+    BM25 always has a nearest page, even for an unsupported feature. Production
+    candidates therefore need at least one curated manual alias on that page;
+    generic shared words such as "設定" or "模式" are not enough evidence.
+    """
+    page_text = str(page.get("normalizedText", ""))
+    aliases = [value for value in group.get("aliases", []) if normalize_text(value)]
+    return any(phrase_occurs_in_text(page_text, alias) for alias in aliases)
+
+
+def build_runtime_fragment(page: dict, group: dict, max_chars: int = 2200) -> dict | None:
+    """Keep only the evidence-dense blocks required by the GAS hot path.
+
+    The full lexical/page artifacts stay local. Production receives a compact,
+    deterministic evidence catalog: exact PDF identity, candidate page number,
+    heading and nearby original blocks. This avoids embedding an entire manual
+    in Apps Script while preserving enough context for claim validation.
+    """
+    if not page_has_curated_group_evidence(page, group):
+        return None
+
+    phrases = [
+        normalize_text(value)
+        for value in group.get("aliases", []) + group.get("triggers", [])
+        if normalize_text(value)
+    ]
+    weighted_terms, _ = query_term_weights(
+        " ".join(group.get("aliases", []) + group.get("triggers", [])),
+        {"groups": [group]},
+    )
+    scored: list[tuple[float, int]] = []
+    blocks = page.get("blocks", [])
+    for index, block in enumerate(blocks):
+        normalized = str(block.get("normalizedText", ""))
+        score = 0.0
+        score += sum(8.0 for phrase in phrases if phrase and phrase in normalized)
+        score += sum(
+            min(3, normalized.count(term)) * float(weight)
+            for term, weight in weighted_terms.items()
+            if term and term in normalized
+        )
+        if re.search(r"(?:若要|如要|請|先|依序).{0,24}(?:前往|進入|移至|選擇|點選|按下|設定|啟動|開啟)", normalized):
+            score += 12.0
+        if re.search(r"(?:選單|功能表|設定|首頁|路徑|清單)", normalized):
+            score += 3.0
+        if score > 0:
+            scored.append((score, index))
+    if not scored:
+        return None
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    # Keep one evidence-dense semantic cluster per page. Pulling several distant
+    # matches together recreates the original whole-page failure: a limitation
+    # about refresh rate can incorrectly invalidate an otherwise independent
+    # menu path. PDF extraction commonly continues a sentence in the following
+    # block, so retain the best block and only its immediate continuation.
+    selected_indexes: set[int] = set()
+    best_index = scored[0][1]
+    for nearby in (best_index, best_index + 1):
+        if 0 <= nearby < len(blocks):
+            selected_indexes.add(nearby)
+    selected_text = "\n".join(
+        str(blocks[index].get("text", "")).strip()
+        for index in sorted(selected_indexes)
+        if str(blocks[index].get("text", "")).strip()
+    ).strip()
+    if len(selected_text) < 6 or not any(
+        phrase_occurs_in_text(selected_text, alias)
+        for alias in group.get("aliases", [])
+    ):
+        return None
+    return {
+        "pageNumber": int(page["pdfPage"]),
+        # The first extracted heading is the section identity. Later short
+        # blocks are often body caveats, not headings, and must stay in the
+        # evidence text rather than being mislabeled as applicability scope.
+        "pageHeading": str((page.get("headings", []) or [""])[0])[:160],
+        "evidenceText": selected_text[:max_chars],
+        "pageHash": str(page.get("pageHash", "")),
+    }
+
+
+def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dict) -> dict:
+    documents: dict[str, dict] = {}
+    registry_by_key = {
+        str(document["docKey"]): document for document in registry.get("documents", [])
+    }
+    for doc_key, index in indexes.items():
+        document = registry_by_key[doc_key]
+        page_map = {int(page["pdfPage"]): page for page in index["pages"]}
+        group_records: dict[str, dict] = {}
+        for group in lexicon.get("groups", []):
+            query = " ".join(group.get("triggers", []) + group.get("aliases", []))
+            hits = retrieve_pages(index, query, {"groups": [group]}, top_k=3)
+            fragments = []
+            for hit in hits:
+                page = page_map.get(int(hit["pdfPage"]))
+                fragment = build_runtime_fragment(page, group) if page else None
+                if fragment:
+                    fragments.append(fragment)
+            if not fragments:
+                continue
+            group_records[str(group["id"])] = {
+                "triggers": group.get("triggers", []),
+                "aliases": group.get("aliases", []),
+                "excludeAny": group.get("excludeAny", []),
+                # Only curated groups may treat a product-site/RULE feature name
+                # and a manual UI name as one completed claim.  GAS still
+                # requires an exact-model RULE anchor at runtime; this flag by
+                # itself never proves product support.
+                "allowRuleBackedAliasCompletion": group.get(
+                    "allowRuleBackedAliasCompletion", False
+                )
+                is True,
+                "fragments": fragments,
+            }
+        if not group_records:
+            continue
+        documents[doc_key] = {
+            "models": document.get("models", []),
+            "sourceFileName": Path(str(document["sourceFileName"])).name,
+            "sourcePdfSha256": str(document["sourcePdfSha256"]).lower(),
+            "documentRole": str(document.get("documentRole", "manual")),
+            "modelBinding": str(document.get("modelBinding", "pdf_first_page")),
+            "exactModelInDocument": document.get("exactModelInDocument", True) is not False,
+            "supportUrl": str(document.get("supportUrl", "")),
+            "groups": group_records,
+        }
+    return {
+        "schemaVersion": 1,
+        "generatedBy": "tools/build_manual_page_index.py",
+        "documents": documents,
+    }
+
+
+def write_runtime_catalog(path: Path, catalog: dict) -> None:
+    payload = json.dumps(
+        catalog,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    content = (
+        "// Generated by tools/build_manual_page_index.py; do not edit by hand.\n"
+        "// Registry SHA validation and golden retrieval tests must pass before this file is replaced.\n"
+        f"var MANUAL_PAGE_RAG_DATA_ = {payload};\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
 def verify_cases(indexes: dict[str, dict], registry: dict, lexicon: dict, cases_path: Path) -> dict:
     suite = load_json(cases_path)
     golden_total = golden_hit = paraphrase_total = paraphrase_hit = 0
@@ -645,6 +815,7 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--shard-size", type=int, default=40)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--runtime-catalog", type=Path, default=DEFAULT_RUNTIME_CATALOG)
     args = parser.parse_args()
 
     try:
@@ -696,6 +867,10 @@ def main() -> int:
         if not passed:
             return 1
 
+        runtime_catalog = build_runtime_catalog(indexes, registry, lexicon)
+        staged_runtime_catalog = staging_root / "manual_page_rag_data.gs"
+        write_runtime_catalog(staged_runtime_catalog, runtime_catalog)
+
         manifest = {"schemaVersion": 1, "generation": 1, "documents": manifest_documents}
         write_json(staged_output / "_manual-index-manifest.json", manifest)
 
@@ -717,6 +892,7 @@ def main() -> int:
                 write_json(staged_output / report_relative, report)
 
         publish_staged_artifacts(staged_output, args.output_dir.resolve(), external_report)
+        os.replace(staged_runtime_catalog, args.runtime_catalog.resolve())
         return 0
 
 

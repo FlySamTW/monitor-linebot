@@ -1,5 +1,70 @@
 # 開發對話紀錄
 
+## 2026-09-05（v29.6.302 / 單一操作完成權收回程式）
+
+- v29.6.301 真人旅程已正確命中 S32DG802SC 手冊第 101 頁、`selectedModel` 與手冊 1/2 配額，但頁級模型仍回 `partial`，使完成鏈多跑一次 Web；頁級整理約 NT$0.0038、Web 約 NT$0.0842，合計約 NT$0.0880。
+- 對已通過三方人工同義、且手冊證據含直接選單入口的單一操作題，完成度改由程式判為 full，清除純名稱造成的 unresolved claim。複合、數值、限制及非選單操作不放寬。
+- 顯示層同步把 OCR 方向鍵與選單文字轉成自然步驟。預期正式路徑只呼叫一次 2.5 Flash-Lite，`routerCalls=0 / pdfCalls=1 / webCalls=0`；沒有新增模型、搜尋或成本階段。
+
+## 2026-09-05（v29.6.301 / 頁級手冊配額稽核）
+
+- 正式 v29.6.299 真人回覆實際有 `pdfCalls=1`，但畫面仍說「這次未送出供應商請求」並顯示手冊 2/2。根因是頁級 fast path 直接呼叫 `UrlFetchApp.fetch`，繞過整本 PDF 原有的原子配額保留點。
+- 頁級呼叫現在顯式接收同一 grant，並在請求送出前執行 `reserveAdvancedSourceUsage_()`。這不增加模型或請求，只修正配額、剩餘次數與稽核文案。
+
+## 2026-09-05（v29.6.300 / 手冊同義完成與無效 Web 削減）
+
+- v29.6.299 真人旅程 `G8 的 PBP 怎麼開？ → S32DG802SC` 已正確命中手冊第 101 頁，頁級 RAG 約 1.3 秒；但因「PBP／多重視窗」名稱差異被固定降為 partial，又多跑一次 2.5 Flash Web，最終 NT$0.0473，且出現已回答後又說證據不足的矛盾。
+- 新增資料驅動的 `allowRuleBackedAliasCompletion`：必須同時命中原題用詞、精確型號官方 RULE 與官方手冊實際名稱，才能把純名稱缺口改為 full。沒有 RULE 來源、非人工核定群組、或仍缺數值／限制均不放寬。
+- 頁級成功回答收旂為自然兩段，移除程式流程標題。預期同題只使用一次 2.5 Flash-Lite 證據整理，`routerCalls=0 / webCalls=0`。
+
+## 2026-09-05（v29.6.299 / 型號綁定頁級 RAG）
+
+- v29.6.298 正式旅程否定 medium 整本 PDF 解法：`G8 → S32DG802SC → PBP` 的 Router 正確略過，但 PDF 約 NT$0.5155、約 43 秒仍只產生錯誤第 1 頁 evidence；Web 再花約 NT$0.0463 也無法提供 exact-model 結論。提高解析度只提高成本，沒有提高有效答案率。
+- 當次從 Samsung 台灣 `LS32DG802SCXZW` 官方支援頁核對最新版 v2510220／File ID `11234033`／2026-01-16，PDF SHA-256 `F6973810…CAFCDC0C`，實際入口在 PDF 第 101 頁「設定 → 多重視窗」。新增 `S32DG802.pdf` registry 與五種真人問法 golden cases。
+- `build_manual_page_index.py` 現在在 provenance、SHA 與 golden tests 通過後，原子產生可部署的 `manual_page_rag_data.gs`。BM25 候選頁還必須含 curated manual alias；不存在功能不再用最近鄰湊頁。
+- 手冊來源接上 page-RAG fast path：命中時跳過 Drive／Gemini Files 整本附件，只送最多三段原文給 2.5 Flash-Lite 結構化整理；模型只能選 evidence ID，程式回填頁碼／摘錄／SHA。未命中才回整本 fallback。
+- v29.6.298 的 PDF ceiling 0.60 撤回 0.35。Router 仍為條件式 3.7 low；本次沒有擴大啟動條件，也沒有增加第二次生成、潤飾或搜尋。
+
+## 2026-09-05（v29.6.298 / 長手冊召回與 Web 跨型號隔離）
+
+- v29.6.297 正式真人旅程顯示：`G8 → S32DG802SC` 選型、PDF allowlist 與 Router skip 均正確，但 NT$0.35 ceiling 把 244 頁手冊降為 low；實際 NT$0.1862 的 PDF 只回錯誤第 1 頁，Evidence Guard 全拒後又花 NT$0.0474 Web，最後仍混入別款 Mini DP／Micro HDMI。官方 PDF 實頁查核確認答案在第 101 頁「設定 → 多重視窗」。
+- 按 Google PDF 建議，第一次預檢即設 medium，PDF ceiling 由 NT$0.35 調為 NT$0.60；這是降低「花較少但沒有答案」的有效答案成本，不增加生成次數。超標時只再測 low，不重算 medium。
+- Grounded Web tentative actions 改按 source-set 驗證完整型號；型號特定操作缺 exact identity 時拒絕，未綁 citation 的草稿也不得交付產品操作。通用低風險排障與少數 model-independent 操作保留。
+- Router 3.7 low 的啟動條件、Fast／PDF／Web 模型、來源額度及 PDF→Web 階段數不變。
+
+## 2026-09-05（v29.6.297 / PDF medium 優先成本自適應）
+
+- v29.6.296 正式 TestUI：`G8 的 PBP 怎麼開？` 先列 10 個候選，選 `S32DG802SC` 後正確鎖定 `S27DM502,S32DG702,S32DG802,...pdf`；`routerCalls=0 / pdfCalls=1 / webCalls=1`，合計 NT$0.2291。錯 QA 已消失，但 low-resolution PDF 回 5 筆錯誤第 1 頁 evidence，守門全數拒絕後才由網路完成 partial。
+- 依 Google 最新 PDF 建議，把成本救援改為 medium-first／low-second。兩階段只有 `countTokens` 預檢，真正生成仍一次；medium 在 NT$0.35 內立即採用，超標才降 low，兩者都超標仍由原 fuse 阻擋。
+- Google 2026-09-02 File Search 文件已解除舊版多項限制，但與現行 2.5 Flash 模型不相容；已記錄為獨立 A/B 候選，不在本版換模型或遷移 RAG。
+
+## 2026-09-05（v29.6.296 / QA 身分與題意分離）
+
+- v29.6.295 正式 TestUI 實問 `G8 的 PBP 怎麼開？`，已確認型號為 `S32DG802SC`，卻零模型命中「OLED Safeguard+ 防烙印」QA。這不是模型幻覺，而是 QA ranking 把同型號／同系列誤當成題意相關。
+- `qaKnowledgeScoreRecord_()` 現在將 model／alias／family 僅作適用範圍過濾；至少一個 PBP、Netflix、防烙印等實質功能詞命中，才能成為 strong signal。「開啟／設定／安裝／顯示」等泛用動詞只可輔助評分，不能單獨命中。
+- 精準 QA 與 Fast Prompt context 共用同一 precision gate。新增 G8 PBP 不得撈防烙印、M8 PBP 不得撈 App／USB-C、壁掛安裝不得撈 App，以及 M8 Netflix 正例回歸。沒有新增任何 LLM 或來源費用。
+- 正式 TestUI 已驗證：`G8 的 PBP 怎麼開？` 不再命中防烙印 QA，而是零模型、零費用列出 G8 實際候選；選型後才進既有 PDF／Web 鏈。
+
+## 2026-09-04（v29.6.295 / RULE＋PDF 證據合併）
+
+- v29.6.294 正式 TestUI 重走 `G8 → S32DG802SC → PBP 怎麼開`：系列選型與掛檔正確且零 Router，但 PDF 全文沒有 `PIP/PBP` 字樣，只在第 80 頁以「多重視窗」記載入口；精確 RULE 則明載 PIP/PBP。舊 validator 因名稱不一致丟掉全部手冊證據，Web 又只能保留啟動後調整，最後仍不夠有用。
+- 改為跨題型雙層 Evidence：同一型號 RULE 先保留能力事實，PDF 再交付操作入口。手冊名稱不同只能明示為「相近操作」，不得等同原功能，並強制 partial／Web 補救；數值與模式限制維持 fail-closed。
+- 快取 schema 升 `EvidenceV10`；沒有增加 LLM、搜尋、PDF 呼叫，也沒有更換模型。新增真假相近操作、開啟後片段、名稱偷換及 ontology 能力 anchor 契約測試。
+
+## 2026-09-04（v29.6.294 / 操作題 Evidence 完成度）
+
+- 正式 TestUI 實問 `G8 的 PBP 怎麼開？ → S32DG802SC`：正確零 Router 選型、正確掛上對應 PDF 並自動 Web rescue，但最終只回「多重視窗啟動後」的操作，沒有回「怎麼啟動」。實際渲染手冊第 80 頁後，確認同頁上方有「前往設定 → 多重視窗」入口句；根因是長 PDF 證據擷取漏段，不是手冊沒資料。
+- 新增通用操作題辨識與直接路徑 Evidence 驗證：口語「怎麼開」也必須有入口，「啟動後」控制不得冒充；PBP、PIP、Multi View 分開核對，不為 G8 加單題特例。
+- PDF prompt 要求第一筆先取「若要啟動／前往」句；Web 操作題收旂為入口與 2–4 步、320 字內。Fast／PDF／Web／Router 模型與每題呼叫上限不變。
+
+## 2026-09-04（v29.6.293 / Router 業界實務與成本校正）
+
+- 對照 Google 最新 Structured Output、Thinking、Pricing 與 RAG 評估文件。現有「deterministic fast path → 必要歧義才用 Structured Router → 應用程式驗證 → Evidence 回答」方向正確，不遷移 File Search、不改 PDF／Web 模型。
+- 發現已確認型號仍可被舊候選快取標成歧義，且正式「明確操作／故障」判斷比契約測試窄。改為 confirmed model 優先，單一操作／故障題直接走手冊政策；已由 RULE 解析的系列不因 partial local 再叫 Router。
+- 應用程式語意校正新增 `confirmed → keep_confirmed`、`current_info → web_current`、未完整覆蓋的 `operation/troubleshoot → manual_model_specific`；沒有 previousTopic 卻自稱 followup 者 fail closed。Structured schema 關鍵欄位補簡短 description，不以 JSON 合法代替語意驗證。
+- Router 仍用 3.7 Flash low。依 2026-09-04 官方 US$0.75／3.75 重算，800–1,500 input／50–100 output 常見約 NT$0.025–0.048；原 NT$0.003–0.006／單次 NT$0.01 係舊 Flash-Lite 基準，不再當現行門檻。單次超過 NT$0.10 留警示，費用仍以 usageMetadata 為準。
+- 路由契約題庫擴充到 20 種以上，特別納入「confirmed model＋舊候選」、「G8＋partial local」、單一排障、無型號時效題、未知手冊術語與複合主張。本輪沒有呼叫 Gemini，也沒有新增付費路徑。
+
 ## 2026-09-04（v29.6.292 / 真人旅程文案收尾）
 
 - v29.6.291 正式 TestUI 已證明 `G8 → S32DG802SC → PDF → Web` 為 `routerCalls=0 / pdfCalls=1 / webCalls=1`，但最終回覆仍有「逐句核對引用」內部術語及 `；，` 標點殘留。

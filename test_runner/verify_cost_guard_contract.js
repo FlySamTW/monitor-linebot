@@ -202,11 +202,81 @@ assert(
   "PDF fuse 以含 file URI 的 countTokens 預檢且失敗時 fail closed",
 );
 assert(
-  /function tryPdfLowResolutionRescue_/.test(linebot) &&
+  /function tryPdfAffordableResolutionRescue_/.test(linebot) &&
+    /PDF_PREFERRED_MEDIA_RESOLUTION:\s*"MEDIA_RESOLUTION_MEDIUM"/.test(
+      linebot,
+    ) &&
     /PDF_RESCUE_MEDIA_RESOLUTION:\s*"MEDIA_RESOLUTION_LOW"/.test(linebot) &&
     /estimatePdfWorstCaseCostTwd_/.test(linebot) &&
-    /PDF Cost Rescue v29\.6\.119/.test(linebot),
-  "PDF 超過 token 或費用上限時先降解析度重算，不能直接宣告無法讀取",
+    /genConfig\.mediaResolution\s*=\s*CONFIG\.PDF_PREFERRED_MEDIA_RESOLUTION/.test(
+      linebot,
+    ) &&
+    /PDF Cost Rescue v29\.6\.298/.test(linebot),
+  "PDF 第一次預檢即使用官方建議 medium，只有仍超標才降 low",
+);
+
+const pdfResolutionAttempts = [];
+const pdfResolutionContext = {
+  CONFIG: {
+    MAX_LEGACY_PDF_INPUT_TOKENS: 100000,
+    MAX_PDF_ESTIMATED_TOTAL_COST_TWD: 0.35,
+    PDF_PREFERRED_MEDIA_RESOLUTION: "MEDIA_RESOLUTION_MEDIUM",
+    PDF_RESCUE_MEDIA_RESOLUTION: "MEDIA_RESOLUTION_LOW",
+  },
+  countGeminiPayloadTokens_: (_apiKey, _modelName, payload) => {
+    const resolution = payload.generationConfig.mediaResolution;
+    pdfResolutionAttempts.push(resolution);
+    return {
+      ok: true,
+      totalTokens:
+        resolution === "MEDIA_RESOLUTION_MEDIUM" ? 26000 : 13000,
+    };
+  },
+  isPdfPreflightWithinCost_: (preflight) => preflight.totalTokens <= 60000,
+  estimatePdfWorstCaseCostTwd_: (tokens) => tokens / 100000,
+  writeLog: () => {},
+  Number,
+  Infinity,
+};
+vm.createContext(pdfResolutionContext);
+vm.runInContext(
+  extractFunction(linebot, "tryPdfAffordableResolutionRescue_"),
+  pdfResolutionContext,
+);
+const mediumPayload = {
+  generationConfig: { mediaResolution: "MEDIA_RESOLUTION_MEDIUM" },
+};
+const mediumResult = pdfResolutionContext.tryPdfAffordableResolutionRescue_(
+  "key",
+  "model",
+  mediumPayload,
+  { ok: true, totalTokens: 48000 },
+);
+assert(
+  mediumResult.totalTokens === 48000 &&
+    mediumPayload.generationConfig.mediaResolution ===
+      "MEDIA_RESOLUTION_MEDIUM" &&
+    pdfResolutionAttempts.length === 0,
+  "medium 已在 NT$0.35 上限內時不得再 countTokens 或降 low",
+);
+
+pdfResolutionAttempts.length = 0;
+pdfResolutionContext.isPdfPreflightWithinCost_ = (preflight) =>
+  preflight.totalTokens <= 15000;
+const lowPayload = {
+  generationConfig: { mediaResolution: "MEDIA_RESOLUTION_MEDIUM" },
+};
+const lowResult = pdfResolutionContext.tryPdfAffordableResolutionRescue_(
+  "key",
+  "model",
+  lowPayload,
+  { ok: true, totalTokens: 48000 },
+);
+assert(
+  lowResult.totalTokens === 13000 &&
+    lowPayload.generationConfig.mediaResolution === "MEDIA_RESOLUTION_LOW" &&
+    pdfResolutionAttempts.join(",") === "MEDIA_RESOLUTION_LOW",
+  "medium 仍超標時只需再測 low，不可重複計算 medium",
 );
 assert(
   /手冊已由使用者明確授權[\s\S]{0,260}不再注入整包 QA、RULE、C3/.test(
@@ -326,7 +396,7 @@ assert(
   "手冊 URI 必須在到期前以小批次輪替續期；每日只做增量同步，維護端仍使用正式 expirationTime 欄位",
 );
 assert(
-  /單次上限約 NT\$0\.35/.test(testUi) &&
+  /整本手冊單次上限約 NT\$0\.35/.test(testUi) &&
     !/即將讀取 PDF \(約 NT\$1\.5\)/.test(testUi),
   "TestUI PDF 成本提示與正式 NT$0.35 上限一致",
 );

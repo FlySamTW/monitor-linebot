@@ -66,6 +66,14 @@ function qaKnowledgeNormalizeText_(text) {
     .replace(/[\s,，。；;：:、.!！?？()（）\[\]【】"'`/\\|]+/g, "");
 }
 
+function qaKnowledgeIsGenericIntentTerm_(normalizedTerm) {
+  // 這些詞只描述「想做什麼」，無法辨認「在問哪一個功能」。
+  // 例如同型號的「PBP 怎麼開」不能只因命中「開啟／顯示」就撈到 App 或 USB-C QA。
+  return /^(?:怎麼|如何|開啟|啟用|關閉|設定|操作|步驟|支援|支持|功能|資訊|使用|安裝|下載|刪除|移除|更新|重新安裝|顯示|播放|有沒有|是否|可以)$/.test(
+    String(normalizedTerm || ""),
+  );
+}
+
 function qaKnowledgeSearchTokens_(text) {
   var normalized = qaKnowledgeNormalizeText_(text);
   if (!normalized) return [];
@@ -730,10 +738,26 @@ function qaKnowledgeScoreRecord_(record, query, options) {
     return null;
   }
 
+  var identityTerms = []
+    .concat(recordModels, recordAliases, recordFamilies)
+    .map(function (value) {
+      return qaKnowledgeNormalizeText_(value);
+    })
+    .filter(Boolean);
   var termHits = 0;
+  var meaningfulTermHits = 0;
   (record.terms || []).forEach(function (term) {
     var normalizedTerm = qaKnowledgeNormalizeText_(term);
-    if (normalizedTerm && normalizedQuery.indexOf(normalizedTerm) >= 0) termHits++;
+    if (!normalizedTerm || normalizedQuery.indexOf(normalizedTerm) < 0) return;
+    termHits++;
+    // 型號／系列只負責限定適用範圍，不能同時充當「題意相符」證據。
+    // 否則同一 G8 的 PBP 題會因 modelHit + aliasHit 誤撈防烙印 QA。
+    if (
+      identityTerms.indexOf(normalizedTerm) < 0 &&
+      !qaKnowledgeIsGenericIntentTerm_(normalizedTerm)
+    ) {
+      meaningfulTermHits++;
+    }
   });
 
   var queryTokens = qaKnowledgeSearchTokens_(query);
@@ -758,7 +782,8 @@ function qaKnowledgeScoreRecord_(record, query, options) {
   score += Math.min(48, termHits * 12);
   score += Math.min(40, overlapRatio * 40);
 
-  var strongSignal = exactQuestion || deterministicQuestionMatch || modelHit || aliasHits > 0 || familyHits > 0 || termHits >= 2;
+  var strongSignal =
+    exactQuestion || deterministicQuestionMatch || meaningfulTermHits > 0;
   return {
     record: record,
     score: score,
@@ -768,6 +793,7 @@ function qaKnowledgeScoreRecord_(record, query, options) {
     aliasHits: aliasHits,
     familyHits: familyHits,
     termHits: termHits,
+    meaningfulTermHits: meaningfulTermHits,
     overlapRatio: overlapRatio,
     strongSignal: strongSignal,
   };
@@ -794,11 +820,13 @@ function qaKnowledgeFindLocalMatch_(query) {
   var best = result.ranked[0];
   if (!best || !best.strongSignal) return null;
   var runnerUp = result.ranked.length > 1 ? result.ranked[1] : null;
-  // 完整型號／系列別稱＋兩個結構化意圖詞且明顯領先時，可視為精準 QA。
+  // 完整型號／系列別稱＋至少一個能辨認功能的詞，再搭配一個操作詞且
+  // 明顯領先時，可視為精準 QA。單獨「開啟／安裝／顯示」一律不成立。
   // 這是資料證據契約，不是為 Netflix 或任何單題新增路由特例。
   var scopedIntentMatch =
     best.score >= 55 &&
     (best.modelHit || best.aliasHits > 0) &&
+    best.meaningfulTermHits >= 1 &&
     best.termHits >= 2 &&
     (!runnerUp || best.score - runnerUp.score >= 8);
   if (best.score < 68 && !scopedIntentMatch) return null;
@@ -872,7 +900,9 @@ function qaKnowledgeSelectPromptContext_(query, injectedModels, isPdfMode) {
   var result = qaKnowledgeRank_(enrichedQuery, { excludeManual: true });
   var selected = result.ranked.filter(function (item) {
     if (item.score < 18) return false;
-    if (isPdfMode && !item.strongSignal) return false;
+    // QA prompt 與直答使用同一 precision gate。產品身分只是 metadata
+    // filter，沒有實際題意詞命中時不得把同型號的其他 QA 塞給模型。
+    if (!item.strongSignal) return false;
     if (
       isPdfMode &&
       typeof isExternalDeviceCompatibilityQa_ === "function" &&

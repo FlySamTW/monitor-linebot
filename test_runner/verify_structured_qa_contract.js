@@ -132,6 +132,36 @@ assert.strictEqual(
   null,
   "ambiguous G8 must still ask the user to choose a full model",
 );
+assert.strictEqual(
+  context.qaKnowledgeFindLocalMatch_(
+    "G8 的 PBP 怎麼開？ (型號: S32DG802SC)",
+  ),
+  null,
+  "matching model and alias are scope filters, not intent evidence; PBP must not retrieve an unrelated G8 burn-in QA",
+);
+const g8PbpPrompt = context.qaKnowledgeSelectPromptContext_(
+  "G8 的 PBP 怎麼開？ (型號: S32DG802SC)",
+  ["S32DG802SC"],
+  false,
+);
+assert(
+  !/OLED Safeguard|防烙印保護/.test(g8PbpPrompt.text),
+  "unrelated same-model QA must not be injected into the Fast prompt",
+);
+assert.strictEqual(
+  context.qaKnowledgeFindLocalMatch_(
+    "M8 的 PBP 顯示怎麼開？ (型號: S32FM803UC)",
+  ),
+  null,
+  "generic action words such as open/display must not retrieve same-model App or USB-C QA",
+);
+assert.strictEqual(
+  context.qaKnowledgeFindLocalMatch_(
+    "S32FM803UC 壁掛架怎麼安裝？",
+  ),
+  null,
+  "generic install wording alone must not retrieve the app-install QA",
+);
 const g8Prompt = context.qaKnowledgeSelectPromptContext_("G8 有耳機孔嗎？", [], false);
 assert(
   !/Smart系列螢幕沒有耳機孔/.test(g8Prompt.text),

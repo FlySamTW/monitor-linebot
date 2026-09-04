@@ -25,6 +25,7 @@ S27FG532.pdf
 S27H704,S27H802,S32H704,S32H802,S40H850.pdf
 S24F332.pdf
 S32CM703.pdf
+S32DG802.pdf
 S34A650.pdf
 S34C652.pdf
 S49A950.pdf
@@ -37,6 +38,7 @@ S49DG952.pdf
 
 - `S24F332.pdf`：Samsung 台灣 `LS24F332EACXZW` 支援頁的英文 User Manual，版本 `1.0`、File ID `11512139`、頁面日期 `2026-06-19`，SHA-256 `050F4BE1E7AB9F71A17BB7F65C9F447242F50B04C792898F5D7404AFEB2492A9`。首頁只標示 `S24F33*`，因此 registry 設為 `official_support_page_family_pattern` 且 `exactModelInDocument=false`，不可把內容當成完整型號直接出現在文件內的證據。
 - `S32CM703.pdf`：Samsung 台灣 `LS32CM703UCXZW` 支援頁的繁中 User Manual，版本 `2510220`，頁面日期 `2026-01-16`，SHA-256 `F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C`。
+- `S32DG802.pdf`：Samsung 台灣 `LS32DG802SCXZW` 支援頁列出的繁中 User Manual，版本 `2510220`、File ID `11234033`、頁面日期 `2026-01-16`，SHA-256 `F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C`。官方檔是跨產品共用 e-Manual，首頁沒有印出完整型號，因此 registry 綁定支援頁 SKU 並標記 `exactModelInDocument=false`；頁面仍須通過 RULE 能力、家族及適用性守門。PBP 類問題的可核對入口位於 PDF 第 101 頁「設定 → 多重視窗」。
 - `S49DG952.pdf`：Samsung 台灣 `LS49DG952SCXZW` 支援頁 e-Manual ZIP 內的繁中 PDF，版本 `2312130`，頁面日期 `2024-10-02`，PDF SHA-256 `5E8E314921B56DC49DA2B785C8CA9D31EFC96D1C18A71B5D74427C556DFC0F32`。
 - 舊 `S32CM703,S49DG952.pdf` 不再作為新上傳檔；它的內容與 G95SD 官方 ZIP 繁中項目一致，但合併檔名會把 M7 與 G95SD 誤當成同一精確手冊。新單型號檔上傳後會由既有「涵蓋型號較少」排序優先選用，舊檔保留作回復點，不需先刪除。
 

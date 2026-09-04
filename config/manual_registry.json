@@ -19,6 +19,23 @@
       "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C"
     },
     {
+      "docKey": "G80SD_DG802_SUPPORT_MANUAL_2510220",
+      "sourceFileName": "new/S32DG802.pdf",
+      "models": ["S32DG802SC"],
+      "canary": false,
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32DG802SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32DG802SC&CttFileID=11234033&CDCttType=UM&VPath=UM%2F202601%2F20260117040208001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "sourceFormat": "pdf",
+      "fileId": "11234033",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C"
+    },
+    {
       "docKey": "S33GF_F332_SUPPORT_MANUAL_250711",
       "sourceFileName": "new/S24F332.pdf",
       "models": ["S24F332EA", "S24F332EAC"],

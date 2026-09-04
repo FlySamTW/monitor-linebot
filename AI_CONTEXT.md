@@ -1,6 +1,55 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.292 現行最高優先契約：安全降級也必須像店員朋友
+## v29.6.302 現行最高優先契約：頁級配額與單一操作完成權
+
+- 頁級 RAG 雖不附整本 PDF，仍是一次已授權的手冊供應商生成。必須在真正送出前共用 `reserveAdvancedSourceUsage_()`；不得顯示未送出，也不得繞過每日 2 次手冊配額。
+- 手冊名稱與官網／RULE 名稱不同時，只有人工 lexicon 群開啟 `allowRuleBackedAliasCompletion`，且當次同時有使用者用詞、精確型號 `[來源:官方規格庫]` 能力錨點、手冊頁面實際名稱，才可把純名稱差異視為 full。不得由模型、Web 或 BM25 分數解鎖。
+- 這個例外只解決「已證實是同一功能群的 UI 名稱」。數值、每側條件、介面限制、多主張或型號不明仍不得晉級；不完整才可進 Web 補救。
+- 若上述三方同義已成立、題目是單一選單路徑，且 evidence 本身含直接可執行入口，完成狀態由程式強制為 full；不得因頁級模型保守回 `partial` 再觸發 Web。複合、數值、限制、非操作或證據不完整均排除。
+- 命中完整頁級證據時，最終文字不顯示「已確認規格／手冊補充」階段名，並禁止再叫 Web。精確型號單一操作仍必須 `routerCalls=0`。
+
+## v29.6.299 歷史契約：型號綁定頁級 RAG
+
+- 手冊先依 canonical 完整型號解析唯一 `manual_registry` 文件，再以本機 BM25／lexicon 召回頁面。只有候選頁實際含 curated manual alias 且家族守門通過，才送最多三段官方原文；BM25 最近鄰本身不構成證據。
+- 頁級生成固定 `gemini-2.5-flash-lite`、`thinkingBudget:0`、`temperature:0`。模型只可輸出 `supportedAnswer + evidenceId`；頁碼、原文、SHA、文件角色與型號綁定由 `manual_page_rag_data.gs` 回填，禁止模型自行產生。
+- 頁級命中不再附整本 PDF URI。沒有可靠頁面才使用既有 2.5 Flash 整本 fallback；單次最壞 ceiling 回復 NT$0.35，medium 超標才免費測 low，100K 絕對上限與一次生成限制不變。
+- Router 仍只處理真正模糊產品、複合主張、未規劃的省略追問、部分本機覆蓋或規則衝突。精準 QA、完整 RULE、已解析系列候選、confirmed model 的單一操作／故障、來源按鍵及既有 route plan 必須 `routerCalls=0`。Router 為 `gemini-3.7-flash` low、無工具、無答案欄位；程式是唯一來源決策者。
+- v29.6.298 medium 整本 PDF 的正式 A/B 已否定「提高解析度即可修好召回」：PDF 約 NT$0.5155、約 43 秒仍漏掉第 101 頁。不得再靠放寬成本、加長 Prompt 或升級回答模型掩蓋 retrieval 缺口。
+- managed File Search 可作未來候選，但 current API 偏 3.x，legacy 2.5 僅支援 Flash-Lite；File Search 與 Google Search 不可同一請求並用，2.5 也不能同時 File Search＋Structured Output。未完成同手冊、同題庫的 retrieval／groundedness／完成度／費用 A/B 前不得遷移。
+
+## v29.6.297 歷史契約：PDF 品質與成本自適應
+
+- 整本 PDF 原始預檢超過既有 NT$0.35 上限時，不再直接跳最低解析度。先用 Google 建議的 `MEDIA_RESOLUTION_MEDIUM` 免費重算 token；只有 medium 仍超標才用 `LOW`。實際 `generateContent` 仍最多一次，模型、額度與成本上限不變。
+- 2026-09-02 更新後的官方 File Search 已可在 legacy `generateContent` 查詢、回 `retrievedContext.pageNumber`，儲存與查詢 embedding 免費，只收首次索引 embedding 與取回 context token。但現行 PDF 模型 `gemini-2.5-flash` 不在支援表，不能在沒有同手冊 A/B 前直接遷移或偷換回答模型。
+- File Search 若評估，只能另案以同一 PDF／同一題庫比較召回頁、groundedness、延遲與總費用；不得和 Router 或本版 resolution 調整混成同一正式改動。
+
+## v29.6.296 歷史契約：QA 身分過濾與題意召回分層
+
+- 完整型號、系列別稱與家族只用來限定 QA 的適用範圍，絕對不能單獨證明題意相關。像 `G8 的 PBP 怎麼開` 不得因同為 `S32DG802SC／G8` 而撈到防烙印 QA。
+- 精準 QA 直答與注入 Fast Prompt 共用同一 relevance gate：必須命中至少一個能辨認功能的實質詞；「開啟／設定／安裝／顯示」等泛用動詞單獨不成立。產品身分＋實質功能詞＋操作詞且明顯領先時，仍可零模型命中。
+- 此修正只收緊本機檢索，沒有新增 Router、Fast、PDF 或 Web 呼叫。未命中的問題回到既有 `RULE → PDF → Web` 完成鏈，不得為單題新增 regex 或 Prompt 特例。
+
+## v29.6.295 歷史契約：RULE 能力與手冊操作分層
+
+- 精確型號操作題要拆成「是否有這項能力」與「手冊怎麼操作」兩個 claim。前者只取同一完整型號 RULE／QA；後者只取可核對 PDF 頁面，任何一方都不能覆蓋另一方。
+- 若手冊全文沒有原題名稱、但找到名稱不同且能完成同一使用目的的直接入口，只能以固定句型「手冊中可查到的相近操作是……」交付，強制標為 partial 並保留原題未解 claim。禁止聲稱兩功能等同；數值、每側更新率、模式限制不得走此降級。
+- `buildKnownRuleAnchorForMixedOperation_()` 從 CLASS_RULES ontology 動態保留已明載能力，不新增產品／功能特例。`EvidenceV10` 隔離舊快取；模型、Router 頻率與來源呼叫上限不變。
+
+## v29.6.294 歷史契約：操作題必須交付入口與步驟
+
+- 「怎麼開／如何設定／在哪裡」是通用操作意圖；手冊 evidence 只有功能開啟後的控制不算完成，必須有實際入口、選單路徑或可執行步驟。
+- PBP、PIP、Multi View／多重視窗是不同功能名稱，不得因為都與分割畫面有關就互換。PDF 模型漏掉入口句或抓到錯功能時必須降為 partial，只將未解主張送 Web rescue。
+- Web 操作題回答固定「入口結論＋2–4 步」且正文 320 字內，不回定義、優點或系統內部邏輯。這些完成度守門不增加模型、呼叫次數或額度。
+
+## v29.6.293 歷史契約：Router 只處理真正語意歧義
+
+- 已確認完整型號後，舊候選快取、alias 或家族標記不得再製造產品歧義；單一操作／故障題直接依 `QA／RULE → PDF → Web` 政策完成，`routerCalls=0`。
+- `G8／M8／M7` 等已被 CLASS_RULES 解成候選的系列別稱，即使本機證據只覆蓋部分，也由系列共識／確定性選型處理，不叫 Router 重做身分分類。
+- Structured Output 的 enum 有簡短 description，回傳後再由程式校正三項語意不變式：已確認型號必須沿用、`current_info → web_current`、未有完整本機證據的 `operation／troubleshoot → manual_model_specific`。孤立追問沒有 `previousTopic` 時不得假裝可承接。
+- Router 仍是 `gemini-3.7-flash` + `thinkingLevel: low`，無工具且不回答事實。依 2026-09-04 官方現價，800–1,500 input／50–100 output 常見約 NT$0.025–0.048，不得再沿用舊 Flash-Lite 的 NT$0.003–0.006 或 NT$0.01 門檻；單次超過 NT$0.10 寫稽核警示。
+- 官方依據：[Structured Output](https://ai.google.dev/gemini-api/docs/structured-output) 要求清楚欄位描述與應用程式驗證；[Thinking](https://ai.google.dev/gemini-api/docs/thinking) 將 3.7 Flash `low` 定位為降低延遲與成本的最低支援層級；[RAG 評估](https://cloud.google.com/blog/products/ai-machine-learning/optimizing-rag-retrieval) 要求分開檢索、groundedness、冗長度與回答品質。
+
+## v29.6.292 歷史契約：安全降級也必須像店員朋友
 
 - Web 引用不足但有安全操作時，對外不得顯示「grounding／逐句引用／驗證器」等內部語言；改說找到非官方做法、尚未確認完全適用本款，並直接給最多三步可逆排查。
 - 操作句去除「接著／然後」後必須再清理殘留逗號，禁止出現 `；，` 或無主詞殘句。來源、模型與呼叫數不變；完成快取升為 `EvidenceV9`。

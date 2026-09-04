@@ -7,7 +7,15 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
-- **v29.6.292 手冊完成守門**：已確認完整型號必須鎖定 PDF 選擇，最後附件再做 exact-model allowlist；M7／G95SD 分別只選 `S32CM703.pdf`／`S49DG952.pdf`，舊跨機型合併檔不得掛載。所有 URI recovery／refresh／sync 必須保留或以 blob 驗證 manifest SHA，support-page-only 缺 SHA、mismatch 或已知錯誤共用檔均 fail-closed。其 evidence 必填頁面標題與適用限制並參與 family/model scope 核對；基本人工輸入切換與 `Reset All／重設全部或所有設定` 才可使用通用步驟，不能推成規格能力。任何格式／頁碼／摘錄／適用範圍驗證失敗，都要在同一輪真正執行一次 Web rescue。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV9`。
+- **v29.6.302 單一操作完成權**：人工 lexicon 三方同義成立，且題目是單一選單路徑、頁級 evidence 含直接可執行入口時，程式必須把 coverage 收斂為 full，不得讓模型保守的 `partial` 白跑 Web。複合題、數值、限制、非操作或證據不完整一律排除。顯示只說人能照做的方向鍵與選單路徑，不呈現工程階段名。
+- **v29.6.301 頁級配額對齊**：`callManualPageRag_()` 於真正送出 Flash-Lite 請求前，必須使用和整本 PDF 相同的 `reserveAdvancedSourceUsage_()` grant。配額不足零請求；送出後計一次，且剩餘次數／「是否送出」文案必須與 Request Audit 一致。
+- **v29.6.300 RULE 支持的手冊同義完成**：只有人工 lexicon 群明示 `allowRuleBackedAliasCompletion=true`，並同時命中原題詞、精確型號 `[來源:官方規格庫]` 能力與手冊實際名稱時，純 UI 名稱差異才可視為 full。任一條件缺失，或仍缺數值、限制、介面條件、多主張，必須維持 partial，不得由模型自行宣告等同。完整頁級結果不得再叫 Web，也不顯示「已確認規格／手冊補充」等工程階段名。
+- **v29.6.299 型號綁定頁級 RAG**：手冊先以 canonical 完整型號解析唯一 registry 文件，再用本機 BM25／lexicon 召回頁面。候選頁必須真的含 curated manual alias，且通過家族隔離；最近鄰本身不算證據。命中後只送最多三段官方原文給 `gemini-2.5-flash-lite`（thinking 0、temperature 0），模型只選 evidenceId，頁碼／原文／SHA 由程式回填；禁止再附整本 PDF。未命中才走 2.5 Flash 整本 fallback，單次 ceiling 為 NT$0.35、絕對 100K tokens，medium 超標才免費測 low。型號特定 Web 操作仍須同一 grounding source-set 同時支持 canonical 完整型號與步驟。
+- **v29.6.296 QA 召回分層**：model／alias／family 只能作 scope metadata filter，不得當作 intent relevance。QA 直答與 Fast Prompt context 必須共用 `strongSignal`；至少命中一個非產品身分、非「開啟／設定／安裝／顯示」等泛用動詞的功能詞，才可採用同型號 QA。有效的功能詞＋操作詞仍可零模型命中。不得為失敗問句加題型特例；未命中回既有 RULE／PDF／Web。
+- **v29.6.295 RULE＋PDF 分層**：精確型號操作題須分開保存 RULE 已明載的能力與 PDF 可逐頁核對的入口。若手冊使用不同功能名稱，只能用固定句型「手冊中可查到的相近操作是……」，禁止說等同／就是／同一功能，且一律 `partial`；數值、每側條件與模式限制不得使用此降級。能力從 CLASS_RULES ontology 動態取得，禁止增加產品單題路由。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV10`，模型與呼叫數不變。
+- **v29.6.294 操作題完成度**：所有「怎麼開／如何設定／入口在哪」都必須取得實際入口、選單路徑或可執行選擇動作；只有「開啟後」控制不算完成。PBP、PIP、Multi View／多重視窗不得互換。Web rescue 操作題只回入口與 2–4 步、320 字內。這是通用 Evidence 契約，禁止為單題加 if/regex，也不得增加模型或供應商呼叫。
+- **v29.6.293 Router 守門**：已確認型號的單一操作／故障題、已由 RULE 解析的系列別稱、明確時效題、精準 QA／完整 RULE 與來源按鍵都必須 `routerCalls=0`。舊候選快取不得覆寫 confirmed model。Router Structured Output 回傳後，應用程式必須強制 `confirmed → keep_confirmed`、`current_info → web_current`、無完整本機證據的 `operation/troubleshoot → manual_model_specific`，並拒絕沒有 previousTopic 的假追問。這些是通用不變式，禁止再增單題路由。Router 仍為 `gemini-3.7-flash` low，現價常見單次約 NT$0.025–0.048，超過 NT$0.10 必須警示；不得沿用舊 Flash-Lite 成本估算。
+- **v29.6.293 手冊完成守門**：已確認完整型號必須鎖定 PDF 選擇，最後附件再做 exact-model allowlist；M7／G95SD 分別只選 `S32CM703.pdf`／`S49DG952.pdf`，舊跨機型合併檔不得掛載。所有 URI recovery／refresh／sync 必須保留或以 blob 驗證 manifest SHA，support-page-only 缺 SHA、mismatch 或已知錯誤共用檔均 fail-closed。其 evidence 必填頁面標題與適用限制並參與 family/model scope 核對；基本人工輸入切換與 `Reset All／重設全部或所有設定` 才可使用通用步驟，不能推成規格能力。任何格式／頁碼／摘錄／適用範圍驗證失敗，都要在同一輪真正執行一次 Web rescue。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV10`。
 - Google Search 已真正執行但引用不足時，不能回空白或要求重按，也不能把未核對草稿冒充型號事實。只可保留不含推測、數值、能力、購買、其他型號、工程模式或韌體的可逆操作，並用店員同儕口吻說明適用性尚未確認；若沒有安全操作，就交付現場核對、官網／三星客服或請 Sam 補 QA 的終點。
 - 重設題 Query Rewrite 必須先用完整型號 RULE 判斷 Tizen 或一般 OSD；不得因題目寫「重設」就注入 Smart Monitor 選單詞，也不得用擴寫詞取代使用者原題。
 - 每日官方手冊發現：繁中 UM 永遠優先，只在 Samsung 台灣支援頁沒有繁中時才退到英文 UM；TW area、`UNI_TW`、UM、格式、首頁、SHA 與 provenance 守門不變。`S24F332.pdf` 的封面 `S24F33*` 只能精確綁定一碼家族並標記 `exactModelInDocument=false`；`NASCA DRM` 絕不得當 PDF 索引。
@@ -20,12 +28,12 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 - 每日自動查新手冊與 Files URI 更新不需要 `/重啟`。此治理不得藉機改 Router／Fast／PDF／Web 模型、增加模型呼叫或成本路徑。
 - 一對一 LINE 的文字、圖片與來源 postback 每個有效事件都須在路由前啟動一次等待動畫；同一事件只呼叫一次。群組／多人聊天室及 TestUI 不呼叫此 API，也禁止用 Push 假裝等待。
 - v29.6.281 現行每日額度固定為一般 10 題、官方手冊 2 次、網路解答 5 次；覆蓋後方歷史 20／5／10。三種額度獨立，選型、控制動作、preflight、快取命中與來源交接空輪不扣一般題。
-- **v29.6.281 現行最高優先契約**：以下條款覆蓋本檔後方仍保留的歷史語句。條件式 `RouteAnalysisV1` 不是每題 Router：指令、postback、明確來源按鍵、精準 QA、完整 RULE、人工核對片段及 deterministic 資料邊界都必須 `routerCalls=0`；只有模糊型號／系列、自然追問、複合主張、部分覆蓋或規則衝突才可呼叫一次。
+- **v29.6.302 現行最高優先契約**：以下條款覆蓋本檔後方歷史語句。條件式 `RouteAnalysisV1` 不是每題 Router：指令、postback、明確來源按鍵、精準 QA、完整 RULE、頁級 verified evidence、已解析系列及 confirmed-model 單一操作都必須 `routerCalls=0`；只有真正模糊產品、未規劃自然追問、複合主張、部分覆蓋或規則衝突才可呼叫一次。
 - 競品螢幕比較必須在一般「含螢幕／配件字樣即放行」之前由 Scope Guard 攔截，以店員同儕口吻零模型收斂；跨裝置接三星螢幕仍屬專案範圍。不得要求再按網路，也不得新增品牌單題 Prompt 特例。
 - Router 固定使用 `models/gemini-3.7-flash`、`thinkingLevel: low`、Structured Output，且**無工具／搜尋／PDF／Web與 `answer` 欄位**。它只從程式候選 index 選型、拆 claims 與判斷前後題關係；低信心、逾時、429、格式或應用驗證失敗即 fail-closed fallback，不得回答產品事實、扣額度、指定 PDF 或覆蓋持久型號。不得把 3.6+ 不支援的 `thinkingBudget`、`temperature`、`topP` 或 `topK` 塞入 Router payload。
 - 程式仍是唯一來源決策者，固定 `QA／RULE／verified Evidence → PDF → Web`。精準 QA／完整 RULE 先終止，禁止先問 Router 或再掛進階來源。`conditional` 接管後舊 `[AUTO_SEARCH_PDF]`／`[AUTO_SEARCH_WEB]`／`[NEED_DOC]` 只可作 fallback／稽核，禁止成為第二決策者。模式限 `off|shadow|conditional`，v29.6.280 正式預設 `conditional`；TestUI `?router=` 只能 request-scoped。
 - Evidence 必須逐 claim 關聯 canonical model、來源、頁碼／網址、同段摘錄與限定條件。PBP 兩側 120Hz 只有同一證據明文綁定才可宣稱；分散關鍵字、不同頁或整機最大值不得拼接推論。partial 只升級未解 claim。
-- 現行仍是 Gemini Files API `file_data`，不是 File Search。只有 Router 在 v29.6.280 改為 3.7 Flash；Fast 仍為 `models/gemini-2.5-flash-lite`，PDF／Web 仍為 `models/gemini-2.5-flash`，不得把較高費率擴散到一般回答或加入第二次潤飾。File Search 僅能另案以固定題 A/B，不得與 Router 同版遷移。
+- 手冊採雙層：已編譯功能使用本機頁級 RAG＋2.5 Flash-Lite；未命中才使用 Gemini Files API `file_data`＋2.5 Flash。Web 仍為 2.5 Flash，Router 才是 3.7 Flash low；不得把較高費率擴散到一般回答或加入第二次潤飾。managed File Search 僅能另案固定題 A/B，不得與 Router 或正式回答模型同時遷移。
 - 稽核至少保存 `routerCalls、routerCacheHits、plannerLatencyMs、routerCostTwd、routePlanValid、claimRoutes、selectedModel、pdfCalls、webCalls、finalCoverage`。接管驗證須涵蓋精準 QA/RULE 零 Router、模糊／複合／追問題最多一次 Router、零額外等價 PDF／Web 呼叫，並以 `usageMetadata` 與現行 3.7 Flash 費率核對實際成本；不得沿用 2.5 Flash-Lite 的單次 NT$0.01 舊門檻假裝精準。
 - 三星術語必須資料化拆列：`definition` 只解釋名詞，系列／型號 `capability` 必須有精確 scope，操作 `operation` 另需同一 canonical 型號手冊路徑。CoreSync、Core Lighting+、Infinity Core Lighting、Eclipse Lighting／Eclipse Sync 不得互換；definition 不得作型號支援證據。
 - 官網功能字典的現行資料格式是 `術語_`（canonical、aliases、definition_only、官方來源）與 `能力_完整型號`（model、aliases、capabilities、evidence、checkedAt、source）。Pro／Plus／Premium 後綴不可折疊；系列 aliases 只用於列候選。2026-09-04 快照為 154 筆術語、9 筆完整型號能力；術語總數包含舊雲端 key `術語_OdysseyHub`、`術語_MiniLED`、`術語_AIUpscaling` 的 `definition_only` legacy alias，不可用來證明型號支援。此快照包含 Samsung 顯示器首頁可問的上位概念；官網變更時應更新資料與契約測試，不可把新詞塞進 Prompt。

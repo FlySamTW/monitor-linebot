@@ -107,6 +107,7 @@
       "id": "elliptical_followup_invoke",
       "input": {
         "question": "那兩邊呢？",
+        "previousTopic": "S57CG952NC 的 PBP 兩側更新率限制",
         "confirmedModel": "S57CG952NC",
         "candidateModels": ["S57CG952NC"],
         "exactQaComplete": false,
@@ -202,6 +203,99 @@
         "unknownModel": false,
         "ambiguousAlias": false,
         "possibleFollowUp": false,
+        "multiClaim": true,
+        "routeConflict": true
+      },
+      "expected": true
+    },
+    {
+      "id": "confirmed_model_stale_candidates_bypass",
+      "input": {
+        "question": "S32DG802SC 的 PBP 在哪裡開？",
+        "confirmedModel": "S32DG802SC",
+        "candidateModels": ["S32DG802SC", "S32HG806ES"],
+        "localCoverage": "none",
+        "ambiguousAlias": true,
+        "routeConflict": true
+      },
+      "expected": false
+    },
+    {
+      "id": "resolved_series_partial_bypass",
+      "input": {
+        "question": "G8 的 PBP 怎麼開？",
+        "confirmedModel": "",
+        "candidateModels": ["S32DG802SC", "S32HG806ES"],
+        "identityKind": "alias",
+        "ambiguousAlias": true,
+        "seriesAliasResolved": true,
+        "localCoverage": "partial",
+        "routeConflict": true
+      },
+      "expected": false
+    },
+    {
+      "id": "known_model_troubleshoot_bypass",
+      "input": {
+        "question": "S32DG802SC 接 HDMI 後沒畫面怎麼辦？",
+        "confirmedModel": "S32DG802SC",
+        "candidateModels": ["S32DG802SC"],
+        "localCoverage": "none",
+        "routeConflict": true
+      },
+      "expected": false
+    },
+    {
+      "id": "partial_single_spec_invoke",
+      "input": {
+        "question": "S32FM703UC 支援 USB-C 供電嗎？",
+        "confirmedModel": "S32FM703UC",
+        "candidateModels": ["S32FM703UC"],
+        "localCoverage": "partial",
+        "routeConflict": false
+      },
+      "expected": true
+    },
+    {
+      "id": "unresolved_manual_term_invoke",
+      "input": {
+        "question": "零售模式是什麼？",
+        "confirmedModel": "",
+        "candidateModels": [],
+        "localCoverage": "none"
+      },
+      "expected": true
+    },
+    {
+      "id": "current_without_model_bypass",
+      "input": {
+        "question": "目前三星螢幕活動有哪些？",
+        "confirmedModel": "",
+        "candidateModels": [],
+        "localCoverage": "none"
+      },
+      "expected": false
+    },
+    {
+      "id": "resolved_series_common_spec_bypass",
+      "input": {
+        "question": "G8 有沒有耳機孔？",
+        "confirmedModel": "",
+        "candidateModels": ["S32DG802SC", "S32HG806ES"],
+        "identityKind": "alias",
+        "ambiguousAlias": true,
+        "seriesAliasResolved": true,
+        "localCoverage": "none"
+      },
+      "expected": false
+    },
+    {
+      "id": "new_multi_claim_confirmed_invoke",
+      "input": {
+        "question": "S32DG802SC 有沒有喇叭，並且 PBP 怎麼開？",
+        "confirmedModel": "S32DG802SC",
+        "candidateModels": ["S32DG802SC"],
+        "localCoverage": "partial",
         "multiClaim": true,
         "routeConflict": true
       },
