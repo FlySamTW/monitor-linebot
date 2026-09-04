@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.291"; // 2026-09-04 網搜引用不足仍交付安全可試終點
-const BUILD_TIMESTAMP = "2026-09-04 19:57";
+const GAS_VERSION = "v29.6.292"; // 2026-09-04 網搜安全終點改為店員自然文案
+const BUILD_TIMESTAMP = "2026-09-04 20:20";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV8";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV9";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -10063,6 +10063,7 @@ function sanitizeTentativeWebActionLine_(rawLine) {
         let clause = String(candidate || "")
           .trim()
           .replace(/^(?:並且|而且|然後|接著|並|且|再)\s*/, "")
+          .replace(/^[，,；;]\s*/, "")
           .trim();
         if (
           clause.length < 6 ||
@@ -10103,9 +10104,9 @@ function buildTentativeWebFallback_(rawResponse, query, model) {
   });
   if (actions.length > 0) {
     return [
-      "公開網頁沒有取得可逐句核對的引用，以下只當排查方向：",
+      "我找到幾個非官方做法，但還不能確認完全適用這台，先試這三步：",
       actions.slice(0, 3).join("\n"),
-      "若機內找不到相同選單，就不要套用其他型號；這題也會留給 Sam 補進 QA。",
+      "如果機內看不到相同選單，先別硬套；我也會把這題留給 Sam 補進 QA。",
     ].join("\n");
   }
   return buildSafeNoEvidenceNextStep_(query, model);

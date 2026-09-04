@@ -2125,6 +2125,8 @@ assert(
     /先不套用其他型號/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
     /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
+    /找到幾個非官方做法/.test(webFallbackContext.safeTerminal) &&
+    !/逐句核對|grounding|；，/i.test(webFallbackContext.safeTerminal) &&
     /使用數位機上盒|諮詢業者/.test(webFallbackContext.safeTerminal) &&
     !/其他型號可能/.test(
       webFallbackContext.safeTerminal,
@@ -2132,6 +2134,7 @@ assert(
     /沒有足夠證據/.test(webFallbackContext.noPurchase) &&
     !/購買|通常|HDMI 線連接/.test(webFallbackContext.noPurchase) &&
     /PIP\/PBP Mode|Multi-View/.test(webFallbackContext.pbpCoherent) &&
+    !/逐句核對|grounding|；，/i.test(webFallbackContext.pbpCoherent) &&
     !/(?:^|\n)•\s*(?:然後將其開啟|有些使用者提到)/.test(
       webFallbackContext.pbpCoherent,
     ) &&

@@ -7,7 +7,8 @@ description: 維護與發布 Samsung 台灣螢幕 LINE Bot。適用於三來源�
 
 ## 不可破壞契約
 
-- **v29.6.287 手冊完成守門**：已確認完整型號必須鎖定 PDF 選擇，最後附件再做 exact-model allowlist；M7／G95SD 分別只選 `S32CM703.pdf`／`S49DG952.pdf`，舊跨機型合併檔不得掛載。所有 URI recovery／refresh／sync 必須保留或以 blob 驗證 manifest SHA，support-page-only 缺 SHA、mismatch 或已知錯誤共用檔均 fail-closed。其 evidence 必填頁面標題與適用限制並參與 family/model scope 核對；基本人工輸入切換與 `Reset All／重設全部或所有設定` 才可使用通用步驟，不能推成規格能力。任何格式／頁碼／摘錄／適用範圍驗證失敗，都要在同一輪真正執行一次 Web rescue。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV6`。
+- **v29.6.292 手冊完成守門**：已確認完整型號必須鎖定 PDF 選擇，最後附件再做 exact-model allowlist；M7／G95SD 分別只選 `S32CM703.pdf`／`S49DG952.pdf`，舊跨機型合併檔不得掛載。所有 URI recovery／refresh／sync 必須保留或以 blob 驗證 manifest SHA，support-page-only 缺 SHA、mismatch 或已知錯誤共用檔均 fail-closed。其 evidence 必填頁面標題與適用限制並參與 family/model scope 核對；基本人工輸入切換與 `Reset All／重設全部或所有設定` 才可使用通用步驟，不能推成規格能力。任何格式／頁碼／摘錄／適用範圍驗證失敗，都要在同一輪真正執行一次 Web rescue。現行 `ADVANCED_SOURCE_CACHE_SCHEMA=EvidenceV9`。
+- Google Search 已真正執行但引用不足時，不能回空白或要求重按，也不能把未核對草稿冒充型號事實。只可保留不含推測、數值、能力、購買、其他型號、工程模式或韌體的可逆操作，並用店員同儕口吻說明適用性尚未確認；若沒有安全操作，就交付現場核對、官網／三星客服或請 Sam 補 QA 的終點。
 - 重設題 Query Rewrite 必須先用完整型號 RULE 判斷 Tizen 或一般 OSD；不得因題目寫「重設」就注入 Smart Monitor 選單詞，也不得用擴寫詞取代使用者原題。
 - 每日官方手冊發現：繁中 UM 永遠優先，只在 Samsung 台灣支援頁沒有繁中時才退到英文 UM；TW area、`UNI_TW`、UM、格式、首頁、SHA 與 provenance 守門不變。`S24F332.pdf` 的封面 `S24F33*` 只能精確綁定一碼家族並標記 `exactModelInDocument=false`；`NASCA DRM` 絕不得當 PDF 索引。
 - 手冊與 Web 都必須以原題判定完成度，不可拿擴寫搜尋詞代替。手冊答案漏掉明示功能、介面編號、操作或數值不得標 full；Web 必須保留 `full / partial / none + groundingPresent`，分清有網頁但不適用本型號與真正無 Grounding。
