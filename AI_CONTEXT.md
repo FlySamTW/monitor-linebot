@@ -1,6 +1,9 @@
 # Samsung LINE Bot 專案 AI 協作指南 (Project Context for AI Agents)
 
-## v29.6.287 現行最高優先契約：手冊命名、新機自動納管、頁面適用性與通用操作證據
+## v29.6.288 現行最高優先契約：Router 最小啟動、手冊命名與通用操作證據
+
+- Router 不是每題必經站。完整型號的明確手冊題與明確時效 Web 題由程式直接決定來源，`routerCalls=0`；只有真正語意歧義、尚未規劃的省略追問、模糊產品或複合主張才用一次 3.7。
+- 同一 canonical topic 已保存 claims 後，後續短句追問沿用既有規劃，不得每輪重叫 Router。Google Cloud 實帳 2026-07／08 分別為 NT$46.18／NT$21.95，成本評估必須用台幣月總額，不得把帳單 `$` 誤當美元或只用單次倍數製造錯誤印象。
 
 - M7／`S32CM703UC` 只選 `S32CM703.pdf`；G95SD／`S49DG952SC` 只選 `S49DG952.pdf`。舊 `S32CM703,S49DG952.pdf` 為回復資產，不得進正式候選。
 - 繁中 UM 永遠優先；Samsung 台灣支援頁沒有繁中時才可退到英文 UM，但 TW area、`UNI_TW`、UM、格式、首頁、SHA 與 provenance 仍全部必須通過。`S24F332.pdf` 是正例；封面 `S24F33*` 只能在官方 SKU/download `ModelName` 精確一致且星號只對應一碼時綁定，並標記 `exactModelInDocument=false`。

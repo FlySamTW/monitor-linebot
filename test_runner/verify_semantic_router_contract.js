@@ -205,6 +205,31 @@ assert.strictEqual(
   true,
   "QA／RULE 無法分類的手冊型用語必須先交 Router，不得直接讓 Fast 猜答案",
 );
+assert.strictEqual(
+  context.shouldRunSemanticRouter_({
+    mode: "conditional",
+    question: "S49DG952SC 的 PBP 怎麼開？",
+    confirmedModel: "S49DG952SC",
+    candidateModels: ["S49DG952SC"],
+    localCoverage: "partial",
+    routeConflict: true,
+  }),
+  false,
+  "完整型號與手冊來源都明確時必須直接查證，不得先多叫一次 3.7 Router",
+);
+assert.strictEqual(
+  context.shouldRunSemanticRouter_({
+    mode: "conditional",
+    question: "那兩邊呢？",
+    previousTopic: "S57CG952NC 的 PBP 兩側更新率限制",
+    confirmedModel: "S57CG952NC",
+    candidateModels: ["S57CG952NC"],
+    possibleFollowUp: true,
+    priorRoutePlanAvailable: true,
+  }),
+  false,
+  "同一主題已由 Router 規劃後，省略式連續追問必須沿用 claims，不得逐輪付費",
+);
 
 for (const testCase of fixture.validAnalyses) {
   const routeInput = invocationById.get(testCase.inputCaseId).input;

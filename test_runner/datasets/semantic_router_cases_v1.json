@@ -121,6 +121,59 @@
       "expected": true
     },
     {
+      "id": "elliptical_followup_existing_plan_bypass",
+      "input": {
+        "question": "那兩邊呢？",
+        "previousTopic": "S57CG952NC 的 PBP 兩側更新率限制",
+        "confirmedModel": "S57CG952NC",
+        "candidateModels": ["S57CG952NC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": true,
+        "priorRoutePlanAvailable": true,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
+      "id": "known_model_manual_bypass",
+      "input": {
+        "question": "S49DG952SC 的 PBP 怎麼開？",
+        "confirmedModel": "S49DG952SC",
+        "candidateModels": ["S49DG952SC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": true
+      },
+      "expected": false
+    },
+    {
+      "id": "current_info_deterministic_bypass",
+      "input": {
+        "question": "S32FM703UC 現在有庫存嗎？",
+        "confirmedModel": "S32FM703UC",
+        "candidateModels": ["S32FM703UC"],
+        "exactQaComplete": false,
+        "exactRuleComplete": false,
+        "explicitSource": "",
+        "unknownModel": false,
+        "ambiguousAlias": false,
+        "possibleFollowUp": false,
+        "multiClaim": false,
+        "routeConflict": false
+      },
+      "expected": false
+    },
+    {
       "id": "mixed_claim_invoke",
       "input": {
         "question": "S32FM703UC 有幾個 HDMI，而且要怎麼切換訊號源？",

@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.287"; // 2026-09-04 手冊 Reset All 詞序無關同義契約
+const GAS_VERSION = "v29.6.288"; // 2026-09-04 Router 最小啟動與連續追問沿用契約
 const BUILD_TIMESTAMP = "2026-09-04 18:27";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
@@ -2958,6 +2958,7 @@ function buildSemanticRouterInput_(options) {
     unknownModel: source.unknownModel === true,
     ambiguousAlias: source.ambiguousAlias === true,
     possibleFollowUp: source.possibleFollowUp === true,
+    priorRoutePlanAvailable: source.priorRoutePlanAvailable === true,
     multiClaim: source.multiClaim === true,
     routeConflict: source.routeConflict === true,
     kbVersion: String(source.kbVersion || GAS_VERSION),
@@ -2999,14 +3000,41 @@ function shouldRunSemanticRouter_(options) {
     /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|韌體現況|服務資訊|業者|APP\s*現況)/i.test(
       question,
     );
+  // 已知完整型號且來源明確時，程式直接走既有 QA/RULE→PDF 或 Web 政策；
+  // 3.7 Router 只處理真正的語意歧義，不可變成每題必經的付費關卡。
+  const deterministicManualRoute = Boolean(
+    input.confirmedModel &&
+      manualVerification &&
+      !multiClaim &&
+      !ambiguousProduct &&
+      !ellipticalFollowup,
+  );
+  const deterministicCurrentRoute = Boolean(
+    currentInfo &&
+      !multiClaim &&
+      !ambiguousProduct &&
+      !ellipticalFollowup,
+  );
+  if (deterministicManualRoute || deterministicCurrentRoute) return false;
+
+  // 同一主題已由 Router 拆過主張後，短句追問沿用既有 canonical topic／claims；
+  // 除非本輪本身又是新的複合題或產品仍有歧義，否則不得逐輪重叫 3.7。
+  if (
+    input.priorRoutePlanAvailable &&
+    ellipticalFollowup &&
+    !multiClaim &&
+    !ambiguousProduct
+  ) {
+    return false;
+  }
+
   return Boolean(
     multiClaim ||
       ellipticalFollowup ||
       ambiguousProduct ||
       partialLocal ||
       intentConflict ||
-      manualVerification ||
-      currentInfo,
+      (manualVerification && !input.confirmedModel),
   );
 }
 
@@ -25209,6 +25237,14 @@ function handleMessage(event) {
       ),
       possibleFollowUp: Boolean(
         semanticPreviousTopic && isEllipticalEvidenceFollowUp_(routingQuestion),
+      ),
+      priorRoutePlanAvailable: Boolean(
+        canonicalTopicBeforeTurn &&
+          Array.isArray(canonicalTopicBeforeTurn.claims) &&
+          canonicalTopicBeforeTurn.claims.length > 0 &&
+          (!semanticConfirmedModel ||
+            normalizeModelForDisplay(canonicalTopicBeforeTurn.model || "") ===
+              semanticConfirmedModel),
       ),
       multiClaim: isPotentialMultiClaimQuestion_(routingQuestion),
       routeConflict: Boolean(
