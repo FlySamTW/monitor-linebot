@@ -56,15 +56,15 @@ async function main() {
   console.log(`Local version : ${expected}`);
   console.log(`Formal health : ${health}`);
 
-  if (!health.includes(localVersion)) {
+  if (!health.includes(expected)) {
     console.error("");
-    console.error("[BLOCKED] Formal TestUI is not running the local version.");
+    console.error("[BLOCKED] Formal deployment is not running the exact local version and build.");
     console.error("Do not run online TestUI regression tests yet, because they would validate an old deployment.");
-    console.error("Delete old Apps Script versions, run deploy.bat, then rerun this guard.");
+    console.error("If this is a staged /dev candidate, keep formal acceptance pending. After release gates pass, use tools/release_existing_webhook.ps1 and rerun this guard. Do not delete versions or deploy via another entry point merely to satisfy this check.");
     process.exit(2);
   }
 
-  console.log("[OK] Formal TestUI version matches local linebot.gs.");
+  console.log("[OK] Formal health version/build matches local linebot.gs; this is not a TestUI conversation or LINE delivery test.");
 }
 
 main().catch((error) => {

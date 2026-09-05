@@ -4,7 +4,8 @@ param(
   [switch]$SkipStaticTests,
   [switch]$SkipReadinessCheck,
   [switch]$SkipWebhookVersionCheck,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$StageOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +57,10 @@ if (-not $SkipStaticTests) {
     try {
       npm run test:static
       $staticExitCode = $LASTEXITCODE
+      if ($staticExitCode -eq 0) {
+        npm run test:production-contract
+        $staticExitCode = $LASTEXITCODE
+      }
     } finally {
       Pop-Location
     }
@@ -99,6 +104,7 @@ Invoke-Step "3/5 Push GAS and update existing deployment" {
   if (-not [string]::IsNullOrWhiteSpace($VersionDescription)) {
     $args += @("-VersionDescription", $VersionDescription)
   }
+  if ($StageOnly) { $args += "-StageOnly" }
 
   if ($DryRun) {
     Write-Host "DRY RUN: powershell $($args -join ' ')"
@@ -109,6 +115,15 @@ Invoke-Step "3/5 Push GAS and update existing deployment" {
   if ($LASTEXITCODE -ne 0) {
     throw "deploy_existing_webhook.ps1 failed with exit code $LASTEXITCODE. Release stopped."
   }
+}
+
+if ($StageOnly) {
+  if ($DryRun) {
+    Write-Host "[DRY RUN ONLY] No tests or upload executed; formal deployment was not changed."
+  } else {
+    Write-Host "[STAGED ONLY] Static, production-contract and whitespace guards passed. Candidate HEAD only; formal deployment was not changed."
+  }
+  exit 0
 }
 
 if (-not $SkipReadinessCheck) {

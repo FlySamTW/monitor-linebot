@@ -103,10 +103,11 @@ assertStep(
 );
 
 assertStep(
-  (testUi.match(/<\?/g) || []).length === 1 &&
+  (testUi.match(/<\?/g) || []).length === 3 &&
     /<\?!=\s*testUiAccessToken\s*\?>/.test(testUi) &&
+    /<\? if \(isEditorOnlyDevelopmentWebApp_\(\)\) \{ \?>[\s\S]*id="reliability-result"[\s\S]*<\? \} \?>/.test(testUi) &&
     !/includes\(["']<\?["']\)/.test(testUi),
-  "TestUI HtmlService template only contains the intended token scriptlet",
+  "TestUI only contains the token and guarded editor-maintenance scriptlets",
 );
 
 assertStep(

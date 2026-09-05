@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.302"; // 2026-09-05 單一操作的三方同義完成權收回程式
-const BUILD_TIMESTAMP = "2026-09-05 02:00";
+const GAS_VERSION = "v29.6.304"; // 2026-09-05 純換型號延續不得覆蓋口語新問題
+const BUILD_TIMESTAMP = "2026-09-05 16:15";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV10";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV18-QueryTimeV1-RelatedRecall";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -31,7 +31,7 @@ const SEMANTIC_ROUTER_VERSION = "RouteAnalysisV1";
 const SEMANTIC_ROUTER_MODE_DEFAULT = "conditional";
 const SEMANTIC_ROUTER_CACHE_TTL_SECONDS = 600;
 const SEMANTIC_ROUTER_MAX_CLAIMS = 5;
-const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV2";
+const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV3";
 // 384 是五個 claims 的 JSON 結構安全空間，不是 NT$0.01 的成本保證。
 // 以 3.7 Flash 現價與目標 800–1,500 input／50–100 output 估算，
 // 常見約 NT$0.025–0.048；實際一律以 usageMetadata 為準。
@@ -83,8 +83,8 @@ const PRICE_WEB_OUTPUT = 2.5; // $2.50 per 1M Output (Gemini 2.5 Flash Standard,
 // 不回答產品事實、不掛 PDF／Web 工具；精準 QA／RULE 仍維持零 Router。
 // 2026-09-04 Google 官方穩定型號與限時標準價（至 2026-12-31）。
 const GEMINI_MODEL_ROUTER = "models/gemini-3.7-flash";
-const PRICE_ROUTER_INPUT = 0.75;
-const PRICE_ROUTER_OUTPUT = 3.75;
+const PRICE_ROUTER_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
+const PRICE_ROUTER_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -2230,6 +2230,9 @@ function normalizeAnswerEnvelope_(value) {
 function writeAnswerEnvelope_(contextId, envelope) {
   if (!contextId || !envelope) return null;
   const normalized = normalizeAnswerEnvelope_(envelope);
+  if (typeof currentRequestAudit !== "undefined" && currentRequestAudit) {
+    currentRequestAudit.finalCoverage = normalized.status;
+  }
   normalized.version = GAS_VERSION;
   normalized.createdAt = Date.now();
   normalized.expiresAt = normalized.createdAt + ANSWER_ENVELOPE_TTL_MS;
@@ -3085,7 +3088,8 @@ function shouldRunSemanticRouter_(options) {
     input.priorRoutePlanAvailable &&
     ellipticalFollowup &&
     !multiClaim &&
-    !ambiguousProduct
+    !ambiguousProduct &&
+    canReuseSemanticFollowup_(question, input.previousTopic)
   ) {
     return false;
   }
@@ -3202,7 +3206,7 @@ function callSemanticRouter_(inputValue) {
   const startedAt = Date.now();
   markGenerationAttempt_("router", GEMINI_MODEL_ROUTER);
   try {
-    const response = UrlFetchApp.fetch(
+    const response = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_ROUTER}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -3811,8 +3815,9 @@ function buildAdvancedAnswerEnvelope_(
   const refs = [];
   if (hasEvidence && source === "manual") {
     const pages = String(finalText || "").match(/第\s*\d+(?:[、,，\-–~至]\s*\d+)*\s*頁/g) || [];
-    const pageKey = pages.length > 0 ? pages.join("/") : computeReplyAnchor_(finalText).substring(0, 16);
-    refs.push(`MANUAL:${normalizeModelForDisplay(model || "") || "GENERAL"}:${pageKey}`);
+    if (pages.length > 0) {
+      refs.push(`MANUAL:${normalizeModelForDisplay(model || "") || "GENERAL"}:${pages.join("/")}`);
+    }
   }
   if (hasEvidence && (effectiveSource === "web" || hasWebSources)) {
     const sourceKey = Array.isArray(searchSources) && searchSources.length > 0
@@ -4554,21 +4559,23 @@ function stripInternalRoutingHints_(text) {
     .replace(/\[System Hint:[^\]]*\]/gi, " ")
     .replace(/\[(?:AUTO_SEARCH_PDF|AUTO_SEARCH_WEB|NEED_DOC|NEW_TOPIC)(?:[:：][^\]]*)?\]/gi, " ")
     .replace(/\[(?:模式|型號)[:：][^\]]+\]/gi, " ")
+    .replace(/[（(]型號[:：]\s*[A-Z0-9,、\s-]+[)）]/gi, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
 function buildCanonicalWebQuery_(query, model) {
-  const normalizedModel = normalizeModelForDisplay(model || "");
+  const normalizedModel = isUnscopedRuleTermDefinition_(query) ? "" : normalizeModelForDisplay(model || "");
   const cleanQuery = stripInternalRoutingHints_(query);
   let text = stripKnownModelFromSourceQuestion_(cleanQuery, normalizedModel)
     .replace(/^(?:那你|那|請你|麻煩你)?\s*(?:再)?(?:幫我)?(?:查|搜尋|搜)(?:一下)?\s*/i, "")
     .trim();
   if (!text) text = cleanQuery;
   return [
-    "Samsung",
+    "Samsung 電腦螢幕",
     normalizedModel,
     text,
+    findRuleTermOntologyMatches_(text).map(function (term) { return [term.label, term.canonical, term.definition].filter(Boolean).join(" "); }).join(" ").slice(0, 300),
     "台灣 非官方 公開網頁 實務解法 -site:samsung.com",
   ]
     .filter(Boolean)
@@ -4985,6 +4992,18 @@ function isExplicitRuleTermDefinitionQuestion_(query) {
   );
 }
 
+function isUnscopedRuleTermDefinition_(query) {
+  query = stripInternalRoutingHints_(query);
+  if (!isExplicitRuleTermDefinitionQuestion_(query)) return false;
+  let remainder = String(query || "");
+  findRuleTermOntologyMatches_(query).forEach(function (term) {
+    remainder = remainder.replace(new RegExp(escapeRegExp(term.matchedAlias), "gi"), " ");
+  });
+  // Only a pure concept question may omit product identity. A model, an
+  // operation, a numeric restriction or "這台有沒有" keeps the normal guard.
+  return !remainder.replace(/(?:請問|那|是|什麼|甚麼|代表|指的是|意思|用途|作用|有何不同|哪裡不同|差在哪|差別|差異|怎麼分|和|與|跟|呢|啊|阿|嗎|的|[\s?？!！。，、])/g, "");
+}
+
 function buildDeterministicRuleTermDefinitionReply_(query) {
   const text = String(query || "").trim();
   if (!isExplicitRuleTermDefinitionQuestion_(text)) return "";
@@ -5015,6 +5034,7 @@ function buildDeterministicRuleTermDefinitionReply_(query) {
 
 function getExplicitCapabilityCheck_(query) {
   const q = String(query || "");
+  if (isUnscopedRuleTermDefinition_(q)) return null;
   if (!/(?:有|支援|支持|內建|具備|是否|能不能|可不可以).{0,28}(?:嗎|呢|\?|？)?|(?:嗎|呢|\?|？)/i.test(q)) {
     return null;
   }
@@ -5061,6 +5081,7 @@ function getExplicitCapabilityCheck_(query) {
 }
 
 function getAllExplicitCapabilityChecks_(query) {
+  if (isUnscopedRuleTermDefinition_(query)) return [];
   const checks = [];
   const first = getExplicitCapabilityCheck_(query);
   if (first) checks.push(first);
@@ -5310,6 +5331,11 @@ function getRecentOfficialManualAnswer_(messages) {
 function sanitizePriceNumbers_(text) {
   if (!text) return "";
   let processed = String(text);
+  // The audited API fee is not a monitor sale price. Protect only the exact
+  // footer produced from this request's usage, not arbitrary model text.
+  const auditedFee = typeof currentRequestAudit !== "undefined" && currentRequestAudit &&
+    typeof buildReplyCostAuditText_ === "function" ? buildReplyCostAuditText_() : "";
+  if (auditedFee) processed = processed.replace(auditedFee, "__AUDITED_PROVIDER_FEE__");
   // 點卡、禮券、購物金是活動權益面額，不是商品售價；先保護再做售價遮罩。
   const protectedBenefits = [];
   processed = processed.replace(
@@ -5331,6 +5357,7 @@ function sanitizePriceNumbers_(text) {
   protectedBenefits.forEach((benefit, index) => {
     processed = processed.replace(`__CAMPAIGN_BENEFIT_${index}__`, benefit);
   });
+  if (auditedFee) processed = processed.replace("__AUDITED_PROVIDER_FEE__", auditedFee);
   return processed;
 }
 
@@ -6214,14 +6241,21 @@ function extractContinuationTargetModel(text) {
 }
 
 function isShortModelContinuation(text) {
-  const q = String(text || "").trim();
+  // Only the user's explicit model and a bare comparison pivot may replace
+  // the prior topic. An injected persistent model is not a user model switch;
+  // any remaining feature/constraint belongs to the new question.
+  const q = stripInternalRoutingHints_(String(text || "")).trim();
   if (!q || q.length > 40) {
     return false;
   }
   if (!extractContinuationTargetModel(q)) {
     return false;
   }
-  return /^(?:那|換|改|同樣|一樣|how about|what about|and)\b|(?:呢|的話)[？?]?$/i.test(q);
+  const remainder = q.replace(
+    /\b(?:M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,3}\d{0,4}[A-Z0-9]*|[A-Z]{1,3}\d{2,3}[A-Z]{1,3}\d{3,4}[A-Z0-9]*)\b/gi,
+    "",
+  ).replace(/[\s？?，,。.!！]/g, "");
+  return Boolean(remainder) && /^(?:那|換(?:成)?|改(?:成)?|同樣|一樣|howabout|whatabout|and)?(?:呢|的話)?$/i.test(remainder);
 }
 
 function expandShortModelContinuation(text, previousTopic) {
@@ -6351,9 +6385,10 @@ function isEllipticalEvidenceFollowUp_(query) {
   if (!text || text.length > 24 || extractFullModelLikeTokens(text).length > 0) {
     return false;
   }
-  return /^(?:那|它|這個|這款|所以|再|接著|然後|要|可以|能|該|如何|怎麼|怎樣|哪裡|在哪)/i.test(
-    text,
-  );
+  if (!/^(?:那|它|這個|這款|這台|所以|再|接著|然後|要|可以|能|該|如何|怎麼|怎樣|哪裡|在哪)/i.test(text)) return false;
+  // An explicit feature noun makes a self-contained new claim, even after
+  // "那". Only grammatical references and added limits need topic expansion.
+  return !text.replace(/(?:接著|然後|所以|這個|這款|這台|這樣|那個|那款|那台|那|它|再|要|可以|能不能|能否|能|不能|該|如何|怎麼|怎樣|哪裡|在哪|開啟|關閉|開|關|設定|操作|調整|切換|切|連接|連|配對|安裝|使用|用|支援|有沒有|兩邊|兩側|兩個|同時|各自|每個|各|最高|最低|最大|最小|多少|幾個|幾|多快|都|也|呢|嗎|啊|的|是|還|會|不|[\d\s?？!！。，、]+|Hz|赫茲|W|瓦)/gi, "");
 }
 
 function shouldDeferLocalEvidenceForSemanticFollowUp_(
@@ -6390,7 +6425,11 @@ function getPreviousUserTopicForEvidence_(contextId, currentQuery) {
         .replace(/\(型號:[^)]+\)/gi, "")
         .trim();
       if (previous && previous !== String(currentQuery || "").trim() && !previous.startsWith("#")) {
-        return previous;
+        // A leading "那" does not authorize reusing an unrelated free answer.
+        // Share the same semantic-state contract as the paid route: explicit
+        // features/new restrictions must not be answered by the old topic.
+        return canReuseSemanticFollowup_(stripInternalRoutingHints_(currentQuery), previous)
+          ? previous : "";
       }
     }
   }
@@ -6906,7 +6945,7 @@ function rememberSourceCanonicalTopic_(contextId, question, model, claims) {
   const canonicalQuestion = suppliedClaims.length > 0
     ? suppliedClaims.join("；")
     : isElliptical
-      ? String(existingTopic.canonicalQuestion || "").trim()
+      ? resolvePersistentFollowupQuestion_(currentQuestion, String(existingTopic.canonicalQuestion || "").trim())
       : currentQuestion;
   if (!canonicalQuestion) return existingTopic;
   const canonicalClaimKey = computeReplyAnchor_(
@@ -8099,7 +8138,10 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
 
   if (source !== "manual" && source !== "web") return false;
   const remaining = getSourceRemaining_(contextId, source);
-  if (remaining <= 0) {
+  const recent = readRecentSourceQuestion_(contextId);
+  // The common executor checks completed results BEFORE reserving quota.
+  // Do not make its free replay unreachable from the actual Rich Menu entry.
+  if (remaining <= 0 && !(recent && recent.question && recent.model)) {
     clearPendingSourceState_(contextId);
     LAST_SOURCE_TEST_STATE = {
       source: source,
@@ -8114,7 +8156,6 @@ function startSourceSelection_(source, contextId, userId, replyToken) {
     return true;
   }
 
-  const recent = readRecentSourceQuestion_(contextId);
   const persistentProduct = readSourceProductState_(contextId);
   const canonicalTopic = readSourceCanonicalTopic_(contextId);
   const recentQuestion = recent ? String(recent.question || "").trim() : "";
@@ -9187,8 +9228,8 @@ function buildDeterministicComparisonReply_(query) {
     {
       id: "brightness",
       label: "亮度",
-      query: /亮度|NIT|CD\//i,
-      get: function (line) { return firstField(line, /亮度|NIT|CD\//i); },
+      query: /亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\//i,
+      get: function (line) { return firstField(line, /亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\//i); },
     },
     {
       id: "stand",
@@ -9544,7 +9585,7 @@ function buildDeterministicExactRuleReply_(query, model) {
   addPattern(/更新率|刷新率|HZ/i, /更新頻率|更新率|刷新率|雙模|\d+\s*HZ/i);
   addPattern(/面板|IPS|VA|OLED/i, /IPS|VA|OLED/i);
   addPattern(/反應時間|GTG|MPRT/i, /反應時間|GTG|MPRT/i);
-  addPattern(/亮度|NIT|CD\//i, /亮度|NIT|CD\//i);
+  addPattern(/亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\//i, /亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\//i);
   addPattern(/對比/i, /對比/i);
   addPattern(/HDR/i, /HDR/i);
   addPattern(/HDMI/i, /HDMI/i);
@@ -9614,7 +9655,9 @@ function buildDeterministicExactRuleReply_(query, model) {
     { query: /DISPLAYPORT|\bDP\b/i, label: "DisplayPort", pattern: /(?:DISPLAYPORT|\bDP\b)(?:\s*([0-9.]+))?\s*[X×]\s*(\d+)/i },
     { query: /USB[\s-]*C|TYPE[\s-]*C/i, label: "USB-C", pattern: /(?:USB[\s-]*C|TYPE[\s-]*C)(?:\s*(?:(\d+\.\d+)|\d+\s*W))?\s*[X×]\s*(\d+)/i },
   ].find((item) => item.query.test(text));
-  if (portIntent) {
+  const asksPortCountOnly = /(?:幾個|幾孔|多少(?:個|孔)|數量|數目)/.test(text) &&
+    !/(?:充|供電|功率|瓦|\bW\b|版本|速度|頻寬|解析度|更新率|HZ)/i.test(text);
+  if (portIntent && asksPortCountOnly) {
     // 同一介面可能拆成多個 RULE 欄位（例如 HDMI x1 + Micro HDMI x1）。
     // 必須逐欄彙總，不能只取第一個 regex match 而少算其他同類輸入埠。
     const matchedPorts = [];
@@ -9782,6 +9825,12 @@ function mergeKnownRuleAnchorWithAdvancedAnswer_(
   const known = String(knownRuleAnswer || "").trim();
   const answer = String(finalText || "").trim();
   if (!known) return answer;
+  // Capability facts may help validate an operation, but are not themselves
+  // requested answers. Keep them internal for a single how-to question.
+  if (options.originalQuestion && isManualActionPathQuestion_(options.originalQuestion) &&
+      !/(?:有沒有|是否|支援|可不可以|能不能|多少|幾個|幾瓦|幾吋|規格|最高|最低|限制)/i.test(options.originalQuestion)) {
+    return answer;
+  }
   const visibleKnown = known
     .replace(/\n{0,2}\[來源\s*[:：][^\]]+\]/gi, "")
     .trim();
@@ -10136,7 +10185,7 @@ function sanitizeTentativeWebActionLine_(rawLine) {
   const unsafe =
     /(?:可能|不一定|通常|一般來說|一般情況下|有(?:些|部分)?使用者|例如|像是|舉例|購買|訂購|付費|下單|推薦|其他品牌|其他型號|相近型號|來源不明|工程模式|韌體)/i;
   const actionable =
-    /(?:先|再|使用|透過|連接|接上|切換|檢查|確認|詢問|諮詢|重新|改用|將|開啟|啟用|進入|尋找|選擇|按下)/i;
+    /^(?:(?:請|可以|先|再)\s*)?(?:使用|透過|連接|接上|切換|檢查|確認|詢問|諮詢|重新|改用|將|開啟|啟用|進入|尋找|選擇|按下)/i;
   const unsupportedProductFact =
     /(?:\d{3,5}\s*[×X]\s*\d{3,5}|\d+(?:\.\d+)?\s*(?:HZ|KHZ|MS|W|V|A|NIT|CD\s*\/\s*M|吋|公分|MM)\b|支援|不支援|具備|內建|限制|最高|最低|只能|無法|會將|可達)/i;
   const safeClauses = [];
@@ -10176,6 +10225,7 @@ function sanitizeTentativeWebActionLine_(rawLine) {
 }
 
 function buildTentativeWebFallback_(rawResponse, query, model) {
+  if (isUnscopedRuleTermDefinition_(query)) return "這個名詞目前還沒有取得可核對的說明，先別把相關功能當成同一件事；請 Sam 幫忙補上資料。";
   // 找不到可逐句綁定的 grounding support 時，不能把全文當成已證實答案；
   // 但只要本輪真的執行過 Google Search，可保留經安全過濾、且不含產品
   // 能力／數值／購買／韌體／工程模式／推測的低風險動作，明示僅供排查。
@@ -10203,9 +10253,9 @@ function buildTentativeWebFallback_(rawResponse, query, model) {
   });
   if (actions.length > 0) {
     return [
-      "我找到幾個非官方做法，但還不能確認完全適用這台，先試這三步：",
+      "以下是尚未確認適用這款的排查方向：",
       actions.slice(0, 3).join("\n"),
-      "如果機內看不到相同選單，先別硬套；我也會把這題留給 Sam 補進 QA。",
+      "若機內找不到相同選單，先別硬套，可以請 Sam 幫忙確認。",
     ].join("\n");
   }
   return buildSafeNoEvidenceNextStep_(query, model);
@@ -10304,6 +10354,32 @@ function normalizeGroundedModelIdentity_(value) {
  * 外部文章常只寫 Smart Monitor M8 / Odyssey G8，而不寫台灣完整 SKU；
  * 這裡只接受 RULE 明載的正式系列別稱，不用「Samsung 螢幕」等過寬詞放行。
  */
+let groundedRuleAliasMemo_ = null;
+function getUniqueRuleModelAliases_(model) {
+  if (!groundedRuleAliasMemo_) {
+    const aliases = {};
+    const sheet = ss && ss.getSheetByName(SHEET_NAMES.CLASS_RULES);
+    if (!sheet) return [];
+    sheet.getDataRange().getValues().forEach(function (row) {
+      const line = String(row[0] || "");
+      const identity = line.match(/^能力_([A-Z0-9]+)[,，]\s*model=([A-Z0-9]+)/i);
+      const aliasField = line.match(/[；;]aliases=([^；;]+)/i);
+      if (!identity || identity[1] !== identity[2] || !aliasField) return;
+      aliasField[1].split(/[、,，]/).forEach(function (alias) {
+        const token = alias.trim().toUpperCase();
+        if (!/^[A-Z][A-Z0-9]{3,}$/.test(token)) return;
+        if (!aliases[token]) aliases[token] = [];
+        if (aliases[token].indexOf(identity[1]) < 0) aliases[token].push(identity[1]);
+      });
+    });
+    groundedRuleAliasMemo_ = aliases;
+  }
+  return Object.keys(groundedRuleAliasMemo_).filter(function (alias) {
+    const owners = groundedRuleAliasMemo_[alias];
+    return owners.length === 1 && owners[0] === model;
+  });
+}
+
 function getGroundedModelIdentityProfile_(model) {
   const exactModel = normalizeModelForDisplay(model || "");
   const exactTokens = [];
@@ -10373,6 +10449,7 @@ function getGroundedModelIdentityProfile_(model) {
   return {
     exactModel: exactModel,
     exactTokens: exactTokens,
+    variantTokens: typeof getUniqueRuleModelAliases_ === "function" ? getUniqueRuleModelAliases_(exactModel) : [],
     familyTokens: familyTokens,
     familyLabel: familyLabel,
     familyAlias: familyAlias,
@@ -10384,6 +10461,9 @@ function matchGroundedModelIdentity_(text, model) {
   const body = normalizeGroundedModelIdentity_(text);
   const profile = getGroundedModelIdentityProfile_(model);
   if (!profile.exactModel) return "none";
+  if ((profile.variantTokens || []).some(function (token) {
+    return new RegExp(`(^|[^A-Z0-9])${token}([^A-Z0-9]|$)`, "i").test(String(text || ""));
+  })) return "exact";
   if (
     profile.exactTokens.some(function (token) {
       return token.length >= 7 && body.indexOf(token) >= 0;
@@ -10685,7 +10765,7 @@ function buildGroundedSupportedAnswer_(
   allowPartial,
   returnResult,
 ) {
-  const normalizedModel = normalizeModelForDisplay(model || "");
+  const normalizedModel = isUnscopedRuleTermDefinition_(originalQuestion) ? "" : normalizeModelForDisplay(model || "");
   const grouped = {};
   const rejectionReasons = {};
   const reject = function (reason) {
@@ -10919,11 +10999,14 @@ function runManualWebRescue_(
   options,
 ) {
   const rescueOptions = options || {};
+  originalQuestion = stripInternalRoutingHints_(originalQuestion);
+  const termDefinitionOnly = isUnscopedRuleTermDefinition_(originalQuestion);
+  const evidenceModel = termDefinitionOnly ? "" : model;
   const systemRescue = rescueOptions.systemRescue !== false;
   const searchQuery = String(
     rescueOptions.searchQuery || originalQuestion || "",
   ).trim();
-  const canonicalQuery = buildCanonicalWebQuery_(searchQuery, model || "");
+  const canonicalQuery = buildCanonicalWebQuery_(termDefinitionOnly ? originalQuestion : searchQuery, evidenceModel || "");
   const rescueGrant = activateAdvancedSourceGrant_(
     "web",
     contextId,
@@ -10946,14 +11029,14 @@ function runManualWebRescue_(
       false,
       userId,
       true,
-      model || null,
+      evidenceModel || null,
     );
     const groundingPresent = Boolean(lastWebEvidenceValid);
     const rawWebDraft = String(lastWebUnverifiedDraft || webResponse || "");
     const broadGroundedSources = Array.isArray(lastSearchSources)
       ? lastSearchSources.slice(0, 5)
       : [];
-    const groundedTentativeActions = groundingPresent
+    const groundedTentativeActions = groundingPresent && !termDefinitionOnly
       ? buildGroundedTentativeWebActions_(
           lastWebSupportedSegments,
           model,
@@ -10976,7 +11059,7 @@ function runManualWebRescue_(
     const relevanceAccepted = Boolean(
       supportResult &&
         (supportResult.lowRiskGeneric ||
-          isGroundedWebAnswerRelevant_(webText, model)),
+          isGroundedWebAnswerRelevant_(webText, evidenceModel)),
     );
     const accepted = Boolean(
       groundingPresent &&
@@ -11157,13 +11240,9 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     ].join("\n");
   }
   if (hadPartialManualEvidence && partialManualBody) {
-    const webNote = rescue && rescue.tentativeText
-      ? rescue.tentativeText
-      : rescue && rescue.quotaExhausted
-        ? "公開網頁補查額度目前已用完；先保留手冊已確認的部分，不把未證實內容補成答案。"
-        : groundedButNotTargeted
-          ? "公開網頁有找到相關資料，但不足以確認適用這款；先保留手冊已確認的部分。"
-          : "公開網頁目前沒有取得可核對的補充；先保留手冊已確認的部分。";
+    // A generic no-evidence fallback describes the unresolved Web claim, not
+    // the whole answer. Never append it as if verified manual facts vanished.
+    const webNote = "網路補充還無法核對到這款；有疑問的部分可請 Sam 一起確認，先別套用其他型號的資料。";
     return [
       "手冊能確認：",
       partialManualBody,
@@ -11173,10 +11252,7 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
     ].join("\n");
   }
   if (rescue && rescue.tentativeText) {
-    return [
-      "手冊沒有直接寫出完整答案，我把網路搜尋整理成可先排查的方向：",
-      rescue.tentativeText,
-    ].join("\n\n");
+    return rescue.tentativeText;
   }
   if (groundedButNotTargeted) {
     return [
@@ -11896,6 +11972,11 @@ function executeAdvancedSourceQuery_(
     }
   } catch (error) {
     const code = String(error && error.message ? error.message : error);
+    if (/^PROVIDER_(?:MONTH_BUDGET|TEST_BUDGET|BUDGET_)/.test(code)) {
+      replyMessage(replyToken, providerBudgetReply_(code));
+      clearAdvancedSourceOperation_(sourceOperation);
+      return true;
+    }
     if (code.indexOf("SOURCE_QUOTA_EXHAUSTED_") === 0) {
       const exhaustedSourceReply =
         `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可使用「規格＆FAQ」的每日提問額度。`;
@@ -11956,6 +12037,11 @@ function executeAdvancedSourceQuery_(
     ACTIVE_ADVANCED_SOURCE_GRANT = null;
   }
 
+  if (response === providerBudgetReply_()) {
+    replyMessage(replyToken, response);
+    clearAdvancedSourceOperation_(sourceOperation);
+    return true;
+  }
   const manualPreflightStopped =
     normalizedSource === "manual" &&
     /(?:手冊預檢沒有完成|手冊超出單次安全查詢範圍|預估費用仍超過單次)/.test(
@@ -12123,7 +12209,7 @@ function executeAdvancedSourceQuery_(
         (!compactWebText && !partialWebText) ||
         !isGroundedWebAnswerRelevant_(
           compactWebText || partialWebText,
-          primaryModel || selectedModel,
+          isUnscopedRuleTermDefinition_(originalQuestion) ? "" : primaryModel || selectedModel,
         )
       ) {
         writeLog(
@@ -12175,8 +12261,8 @@ function executeAdvancedSourceQuery_(
             primaryModel || selectedModel,
           );
       finalText += officialPage
-        ? "\n\n下方保留「到這款官網」；這個連結只供查看產品資訊，不會拿官網內容冒充非官方搜尋結果。"
-        : "\n\n相同題目不會再次搜尋或扣次。";
+        ? "\n\n也可以點「到這款官網」確認，或請 Sam 幫忙。"
+        : "\n\n這部分請 Sam 幫忙確認。";
     }
   }
 
@@ -12184,6 +12270,7 @@ function executeAdvancedSourceQuery_(
     knownRuleAnswer,
     finalText,
     {
+      originalQuestion: originalQuestion,
       compactVerifiedManual: Boolean(
         normalizedSource === "manual" &&
           manualPageRagPlan &&
@@ -12972,7 +13059,7 @@ function getAliasConsensusRuleRequests_(query) {
   add("refresh", "更新率", /更新率|刷新率|\b\d+\s*HZ\b/i, /更新頻率|更新率|刷新率|雙模|\d+\s*HZ/i, "refresh");
   add("panel", "面板", /面板|QD[\s-]*OLED|OLED|FAST\s*IPS|\bIPS\b|\bVA\b/i, /面板|QD[\s-]*OLED|OLED|FAST\s*IPS|\bIPS\b|\bVA\b/i, "panel");
   add("response", "反應時間", /反應時間|GTG|MPRT/i, /反應時間|GTG|MPRT/i, "raw");
-  add("brightness", "亮度", /亮度|NIT|CD\s*\//i, /亮度|NIT|CD\s*\//i, "raw");
+  add("brightness", "亮度", /亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\s*\//i, /亮度|(?:^|[^A-Z])NITS?(?=[^A-Z]|$)|CD\s*\//i, "raw");
   add("contrast", "對比", /對比/i, /對比/i, "raw");
   add("hdr", "HDR", /\bHDR/i, /\bHDR/i, "raw");
   add("micro_hdmi", "Micro HDMI", /MICRO\s*HDMI/i, /MICRO\s*HDMI/i, "port");
@@ -13838,7 +13925,7 @@ function isManualActionPathQuestion_(questionText) {
   if (!question) return false;
   const inquiry = "(?:怎麼|如何|怎樣|從哪|哪裡|在哪|去哪|哪(?:一)?個|什麼)";
   const action =
-    "(?:開(?:啟)?|打開|啟用|關閉|切換|設定|連接|配對|更新|重設|重置|選擇|進入|找到|操作)";
+    "(?:開(?:啟)?|打開|啟用|關閉|切換|設定|連接|連線|連|接|配對|更新|重設|重置|選擇|進入|找到|操作|使用|用)";
   if (
     new RegExp(
       `${inquiry}.{0,24}${action}|${action}.{0,24}${inquiry}`,
@@ -14035,6 +14122,7 @@ function manualEvidenceAllowedByAttachmentProvenance_(
   if (state.hashMismatch) return false;
   if (state.supportPageOnly && state.hashMissing) return false;
   if (!state.supportPageOnly) return true;
+  if (evidence.documentBound && evidence.conditionalProcedure) return true;
   if (manualEvidenceExplicitlyTargetsModel_(evidence, targetModel)) return true;
   if (isModelIndependentManualOperation_(questionText)) return true;
   return manualLocalEvidenceSupportsFeature_(questionText, targetModel);
@@ -14069,7 +14157,7 @@ function manualEvidenceNamedFamilyMatchesTarget_(excerptText, targetModel) {
       });
     }
   };
-  if (/ODYSSEY\s*ARK|奧德賽\s*ARK|方舟/i.test(excerpt)) {
+  if (/ODYSSEY\s*ARK|ARK\s*DIAL|奧德賽\s*ARK|方舟/i.test(excerpt)) {
     add("odyssey", "ARK");
   }
   let match = excerpt.match(/SMART\s*MONITOR\s*(M[5789])|智慧(?:聯網)?螢幕\s*(M[5789])/i);
@@ -14105,10 +14193,17 @@ function manualEvidenceSupportsTargetModel_(evidence, targetModel) {
   if (!manualEvidenceNamedFamilyMatchesTarget_(excerpt, targetModel)) {
     return false;
   }
+  if (evidenceModels.length && !evidenceModels.some(function (model) {
+    return manualEvidenceModelMatchesTarget_(model, target);
+  })) return false;
   // 「依／視型號而定、可能不支援」代表這段不是全檔共通證據。
   // 只有摘錄本身直接列出目前完整型號，且 scope 明示為型號證據時才可採納；
   // supportedAnswer 自行補上型號，或只靠檔名／共用手冊關聯，都不算直接綁定。
   if (manualEvidenceHasModelApplicabilityCaveat_(excerpt)) {
+    // A verified document binding plus independent exact-model capability can
+    // support a common menu entry, never a new numerical/conditional claim.
+    if (scope === "支援頁綁定" && evidence.documentBound && evidence.capabilityBound) return true;
+    if (scope === "支援頁綁定" && evidence.documentBound && evidence.conditionalProcedure) return true;
     if (!target || scope === "全檔共通") return false;
     if (scope !== "型號明確" && scope !== "依型號而異") return false;
     return evidenceModels.some(function (evidenceModel) {
@@ -14124,6 +14219,9 @@ function manualEvidenceSupportsTargetModel_(evidence, targetModel) {
   }
 
   // 「型號明確」卻沒有把適用型號摘入證據，程式無法核對。
+  if (scope === "支援頁綁定") {
+    return evidence.documentBound === true;
+  }
   return String((evidence && evidence.scope) || "") === "全檔共通";
 }
 
@@ -14194,7 +14292,7 @@ function manualSupportedAnswerTargetsModel_(answerText, targetModel) {
   if (!target) return true;
   const mentionedModels = extractManualEvidenceModels_(answerText);
   if (mentionedModels.length === 0) return true;
-  return mentionedModels.some(function (model) {
+  return mentionedModels.every(function (model) {
     return manualEvidenceModelMatchesTarget_(model, target);
   });
 }
@@ -14561,6 +14659,9 @@ function normalizeManualStructuredResponse_(
   validationOptions,
 ) {
   const options = validationOptions || {};
+  // Provider-only reminders and supplied facts are not user claims. All
+  // downstream evidence/coverage checks must classify the original question.
+  questionText = stripInternalRoutingHints_(questionText);
   const raw = String(text || "").trim();
   let parsed = null;
   let jsonText = raw
@@ -14612,6 +14713,17 @@ function normalizeManualStructuredResponse_(
       ? [parsed]
       : [];
   const normalizedEvidence = evidenceItems.map((item) => ({
+    documentBound: Boolean(options.trustedPageIndex && item && item.documentBound),
+    // A verified model-bound shared manual may describe a conditional menu
+    // without proving this unit has it. Keep that distinction in the answer;
+    // never use it to establish support, numerical limits or equivalence.
+    conditionalProcedure: Boolean(options.trustedPageIndex && item && item.documentBound &&
+      isManualActionPathQuestion_(questionText) && !isPotentialMultiClaimQuestion_(questionText) &&
+      !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制|支援|有沒有|能不能/i.test(questionText)),
+    capabilityBound: Boolean(options.trustedPageIndex && item && item.documentBound &&
+      isManualActionPathQuestion_(questionText) && !isPotentialMultiClaimQuestion_(questionText) &&
+      !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制/i.test(questionText) &&
+      manualLocalEvidenceSupportsFeature_(questionText, targetModel)),
     supportedAnswer: String((item && item.supportedAnswer) || "")
       .replace(/[\r\n]+/g, " ")
       .replace(/\s{2,}/g, " ")
@@ -14633,7 +14745,8 @@ function normalizeManualStructuredResponse_(
       const allowedScope =
         item.scope === "型號明確" ||
         item.scope === "全檔共通" ||
-        item.scope === "依型號而異";
+        item.scope === "依型號而異" ||
+        (item.scope === "支援頁綁定" && item.documentBound);
       return (
         Number.isInteger(item.pageNumber) &&
         item.pageNumber > 0 &&
@@ -14721,7 +14834,11 @@ function normalizeManualStructuredResponse_(
     })
     .map((item) => item.pageNumber)
     .join("、");
-  const scope = selectedEvidence.every((item) => item.scope === "全檔共通")
+  const conditionalProcedure = selectedEvidence.some(function (item) {
+    return item.conditionalProcedure && !item.capabilityBound &&
+      manualEvidenceHasModelApplicabilityCaveat_(getManualEvidenceScopeText_(item));
+  });
+  const scope = conditionalProcedure ? "依型號而異" : selectedEvidence.every((item) => item.scope === "全檔共通")
     ? "全檔共通"
     : "型號明確";
   const excerpts = selectedEvidence
@@ -14773,8 +14890,19 @@ function normalizeManualStructuredResponse_(
   const partialMarker = effectiveCoverage === "partial"
     ? `\n[MANUAL_EVIDENCE_PARTIAL:${effectiveUnresolvedQuestion || "仍有部分條件未由手冊直接回答"}]\n[AUTO_SEARCH_WEB]`
     : "";
-  return `${safeAnswer}\n\n手冊重點：${excerpts}\n[手冊證據:第${pages}頁|範圍:${scope}]${partialMarker}`;
+  const conditionalNote = conditionalProcedure
+    ? "可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n"
+    : "";
+  // 「立即嘗試」是電子手冊的導覽連結，不是實機選單步驟。
+  const displayAnswer = safeAnswer.replace(/(?:\s*[>＞→]\s*)?[「『]?立即嘗試[」』]?/g, "");
+  const rendered = `${conditionalNote}${displayAnswer}\n\n手冊重點：${excerpts}\n[手冊證據:第${pages}頁|範圍:${scope}]${partialMarker}`;
+  if (conditionalProcedure) validatedConditionalManualReplies_.add(rendered);
+  return rendered;
 }
+
+// Only the in-process evidence validator may issue this receipt. A model's
+// textual scope marker alone must never bypass the final presentation guard.
+const validatedConditionalManualReplies_ = new Set();
 
 /**
  * v29.6.299 頁級手冊 RAG：對精確型號先用離線 BM25 索引召回
@@ -14807,6 +14935,11 @@ function manualPageRagPhraseMatches_(normalizedText, rawPhrase) {
 }
 
 function findManualPageRagPlan_(question, targetModel) {
+  if (typeof findIndexedManualPagePlan_ === "function" &&
+      typeof MANUAL_PAGE_RAG_DATA_ !== "undefined" &&
+      MANUAL_PAGE_RAG_DATA_.retrievalPolicy === "QueryTimeV1") {
+    return findIndexedManualPagePlan_(question, targetModel);
+  }
   if (
     typeof MANUAL_PAGE_RAG_DATA_ === "undefined" ||
     !MANUAL_PAGE_RAG_DATA_ ||
@@ -15045,6 +15178,9 @@ function getManualPageRagKnowledgeFingerprint_(plan) {
     String(safePlan.sourcePdfSha256 || "").toUpperCase(),
     String(safePlan.groupId || ""),
     fragmentIdentity,
+    String(safePlan.retrievalPolicy || "legacy"),
+    String(safePlan.allowRuleBackedAliasCompletion === true),
+    typeof ADVANCED_SOURCE_CACHE_SCHEMA === "undefined" ? "EvidenceV11" : ADVANCED_SOURCE_CACHE_SCHEMA,
   ].join("|"))}`;
 }
 
@@ -15087,8 +15223,9 @@ function hydrateManualPageRagResponse_(
       return {
         supportedAnswer: String(claim.supportedAnswer || "").trim(),
         pageNumber: Number(fragment.pageNumber),
-        scope: isExactModelEvidence ? "型號明確" : "全檔共通",
+        scope: isExactModelEvidence ? "型號明確" : (plan.retrievalPolicy ? "支援頁綁定" : "全檔共通"),
         evidenceExcerpt: evidenceText,
+        documentBound: Boolean(plan.retrievalPolicy && plan.revisionVerified),
         pageHeading: String(fragment.pageHeading || "").trim(),
         applicabilityExcerpt: getManualPageRagApplicabilityExcerpt_(
           evidenceText,
@@ -15153,6 +15290,7 @@ function hydrateManualPageRagResponse_(
     provenance,
     {
       allowRuleBackedAliasCompletion: ruleBackedAliasCompletion,
+      trustedPageIndex: Boolean(plan.retrievalPolicy && plan.revisionVerified),
     },
   );
   return ruleBackedAliasCompletion
@@ -15228,14 +15366,14 @@ function callManualPageRag_(
   // 頁級 RAG 雖然不附整本 PDF，仍是使用者授權的手冊供應商
   // 請求。必須和整本 fallback 共用同一個原子配額保留點，
   // 不能因為繞過 callLLMWithRetry 就誤顯示「未送出／2/2」。
-  reserveAdvancedSourceUsage_(advancedGrant);
   markGenerationAttempt_("pdf", GEMINI_MODEL_FAST);
   lastLlmCallAttempted = true;
   const startedAt = Date.now();
   try {
-    const response = UrlFetchApp.fetch(
+    const response = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
       {
+        sourceGrant: advancedGrant,
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(payload),
@@ -15286,6 +15424,9 @@ function callManualPageRag_(
       plan: plan,
     };
   } catch (error) {
+    if (/^(?:PROVIDER_|SOURCE_QUOTA_)/.test(String(error && error.message || error))) {
+      throw error;
+    }
     writeLog(
       `[Manual Page RAG] 請求失敗，改走 Web 補救: ${String(error && error.message ? error.message : error)}`,
     );
@@ -15327,7 +15468,7 @@ function applyManualEvidenceGuard_(text, queryText) {
   const weakScope =
     !evidence.found ||
     !evidence.excerpt ||
-    evidence.scope === "依型號而異" ||
+    (evidence.scope === "依型號而異" && !validatedConditionalManualReplies_.has(raw)) ||
     evidence.scope === "未找到" ||
     evidence.page === "未找到";
 
@@ -16014,6 +16155,7 @@ function markGenerationAttempt_(stage, modelName) {
   if (stage === "router") currentRequestAudit.routerCalls++;
   if (stage === "pdf") currentRequestAudit.pdfCalls++;
   if (stage === "web") currentRequestAudit.webCalls++;
+  if (typeof pendingProviderAttempt_ !== "undefined") pendingProviderAttempt_ = {stage: stage, model: modelName};
 }
 
 function calculateGeminiUsageCost_(usage, priceInput, priceOutput) {
@@ -16044,6 +16186,11 @@ function calculateGeminiUsageCost_(usage, priceInput, priceOutput) {
 
 function addGenerationUsageToAudit_(usage, costTWD, modelName) {
   if (!currentRequestAudit || !usage) return;
+  const receipt = typeof lastProviderReceipt_ !== "undefined" ? lastProviderReceipt_ : null;
+  if (receipt && receipt.signature === providerUsageSignature_(usage, modelName)) {
+    if (receipt.audited) return;
+    receipt.audited = true;
+  }
   currentRequestAudit.billableCalls++;
   // paidCalls 保留供既有 TestUI／稽核讀取，但語意改為有 usageMetadata 的
   // 實際可計費回應；HTTP 失敗只增加 attemptedCalls。
@@ -16093,6 +16240,7 @@ function writeRequestAuditOnce_(visibleText) {
     thoughtTokens: currentRequestAudit.thoughtTokens,
     billedOutputTokens: currentRequestAudit.billedOutputTokens,
     estimatedCostTwd: Number(currentRequestAudit.estimatedCostTwd.toFixed(4)),
+    uncertainCostTwd: Number(Number(currentRequestAudit.uncertainCostTwd || 0).toFixed(4)),
     finalCoverage:
       currentRequestAudit.finalCoverage ||
       (/(?:部分|尚未|還沒).{0,20}(?:回答|確認|解答)|沒有.{0,20}(?:明確|證據|結論)/i.test(
@@ -17501,14 +17649,10 @@ function isIncompleteModelRuleLine_(value) {
 }
 
 function syncGeminiKnowledgeBase(forceRebuild = false) {
-  const lock = LockService.getScriptLock();
-  let hasLock = false;
+  const maintenanceLease = acquireManualMaintenanceLease_("sync", false);
+  if (!maintenanceLease) return "知識庫同步已在執行中";
+  let syncSucceeded = false;
   try {
-    // 嘗試鎖定 2 分鐘
-    hasLock = lock.tryLock(120000);
-    if (!hasLock) {
-      return "系統忙碌中，請稍後再試";
-    }
 
     // 檢查是否有標記需要重建
     const cache = CacheService.getScriptCache();
@@ -18282,17 +18426,13 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 
     // 預約下次同步
     scheduleNextSync();
-
+    syncSucceeded = !hasIncompleteDriveSync;
     return statusMsg;
   } catch (e) {
     writeLog(`[Sync Error] ${e.message}`);
     return `系統錯誤: ${e.message}`;
   } finally {
-    if (hasLock) {
-      try {
-        lock.releaseLock();
-      } catch (e) {}
-    }
+    finishManualMaintenanceLease_(maintenanceLease, syncSucceeded);
     flushLogs(); // 確保 Trigger 執行時寫入 Log
   }
 }
@@ -18514,22 +18654,22 @@ function rebuildSpecCachedContent() {
 function scheduleNextSync() {
   try {
     const triggers = ScriptApp.getProjectTriggers();
+    const kept = {};
     triggers.forEach((t) => {
-      if (t.getHandlerFunction() === "dailyKnowledgeRefresh") {
-        ScriptApp.deleteTrigger(t);
-      }
-      if (t.getHandlerFunction() === "manualPdfRollingRefresh") {
-        ScriptApp.deleteTrigger(t);
+      const handler = t.getHandlerFunction();
+      if (handler === "dailyKnowledgeRefresh" || handler === "manualPdfRollingRefresh") {
+        if (kept[handler]) ScriptApp.deleteTrigger(t);
+        else kept[handler] = true;
       }
     });
     // 每日 04:00 做增量同步；Files URI 另由 4 小時輪替工作續期。
-    ScriptApp.newTrigger("dailyKnowledgeRefresh")
+    if (!kept.dailyKnowledgeRefresh) ScriptApp.newTrigger("dailyKnowledgeRefresh")
       .timeBased()
       .atHour(4)
       .everyDays(1)
       .inTimezone("Asia/Taipei")
       .create();
-    ScriptApp.newTrigger("manualPdfRollingRefresh")
+    if (!kept.manualPdfRollingRefresh) ScriptApp.newTrigger("manualPdfRollingRefresh")
       .timeBased()
       .everyHours(4)
       .create();
@@ -18904,7 +19044,7 @@ function validateOfficialManualFirstPage_(blob, candidate) {
       return { valid: false, reason: "FIRST_PAGE_TOKEN_LIMIT" };
     }
     function requestFirstPageIdentity_(modelName) {
-      const response = UrlFetchApp.fetch(
+      const response = providerFetch_(
         `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`,
         {
           method: "post",
@@ -19047,11 +19187,31 @@ function getOfficialManualManifestEntryByFileName_(fileName) {
 
 function persistOfficialManualManifest_(candidate, sha256, finalFileName) {
   const props = PropertiesService.getScriptProperties();
+  const manifestLock = LockService.getScriptLock();
+  if (!manifestLock.tryLock(5000)) throw new Error("MANUAL_MANIFEST_LOCK_BUSY");
+  try {
   const manifest = readOfficialManualManifest_();
   const fullSku = String((candidate && candidate.fullSku) || "")
     .trim()
     .toUpperCase();
   if (!fullSku) throw new Error("Official manual manifest requires fullSku");
+  // A first-page-verified shared PDF has one active byte revision, not a
+  // different SHA per SKU. Preserve support links while advancing its binding.
+  if ((candidate.modelBinding || "pdf_first_page") === "pdf_first_page") {
+    Object.keys(manifest).forEach(function (sku) {
+      const entry = manifest[sku];
+      if (entry && entry.finalFileName === finalFileName &&
+          (entry.modelBinding || "pdf_first_page") === "pdf_first_page" &&
+          getPdfFileModelTokens_(finalFileName).some(function (token) {
+            return isPdfModelTokenMatch_(token, normalizeModelForDisplay(sku));
+          })) {
+        entry.sha256 = sha256;
+        entry.sourcePdfSha256 = sha256;
+        entry.revisionSourceSku = fullSku;
+        entry.revisionDownloadUrl = candidate.downloadUrl;
+      }
+    });
+  }
   manifest[fullSku] = {
     fullSku: fullSku,
     fileId: candidate.fileId,
@@ -19077,6 +19237,7 @@ function persistOfficialManualManifest_(candidate, sha256, finalFileName) {
     verifiedAt: new Date().toISOString(),
   };
   props.setProperty("OFFICIAL_MANUAL_MANIFEST", JSON.stringify(manifest));
+  } finally { manifestLock.releaseLock(); }
 }
 
 function promoteOfficialManualToRoot_(blob, candidate, sha256, finalFileName) {
@@ -19128,10 +19289,12 @@ function promoteOfficialManualToRoot_(blob, candidate, sha256, finalFileName) {
     }
   }
   if (matches.length === 0) {
-    const created = rootFolder.createFile(blob.copyBlob().setName(finalFileName));
+    const created = Drive.Files.create({ name: finalFileName, parents: [rootFolder.getId()], mimeType: "application/pdf" }, blob, { fields: "id", supportsAllDrives: true });
+    const actual = manualIndexDigest_(DriveApp.getFileById(created.id).getBlob().getBytes());
+    if (actual !== String(sha256).toLowerCase()) throw new Error("MANUAL_PROMOTION_READBACK_MISMATCH");
     persistOfficialManualManifest_(candidate, sha256, finalFileName);
     clearBestDrivePdfCandidateCaches_(affectedCacheModels);
-    return { success: true, driveFileId: created.getId(), action: "CREATED" };
+    return { success: true, driveFileId: created.id, action: "CREATED" };
   }
   const current = matches[0];
   const props = PropertiesService.getScriptProperties();
@@ -19140,29 +19303,46 @@ function promoteOfficialManualToRoot_(blob, candidate, sha256, finalFileName) {
     manifest = JSON.parse(props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}");
   } catch (error) {}
   const previous = manifest[candidate.fullSku] || {};
-  if (previous.sha256 === sha256) {
+  const previousBlob = current.getBlob();
+  const previousName = current.getName();
+  const currentSha = manualIndexDigest_(previousBlob.getBytes());
+  if (currentSha === String(sha256).toLowerCase()) {
+    persistOfficialManualManifest_(candidate, sha256, finalFileName);
     clearBestDrivePdfCandidateCaches_(affectedCacheModels);
     return { success: true, driveFileId: current.getId(), action: "UNCHANGED" };
   }
   const backupFolders = rootFolder.getFoldersByName("_MANUAL_AUTO_BACKUP");
-  const backupFolder = backupFolders.hasNext()
-    ? backupFolders.next()
-    : rootFolder.createFolder("_MANUAL_AUTO_BACKUP");
+  const backupFolderId = backupFolders.hasNext()
+    ? backupFolders.next().getId()
+    : Drive.Files.create({ name: "_MANUAL_AUTO_BACKUP", mimeType: "application/vnd.google-apps.folder", parents: [rootFolder.getId()] }, null, { fields: "id", supportsAllDrives: true }).id;
   const timestamp = Utilities.formatDate(
     new Date(),
     "Asia/Taipei",
     "yyyyMMdd_HHmmss",
   );
-  current.makeCopy(
-    `${finalFileName}.${timestamp}.${String(previous.sha256 || "legacy").slice(0, 12)}.bak.pdf`,
-    backupFolder,
-  );
+  Drive.Files.copy({ name: `${finalFileName}.${timestamp}.${currentSha.slice(0, 12)}.bak.pdf`, parents: [backupFolderId] }, current.getId(), { fields: "id", supportsAllDrives: true });
+  try {
   Drive.Files.update(
     { name: finalFileName, mimeType: "application/pdf" },
     current.getId(),
     blob,
+    { supportsAllDrives: true },
   );
+  if (manualIndexDigest_(DriveApp.getFileById(current.getId()).getBlob().getBytes()) !== String(sha256).toLowerCase()) {
+    throw new Error("MANUAL_PROMOTION_READBACK_MISMATCH");
+  }
   persistOfficialManualManifest_(candidate, sha256, finalFileName);
+  } catch (error) {
+    // Byte activation failed: restore the last verified document. The backup
+    // remains recoverable even if the Drive service also rejects the rollback.
+    try {
+      Drive.Files.update({ name: previousName, mimeType: "application/pdf" }, current.getId(), previousBlob, { supportsAllDrives: true });
+      if (manualIndexDigest_(DriveApp.getFileById(current.getId()).getBlob().getBytes()) !== currentSha) throw new Error("ROLLBACK_READBACK_FAILED");
+    } catch (rollbackError) {
+      writeLog(`[Manual Promotion] rollback pending; backup retained: ${rollbackError.message}`);
+    }
+    throw error;
+  }
   clearBestDrivePdfCandidateCaches_(affectedCacheModels);
   return { success: true, driveFileId: current.getId(), action: "UPDATED" };
 }
@@ -19194,6 +19374,7 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
     });
   }
   if (!CONFIG.DRIVE_FOLDER_ID) return null;
+  assertManualFolderWritable_();
   const response = UrlFetchApp.fetch(candidate.downloadUrl, {
     muteHttpExceptions: true,
     followRedirects: true,
@@ -19257,24 +19438,14 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
         `[Manual Auto Import] ${candidate.fullSku} 正式入庫失敗，已改存隔離區等下次自動重試: ${validation.reason}`,
       );
       try {
-        const geminiFallback = upsertManualPdfToGemini_(
-          validation.finalFileName,
-          bytes,
-          true,
-        );
-        persistOfficialManualManifest_(
-          verifiedCandidate,
-          sha256,
-          validation.finalFileName,
-        );
+        savePendingManualRevision_(verifiedCandidate, sha256, validation.finalFileName, validation.reason);
         writeLog(
-          `[Manual Auto Import] ${candidate.fullSku} Drive 無寫入權，已自動改存 Gemini Files RAG: ${validation.finalFileName}`,
+          `[Manual Auto Import] ${candidate.fullSku} 新版本待入庫；保留正式 PDF 與 manifest，不以臨時 URI 覆蓋`,
         );
         return Object.assign({}, candidate, validation, {
           sha256: sha256,
-          uri: geminiFallback.uri,
-          action: "GEMINI_FILE_API_FALLBACK",
-          manualStatus: "ACTIVE_AUTO_VALIDATED",
+          action: "PROMOTION_PENDING",
+          manualStatus: "PENDING_MANUAL_REVIEW",
           stagedAt: new Date().toISOString(),
         });
       } catch (fallbackError) {
@@ -19948,6 +20119,10 @@ function auditManualCoverageGaps_() {
  * 避免單次全量重傳超過 GAS 執行上限而留下半套失效清單。
  */
 function dailyKnowledgeRefresh() {
+  const lease = acquireManualMaintenanceLease_("daily", true);
+  if (!lease) return;
+  let success = false;
+  try {
   writeLog("[Daily] 開始每日知識庫同步 (04:00)...");
   cleanupExpiredSourceRoutingProperties_();
   cleanupLogSheetRows_();
@@ -19956,9 +20131,16 @@ function dailyKnowledgeRefresh() {
   refreshManualPdfUriBatch_(10);
   // 🆕 v29.5.211: 重建前先自動掃描官網新機型，確保新產品被收錄
   scanOfficialWebsiteForNewMonitors();
-  syncGeminiKnowledgeBase(false);
+  const syncResult = syncGeminiKnowledgeBase(false);
   auditManualCoverageGaps_();
-  writeLog("[Daily] 每日知識庫同步完成");
+  const indexResult = publishCompiledManualIndexes_();
+  const syncState = JSON.parse(PropertiesService.getScriptProperties().getProperty("MANUAL_JOB_sync") || "{}");
+  success = syncState.status === "done" && indexResult.failed.length === 0;
+  writeLog(`[Daily] 每日知識庫同步${success ? "完成" : "尚有待補項目"}: ${String(syncResult).slice(0, 120)}`);
+  } finally {
+    finishManualMaintenanceLease_(lease, success);
+    flushLogs();
+  }
 }
 
 /**
@@ -21865,9 +22047,7 @@ ${recentOfficialManualAnswer}
 
   // v29.6.106：countTokens/token fuse 全部通過後、第一個供應商請求送出前，
   // 才在鎖內原子扣除每日額度。後續 429/5xx 退避重試沿用同一 grant。
-  if (advancedGrant) {
-    reserveAdvancedSourceUsage_(advancedGrant);
-  }
+  // providerFetch_ reserves the monthly budget before this source grant.
 
   const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
   // v29.5.0: Optimize API Log - Remove Start Log
@@ -21939,7 +22119,9 @@ ${recentOfficialManualAnswer}
       const requestStage = attachPDFs ? "pdf" : forceWebSearch ? "web" : "fast";
       lastLlmCallAttempted = true;
       markGenerationAttempt_(requestStage, modelName);
-      const response = UrlFetchApp.fetch(url, {
+      const response = providerFetch_(url, {
+        sourceGrant: advancedGrant,
+        budgetInputTokens: tokenPreflight.ok ? tokenPreflight.totalTokens : 0,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -22589,6 +22771,8 @@ ${recentOfficialManualAnswer}
       lastError = e.message || "未知錯誤";
 
       writeLog(`[API Exception] ${e.message}`);
+      if (e.message === "PROVIDER_MONTH_BUDGET_EXHAUSTED") return providerBudgetReply_();
+      if (/^PROVIDER_/.test(e.message)) return "付費查證目前暫停，已有的規格與常見問答仍可查。這題還缺的資料可以請 Sam 協助確認。";
       if (e.message.includes("token")) return e.message;
       return "⚠️ 系統連線暫時異常，請稍後再試。";
     }
@@ -22657,7 +22841,7 @@ function callOpenRouter(
   const start = new Date().getTime();
 
   try {
-    const response = UrlFetchApp.fetch(url, {
+    const response = providerFetch_(url, {
       method: "post",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -22903,10 +23087,12 @@ function renderCustomerFacingText_(text) {
   if (visibleSourceLabels.length > 0) {
     body = `${body}\n\n資料來源：${visibleSourceLabels.join("、")}`.trim();
   }
+  // Format/product-price filtering ends before the trusted usage footer.
+  body = formatForLineMobile(body);
   if (!CURRENT_REPLY_FOOTER_APPENDED) {
     const costLabel = customerCost.indexOf("未知") >= 0
       ? "本次費用待確認"
-      : `本次約 ${customerCost}`;
+      : `本次約 ${customerCost}${costMatch && /待確認/.test(costMatch[0]) ? "（用量待確認）" : ""}`;
     const modelLabel = getCustomerModelUsageLabel_();
     const advancedSource = LAST_SOURCE_TEST_STATE
       ? String(
@@ -22939,7 +23125,7 @@ function renderCustomerFacingText_(text) {
       CURRENT_REPLY_FOOTER_APPENDED = true;
     }
   }
-  return formatForLineMobile(body);
+  return body.trim();
 }
 
 function renderCustomerFacingPayload_(payload) {
@@ -22981,6 +23167,9 @@ function hasVisibleCostAudit_(text) {
 }
 
 function buildReplyCostAuditText_() {
+  if (currentRequestAudit && Number(currentRequestAudit.uncertainCostTwd || 0) > 0) {
+    return `[費用:NT$${currentRequestAudit.estimatedCostTwd.toFixed(4)}（保守估算，部分用量待確認）]`;
+  }
   if (
     currentRequestAudit &&
     Number(currentRequestAudit.paidCalls || 0) > 0 &&
@@ -24284,7 +24473,7 @@ function handleMessage(event) {
 
         try {
           lastLlmCallAttempted = true;
-          const response = UrlFetchApp.fetch(apiUrl, {
+          const response = providerFetch_(apiUrl, {
             method: "post",
             contentType: "application/json",
             payload: JSON.stringify(payload),
@@ -24779,6 +24968,9 @@ function handleMessage(event) {
         routingQuestion = queryText;
         primaryModel = normalizeModelForDisplay(selectedModel);
         resolvedConversationModel = primaryModel;
+        // A model button is the same clarification continuation as typed model
+        // input; keep its held general-question charge refundable on escalation.
+        resumedFromPlainModelClarification = true;
         rememberRecentSourceQuestion_(contextId, normalizedTopic || queryText, primaryModel);
         skipAliasFeatureGuard = true;
 
@@ -27787,7 +27979,7 @@ function handleMessage(event) {
                       )}」\n當前用戶訊息：「${msg}」\n\n請判斷：用戶是在「繼續上一個話題（表示未解決或追問）」還是「換了新話題」？\n只回答：SAME（同一話題）或 NEW（新話題）`;
 
                       lastLlmCallAttempted = true;
-                      const topicCheckResponse = UrlFetchApp.fetch(
+                      const topicCheckResponse = providerFetch_(
                         `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
                         {
                           method: "post",
@@ -29609,7 +29801,7 @@ RULE_主題,規則類型,完整規則說明...
 
   try {
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -29681,7 +29873,7 @@ function callGeminiToModifyRule(currentText, instruction) {
 
   try {
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -30219,7 +30411,7 @@ function findSimilarQA(newContent, polishedQA) {
 
     // v24.2.3: 簡單搜尋用 Fast 模型
     lastLlmCallAttempted = true;
-    var res = UrlFetchApp.fetch(
+    var res = providerFetch_(
       CONFIG.API_ENDPOINT +
         "/" +
         CONFIG.MODEL_NAME_FAST +
@@ -30364,7 +30556,7 @@ function callGeminiToMergeQA(existingQAs, newQA) {
   try {
     // v24.2.3: 語意合併用 Think 模型
     lastLlmCallAttempted = true;
-    var res = UrlFetchApp.fetch(
+    var res = providerFetch_(
       CONFIG.API_ENDPOINT +
         "/" +
         CONFIG.MODEL_NAME_THINK +
@@ -30515,7 +30707,7 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
   try {
     // v24.2.3: 對話修改用 Think 模型
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -30654,7 +30846,7 @@ function callGeminiToPolish(input, userId = null) {
   try {
     // v27.9.20: 使用 GEMINI_MODEL_POLISH（程式最前面設定），只有這裡會用到
     lastLlmCallAttempted = true;
-    let res = UrlFetchApp.fetch(
+    let res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -30681,7 +30873,7 @@ function callGeminiToPolish(input, userId = null) {
       // 2. 自動切換至 Fast Mode 重試
       writeLog(`[Polish Fallback] Switching to ${CONFIG.MODEL_NAME_FAST}`);
       lastLlmCallAttempted = true;
-      res = UrlFetchApp.fetch(
+      res = providerFetch_(
         `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
         {
           method: "post",
@@ -30815,7 +31007,7 @@ function callGeminiToModify(currentText, instruction) {
 
     // v24.2.3: 簡單格式化用 Fast 模型
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -31126,7 +31318,7 @@ function handleAutoQA(u, cid) {
     };
     // v24.2.3: 簡單整理用 Fast 模型
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -31752,7 +31944,7 @@ function callGeminiToSummarize(messages) {
 
     // v24.2.3: 簡單摘要用 Fast 模型
     lastLlmCallAttempted = true;
-    const res = UrlFetchApp.fetch(
+    const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
       {
         method: "post",
@@ -33020,7 +33212,7 @@ function verifySmartThingsClaimFromCloudPdf() {
     },
   };
 
-  const resp = UrlFetchApp.fetch(url, {
+  const resp = providerFetch_(url, {
     method: "post",
     contentType: "application/json",
     payload: JSON.stringify(payload),
@@ -33195,7 +33387,7 @@ function assertEditorOnlyTestUiMaintenance_(token) {
 function sanitizeOfficialManualMaintenanceResult_(result) {
   const item = result && typeof result === "object" ? result : {};
   return {
-    ok: Boolean(item.manualStatus || item.action),
+    ok: Boolean(item.manualStatus || item.action) && !/PENDING|FAILED|ERROR/.test(String(item.manualStatus || "") + " " + String(item.action || "")),
     action: String(item.action || item.manualStatus || "NO_CHANGE"),
     manualStatus: String(item.manualStatus || ""),
     fullSku: String(item.fullSku || item.model || ""),
@@ -33667,7 +33859,7 @@ function doGet(e) {
     for (const modelName of candidates) {
       const url = CONFIG.API_ENDPOINT + "/" + modelName + ":generateContent?key=" + apiKey;
       try {
-        const response = UrlFetchApp.fetch(url, {
+        const response = providerFetch_(url, {
           method: "post",
           contentType: "application/json",
           payload: JSON.stringify({

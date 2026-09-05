@@ -1,5 +1,31 @@
 # 開發對話紀錄
 
+## 2026-09-05（v29.6.304 手機口語追問）
+
+- 已讀手機雲端LOG1488–1504：v303兩題確實LINE回覆成功，零模型、0元；小寫無空格有效。但內部短追問曾把USB-C新題改回HDMI，只因本機原題分支挽回才未顯示錯答。
+- 純換型號限定為去除使用者型號後只剩轉換語法，注入型號／新功能／限制一律不走此旁路。不增加LLM、Prompt或單品特例。
+- 新增真實handler兩輪及正負語法回歸，共50項完整來源整合及contract通過。M7簡稱Chrome零模型提供候選，後續點選複驗與正式版本另追加。
+- v304正式guarded release成功@1485，local／HEAD／formal health的version/build一致、容量29。Chrome 16:13點型號直接接原題；16:14短句正確65W且LOG不再改HDMI，全程0模型。手機v304另請使用者核對；未測狀態不混稱。
+- 使用者隨後明確指定後續由AI自己用TestUI測，不要再請他代測；依最新指示以已完成Chrome三輪、雲端LOG1531–1546、正式health及50項整合驗證收尾，不再停等手機。v303手機與v304TestUI證據分列，沒有冒稱v304手機已測。
+
+## 2026-09-05（v29.6.303 正式分批發布 @1484）
+
+- 使用者再次要求完成並發布；依原計畫分批交付，不再把全庫擴充綁成已完成修復的發布前置。
+- Chrome M7 HDMI→USB-C抓到數量摘要丟失65W，改共用接孔摘要條件，未加LLM或Prompt特例。16:00原錯題已沿用M7正確答65W，0模型／0費用；Netflix系列QA也正確0模型。
+- 48項完整來源整合、static、contract、diff、DryRun通過；唯一發布工具新增版本1484並更新原Webhook。local／HEAD／formal health均v29.6.303 [2026-09-05 16:05]，版本28/200，舊1483保留。正式版本守門現在連build一併核對，不能只比同一版號。
+- Cloud月帳seed已讀回，驗收ledger1.58951296／reserved0；本輪追加接孔與Netflix問答全部零模型。未升模型、不改Prompt!C3、不改Rich Menu、不Push。
+- 正式發布已完成；手機LINE仍待使用者最小送達旅程，已請問M7 HDMI→USB-C。20條全案旅程、全庫索引與完整不可變切版仍未全數完成，不混稱。依既定LINE／LOG門檻暫不commit/push，保留工作樹與所有結果。
+
+## 2026-09-05（v29.6.303 候選，尚未發布）
+
+- 完整逐頁query-time檢索、revision SHA、一致生成費用入口、同步lease與追問新增限制保留。
+- 四份舊規範完整保存docs/history/v29.6.302，現行契約統一Developer_Manual；未改Prompt!C3。
+- 使用者「已共用」後，Drive兩份2026手冊已更新、6份頁索引啟用。Cloud当月gross5.58向上seed6，讀回專案Gemini API TWD90 Spend Cap；非即時硬零超額承諾。
+- 2.5 Flash-Lite File Search隔離10題A/B已完成，錯方向／錯頁碼／多題缺逐句supports，暫不遷移。實驗資源清理完成，原始結果保留。
+- Chrome真問零售→App→睡眠，修正明講新功能卻續答App的免費旁路；G9→S49DG952SC真查115頁Core Lighting，相關名稱僅擴充檢索不授權等價，保留共用手冊限制。
+- 15:17重按手冊抓到來源入口在查快取前擋配額；15:20收斂至共用executor，並修選型轉PDF的一般題退款。完整正式來源47項、static/contract驗證，正式20旅程與手機LINE未完成。
+- 15:13費用ledger讀回驗證合計1.58951296、reserved0（含embedding保守估算0.606816）。未升模型，未改Prompt，正式Webhook仍v302；候選僅StageOnly，未commit/push。未驗收不得稱全案完成。
+
 ## 2026-09-05（v29.6.302 / 單一操作完成權收回程式）
 
 - v29.6.301 真人旅程已正確命中 S32DG802SC 手冊第 101 頁、`selectedModel` 與手冊 1/2 配額，但頁級模型仍回 `partial`，使完成鏈多跑一次 Web；頁級整理約 NT$0.0038、Web 約 NT$0.0842，合計約 NT$0.0880。

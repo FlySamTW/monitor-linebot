@@ -122,10 +122,10 @@
       "expected": true
     },
     {
-      "id": "elliptical_followup_existing_plan_bypass",
+      "id": "elliptical_followup_existing_plan_new_scope_requires_analysis",
       "input": {
         "question": "那兩邊呢？",
-        "previousTopic": "S57CG952NC 的 PBP 兩側更新率限制",
+          "previousTopic": "S57CG952NC 的 PBP 怎麼開",
         "confirmedModel": "S57CG952NC",
         "candidateModels": ["S57CG952NC"],
         "exactQaComplete": false,
@@ -138,7 +138,7 @@
         "multiClaim": false,
         "routeConflict": false
       },
-      "expected": false
+        "expected": true
     },
     {
       "id": "known_model_manual_bypass",

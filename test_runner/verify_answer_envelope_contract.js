@@ -36,6 +36,7 @@ function extractFunction(source, name) {
 }
 
 const context = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   GAS_VERSION: "vTEST",
   ANSWER_ENVELOPE_TTL_MS: 30 * 24 * 60 * 60 * 1000,
   Set,

@@ -9,6 +9,7 @@ GAS webhook never has to download and parse an entire manual index per query.
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import hashlib
 import json
@@ -321,7 +322,7 @@ def extract_pages(pdf_path: Path) -> list[dict]:
 def all_lexicon_phrases(lexicon: dict) -> list[str]:
     phrases: list[str] = []
     for group in lexicon.get("groups", []):
-        for alias in group.get("aliases", []):
+        for alias in group.get("aliases", []) + group.get("relatedTerms", []):
             normalized = normalize_text(alias)
             if normalized and normalized not in phrases:
                 phrases.append(normalized)
@@ -454,7 +455,7 @@ def query_term_weights(query: str, lexicon: dict) -> tuple[dict[str, float], lis
 
     matched_phrases: list[str] = []
     for group in lexicon.get("groups", []):
-        aliases = [normalize_text(alias) for alias in group.get("aliases", [])]
+        aliases = [normalize_text(alias) for alias in group.get("aliases", []) + group.get("relatedTerms", [])]
         triggers = [normalize_text(trigger) for trigger in group.get("triggers", [])]
         excluded = [normalize_text(term) for term in group.get("excludeAny", [])]
         group_matched = any(alias and alias in normalized for alias in aliases)
@@ -665,8 +666,6 @@ def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dic
                 is True,
                 "fragments": fragments,
             }
-        if not group_records:
-            continue
         documents[doc_key] = {
             "models": document.get("models", []),
             "sourceFileName": Path(str(document["sourceFileName"])).name,
@@ -676,10 +675,22 @@ def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dic
             "exactModelInDocument": document.get("exactModelInDocument", True) is not False,
             "supportUrl": str(document.get("supportUrl", "")),
             "groups": group_records,
+            # Full, immutable retrieval generation. The inline copy is a
+            # verified fallback while Drive promotion is unavailable; it is
+            # never a model-generated substitute for the original PDF.
+            "pageIndex": {
+                "schemaVersion": 2,
+                "revision": index["sourcePdfSha256"],
+                "encoding": "gzip-base64",
+                "sha256": sha256_bytes(dump_json_bytes({"lex": index["lex"], "pages": index["pages"]})),
+                "data": base64.b64encode(gzip.compress(dump_json_bytes({"lex": index["lex"], "pages": index["pages"]}), compresslevel=9, mtime=0)).decode("ascii"),
+            },
         }
     return {
         "schemaVersion": 1,
         "generatedBy": "tools/build_manual_page_index.py",
+        "retrievalPolicy": "QueryTimeV1",
+        "lexicon": lexicon,
         "documents": documents,
     }
 

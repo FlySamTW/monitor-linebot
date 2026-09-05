@@ -2,7 +2,8 @@ param(
   [string]$DeploymentId = "AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA",
   [string]$VersionDescription = "",
   [int]$HealthRetries = 6,
-  [int]$HealthRetrySeconds = 5
+  [int]$HealthRetrySeconds = 5,
+  [switch]$StageOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -150,6 +151,11 @@ Write-Host ""
 
 Write-Host "[1/4] Push code to Apps Script HEAD..."
 Invoke-Clasp -Arguments @("push", "-f") | Out-Null
+
+if ($StageOnly) {
+  Write-Host "[STAGED ONLY] Candidate HEAD uploaded. No version created; existing Webhook unchanged."
+  exit 0
+}
 
 Write-Host ""
 Write-Host "[2/4] Create Apps Script version..."

@@ -475,9 +475,9 @@ assert(
     /const grant = activateAdvancedSourceGrant_\([\s\S]{0,1000}callLLMWithRetry/.test(
       extractFunction(linebot, "executeAdvancedSourceQuery_"),
     ) &&
-    /reserveAdvancedSourceUsage_\(advancedGrant\)[\s\S]{0,12000}UrlFetchApp\.fetch/.test(
-      extractFunction(linebot, "callLLMWithRetry"),
-    ),
+    /sourceGrant:\s*advancedGrant/.test(extractFunction(linebot, "callLLMWithRetry")) &&
+    /reserveAdvancedSourceUsage_\(grant\)[\s\S]*UrlFetchApp\.fetch\(url, options\)/.test(
+      fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8")),
   "明確來源入口必須統一進來源狀態機，並在供應商請求前原子保留額度",
 );
 assert(

@@ -1,0 +1,281 @@
+/** Query-time page retrieval. No provider call and no product facts invented here. */
+let manualIndexRequestCache_ = {};
+
+function manualIndexTerms_(text) {
+  const normalized = manualPageRagNormalizeText_(text)
+    .replace(/[slc]?\d{2,3}[a-z]{1,3}\d{2,4}[a-z]*/gi, " ")
+    .replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1");
+  const stop = /^(怎麼|如何|可以|我要|哪裡|在哪|設定|使用|產品|功能|顯示|螢幕|選擇|進行|支援|依型|的是|的是它|它的|我說|能不能|請問)$/;
+  const terms = (normalized.match(/[a-z0-9]+(?:[.][a-z0-9]+)?/g) || [])
+    .filter(function (term) { return term.length >= 2; });
+  (normalized.match(/[\u3400-\u9fff]+/g) || []).forEach(function (run) {
+    [2, 3].forEach(function (size) {
+      for (let i = 0; i + size <= run.length; i++) {
+        const term = run.slice(i, i + size);
+        if (!stop.test(term)) terms.push(term);
+      }
+    });
+  });
+  return [...new Set(terms)];
+}
+
+function canReuseSemanticFollowup_(question, previousTopic) {
+  // Reuse requires the same requested action, not merely the same product.
+  const questionText = String(question || "").trim();
+  const scopeRestatement = questionText.replace(/^(?:那|它|這台|這款|所以)\s*/, "")
+    .replace(/[呢嗎啊呀?？!！。\s]+$/g, "").replace(/兩邊/g, "兩側");
+  // A pure restatement of an already planned scope introduces no new claim.
+  // New values/features do not satisfy this containment check.
+  if (scopeRestatement.length >= 2 && scopeRestatement.length <= 12 &&
+      String(previousTopic || "").replace(/兩邊/g, "兩側").includes(scopeRestatement) &&
+      /^(?:那|它|這台|這款|所以)/.test(questionText)) return true;
+  if (!previousTopic || /\d|多少|幾個|兩邊|同時|限制|支援|相容|能否|能不能|可以嗎|有沒有|改成|不是|我說|另外|但是/i.test(questionText)) {
+    return false;
+  }
+  if (!isManualActionPathQuestion_(questionText) ||
+      !isManualActionPathQuestion_(previousTopic)) return false;
+  // Only an actually elliptical restatement can reuse the prior plan. A named
+  // new feature must undergo normal free-evidence / conditional routing.
+  return /^(?:那|它|這個|這台|所以|請問|要|該|我)?\s*(?:要|該)?\s*(?:怎麼|如何|在哪裡?|哪裡)(?:開啟|開|操作|設定|切換|調整|用|使用)?[呢嗎啊呀?？!！。\s]*$/.test(questionText);
+}
+
+function resolvePersistentFollowupQuestion_(question, previousQuestion) {
+  if (!previousQuestion || !isEllipticalEvidenceFollowUp_(question)) return question;
+  if (canReuseSemanticFollowup_(question, previousQuestion)) return previousQuestion;
+  const checks = getManualFeatureChecks_(question);
+  // Naming a different feature is a new question; an added limit or pronoun
+  // without a new feature must keep BOTH the established topic and new claim.
+  if (checks.some(function (check) { return check.evidence && !check.evidence.test(previousQuestion); })) return question;
+  return `${previousQuestion}；追問：${question}`;
+}
+
+function manualIndexDigest_(bytes) {
+  return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes)).toLowerCase();
+}
+
+function readManualRevision_(docKey, document) {
+  const sourceSha = String(document.sourcePdfSha256 || "").toLowerCase();
+  const index = document.pageIndex;
+  if (!index || index.schemaVersion !== 2 || index.revision !== sourceSha ||
+      !/^[a-f0-9]{64}$/.test(sourceSha)) return null;
+  const manifest = readOfficialManualManifest_();
+  const applicable = Object.keys(manifest).map(function (sku) {
+    return Object.assign({ fullSku: sku }, manifest[sku]);
+  }).filter(function (entry) {
+    return (document.models || []).some(function (model) {
+      return normalizeModelForDisplay(entry.fullSku) === normalizeModelForDisplay(model);
+    });
+  });
+  // Never answer from a stale compiled revision after official activation.
+  if (applicable.some(function (entry) {
+    const sha = String(entry.sourcePdfSha256 || entry.sha256 || "").toLowerCase();
+    return sha && sha !== sourceSha;
+  })) {
+    writeLog(`[Manual Revision] ${docKey} page_index_stale; using current PDF path`);
+    return null;
+  }
+  return { docKey: docKey, sha256: sourceSha, indexChecksum: index.sha256,
+    models: document.models.slice(), documentRole: document.documentRole,
+    supportUrl: document.supportUrl || "", pageIndexReady: true,
+    indexStorage: "compiled_verified", revisionVerified: true };
+}
+
+function loadManualPageIndex_(docKey, document, revision) {
+  const key = `${docKey}:${revision.indexChecksum}`;
+  if (manualIndexRequestCache_[key]) return manualIndexRequestCache_[key];
+  let compressed = document.pageIndex.data;
+  try {
+    const active = JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${docKey}`) || "null");
+    if (active && active.sha256 === revision.sha256 &&
+        active.indexChecksum === revision.indexChecksum && active.indexFileId) {
+      const cache = CacheService.getScriptCache();
+      const cacheKey = `MANUAL_INDEX_${revision.indexChecksum}`;
+      const count = Number(cache.get(cacheKey) || 0);
+      let pieces = [];
+      for (let n = 0; n < count; n++) pieces.push(cache.get(`${cacheKey}_${n}`));
+      if (!count || pieces.some(function (value) { return !value; })) {
+        const bytes = DriveApp.getFileById(active.indexFileId).getBlob().getBytes();
+        compressed = Utilities.base64Encode(bytes);
+        pieces = compressed.match(/.{1,60000}/g) || [];
+        pieces.forEach(function (value, n) { cache.put(`${cacheKey}_${n}`, value, 600); });
+        cache.put(cacheKey, String(pieces.length), 600);
+      } else compressed = pieces.join("");
+      revision.indexStorage = "drive";
+    }
+  } catch (error) {
+    writeLog(`[Manual Index] Drive read unavailable; using same verified compiled revision: ${docKey}`);
+  }
+  const unpacked = Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(compressed), "application/gzip", "pages.json.gz"));
+  if (manualIndexDigest_(unpacked.getBytes()) !== revision.indexChecksum) {
+    throw new Error("MANUAL_INDEX_CHECKSUM_MISMATCH");
+  }
+  const index = JSON.parse(unpacked.getDataAsString("UTF-8"));
+  manualIndexRequestCache_[key] = index;
+  return index;
+}
+
+function findIndexedManualPagePlan_(question, targetModel) {
+  const catalog = MANUAL_PAGE_RAG_DATA_;
+  const model = normalizeManualEvidenceModel_(targetModel);
+  const matches = Object.keys(catalog.documents || {}).filter(function (key) {
+    return catalog.documents[key].models.some(function (candidate) {
+      return manualEvidenceModelMatchesTarget_(candidate, model);
+    });
+  });
+  if (matches.length !== 1) return null;
+  const docKey = matches[0];
+  const document = catalog.documents[docKey];
+  const revision = readManualRevision_(docKey, document);
+  if (!revision) return null;
+  let index;
+  try { index = loadManualPageIndex_(docKey, document, revision); }
+  catch (error) { writeLog(`[Manual Index] ${error.message}`); return null; }
+  const query = manualPageRagNormalizeText_(question);
+  const weights = {};
+  manualIndexTerms_(query).forEach(function (term) { weights[term] = 1; });
+  const groups = ((catalog.lexicon || {}).groups || []).filter(function (group) {
+    if ((group.excludeAny || []).some(function (term) { return manualPageRagPhraseMatches_(query, term); })) return false;
+    return (group.aliases || []).concat(group.triggers || [], group.relatedTerms || []).some(function (term) {
+      return manualPageRagPhraseMatches_(query, term);
+    });
+  });
+  const aliases = [];
+  const retrievalPhrases = [];
+  const relatedPhrases = [];
+  groups.forEach(function (group) {
+    relatedPhrases.push.apply(relatedPhrases, group.relatedTerms || []);
+    (group.aliases || []).concat(group.relatedTerms || []).forEach(function (alias) {
+      retrievalPhrases.push(alias);
+      // Related names retrieve candidates only; never issue an equivalence grant.
+      if ((group.aliases || []).includes(alias)) aliases.push(alias);
+      const direct = manualPageRagPhraseMatches_(query, alias);
+      weights[manualPageRagNormalizeText_(alias)] = direct ? 4 : 2;
+      manualIndexTerms_(alias).forEach(function (term) { weights[term] = Math.max(weights[term] || 0, direct ? 2 : 1); });
+    });
+  });
+  const scores = {};
+  const lex = index.lex;
+  Object.keys(weights).forEach(function (term) {
+    const postings = lex.postings[term] || [];
+    const df = Number(lex.df[term] || postings.length);
+    if (!df) return;
+    const idf = Math.log(1 + (lex.N - df + 0.5) / (df + 0.5));
+    postings.forEach(function (posting) {
+      const page = posting[0], tf = posting[1];
+      const dl = lex.docLength[String(page)] || 1;
+      const score = idf * (tf * 2.2) / (tf + 1.2 * (0.25 + 0.75 * dl / Math.max(lex.avgdl, 1)));
+      scores[page] = (scores[page] || 0) + score * weights[term];
+    });
+  });
+  const pageMap = {};
+  index.pages.forEach(function (page) { pageMap[page.pdfPage] = page; });
+  Object.keys(scores).forEach(function (number) {
+    const page = pageMap[number];
+    const title = ((page || {}).headings || [])[0] || "";
+    const pageText = manualPageRagNormalizeText_((page || {}).normalizedText || "");
+    let phraseBonus = 0;
+    retrievalPhrases.forEach(function (phrase) {
+      // A full technical name must outrank a shared word in another heading.
+      if (manualPageRagPhraseMatches_(pageText, phrase)) {
+        const compoundName = /^[a-z]+(?:\s+[a-z]+)+$/i.test(phrase.trim());
+        const bonus = compoundName && manualPageRagPhraseMatches_(query, phrase)
+          ? 80 : relatedPhrases.includes(phrase) ? 30 : 0;
+        phraseBonus = Math.max(phraseBonus, bonus);
+      }
+    });
+    scores[number] += phraseBonus;
+    if (aliases.some(function (alias) { return manualPageRagPhraseMatches_(manualPageRagNormalizeText_(title), alias); })) {
+      scores[number] += 30;
+    }
+    // Preserve the requested action (install vs remove, connect vs play).
+    // Expanded aliases help recall but cannot outrank every original title hit.
+    const titleTerms = manualIndexTerms_(title);
+    manualIndexTerms_(query).forEach(function (term) {
+      if (titleTerms.includes(term)) scores[number] += 20;
+    });
+  });
+  const ranked = Object.keys(scores).map(Number).sort(function (a, b) { return scores[b] - scores[a] || a - b; });
+  const fragments = [];
+  for (let i = 0; i < ranked.length && fragments.length < 5; i++) {
+    const page = pageMap[ranked[i]];
+    if (!page) continue;
+    const heading = (page.headings || [])[0] || "";
+    const blocks = page.blocks || [];
+    if (!manualEvidenceNamedFamilyMatchesTarget_(heading, model)) continue;
+    // An explicit exception for another family must not erase the surrounding
+    // common procedure, nor become evidence for the current model.
+    const scopedBlocks = blocks.filter(function (block) {
+      return manualEvidenceNamedFamilyMatchesTarget_(block.text, model);
+    });
+    const text = scopedBlocks.map(function (block) { return block.text; }).join("\n");
+    // Curated aliases expand recall; they do not prove equivalence. Without
+    // aliases, require distinctive original query terms (not generic settings).
+    const anchored = retrievalPhrases.some(function (alias) {
+      return manualPageRagPhraseMatches_(manualPageRagNormalizeText_(text), alias);
+    }) || manualIndexTerms_(query).some(function (term) {
+      return (lex.postings[term] || []).some(function (row) { return row[0] === page.pdfPage; }) &&
+        Number(lex.df[term] || 0) < Math.max(3, lex.N * 0.25);
+    });
+    if (!anchored) continue;
+    // Whole selected pages retain footnotes, table labels and restrictions.
+    // Never truncate a paragraph to make a numerical claim look unconditional.
+    if (text.length > 12000) continue;
+    fragments.push({ evidenceId: `E${fragments.length + 1}`, pageNumber: page.pdfPage,
+      pageHeading: heading, evidenceText: text, pageHash: page.pageHash,
+      excludedFamilyBlocks: blocks.length - scopedBlocks.length });
+  }
+  if (!fragments.length) return null;
+  return Object.assign({}, revision, {
+    model: model, groupId: groups.map(function (group) { return group.id; }).join("+") || "query_time",
+    retrievalPolicy: "QueryTimeV1", sourceFileName: document.sourceFileName,
+    sourcePdfSha256: revision.sha256.toUpperCase(), modelBinding: document.modelBinding,
+    exactModelInDocument: document.exactModelInDocument !== false,
+    aliases: aliases, allowRuleBackedAliasCompletion: false, fragments: fragments,
+  });
+}
+
+/** Editor/daily maintenance only; no publicly callable deployment mutation. */
+function publishCompiledManualIndexes_() {
+  const result = { active: [], failed: [] };
+  const catalog = typeof MANUAL_PAGE_RAG_DATA_ !== "undefined" ? MANUAL_PAGE_RAG_DATA_ : null;
+  if (!catalog || catalog.retrievalPolicy !== "QueryTimeV1") return result;
+  try { assertManualFolderWritable_(); }
+  catch (error) {
+    result.failed = Object.keys(catalog.documents);
+    result.reason = String(error.message);
+    writeLog(`[Manual Index Publish] ${error.message}; compiled verified index retained`);
+    return result;
+  }
+  const props = PropertiesService.getScriptProperties();
+  Object.keys(catalog.documents).forEach(function (docKey) {
+    const document = catalog.documents[docKey];
+    const revision = readManualRevision_(docKey, document);
+    if (!revision) { result.failed.push(docKey); return; }
+    try {
+      const old = JSON.parse(props.getProperty(`MANUAL_ACTIVE::${docKey}`) || "null");
+      if (old && old.sha256 === revision.sha256 && old.indexChecksum === revision.indexChecksum) {
+        result.active.push(docKey); return;
+      }
+      loadManualPageIndex_(docKey, document, revision);
+      const blob = Utilities.newBlob(Utilities.base64Decode(document.pageIndex.data), "application/gzip", `${docKey}.${revision.indexChecksum}.pages.json.gz`);
+      const created = Drive.Files.create({ name: blob.getName(), parents: [CONFIG.DRIVE_FOLDER_ID] }, blob, { fields: "id", supportsAllDrives: true });
+      // Read back before activation; do not silently bind partially uploaded data.
+      const check = Utilities.ungzip(DriveApp.getFileById(created.id).getBlob());
+      if (manualIndexDigest_(check.getBytes()) !== revision.indexChecksum) throw new Error("INDEX_UPLOAD_READBACK_FAILED");
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(5000)) throw new Error("INDEX_ACTIVATION_LOCK_BUSY");
+      try {
+        const latestRevision = readManualRevision_(docKey, document);
+        if (!latestRevision || latestRevision.sha256 !== revision.sha256) throw new Error("INDEX_ACTIVATION_REVISION_CHANGED");
+        const current = props.getProperty(`MANUAL_ACTIVE::${docKey}`);
+        if (current) props.setProperty(`MANUAL_PREVIOUS::${docKey}`, current);
+        props.setProperty(`MANUAL_ACTIVE::${docKey}`, JSON.stringify(Object.assign({}, revision, { indexFileId: created.id, activatedAt: new Date().toISOString() })));
+      } finally { lock.releaseLock(); }
+      result.active.push(docKey);
+    } catch (error) {
+      result.failed.push(docKey);
+      writeLog(`[Manual Index Publish] ${docKey}: ${error.message}; previous revision retained`);
+    }
+  });
+  return result;
+}

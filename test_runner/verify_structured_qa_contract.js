@@ -60,6 +60,7 @@ const cache = {
 };
 
 const context = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   console,
   QA_KNOWLEDGE_TEST_ROWS_: qaRows,
   CacheService: { getScriptCache: () => cache },

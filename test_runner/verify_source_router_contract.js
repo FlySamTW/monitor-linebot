@@ -73,6 +73,10 @@ assert(
 );
 
 function extractFunction(source, name) {
+  // Use V8's parsed function boundaries, not quote counting that can stop at
+  // braces in regex/comments. The unit's I/O fixtures remain isolated below.
+  if (!extractFunction.production) extractFunction.production = require("./production_harness").createProductionHarness().context;
+  if (typeof extractFunction.production[name] === "function") return extractFunction.production[name].toString();
   const start = source.indexOf(`function ${name}`);
   assert(start >= 0, `找不到函式 ${name}`);
   const brace = source.indexOf("{", start);
@@ -470,6 +474,7 @@ const exactRuleVmSource = [
   `globalThis.__anynetIsOperation = isOperationOrTroubleshootQuery("S32FM803UC 我想讓遙控器一起控制 HDMI 裝置，Anynet+ 要去哪裡開？");`,
 ].join("\n\n");
 const exactRuleVmContext = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   SHEET_NAMES: { CLASS_RULES: "CLASS_RULES" },
   ss: {
     getSheetByName() {
@@ -943,14 +948,15 @@ assert(
   "PDF/Web 必須在載入供應商設定前驗證本輪來源授權",
 );
 assert(
-  llmText.indexOf("reserveAdvancedSourceUsage_(advancedGrant)") <
-    llmText.indexOf(":generateContent?key="),
+  llmText.includes("sourceGrant: advancedGrant") &&
+    fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("reserveAdvancedSourceUsage_(grant)") <
+      fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("const response = UrlFetchApp.fetch(url, options)"),
   "配額必須在 generateContent 前原子保留",
 );
 assert(
   /refreshStalePdfAttachmentsFromDrive_\(filesToAttach\)/.test(llmText) &&
     llmText.indexOf("refreshStalePdfAttachmentsFromDrive_(filesToAttach)") <
-      llmText.indexOf("reserveAdvancedSourceUsage_(advancedGrant)") &&
+      llmText.indexOf("sourceGrant: advancedGrant") &&
     /persistManualPdfKbItem_\(refreshedItem\)/.test(targetedPdfRefreshText) &&
     /driveNameToOutputNames\[upperName\]/.test(targetedPdfRefreshText) &&
     /getOfficialManualManifestEntryByFileName_/.test(targetedPdfRefreshText),
@@ -1075,6 +1081,7 @@ const props = {
   getProperties: () => Object.fromEntries(propertyValues.entries()),
 };
 const context = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   GAS_VERSION: "v29.6.253",
   ADVANCED_SOURCE_CACHE_SCHEMA: "EvidenceV6",
   SOURCE_PENDING_TTL_SECONDS: 600,
@@ -1776,6 +1783,7 @@ assert(
 );
 
 const groundedSupportContext = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   compactGroundedWebAnswer_: (value) => String(value || "").trim(),
   normalizeModelForDisplay: (value) => String(value || "").trim(),
   toHalfWidth: (value) => String(value || ""),
@@ -1949,6 +1957,7 @@ assert(
 );
 
 const webRescueFlowContext = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   ACTIVE_ADVANCED_SOURCE_GRANT: null,
   lastSearchSources: null,
   lastWebEvidenceValid: false,
@@ -2051,9 +2060,10 @@ assert(
     webRescueFlowContext.notTargetedRescue.groundingPresent === true &&
     /安全下一步/.test(webRescueFlowContext.notTargetedReply) &&
     webRescueFlowContext.noGroundingRescue.groundingPresent === false &&
-    /安全下一步/.test(
-      webRescueFlowContext.noGroundingWithManualReply,
-    ),
+    /手冊已確認可進入遊戲設定/.test(webRescueFlowContext.noGroundingWithManualReply) &&
+    /網路補充還無法核對/.test(webRescueFlowContext.noGroundingWithManualReply) &&
+    /Sam/.test(webRescueFlowContext.noGroundingWithManualReply) &&
+    !/安全下一步/.test(webRescueFlowContext.noGroundingWithManualReply),
   `Web rescue 必須分離搜尋查詢與原題，並區分 partial、grounded-but-not-targeted、true no-grounding: ${JSON.stringify(webRescueFlowContext)}`,
 );
 assert(
@@ -2067,6 +2077,7 @@ assert(
 );
 
 const webFallbackContext = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   isMonitorUsbMediaWebQuestion_: () => false,
   stripAnySourceTags: (value) => String(value || ""),
   stripInternalRoutingHints_: (value) => String(value || ""),
@@ -2140,7 +2151,7 @@ assert(
     /先不套用其他型號/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
     /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
-    /找到幾個非官方做法/.test(webFallbackContext.safeTerminal) &&
+    /尚未確認適用這款的排查方向/.test(webFallbackContext.safeTerminal) &&
     !/逐句核對|grounding|；，/i.test(webFallbackContext.safeTerminal) &&
     /使用數位機上盒|諮詢業者/.test(webFallbackContext.safeTerminal) &&
     !/其他型號可能/.test(
@@ -2343,6 +2354,7 @@ assert(
 );
 
 const manualUiContext = {
+  validatedConditionalManualReplies_: new Set(),
   writeLog: () => {},
   getManualFeatureChecks_: () => [],
   findExactModelRuleLine_: (model) =>
@@ -2360,7 +2372,8 @@ const manualUiContext = {
 };
 vm.createContext(manualUiContext);
 vm.runInContext(
-  `${extractFunction(linebot, "buildManualConsentPrompt_")}
+  `${extractFunction(linebot, "stripInternalRoutingHints_")}
+   ${extractFunction(linebot, "buildManualConsentPrompt_")}
    ${extractFunction(linebot, "isManualEvidenceFailureReply_")}
    ${extractFunction(linebot, "parseManualEvidenceMarker_")}
    ${extractFunction(linebot, "getManualStructuredResponseSchema_")}
@@ -2582,7 +2595,7 @@ assert(
   /手冊能確認/.test(failedPartialRescueReply) &&
     /Game → PBP/.test(failedPartialRescueReply) &&
     /第34頁/.test(failedPartialRescueReply) &&
-    /公開網頁目前沒有取得可核對的補充/.test(failedPartialRescueReply) &&
+    /網路補充還無法核對到這款/.test(failedPartialRescueReply) &&
     /來源:官方手冊/.test(failedPartialRescueReply) &&
     !/來源:官方手冊、網路搜尋/.test(failedPartialRescueReply),
   "PDF 已有通過驗證的部分主張時，Web 無可靠證據不得覆蓋或刪除手冊答案",
@@ -2883,7 +2896,7 @@ assert(
     manualDiscoveryVm.singleName === "S27FG532.pdf" &&
     manualDiscoveryVm.hSeriesName === "S27H704,S27H802,S32H704,S32H802,S40H850.pdf" &&
     manualDiscoveryVm.mismatchName === "" &&
-    /_PENDING_MANUAL_REVIEW/.test(
+    /savePendingManualRevision_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
     /validateOfficialManualFirstPage_/.test(
@@ -2907,10 +2920,7 @@ assert(
     /PROMOTION_EXCEPTION_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
-    /upsertManualPdfToGemini_\([\s\S]*true/.test(
-      extractFunction(linebot, "stageOfficialTwManualCandidate_"),
-    ) &&
-    /GEMINI_FILE_API_FALLBACK/.test(
+    !/upsertManualPdfToGemini_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
     /readPdfModelIndexForCoverage_/.test(
@@ -3069,6 +3079,7 @@ assert(
 );
 
 const manualCoverageVm = {
+  isUnscopedRuleTermDefinition_: require("./production_harness").createProductionHarness({quiet:true}).context.isUnscopedRuleTermDefinition_,
   findRuleTermOntologyMatch_: () => null,
   findRuleTermOntologyMatches_: () => [],
 };
@@ -3104,6 +3115,7 @@ assert(
 const removedBestDriveKeys = [];
 const legacyOverlapFile = { getName: () => "S32CM703,S49DG952.pdf" };
 const promotionFolder = {
+  getId: () => "drive-folder",
   getFilesByName: () => ({ hasNext: () => false }),
   getFiles: () => {
     let delivered = false;
@@ -3119,7 +3131,10 @@ const promotionFolder = {
 };
 const focusedPromotionVm = {
   CONFIG: { DRIVE_FOLDER_ID: "drive-folder" },
-  DriveApp: { getFolderById: () => promotionFolder },
+  DriveApp: { getFolderById: () => promotionFolder,
+    getFileById: () => ({getBlob: () => ({getBytes: () => Array.from(Buffer.from("fixture"))})}) },
+  Drive: {Files: {create: metadata => ({id: `created:${metadata.name}`})}},
+  Utilities: require("./production_harness").createProductionHarness().context.Utilities,
   CacheService: {
     getScriptCache: () => ({
       removeAll: (keys) => removedBestDriveKeys.push(...keys),
@@ -3131,7 +3146,9 @@ const focusedPromotionVm = {
 };
 vm.createContext(focusedPromotionVm);
 vm.runInContext(
-  `${extractFunction(linebot, "normalizePdfModelToken_")}
+  `${extractFunction(linebot, "bytesToHex_")}
+   ${extractFunction.production.manualIndexDigest_.toString()}
+   ${extractFunction(linebot, "normalizePdfModelToken_")}
    ${extractFunction(linebot, "getPdfFileModelTokens_")}
    ${extractFunction(linebot, "isPdfSalesSuffix_")}
    ${extractFunction(linebot, "isPdfModelTokenMatch_")}
@@ -3141,7 +3158,7 @@ vm.runInContext(
    globalThis.focusedPromotion = promoteOfficialManualToRoot_(
      { copyBlob: () => ({ setName: function(name) { this.name = name; return this; } }) },
      { fullSku: "LS49DG952SCXZW" },
-     "new-sha256",
+     "${require('crypto').createHash('sha256').update('fixture').digest('hex')}",
      "S49DG952.pdf"
    );`,
   focusedPromotionVm,

@@ -127,6 +127,7 @@ vm.createContext(context);
   "manualAnswerCoversQuestionFeatures_",
   "selectManualEvidenceForQuestion_",
   "normalizeManualStructuredResponse_",
+  "stripInternalRoutingHints_",
   "enrichPdfKbItemWithOfficialProvenance_",
 ].forEach((name) => vm.runInContext(extractFunction(linebot, name), context));
 

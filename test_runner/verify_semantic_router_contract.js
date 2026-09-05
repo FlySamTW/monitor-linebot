@@ -4,7 +4,7 @@ const path = require("path");
 const vm = require("vm");
 
 const root = path.resolve(__dirname, "..");
-const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8") + "\n" + fs.readFileSync(path.join(root, "manual_index_runtime.gs"), "utf8");
 const fixture = JSON.parse(
   fs.readFileSync(
     path.join(__dirname, "datasets", "semantic_router_cases_v1.json"),
@@ -108,7 +108,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(
-  ["buildSemanticRouterInput_", ...requiredFunctions]
+  ["buildSemanticRouterInput_", "canReuseSemanticFollowup_", "isManualActionPathQuestion_", ...requiredFunctions]
     .map((name) => extractFunction(linebot, name))
     .join("\n\n"),
   context,
@@ -624,8 +624,8 @@ const runnerSource = `${extractFunction(linebot, "runConditionalRouteAnalysis_")
 assert(
   /GEMINI_MODEL_ROUTER/.test(runnerSource) &&
     /models\/gemini-3\.7-flash/.test(linebot) &&
-    /PRICE_ROUTER_INPUT\s*=\s*0\.75/.test(linebot) &&
-    /PRICE_ROUTER_OUTPUT\s*=\s*3\.75/.test(linebot),
+    /PRICE_ROUTER_INPUT\s*=[^\n]*2027-01-01[^\n]*0\.75\s*:\s*1\.5/.test(linebot) &&
+    /PRICE_ROUTER_OUTPUT\s*=[^\n]*2027-01-01[^\n]*3\.75\s*:\s*7\.5/.test(linebot),
   "Router 必須使用獨立 Gemini 3.7 Flash 模型常數，不得偷換 PDF／Web 模型",
 );
 assert(
@@ -635,7 +635,7 @@ assert(
   "Router 必須使用自己的官方費率並獨立留下 routerCostTwd",
 );
 assert(
-  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["']GatePolicyV2["']/.test(
+  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["']GatePolicyV3["']/.test(
     linebot,
   ) &&
     /policyVersion:\s*SEMANTIC_ROUTER_POLICY_VERSION/.test(

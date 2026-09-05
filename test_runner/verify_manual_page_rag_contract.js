@@ -258,6 +258,12 @@ const callContext = {
   lastLlmCallAttempted: false,
   lastTokenUsage: null,
 };
+// This isolated transport unit checks the forwarded grant. The real gateway,
+// resolver and validator are separately exercised by the production harness.
+callContext.providerFetch_ = (url, options) => {
+  callContext.reserveAdvancedSourceUsage_(options.sourceGrant);
+  return callContext.UrlFetchApp.fetch(url, options);
+};
 vm.createContext(callContext);
 vm.runInContext(extractFunction(linebot, "callManualPageRag_"), callContext);
 const callResult = callContext.callManualPageRag_(
