@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.304"; // 2026-09-05 純換型號延續不得覆蓋口語新問題
-const BUILD_TIMESTAMP = "2026-09-05 16:15";
+const GAS_VERSION = "v29.6.305"; // 全庫核實索引與使用手冊角色守門
+const BUILD_TIMESTAMP = "2026-09-05 17:03";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV18-QueryTimeV1-RelatedRecall";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV21-QueryTimeV1-PrintedMenuHierarchy";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -4260,7 +4260,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
       : isPersistedModelCompatibleWithAlias_(persisted, aliases);
     return {
       kind: "alias",
-      model: persistedCompatible ? persisted : "",
+      model: aliasCandidates.length === 1 ? aliasCandidates[0] : (persistedCompatible ? persisted : ""),
       candidates: aliasCandidates,
       aliases: aliases,
       families: families,
@@ -12659,8 +12659,8 @@ function readContextHealth(cache, userId) {
 function normalizeModelForDisplay(model) {
   let m = String(model || "").trim().toUpperCase();
   if (!m) return "";
-  if (/^LS\d{2}/.test(m)) {
-    m = "S" + m.slice(2);
+  if (/^L[SCFU]\d{2}/.test(m)) {
+    m = m.slice(1);
   }
   // Samsung 區域尾碼常見為 XZW / XZN 等，顯示時優先保留通用 S 型號
   m = m.replace(/X[A-Z]{2,4}$/, "");
@@ -12687,7 +12687,7 @@ function extractFullModelLikeTokens(text) {
   const q = String(text || "").toUpperCase();
   const tokens = [];
   const patterns = [
-    /\b(?:LS)?S\d{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{4,16}\b/g,
+    /\bL?[SCFU]\d{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{4,16}\b/g,
     /\b(?:WA|WD|VR)\d{2}[A-Z0-9]{5,}\b/g,
     /\bG\d{2}[A-Z]{2,}[A-Z0-9]{0,8}\b/g,
   ];
@@ -13709,8 +13709,8 @@ function normalizeManualEvidenceModel_(model) {
   let normalized = String(model || "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
-  if (/^LS\d{2}/.test(normalized)) {
-    normalized = "S" + normalized.slice(2);
+  if (/^L[SCFU]\d{2}/.test(normalized)) {
+    normalized = normalized.slice(1);
   }
   return normalized.replace(/X[A-Z]{2,4}$/, "");
 }
@@ -13925,7 +13925,7 @@ function isManualActionPathQuestion_(questionText) {
   if (!question) return false;
   const inquiry = "(?:怎麼|如何|怎樣|從哪|哪裡|在哪|去哪|哪(?:一)?個|什麼)";
   const action =
-    "(?:開(?:啟)?|打開|啟用|關閉|切換|設定|連接|連線|連|接|配對|更新|重設|重置|選擇|進入|找到|操作|使用|用)";
+    "(?:開(?:啟)?|打開|啟用|關閉|切換|設定|連接|連線|連|接|配對|更新|重設|重置|選擇|進入|找到|操作|使用|執行|做|用)";
   if (
     new RegExp(
       `${inquiry}.{0,24}${action}|${action}.{0,24}${inquiry}`,
@@ -14713,6 +14713,7 @@ function normalizeManualStructuredResponse_(
       ? [parsed]
       : [];
   const normalizedEvidence = evidenceItems.map((item) => ({
+    evidencePages: options.trustedPageIndex && Array.isArray(item.evidencePages) ? item.evidencePages.filter(function (page) { return Number.isInteger(page) && page > 0; }).slice(0, 2) : [],
     documentBound: Boolean(options.trustedPageIndex && item && item.documentBound),
     // A verified model-bound shared manual may describe a conditional menu
     // without proving this unit has it. Keep that distinction in the answer;
@@ -14827,6 +14828,7 @@ function normalizeManualStructuredResponse_(
   }
   const seenPages = new Set();
   const pages = selectedEvidence
+    .flatMap(function (item) { return (item.evidencePages.length ? item.evidencePages : [item.pageNumber]).map(function (page) { return { pageNumber: page }; }); })
     .filter(function (item) {
       if (seenPages.has(item.pageNumber)) return false;
       seenPages.add(item.pageNumber);
@@ -15220,9 +15222,20 @@ function hydrateManualPageRagResponse_(
       const isExactModelEvidence = modelsInEvidence.some(function (model) {
         return manualEvidenceModelMatchesTarget_(model, plan.model);
       });
+      let supportedAnswer = String(claim.supportedAnswer || "").trim();
+      // Verified table column/setting hierarchy is source data, not an
+      // LLM-invented shortcut. Preserve it when the answer omitted the entry.
+      const menuPath = String(fragment.menuPath || "");
+      if (menuPath && isManualActionPathQuestion_(question) &&
+          !/(?:兩邊|兩側|每側|同時|最高|最低|限制|\d+\s*(?:Hz|W|瓦))/i.test(question) &&
+          manualAnswerCoversQuestionFeatures_(`進入 ${menuPath}`, question) &&
+          !isDirectManualActionEvidence_({ supportedAnswer: supportedAnswer }, question)) {
+        supportedAnswer = `進入 ${menuPath}。${supportedAnswer}`;
+      }
       return {
-        supportedAnswer: String(claim.supportedAnswer || "").trim(),
+        supportedAnswer: supportedAnswer,
         pageNumber: Number(fragment.pageNumber),
+        evidencePages: fragment.evidencePages || [Number(fragment.pageNumber)],
         scope: isExactModelEvidence ? "型號明確" : (plan.retrievalPolicy ? "支援頁綁定" : "全檔共通"),
         evidenceExcerpt: evidenceText,
         documentBound: Boolean(plan.retrievalPolicy && plan.revisionVerified),
@@ -15243,8 +15256,13 @@ function hydrateManualPageRagResponse_(
   // 的問題，三方同義錨定已成立，而後續 Evidence Guard 還會確認
   // 是否真有直接入口；因此完成權由程式收回，不讓模型標籤白跑 Web。
   // 複合題、數值題或不是操作入口的題目不適用。
+  const exactTableEntry = (plan.fragments || []).some(function (fragment) {
+      return fragment.menuPath && (parsed.evidence || []).some(function (item) { return item.evidenceId === fragment.evidenceId; }) &&
+        manualAnswerCoversQuestionFeatures_(`進入 ${fragment.menuPath}`, question);
+    }) && getManualFeatureChecks_(question).length > 0 &&
+    !/(?:兩邊|兩側|每側|同時|最高|最低|限制|\d+\s*(?:Hz|W|瓦))/i.test(question);
   const programCanCompleteSingleAliasAction = Boolean(
-    ruleBackedAliasCompletion &&
+    (ruleBackedAliasCompletion || exactTableEntry) &&
       parsed &&
       parsed.found === true &&
       Array.isArray(parsed.evidence) &&
@@ -15322,6 +15340,7 @@ function callManualPageRag_(
       evidenceId: fragment.evidenceId,
       pageNumber: fragment.pageNumber,
       pageHeading: fragment.pageHeading,
+      menuPathFromPrintedTable: fragment.menuPath || "",
       officialManualText: fragment.evidenceText,
     };
   });
@@ -15335,12 +15354,15 @@ function callManualPageRag_(
     "你是三星台灣電腦螢幕官方手冊證據整理器。",
     "只能依輸入的 officialManualText 回答，不可用常識、其他型號或自行搜尋。",
     "每個 supportedAnswer 只能綁一個 evidenceId；頁碼與原文會由程式回填，你不要把頁碼寫進答案。",
-    "問『怎麼開／在哪裡』時，必須回到具體選單入口；只有開啟後的說明不算完成。",
+    "操作題須回答步驟／選單路徑，不重複功能用途。選單章節標題＋設定項目＋開關說明已構成入口，寫成『章節 → 項目』；不另猜首頁步驟。只有啟動後的說明不算完成。",
     "若使用者用詞不在手冊片段，但片段有能完成相同目的的入口，supportedAnswer 必須以『官方手冊中可查到的相近操作是「手冊實際名稱」：』開頭；不可宣稱兩者完全等同。",
     "只回簡潔、自然的繁體中文。沒有直接證據就 found=false，不得猜測。",
   ].join("\n");
   const userPayload = {
     model: plan.model,
+    manualModelBindingVerified: Boolean(plan.revisionVerified),
+    documentRole: "官方使用手冊；型號綁定已由程式核對，段落內其他型號限定仍須遵守",
+    answerShape: isManualActionPathQuestion_(question) ? "menu_path_or_steps" : "fact_or_conditions",
     question: stripInternalRoutingHints_(question),
     capabilityConfirmedByOfficialRule: localCapabilityAnchor || "",
     evidenceCandidates: fragments,
@@ -15414,6 +15436,10 @@ function callManualPageRag_(
       question,
       knownRuleAnswer,
     );
+    try {
+      const coverageAudit = JSON.parse(joinedText);
+      writeLog(`[Manual Coverage] coverage=${coverageAudit.coverage} unresolved=${String(coverageAudit.unresolvedQuestion || "").slice(0, 240)}`);
+    } catch (error) { /* The normal structured validator records parse errors. */ }
     writeLog(
       `[Manual Page RAG] model=${plan.model} group=${plan.groupId} pages=${plan.fragments.map(function (fragment) { return fragment.pageNumber; }).join(",")} latencyMs=${Date.now() - startedAt}`,
     );
@@ -18739,6 +18765,14 @@ function isSafeSamsungTwManualDownload_(value) {
   );
 }
 
+function isFullUserManualCandidate_(manual) {
+  const label = `${String((manual && manual.description) || "")} ${String((manual && manual.fileName) || "")}`;
+  // UM is a download category, not proof of document role. Samsung also
+  // labels Product Guides as UM; newer packaging sheets must not replace the
+  // actual operating manual solely because their publication date is newer.
+  return !/(?:^|[_\s])(?:WPG|PG|QSG|QSGM)(?:_|-|\s)|PRODUCT\s*GUIDE|QUICK\s*(?:START|SETUP)|產品指南|快速(?:入門|安裝)/i.test(label);
+}
+
 function discoverOfficialTwManualCandidate_(product) {
   const fullSku = String((product && product.model) || "")
     .trim()
@@ -18797,6 +18831,7 @@ function discoverOfficialTwManualCandidate_(product) {
       });
       return (
         String((manual && manual.contentsTypeCode) || "").toUpperCase() === "UM" &&
+        isFullUserManualCandidate_(manual) &&
         Boolean(getValidatedOfficialManualPackageType_(manual)) &&
         Number(manual.languagePriority) >= 0 &&
         isTaiwan &&
@@ -19933,6 +19968,7 @@ function readPdfModelIndexForCoverage_() {
 function hasOfficialManualForModel_(model) {
   const normalizedModel = normalizeModelForDisplay(model);
   if (!normalizedModel) return false;
+  if (typeof hasReadyManualIndexForModel_ === "function" && hasReadyManualIndexForModel_(normalizedModel)) return true;
   return readPdfModelIndexForCoverage_().some(function (pdfModel) {
     return isPdfModelTokenMatch_(pdfModel, normalizedModel);
   });

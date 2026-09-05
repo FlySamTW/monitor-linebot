@@ -4,7 +4,9 @@
     {
       "docKey": "M7_CM703_SUPPORT_MANUAL_2510220",
       "sourceFileName": "new/S32CM703.pdf",
-      "models": ["S32CM703UC"],
+      "models": [
+        "S32CM703UC"
+      ],
       "canary": false,
       "documentRole": "support_page_shared_user_manual",
       "modelBinding": "official_support_page",
@@ -21,7 +23,9 @@
     {
       "docKey": "G80SD_DG802_SUPPORT_MANUAL_2510220",
       "sourceFileName": "new/S32DG802.pdf",
-      "models": ["S32DG802SC"],
+      "models": [
+        "S32DG802SC"
+      ],
       "canary": false,
       "documentRole": "support_page_shared_user_manual",
       "modelBinding": "official_support_page",
@@ -38,7 +42,10 @@
     {
       "docKey": "S33GF_F332_SUPPORT_MANUAL_250711",
       "sourceFileName": "new/S24F332.pdf",
-      "models": ["S24F332EA", "S24F332EAC"],
+      "models": [
+        "S24F332EA",
+        "S24F332EAC"
+      ],
       "canary": false,
       "documentRole": "support_page_shared_user_manual",
       "modelBinding": "official_support_page_family_pattern",
@@ -55,7 +62,9 @@
     {
       "docKey": "G95SD_SUPPORT_EMANUAL_2312130",
       "sourceFileName": "new/S49DG952.pdf",
-      "models": ["S49DG952SC"],
+      "models": [
+        "S49DG952SC"
+      ],
       "canary": false,
       "documentRole": "support_page_shared_emanual",
       "modelBinding": "official_support_page_archive_entry",
@@ -74,7 +83,11 @@
     {
       "docKey": "M8_FM70X_FM803",
       "sourceFileName": "S32FM702,S32FM703,S32FM803.pdf",
-      "models": ["S32FM702UC", "S32FM703UC", "S32FM803UC"],
+      "models": [
+        "S32FM702UC",
+        "S32FM703UC",
+        "S32FM803UC"
+      ],
       "canary": true,
       "sourceFormat": "pdf",
       "sourcePdfSha256": "616AA64F4E092145FFF926A63ECB703F0E252DD6B1269AB3B5735B5ACB56503E"
@@ -96,6 +109,1555 @@
       "canary": true,
       "sourceFormat": "pdf",
       "sourcePdfSha256": "92E0E5DDEFF984B1CDE422143A0EE71A3265E3B31AFE37B84893223CF8B94CF2"
+    },
+    {
+      "docKey": "COVER_0951A16692707D00",
+      "sourceFileName": "C24T550,C27T550,C32T550.pdf",
+      "models": [
+        "C24T550FDC",
+        "C27T550FDC",
+        "C32T550FDC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "0951A16692707D0050D64544514C9A915E1BBA0E9164CE7F22B6DA94D8B4312D",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "C24T550FDC",
+        "C27T550FDC",
+        "C32T550FDC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_0A127ADFC774872A",
+      "sourceFileName": "S27D362.pdf",
+      "models": [
+        "S24D362GAC",
+        "S27D362GAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "0A127ADFC774872A2573CEB747F785B1681025FA813D180C2B0CCC403FF8C3D9",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24D362GAC",
+        "S24D368GAC",
+        "S27D362GAC",
+        "S27D368GAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_2345589615465A28",
+      "sourceFileName": "new/S49A950.pdf",
+      "models": [
+        "S49A950UIC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "2345589615465A28B3FC1F973FBBFFA5AD183939C50AA32037D46FFD6807640C",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S49A950UIC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_2691EC3DB29183C9",
+      "sourceFileName": "S27DG602,S27DG612,S27FG502,S27FG602,S27FG606,S27FG706,S27FG812,S27FG900,S32FG502,S32FG812,S37FG752,S40FG752.pdf",
+      "models": [
+        "S27DG612SC",
+        "S27FG502EC",
+        "S27FG502SC",
+        "S27FG602SC",
+        "S27FG606EC",
+        "S27FG706EC",
+        "S27FG812SC",
+        "S27FG900XC",
+        "S32FG502EC",
+        "S32FG812SC",
+        "S37FG752EC",
+        "S40FG752EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "2691EC3DB29183C90B5214E390F219C12065A2ED79261559083C1158A485F686",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27DG602SC",
+        "S27DG612SC",
+        "S27FG502EC",
+        "S27FG502SC",
+        "S27FG602SC",
+        "S27FG606EC",
+        "S27FG706EC",
+        "S27FG812SC",
+        "S27FG900XC",
+        "S32FG502EC",
+        "S32FG812SC",
+        "S37FG752EC",
+        "S40FG752EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_2DAD0FC085612BC4",
+      "sourceFileName": "F24T350,F27T350.pdf",
+      "models": [
+        "F24T350FHC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "2DAD0FC085612BC42531765BA74FC15823CC4D61D7AA252BF245C58F0CDA6A92",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "F22T350FHC",
+        "F24T350FHC",
+        "F27T350FHC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_2DEE6B6611178837",
+      "sourceFileName": "new/S49CG954,S49FG916.pdf",
+      "models": [
+        "S49FG916EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "2DEE6B66111788377541F042D9C2999A996A8ACF0F74F2D858814451C8E1FB5F",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S49CG954EC",
+        "S49FG916EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_30A0340AB6ED199E",
+      "sourceFileName": "S27AM500,S32AM500,S32AM700,S32AM703.pdf",
+      "models": [
+        "S24AM506NC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "30A0340AB6ED199E04DF35293ED8DEBEFAB9018330802A0412D70A51F5B2C16B",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24AM506NC",
+        "S27AM500NC",
+        "S32AM500NC",
+        "S32AM700UC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_3B6449CFFE2D5EFF",
+      "sourceFileName": "new/S27FG532.pdf",
+      "models": [
+        "S27FG532EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "3B6449CFFE2D5EFF30CDD89D17149F225673130A5C86D4D79E80E8F09AEB95EB",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27FG532EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_3BCACFF2A55C48FF",
+      "sourceFileName": "C27G55,C32G55.pdf",
+      "models": [
+        "C27G55TQBC",
+        "C32G55TQBC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "3BCACFF2A55C48FF18A24A381DDEEE769B355A09FE1A262F92053636BD73E8E9",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "C27G55TQBC",
+        "C32G55TQBC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_3C4502EEADDA85E4",
+      "sourceFileName": "S24DG302.pdf",
+      "models": [
+        "S24DG302EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "3C4502EEADDA85E40C773142C2C06156925DF3382253250F233EC178ED597B3E",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24DG302EC",
+        "S27DG302EC",
+        "S32DG302EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_53E553DACE6C18D1",
+      "sourceFileName": "F27T450.pdf",
+      "models": [
+        "F27T450FQC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "53E553DACE6C18D1833212A86CCBE386DECC9C5CC873301BC12D9B433C21E2FC",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "F22T450FQC",
+        "F24T450FQC",
+        "F27T450FQC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_592688B882CEF074",
+      "sourceFileName": "S49CG934,S57CG952.pdf",
+      "models": [
+        "S49CG934SC",
+        "S57CG952NC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "592688B882CEF074536FC494AC40870853BE2BB6D8095B9DCE286B3C0509D91B",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S49CG934SC",
+        "S57CG952NC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_74CA10C7F538B4FB",
+      "sourceFileName": "S27BG650,S32BG650.pdf",
+      "models": [
+        "S27BG650EC",
+        "S32BG650EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "74CA10C7F538B4FBCFE91C5815980AFB4A3B9DB043EB2D70EE6672943245E1E6",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27BG650EC",
+        "S28BG700EC",
+        "S32BG650EC",
+        "S32BG700EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_8F2F1B43F3C9D926",
+      "sourceFileName": "new/S22D300,S22D400,S24D300,S24D400,S27D300,S27D400.pdf",
+      "models": [
+        "S22D400GAC",
+        "S24D300GAC",
+        "S24D400GAC",
+        "S27D300GAC",
+        "S27D400GAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "8F2F1B43F3C9D9263795F5EFE53C34727B0A6B64E9CDAB8FE489960B3BEEFC71",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S22D300GAC",
+        "S22D400GAC",
+        "S24D300GAC",
+        "S24D400GAC",
+        "S27D300GAC",
+        "S27D400GAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_9CB6E4F653D32A0F",
+      "sourceFileName": "S32BG750,S32BG850.pdf",
+      "models": [
+        "S32BG750NC",
+        "S32BG850NC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "9CB6E4F653D32A0FD2E755804ECAAC33D9FE7F3C9C227E433D0F4EC38C0C304C",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S32BG750NC",
+        "S32BG850NC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_9CCD278CC9278AF0",
+      "sourceFileName": "verified/d859a5bc98ff146f/S27H704,S27H802,S32H704,S32H802,S40H850.pdf",
+      "models": [
+        "S27H704EAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "D859A5BC98FF146F9FC19C5AE0EB565B328C701AC37EADBE7255CFF910D03D4A",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27H704EAC",
+        "S27H802EFA",
+        "S27H802UAC",
+        "S32H704EAC",
+        "S32H802UAC",
+        "S40H850TAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_A33C6DD3FD0E489F",
+      "sourceFileName": "S27C390,S32C390.pdf",
+      "models": [
+        "S27C390EAC",
+        "S32C390EAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "A33C6DD3FD0E489F89EA23E331471C5E1A67A84850429BBAFE2C79216DA24EF4",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27C390EAC",
+        "S32C390EAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_ACB0FBD26BB586A4",
+      "sourceFileName": "S24A600,S27A600.pdf",
+      "models": [
+        "S24A600NAC",
+        "S27A600NAC",
+        "S27A600NWC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "ACB0FBD26BB586A4CBB711431A2A330B926F16436C8AA14FF0F9C07518C275B0",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24A600NAC",
+        "S24A600NWC",
+        "S27A600NAC",
+        "S27A600NWC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_AD1F574B3CB3FBFA",
+      "sourceFileName": "new/S27A800.pdf",
+      "models": [
+        "S27A800UJC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "AD1F574B3CB3FBFA731E5B19F3831EB62744ED3E0107733083AE9E2B7C01372A",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27A800UJC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_B05F08E6E653028B",
+      "sourceFileName": "S34BG850.pdf",
+      "models": [
+        "S34BG850SC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "B05F08E6E653028BA9B0DD8F32F064474C0592B3280587FD025E859C9F83908D",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S34BG850SC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_B2C52621DE59946A",
+      "sourceFileName": "S24AG320.pdf",
+      "models": [
+        "S24AG320NC",
+        "S27AG320NC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "B2C52621DE59946A316EE346465CB2B0001A02536BF29FF1FBC1CEB536791124",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": false,
+      "coverPatterns": [
+        "S24AG32*",
+        "S27AG32*",
+        "S32AG32*"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_B742EFD74C72F36D",
+      "sourceFileName": "S27CG552,S27DG502,S32CG552,S32DG502.pdf",
+      "models": [
+        "S27CG552EC",
+        "S27DG502EC",
+        "S32CG552EC",
+        "S32DG502EC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "B742EFD74C72F36D0F1B36486A9FE68FF2F3EA68A516B4B3D79A4C7DA3DAEBF6",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27CG552EC",
+        "S27DG502EC",
+        "S32CG552EC",
+        "S32DG502EC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_C761EC7CC1008058",
+      "sourceFileName": "C27R50,C32R50.pdf",
+      "models": [
+        "C27R500FHC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "C761EC7CC100805829A1B5ECF01FD610F0A98F682A252654F141D43175791C95",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": false,
+      "coverPatterns": [
+        "C27R50*",
+        "C32R50*"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_CAE1DDEABDF7F854",
+      "sourceFileName": "new/S34A650.pdf",
+      "models": [
+        "S34A650UBC",
+        "S34A650UXC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "CAE1DDEABDF7F854410BD96DAC80B701A755282D349BE81DA7CC17949B4E3C44",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S34A650UBC",
+        "S34A650UXC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_CCCA0DC058CF22FF",
+      "sourceFileName": "new/S24C360,S24C366,S27C360,S27C366.pdf",
+      "models": [
+        "S24C366EAC",
+        "S27C366EAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "CCCA0DC058CF22FF3F8C866B3531F5EF7C5E63119F9973D6BD80D729330557FD",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24C360EAC",
+        "S24C366EAC",
+        "S27C360EAC",
+        "S27C366EAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_CD81CEF95EB0839A",
+      "sourceFileName": "S24C310,S27C310.pdf",
+      "models": [
+        "S24C310EAC",
+        "S27C310EAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "CD81CEF95EB0839A673974DD9AE62E4D98834C1F7B83EDCDCF50861B2E71A996",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S22C310EAC",
+        "S24C310EAC",
+        "S27C310EAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_D969B48D60C57C90",
+      "sourceFileName": "S27C900.pdf",
+      "models": [
+        "S27C900PAC",
+        "S27CM500EC",
+        "S27CM501EC",
+        "S27CM703UC",
+        "S32CM801UC",
+        "S32CM80BUC",
+        "S32CM80GUC",
+        "S32CM80PUC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "D969B48D60C57C902B151780F7AD5DF8F18DFDE64639BA59BB65F1D0457EF81D",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27C900PAC",
+        "S27CM500EC",
+        "S27CM501EC",
+        "S27CM701UC",
+        "S27CM703UC",
+        "S27CM801UC",
+        "S27CM80BUC",
+        "S27CM80GUC",
+        "S27CM80PUC",
+        "S32CM500EC",
+        "S32CM501EC",
+        "S32CM701UC",
+        "S32CM703UC",
+        "S32CM801UC",
+        "S32CM80BUC",
+        "S32CM80GUC",
+        "S32CM80PUC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_DA129B2269347030",
+      "sourceFileName": "new/S49C950.pdf",
+      "models": [
+        "S49C950UAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "DA129B226934703010BD8843531A6C03943298113CEF64287913D62D76323695",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S49C950UAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_DBCC822847D81EC8",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S37D702EAC",
+        "S37D802UAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S24D604UAC",
+        "S24D606EAC",
+        "S27D602EAC",
+        "S27D606UAC",
+        "S27D706EAC",
+        "S27D806UAC",
+        "S32D606EAC",
+        "S32D606UAC",
+        "S32D702EBC",
+        "S32D706EAC",
+        "S32D707EAC",
+        "S32D800UBC",
+        "S32D806UAC",
+        "S37D702EAC",
+        "S37D802EAC",
+        "S37D802UAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_DF61903493146E4E",
+      "sourceFileName": "S27A700,S32A700.pdf",
+      "models": [
+        "S27A700NWC",
+        "S32A700NWC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "DF61903493146E4E3317B40DCC79FC769B24B6CDCD3F41EDEBA36B7E1F81A06E",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27A700NWC",
+        "S32A700NWC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_E526A6FA0EE3B17C",
+      "sourceFileName": "S27B610.pdf",
+      "models": [
+        "S27B610EQC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "E526A6FA0EE3B17C68CAED9F1C146921EE6D7C826691B1CB80AC72A57E9A8DEE",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": false,
+      "coverPatterns": [
+        "S27B61*"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_E84F12499A378304",
+      "sourceFileName": "C27G55,C32G55,C34G55.pdf",
+      "models": [
+        "C34G55TWWC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "E84F12499A378304D8E000A762784CF6EE986AA1BAC6F6456AC8709BB467A7CA",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "C27G54TQWC",
+        "C27G55TQWC",
+        "C32G54TQWC",
+        "C32G55TQWC",
+        "C34G54TWWC",
+        "C34G55TWWC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_F1485F9CA73C99FB",
+      "sourceFileName": "new/S34C652.pdf",
+      "models": [
+        "S34C652UAC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "F1485F9CA73C99FB54B6E2AD1076396B1B771B0AE361F8CE45099CD4CCAC3D8F",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S34C652UAC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "COVER_F4FDEF1988D5572A",
+      "sourceFileName": "new/S27AG500,S28AG700,S32AG500,S49AG950.pdf",
+      "models": [
+        "S27AG500NC",
+        "S28AG700NC",
+        "S32AG500PC",
+        "S49AG950NC"
+      ],
+      "sourceFormat": "pdf",
+      "sourcePdfSha256": "F4FDEF1988D5572A008DB8FBA98E5B2D05E521A7D55105252A4440D3B175252F",
+      "documentRole": "user_manual",
+      "modelBinding": "pdf_first_page",
+      "exactModelInDocument": true,
+      "coverPatterns": [
+        "S27AG500NC",
+        "S28AG700NC",
+        "S32AG500PC",
+        "S49AG950NC"
+      ],
+      "bindingPolicy": "unique_printed_cover_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S24D604UAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S24D604UAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS24D604UACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S24D604UAC&CttFileID=10080516&CDCttType=UM&VPath=UM%2F202502%2F20250222034908001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080516",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S24D606EAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S24D606EAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS24D606EACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S24D606EAC&CttFileID=10080517&CDCttType=UM&VPath=UM%2F202502%2F20250222034910001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080517",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27BM500EC",
+      "sourceFileName": "new/S27BM500,S32BM80,S32BM702,S32BM703,S32BM801,S43BM700.pdf",
+      "models": [
+        "S27BM500EC"
+      ],
+      "sourcePdfSha256": "517BD9CC8FA1D071BE45B3443EB2F48559A627067F546AB51955336FF05B0B71",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-03_WEB_M50B M70B M80B_ZW_TPE_220526.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27BM500ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27BM500EC&CttFileID=8633241&CDCttType=UM&VPath=UM%2F202205%2F20220529035454001%2FBN81-22479F-03_WEB_M50B+M70B+M80B_ZW_TPE_220526.0.pdf",
+      "fileId": "8633241",
+      "fileVersion": "2205260",
+      "publishedAt": "2022-05-28",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27D606UAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S27D606UAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27D606UACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27D606UAC&CttFileID=10080549&CDCttType=UM&VPath=UM%2F202502%2F20250222035002001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080549",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27D706EAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S27D706EAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27D706EACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27D706EAC&CttFileID=10080809&CDCttType=UM&VPath=UM%2F202502%2F20250222035710001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080809",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27D806UAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S27D806UAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27D806UACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27D806UAC&CttFileID=10080419&CDCttType=UM&VPath=UM%2F202502%2F20250222034614001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080419",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27DG602SC",
+      "sourceFileName": "verified/5aebd02d2ea8ba63/S27DG602.pdf",
+      "models": [
+        "S27DG602SC"
+      ],
+      "sourcePdfSha256": "5AEBD02D2EA8BA6317559AA3967F2BE71F5506EC3920BBAC25A9E414A9EA81E0",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25880F-01_WUG_G60SD_ZW_TPE_250228.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27DG602SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27DG602SC&CttFileID=10095349&CDCttType=UM&VPath=UM%2F202503%2F20250306043012001%2FBN81-25880F-01_WUG_G60SD_ZW_TPE_250228.0.pdf",
+      "fileId": "10095349",
+      "fileVersion": "2502280",
+      "publishedAt": "2025-03-05",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27DM502EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S27DM502EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27DM502ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27DM502EC&CttFileID=11234265&CDCttType=UM&VPath=UM%2F202601%2F20260117041133001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11234265",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27FM500EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S27FM500EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27FM500ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27FM500EC&CttFileID=11246290&CDCttType=UM&VPath=UM%2F202601%2F20260117121946001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11246290",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S27FM501EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S27FM501EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS27FM501ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S27FM501EC&CttFileID=11244671&CDCttType=UM&VPath=UM%2F202601%2F20260117111309001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11244671",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S28BG700EC",
+      "sourceFileName": "S32BG700,S34BG850,S43CG700.pdf",
+      "models": [
+        "S28BG700EC"
+      ],
+      "sourcePdfSha256": "11B8A40765AD61DABB21EDE2890DD3B52AD4D62E904110CB10B35541A3EC8893",
+      "sourceFormat": "zip_entry_pdf",
+      "sourceArtifactName": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_L36_231117.0.zip",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS28BG700ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S28BG700EC&CttFileID=9492131&CDCttType=UM&VPath=UM%2F202402%2F20240215075350001%2FBN81-22478B-480_EM_SMGDVBEUB_EU+ASIA+AFRICA_L36_231117.0.zip",
+      "fileId": "9492131",
+      "fileVersion": "2311170",
+      "publishedAt": "2024-02-14",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page_archive_entry",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false,
+      "archiveEntry": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_TPE_231117.0.pdf",
+      "archiveSha256": "A7B6C88AFCCDD92885358076AE4F1ABE337D428B48DB2D70D9FDC51E97D5CFC0"
+    },
+    {
+      "docKey": "TW_S32BG700EC",
+      "sourceFileName": "S32BG700,S34BG850,S43CG700.pdf",
+      "models": [
+        "S32BG700EC"
+      ],
+      "sourcePdfSha256": "11B8A40765AD61DABB21EDE2890DD3B52AD4D62E904110CB10B35541A3EC8893",
+      "sourceFormat": "zip_entry_pdf",
+      "sourceArtifactName": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_L36_231117.0.zip",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BG700ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BG700EC&CttFileID=9492131&CDCttType=UM&VPath=UM%2F202402%2F20240215075350001%2FBN81-22478B-480_EM_SMGDVBEUB_EU+ASIA+AFRICA_L36_231117.0.zip",
+      "fileId": "9492131",
+      "fileVersion": "2311170",
+      "publishedAt": "2024-02-14",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page_archive_entry",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false,
+      "archiveEntry": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_TPE_231117.0.pdf",
+      "archiveSha256": "A7B6C88AFCCDD92885358076AE4F1ABE337D428B48DB2D70D9FDC51E97D5CFC0"
+    },
+    {
+      "docKey": "TW_S32BM702UC",
+      "sourceFileName": "new/S27BM500,S32BM80,S32BM702,S32BM703,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM702UC"
+      ],
+      "sourcePdfSha256": "517BD9CC8FA1D071BE45B3443EB2F48559A627067F546AB51955336FF05B0B71",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-03_WEB_M50B M70B M80B_ZW_TPE_220526.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM702UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM702UC&CttFileID=8633196&CDCttType=UM&VPath=UM%2F202205%2F20220529035332001%2FBN81-22479F-03_WEB_M50B+M70B+M80B_ZW_TPE_220526.0.pdf",
+      "fileId": "8633196",
+      "fileVersion": "2205260",
+      "publishedAt": "2022-05-28",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32BM703UC",
+      "sourceFileName": "new/S27BM500,S32BM80,S32BM702,S32BM703,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM703UC"
+      ],
+      "sourcePdfSha256": "517BD9CC8FA1D071BE45B3443EB2F48559A627067F546AB51955336FF05B0B71",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-03_WEB_M50B M70B M80B_ZW_TPE_220526.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM703UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM703UC&CttFileID=8633211&CDCttType=UM&VPath=UM%2F202205%2F20220529035355001%2FBN81-22479F-03_WEB_M50B+M70B+M80B_ZW_TPE_220526.0.pdf",
+      "fileId": "8633211",
+      "fileVersion": "2205260",
+      "publishedAt": "2022-05-28",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32BM801UC",
+      "sourceFileName": "S27BM500,S32BM702,S32BM703,S32BM80,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM801UC"
+      ],
+      "sourcePdfSha256": "6CD94E2DE777D7565C1CD220EF30B50CBFA30ACFFCC6419E5CD4550298CB3B84",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM801UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM801UC&CttFileID=8567148&CDCttType=UM&VPath=UM%2F202204%2F20220407162802148%2FBN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "fileId": "8567148",
+      "fileVersion": "1.0",
+      "publishedAt": "2022-04-06",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32BM80BUC",
+      "sourceFileName": "S27BM500,S32BM702,S32BM703,S32BM80,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM80BUC"
+      ],
+      "sourcePdfSha256": "6CD94E2DE777D7565C1CD220EF30B50CBFA30ACFFCC6419E5CD4550298CB3B84",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM80BUCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM80BUC&CttFileID=8567148&CDCttType=UM&VPath=UM%2F202204%2F20220407162802148%2FBN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "fileId": "8567148",
+      "fileVersion": "1.0",
+      "publishedAt": "2022-04-06",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32BM80GUC",
+      "sourceFileName": "S27BM500,S32BM702,S32BM703,S32BM80,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM80GUC"
+      ],
+      "sourcePdfSha256": "6CD94E2DE777D7565C1CD220EF30B50CBFA30ACFFCC6419E5CD4550298CB3B84",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM80GUCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM80GUC&CttFileID=8567148&CDCttType=UM&VPath=UM%2F202204%2F20220407162802148%2FBN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "fileId": "8567148",
+      "fileVersion": "1.0",
+      "publishedAt": "2022-04-06",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32BM80PUC",
+      "sourceFileName": "S27BM500,S32BM702,S32BM703,S32BM80,S32BM801,S43BM700.pdf",
+      "models": [
+        "S32BM80PUC"
+      ],
+      "sourcePdfSha256": "6CD94E2DE777D7565C1CD220EF30B50CBFA30ACFFCC6419E5CD4550298CB3B84",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32BM80PUCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32BM80PUC&CttFileID=8567148&CDCttType=UM&VPath=UM%2F202204%2F20220407162802148%2FBN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "fileId": "8567148",
+      "fileVersion": "1.0",
+      "publishedAt": "2022-04-06",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32D606UAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S32D606UAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32D606UACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32D606UAC&CttFileID=10080420&CDCttType=UM&VPath=UM%2F202502%2F20250222034616001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080420",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32D706EAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S32D706EAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32D706EACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32D706EAC&CttFileID=10080630&CDCttType=UM&VPath=UM%2F202502%2F20250222035213001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080630",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32D707EAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S32D707EAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32D707EACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32D707EAC&CttFileID=10080493&CDCttType=UM&VPath=UM%2F202502%2F20250222034828001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080493",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32D806UAC",
+      "sourceFileName": "new/S24D604,S24D606,S27D602,S27D606,S27D706,S27D806,S32D606,S32D702,S32D706,S32D707,S32D800,S32D806,S37D702,S37D802.pdf",
+      "models": [
+        "S32D806UAC"
+      ],
+      "sourcePdfSha256": "DBCC822847D81EC88604CAB3673F21CD9DDDFD3DDF12B7838385AB03600603C6",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25930F-03_WUG_S60D S60UD S70D S80UD_ZW_TPE_250219.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32D806UACXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32D806UAC&CttFileID=10080674&CDCttType=UM&VPath=UM%2F202502%2F20250222035324001%2FBN81-25930F-03_WUG_S60D+S60UD+S70D+S80UD_ZW_TPE_250219.0.pdf",
+      "fileId": "10080674",
+      "fileVersion": "2502190",
+      "publishedAt": "2025-02-21",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32DG702EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32DG702EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32DG702ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32DG702EC&CttFileID=11244786&CDCttType=UM&VPath=UM%2F202601%2F20260117111756001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11244786",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32DM702UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32DM702UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32DM702UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32DM702UC&CttFileID=11246289&CDCttType=UM&VPath=UM%2F202601%2F20260117121943001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11246289",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32DM703UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32DM703UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32DM703UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32DM703UC&CttFileID=11237174&CDCttType=UM&VPath=UM%2F202601%2F20260117060913001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11237174",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32DM803UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32DM803UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32DM803UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32DM803UC&CttFileID=11239807&CDCttType=UM&VPath=UM%2F202601%2F20260117075603001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11239807",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32FM500EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32FM500EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32FM500ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32FM500EC&CttFileID=11237724&CDCttType=UM&VPath=UM%2F202601%2F20260117063138001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11237724",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S32FM501EC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S32FM501EC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS32FM501ECXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32FM501EC&CttFileID=11241083&CDCttType=UM&VPath=UM%2F202601%2F20260117084732001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11241083",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S34DG852SC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S34DG852SC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS34DG852SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S34DG852SC&CttFileID=11240248&CDCttType=UM&VPath=UM%2F202601%2F20260117081344001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11240248",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S43BM700UC",
+      "sourceFileName": "S27BM500,S32BM702,S32BM703,S32BM80,S32BM801,S43BM700.pdf",
+      "models": [
+        "S43BM700UC"
+      ],
+      "sourcePdfSha256": "6CD94E2DE777D7565C1CD220EF30B50CBFA30ACFFCC6419E5CD4550298CB3B84",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43BM700UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43BM700UC&CttFileID=8567148&CDCttType=UM&VPath=UM%2F202204%2F20220407162802148%2FBN81-22479F-00_WEB_M50B_M70B_M80B_ZW_TPE_220218.0.pdf",
+      "fileId": "8567148",
+      "fileVersion": "1.0",
+      "publishedAt": "2022-04-06",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S43CG700NC",
+      "sourceFileName": "S32BG700,S34BG850,S43CG700.pdf",
+      "models": [
+        "S43CG700NC"
+      ],
+      "sourcePdfSha256": "11B8A40765AD61DABB21EDE2890DD3B52AD4D62E904110CB10B35541A3EC8893",
+      "sourceFormat": "zip_entry_pdf",
+      "sourceArtifactName": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_L36_231117.0.zip",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43CG700NCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43CG700NC&CttFileID=9492348&CDCttType=UM&VPath=UM%2F202402%2F20240215085505001%2FBN81-22478B-480_EM_SMGDVBEUB_EU+ASIA+AFRICA_L36_231117.0.zip",
+      "fileId": "9492348",
+      "fileVersion": "2311170",
+      "publishedAt": "2024-02-14",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page_archive_entry",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false,
+      "archiveEntry": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_TPE_231117.0.pdf",
+      "archiveSha256": "A7B6C88AFCCDD92885358076AE4F1ABE337D428B48DB2D70D9FDC51E97D5CFC0"
+    },
+    {
+      "docKey": "TW_S43DM702UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S43DM702UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43DM702UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43DM702UC&CttFileID=11240965&CDCttType=UM&VPath=UM%2F202601%2F20260117084247001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11240965",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S43DM703UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S43DM703UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43DM703UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43DM703UC&CttFileID=11242239&CDCttType=UM&VPath=UM%2F202601%2F20260117093359001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11242239",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S43FM702UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S43FM702UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43FM702UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43FM702UC&CttFileID=11242640&CDCttType=UM&VPath=UM%2F202601%2F20260117095020001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11242640",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S43FM703UC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S43FM703UC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS43FM703UCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S43FM703UC&CttFileID=11236119&CDCttType=UM&VPath=UM%2F202601%2F20260117052628001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11236119",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S49CG954SC",
+      "sourceFileName": "new/S32CM703.pdf",
+      "models": [
+        "S49CG954SC"
+      ],
+      "sourcePdfSha256": "F6973810B4E9199EEFC50B3D9651360C08A03205D67A65FF6D5BCABDCAFCDC0C",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS49CG954SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S49CG954SC&CttFileID=11237327&CDCttType=UM&VPath=UM%2F202601%2F20260117061527001%2FBN81-27566B-650_EUG_SMGROPEUF_EU-ASIA-AFRICA_TPE_251022.0.pdf",
+      "fileId": "11237327",
+      "fileVersion": "2510220",
+      "publishedAt": "2026-01-16",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S49DG932SC",
+      "sourceFileName": "verified/e51c28f95ab43c60/S49CG934,S49DG912,S49DG932,S57CG952.pdf",
+      "models": [
+        "S49DG932SC"
+      ],
+      "sourcePdfSha256": "E51C28F95AB43C607BB10287AC020304DB77882007724689E1ECCDBFFA7AA1F3",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-26440G-00_WUG_G95NC G93SC G93SD G91SD_ZW_TPE_240927.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS49DG932SCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S49DG932SC&CttFileID=9905639&CDCttType=UM&VPath=UM%2F202410%2F20241009035023001%2FBN81-26440G-00_WUG_G95NC+G93SC+G93SD+G91SD_ZW_TPE_240927.0.pdf",
+      "fileId": "9905639",
+      "fileVersion": "2409270",
+      "publishedAt": "2024-10-08",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_S55BG970NC",
+      "sourceFileName": "S32BG700,S34BG850,S43CG700.pdf",
+      "models": [
+        "S55BG970NC"
+      ],
+      "sourcePdfSha256": "11B8A40765AD61DABB21EDE2890DD3B52AD4D62E904110CB10B35541A3EC8893",
+      "sourceFormat": "zip_entry_pdf",
+      "sourceArtifactName": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_L36_231117.0.zip",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS55BG970NCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S55BG970NC&CttFileID=9492938&CDCttType=UM&VPath=UM%2F202402%2F20240215113819001%2FBN81-22478B-480_EM_SMGDVBEUB_EU+ASIA+AFRICA_L36_231117.0.zip",
+      "fileId": "9492938",
+      "fileVersion": "2311170",
+      "publishedAt": "2024-02-14",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page_archive_entry",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false,
+      "archiveEntry": "BN81-22478B-480_EM_SMGDVBEUB_EU ASIA AFRICA_TPE_231117.0.pdf",
+      "archiveSha256": "A7B6C88AFCCDD92885358076AE4F1ABE337D428B48DB2D70D9FDC51E97D5CFC0"
+    },
+    {
+      "docKey": "TW_S55CG970NC",
+      "sourceFileName": "verified/977170743bacadc5/S55CG970.pdf",
+      "models": [
+        "S55CG970NC"
+      ],
+      "sourcePdfSha256": "977170743BACADC5E7C6313ED2712C6F715A73E7D3B7699B1E8C09308D9E363E",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN81-25142F-00_WEB_G97NC_ZW_TPE_230927.0.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LS55CG970NCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S55CG970NC&CttFileID=9355747&CDCttType=UM&VPath=UM%2F202311%2F20231103180038962%2FBN81-25142F-00_WEB_G97NC_ZW_TPE_230927.0.pdf",
+      "fileId": "9355747",
+      "fileVersion": "2309270",
+      "publishedAt": "2023-11-03",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_U32R590CWC",
+      "sourceFileName": "verified/0de752be9841022b/U32R590,U32R592,U32R594.pdf",
+      "models": [
+        "U32R590CWC"
+      ],
+      "sourcePdfSha256": "0DE752BE9841022B0ADD8D0943584833AFAA69366072FCA36F377CB6BAEB90FD",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN46-00937A-TC.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LU32R590CWCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=U32R590CWC&CttFileID=7260253&CDCttType=UM&VPath=UM%2F201903%2F20190327135526906%2FBN46-00937A-TC.pdf",
+      "fileId": "7260253",
+      "fileVersion": "1.0",
+      "publishedAt": "2019-03-26",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
+    },
+    {
+      "docKey": "TW_U32R591CWC",
+      "sourceFileName": "verified/52e1a7ebc71ed53b/U32R590,U32R591,U32R592,U32R594.pdf",
+      "models": [
+        "U32R591CWC"
+      ],
+      "sourcePdfSha256": "52E1A7EBC71ED53B23CF5390FC49E73C0D1BE61A4BF008044D5FCF93D0F4AF76",
+      "sourceFormat": "pdf",
+      "sourceArtifactName": "BN46-01061A-TC.pdf",
+      "supportUrl": "https://www.samsung.com/tw/support/model/LU32R591CWCXZW/",
+      "downloadUrl": "https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=U32R591CWC&CttFileID=7425001&CDCttType=UM&VPath=UM%2F201908%2F20190820094845608%2FBN46-01061A-TC.pdf",
+      "fileId": "7425001",
+      "fileVersion": "1.0",
+      "publishedAt": "2019-08-19",
+      "documentRole": "support_page_shared_user_manual",
+      "modelBinding": "official_support_page",
+      "exactModelInDocument": false,
+      "bindingPolicy": "official_tw_support_sha_v1",
+      "canary": false
     }
   ]
 }

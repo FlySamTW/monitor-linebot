@@ -204,6 +204,15 @@ def validate_registry(registry: dict, manual_dir: Path) -> None:
             raise RegistryValidationError(
                 f"{doc_key}: sourcePdfSha256 mismatch; declared={declared_sha}, actual={actual_sha}"
             )
+        if document.get("bindingPolicy") == "unique_printed_cover_v1":
+            from audit_manual_library import PAGE_MODEL, canonical, scope_matches
+            with fitz.open(source_path) as pdf:
+                cover_patterns = sorted(set(PAGE_MODEL.findall(pdf[0].get_text(sort=True).upper())))
+            if cover_patterns != document.get("coverPatterns") or not all(
+                any(scope_matches(p, canonical(m)) for p in cover_patterns)
+                for m in document.get("models", [])
+            ):
+                raise RegistryValidationError(f"{doc_key}: printed cover does not support model binding")
 
         models = document.get("models")
         if not isinstance(models, list) or not models:
@@ -280,12 +289,43 @@ def split_block_text(text: str, max_chars: int = 520) -> list[str]:
     return chunks
 
 
+def order_page_blocks(raw_blocks: list, width: float) -> tuple[list, dict]:
+    """Keep independent columns together; never zip unrelated table rows by y."""
+    middle = width / 2
+    content = [b for b in raw_blocks if str(b[4]).strip() and not re.fullmatch(r"\d+", str(b[4]).strip())]
+    cross = [b for b in content if b[0] < middle - 12 and b[2] > middle + 12 and b[1] > 60]
+    left = [b for b in content if b[2] <= middle + 12]
+    right = [b for b in content if b[0] >= middle - 12]
+    if cross or len(left) < 3 or len(right) < 3:
+        return sorted(raw_blocks, key=lambda b: (round(b[1], 1), round(b[0], 1))), {}
+    headers = [b for b in content if b not in left and b not in right]
+    ordered = sorted(headers, key=lambda b: b[1])
+    sections = {}
+    for column, values in enumerate([left, right]):
+        values = sorted(values, key=lambda b: (round(b[1], 1), round(b[0], 1)))
+        margin = min(b[0] for b in values)
+        section = 0
+        heading = ""
+        for b in values:
+            text = re.sub(r"\s+", " ", str(b[4])).strip()
+            is_heading = len(text) <= 60 and b[3] - b[1] >= 13
+            is_setting_row = bool(re.match(r"^(.{2,50}?)\s+\1(?:\s|$)", text))
+            if b[0] <= margin + 15 and len(text) >= 4 and (is_heading or is_setting_row) and not re.match(r"^(?:[―•\-]|\d|第\s*\d)", text):
+                section += 1
+                if is_heading:
+                    heading = text
+            sections[b[5]] = {"id": f"c{column}s{section}", "heading": heading}
+            ordered.append(b)
+    ordered.extend(b for b in raw_blocks if b not in content)
+    return ordered, sections
+
+
 def extract_pages(pdf_path: Path) -> list[dict]:
     document = fitz.open(pdf_path)
     pages: list[dict] = []
     for page_index in range(document.page_count):
         page = document[page_index]
-        raw_blocks = sorted(page.get_text("blocks"), key=lambda item: (round(item[1], 1), round(item[0], 1)))
+        raw_blocks, layout_sections = order_page_blocks(page.get_text("blocks"), page.rect.width)
         blocks: list[dict] = []
         block_number = 0
         for raw in raw_blocks:
@@ -300,6 +340,7 @@ def extract_pages(pdf_path: Path) -> list[dict]:
                     "text": piece,
                     "normalizedText": normalized,
                     "hash": sha256_bytes(normalized.encode("utf-8")),
+                    **({"layoutSection": layout_sections[raw[5]]} if raw[5] in layout_sections else {}),
                 })
         page_text = "\n".join(block["text"] for block in blocks)
         normalized_page = normalize_text(page_text)
@@ -632,8 +673,9 @@ def build_runtime_fragment(page: dict, group: dict, max_chars: int = 2200) -> di
     }
 
 
-def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dict) -> dict:
+def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dict, external_keys=None) -> dict:
     documents: dict[str, dict] = {}
+    inline_owners = {}
     registry_by_key = {
         str(document["docKey"]): document for document in registry.get("documents", [])
     }
@@ -686,6 +728,20 @@ def build_runtime_catalog(indexes: dict[str, dict], registry: dict, lexicon: dic
                 "data": base64.b64encode(gzip.compress(dump_json_bytes({"lex": index["lex"], "pages": index["pages"]}), compresslevel=9, mtime=0)).decode("ascii"),
             },
         }
+        if doc_key in (external_keys or set()):
+            # Upload and checksum-readback via the editor maintenance action
+            # BEFORE publishing this lean runtime catalog. Missing Drive data
+            # fails closed to the existing PDF path, never to a different PDF.
+            documents[doc_key]["pageIndex"].pop("data")
+            documents[doc_key]["pageIndex"]["storage"] = "drive"
+            documents[doc_key]["groups"] = {}
+        else:
+            packed = documents[doc_key]["pageIndex"]
+            if packed["sha256"] in inline_owners:
+                packed.pop("data")
+                packed["dataRef"] = inline_owners[packed["sha256"]]
+            else:
+                inline_owners[packed["sha256"]] = doc_key
     return {
         "schemaVersion": 1,
         "generatedBy": "tools/build_manual_page_index.py",
@@ -827,6 +883,8 @@ def main() -> int:
     parser.add_argument("--shard-size", type=int, default=40)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--runtime-catalog", type=Path, default=DEFAULT_RUNTIME_CATALOG)
+    parser.add_argument("--external-new-indexes", action="store_true",
+                        help="New cover registrations use verified Drive indexes, not embedded page data")
     args = parser.parse_args()
 
     try:
@@ -878,7 +936,8 @@ def main() -> int:
         if not passed:
             return 1
 
-        runtime_catalog = build_runtime_catalog(indexes, registry, lexicon)
+        external_keys = {d["docKey"] for d in registry["documents"] if d.get("bindingPolicy")} if args.external_new_indexes else set()
+        runtime_catalog = build_runtime_catalog(indexes, registry, lexicon, external_keys)
         staged_runtime_catalog = staging_root / "manual_page_rag_data.gs"
         write_runtime_catalog(staged_runtime_catalog, runtime_catalog)
 

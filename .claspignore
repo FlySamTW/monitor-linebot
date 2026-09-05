@@ -2,6 +2,7 @@
 **/node_modules/**
 test_runner/**
 tools/**
+output/**
 logs/**
 **/*.js
 !linebot.gs

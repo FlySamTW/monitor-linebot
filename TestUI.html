@@ -757,6 +757,12 @@
           <button class="btn" onclick="runReliabilityMaintenance('repair', this)">核對兩份新手冊與頁索引</button>
           <button class="btn" onclick="runReliabilityMaintenance('compare', this)">執行／續跑 File Search 對照</button>
           <button class="btn" onclick="runReliabilityMaintenance('report', this)">讀取驗證報告（不呼叫模型）</button>
+          <button class="btn" onclick="runReliabilityMaintenance('indexes', this)">上傳／續傳已驗證頁索引（零模型）</button>
+          <button class="btn" onclick="runReliabilityMaintenance('library_report', this)">讀取索引啟用與費用報告</button>
+          <label for="manual-index-package">本機已驗證索引匯入包（JSON）</label>
+          <input type="file" id="manual-index-file" accept="application/json,.json" aria-label="選取本機索引包" onchange="loadManualIndexPackageFile(this)">
+          <textarea id="manual-index-package" rows="2" style="width:100%" placeholder="貼上本機產生的索引包；不會呼叫模型"></textarea>
+          <button class="btn" id="manual-index-import" onclick="importManualIndexPackage(this)">匯入／續傳索引包（零模型）</button>
           <label for="reviewed-rule-rows">已審核術語／能力 CSV 資料列</label>
           <textarea id="reviewed-rule-rows" rows="3" style="width:100%"></textarea>
           <button class="btn" onclick="syncReviewedRules(this)">同步資料列並讀回</button>
@@ -831,6 +837,38 @@
           output.textContent = String(error.message || error);
           button.disabled = false;
         }).runReliabilityMaintenanceFromTestUi(action, TEST_UI_ACCESS_TOKEN);
+      }
+      function importManualIndexPackage(button) {
+        const field=document.getElementById('manual-index-package');
+        const output=document.getElementById('reliability-result');
+        let pack;
+        try { pack=JSON.parse(field.value); if(pack.schemaVersion!==1 || !Array.isArray(pack.records)) throw new Error('索引包格式錯誤'); }
+        catch(error) { output.textContent=String(error.message); return; }
+        field.value=''; button.disabled=true;
+        let cursor=0, active=0;
+        function next() {
+          if(cursor>=pack.records.length) { output.textContent=`完成：${active} 筆型號登錄，${cursor} 份索引已讀回驗證；模型呼叫 0。`; button.disabled=false; return; }
+          output.textContent=`正在匯入 ${cursor+1}/${pack.records.length}，已驗證 ${active} 筆登錄；模型呼叫 0。`;
+          google.script.run.withSuccessHandler(function(result) {
+            if(result.failed && result.failed.length) { output.textContent=JSON.stringify(result); button.disabled=false; return; }
+            active+=result.active.length; cursor++; next();
+          }).withFailureHandler(function(error) { output.textContent=String(error.message)+'；已成功項目保留，可重貼索引包續傳。'; button.disabled=false; })
+            .importManualIndexRecordFromTestUi(pack.records[cursor],TEST_UI_ACCESS_TOKEN);
+        }
+        next();
+      }
+      function loadManualIndexPackageFile(input) {
+        const file=input.files && input.files[0];
+        if(!file) return;
+        const output=document.getElementById('reliability-result');
+        if(file.size>25000000) {output.textContent='索引包超過25MB，請分包。'; return;}
+        const reader=new FileReader();
+        reader.onload=function() {
+          document.getElementById('manual-index-package').value=String(reader.result);
+          importManualIndexPackage(document.getElementById('manual-index-import'));
+        };
+        reader.onerror=function() {output.textContent='本機檔案讀取失敗，尚未送出。';};
+        reader.readAsText(file,'utf-8');
       }
       var messageQueue = [];
       var isBotProcessing = false;

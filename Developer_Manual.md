@@ -1,15 +1,15 @@
-# Samsung LINE Bot 開發手冊 — v29.6.304
+# Samsung LINE Bot 開發手冊 — v29.6.305
 
 唯一現行設計契約。**候選程式不等於已發布、已驗收。** 實際進度見 DEVELOPMENT_LOG.md／test_runner/results。此前完整文件保存在 [歷史快照](docs/history/v29.6.302/Developer_Manual.md)，其中舊額度、旁路或模型政策不得重新套回正式服務。
 
-**當次發布狀態：2026-09-05 已以唯一 guarded release 上線 @1485，v29.6.304 [16:15]；local／HEAD／formal health相符。** 50項完整來源整合及受影響Chrome旅程通過；v303手機2個HDMI／65W已送達，v304口語變更的手機證據另記。本批上線不代表全案20旅程或全庫索引已完成；以下事故段落依時間保留，不作當前發布狀態。詳細見[實測與發布紀錄](test_runner/results/v303_live_reliability_20260905.md)。
+**當次發布狀態：2026-09-05 已以唯一 guarded release 上線 @1486，v29.6.305 [17:03]；local／HEAD／formal health相符。** 57項完整來源整合、static／contract及全庫驗證通過；47份索引全部雲端讀回啟用，覆蓋81筆範圍登錄／136型號。Chrome真實供應商複驗G932 PBP、F24護眼、同聊天室切H704自我診斷均有正確手冊路徑，每題1次Lite、零Web／Router。共同驗證費約NT$2.0622（本批約0.4727），未改模型／Prompt／Rich Menu。五個官方來源適用性缺口及全案20旅程、手機LINE驗收不可混稱完成。詳細見[實測與發布紀錄](test_runner/results/v305_manual_library_20260905.md)。
 
 ## 決策原委
 
 給台灣三星螢幕店員的同事型助手，便宜優先兼顧正確與速度。稱呼「你」，可直接說 Sam；只答有來源的產品事實，不求萬能、不用工程術語或重複結論湊內容。
 
 G9 選型後轉護眼、Infinity Core 網搜變 CPU、G95SD 借 Ark 的 Eclipse Lighting、PBP 借全機120Hz、共用 PDF SHA 混版，分別是問題／語義／範圍／關係／資料版本缺口；增加高階模型不能取代這些守門。
-v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改為已核实文件的完整逐頁索引按原題召回，目前產生器登錄6份文件，**不宣稱涵蓋全部 Drive PDF**。
+v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改為已核實文件的完整逐頁索引按原題召回；v305將原6筆／17型號擴為81筆範圍登錄／136完整型號、47份不同PDF。登錄數不等於不同PDF數，也不宣稱剩餘5個資料缺口已解決。正式啟用狀態以本批雲端讀回報告為準。
 
 ## 唯一回答與守門契約
 
@@ -36,7 +36,14 @@ Fast／頁級固定2.5 Flash-Lite，整本PDF／Web固定2.5 Flash；既有條�
 
 - config/manual_registry.json 保存完整型號／料號、文件角色、適用範圍、來源／支援頁、SHA。檔名只辨識：維持無國家碼、型號本體排序逗號命名，不盲刪全部尾字母造成不同款碰撞。
 - tools/build_manual_page_index.py 驗證 SHA 後產生完整 lex/pages。manual_index_runtime.gs 按原題 BM25 查頁，保留標題、表格、步驟與限制。PBP/PIP/多重視窗等 related aliases 只擴召回，不證明等價能力。
+- v305雙欄事故：不能把左右欄依y座標交錯，否則Self Diagnosis會混到別欄／下一列Software Update的機型限定。產生器以實際欄間空隙分欄，再保留設定列、後續步驟及註記為同一layoutSection；檢索回填完整段落，不能只丟欄位名。一般單欄頁維持原路徑。
+- 印出的選單章節＋設定欄位是證據結構，可回填`menuPath`，不可憑空補首頁按鍵。僅當**單一同名操作**、完整型號／原文驗證成立、沒有數值／新增限制／複合主張時，程式可據此判定完成；G8的PBP與多重視窗不能只憑相關名稱套用。模型仍不能偽造頁碼／證據ID。表格接續頁至多回看連續3頁，無明確章節、表格中斷或跨雙欄歧義就不拼接；保留前頁標題及限定原文並列兩頁引用。F24的正確證據為第18頁Picture標題＋第20頁Eye Saver Mode，不能誤作Color選單。
+- 頁級召回使用既有RULE術語的中英別名；名稱不完整時只接受唯一術語匹配，別名只協助找頁，不證明功能相同。G932等RULE唯一實體可直接鎖型號；G8多款仍需必要的選型，不能先花Fast才知道缺型號。
 - ManualRevision 綁 PDF SHA＋indexChecksum。Drive gzip index 讀回 SHA 通過才切 MANUAL_ACTIVE，保留 MANUAL_PREVIOUS；相同 compiled 版提供讀取備援。索引過時回現行受成本限制 PDF，不能混新 PDF／舊頁面。
+- v305新索引存Drive，正式程式僅攜帶型號／SHA／checksum；原6筆保留同版本壓縮備援。同PDF共享內容不能合併型號適用性。匯入JSON只能提供已登錄checksum的壓縮內容，不能指定型號、來源或Drive ID；編輯者/dev及短token雙守門，逐包讀回後才發佈指標，重送復用已驗證檔。編輯者匯入期間滑動續期15分鐘；一般問答token不延長。
+- Chrome文字備援使用package產生的`editor_import_001.json`等每包不超過6MB；不要把全庫13MB持續貼進同一textarea，否則輸入延遲可能超過瀏覽器控制逾時。這是輸入效能限制，不是權限或Gemini錯誤，不應要求Sam重新授權。每批完成再換下一批，正式索引指標不因中途停止而損毀。
+- 維護流程：`audit_manual_library.py`盤點→`resolve_manual_library.py`核對台灣支援頁／官方下載→`build_manual_page_index.py`產生候選→`package_manual_library.py`輸出精簡程式與匯入包→guarded StageOnly→TestUI選取匯入包→讀回與提問→guarded正式發布。新SHA僅重建受影響文件用`refresh_manual_index_candidate.py`；`--resume-doc-key`只適用已確認之前各包成功的續傳。禁止把13MB暫存全庫直接當正式程式；output整個排除clasp。
+- 事故規則：Samsung下載分類UM亦包含Product Guide，較新產品指南不能覆蓋操作手冊。首頁明確型號/實際星號範圍可建立候選，不能靠檔名；多SHA衝突改核對官方支援頁。明確首頁矛盾、DRM非PDF或只有產品指南列缺口，不假裝手冊已可用。2026-09-05 H704本機9CCD舊版被雲端D859阻擋，改取官方D859及新索引，禁止放寬SHA守門。
 - PDF 可查與頁級索引就緒分開。未登錄文件仍走既有 PDF。**尚未完成全 Drive 自動抽頁索引，不得宣稱新 PDF 全自動 RAG 就緒。** 日常使用不需 Sam 手動重啟。
 - promotion 失敗只留 pending，禁止暫存 Gemini URI／新 SHA 覆蓋有效 manifest；備份、讀回、失敗回復；manifest 短鎖，慢同步不持有聊天預算鎖。每日 lease 成功去重，保留已有 daily／4小時 URI 續期 trigger。
 - 模型只選 evidenceId，程式回填頁碼／原文／SHA。驗證型號、家族、原題功能與條件關係；不得因 PBP 與120Hz分別出現就推為每側120Hz。

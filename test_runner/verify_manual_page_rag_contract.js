@@ -265,6 +265,7 @@ callContext.providerFetch_ = (url, options) => {
   return callContext.UrlFetchApp.fetch(url, options);
 };
 vm.createContext(callContext);
+vm.runInContext(extractFunction(linebot, "isManualActionPathQuestion_"), callContext);
 vm.runInContext(extractFunction(linebot, "callManualPageRag_"), callContext);
 const callResult = callContext.callManualPageRag_(
   "G8 的 PBP 怎麼開？",

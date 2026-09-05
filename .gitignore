@@ -12,6 +12,7 @@ __pycache__/
 .playwright-cli/
 output/playwright/
 output/manual_page_index/
+output/manual_library/
 
 # Local OAuth credentials for the manual-index uploader
 .secrets/

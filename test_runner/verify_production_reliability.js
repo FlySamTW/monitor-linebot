@@ -338,4 +338,84 @@ test("完整來源入口：G9選型轉手冊退款，額度耗盡仍免費重播
   assert.strictEqual(jc.readSourceQuota_(cid).manual,2);
 });
 
+test("C/F/U型號地區前綴與S系列共用canonical，不擴大系列猜測", () => {
+  for (const model of ["C24F390FHC", "F24T350FHC", "U32R590CWC", "S32FM703UC"]) {
+    assert.strictEqual(c.normalizeManualEvidenceModel_("L"+model+"XZW"),model);
+    assert.strictEqual(c.normalizeModelForDisplay("L"+model+"XZW"),model);
+    assert.strictEqual(c.extractFullModelLikeTokens('L'+model+' 怎麼開設定')[0],'L'+model);
+    assert.strictEqual(c.resolveTurnProductIdentity_('L'+model+' 怎麼開設定','').model,model);
+  }
+});
+test("UM產品指南不能取代操作手冊", () => {
+  for (const item of [
+    {description:"Product Guide",fileName:"BN81-27691E-02_WPG_M-Series.pdf"},
+    {description:"產品指南",fileName:"new.pdf"},
+    {fileName:"QSG_M7.pdf"},
+  ]) assert.strictEqual(c.isFullUserManualCandidate_(item),false);
+  assert.strictEqual(c.isFullUserManualCandidate_({description:"User Manual",fileName:"BN81_EUG_TPE.pdf"}),true);
+});
+test("Drive頁索引讀回、缺片快取重讀、不同SHA不混用", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context;
+  const key="M8_FM70X_FM803", doc=jc.MANUAL_PAGE_RAG_DATA_.documents[key];
+  const data=jc.compiledManualIndexData_(doc), rev=jc.readManualRevision_(key,doc);
+  let reads=0;
+  jc.DriveApp.getFileById=()=>({getBlob:()=>{reads++; return jc.Utilities.newBlob(jc.Utilities.base64Decode(data),"application/gzip");}});
+  j.properties.set("MANUAL_ACTIVE::"+key,JSON.stringify({...rev,indexFileId:"immutable-1"}));
+  j.cache.set("MANUAL_INDEX_"+rev.indexChecksum,"2");
+  j.cache.set("MANUAL_INDEX_"+rev.indexChecksum+"_0","truncated");
+  assert(jc.loadManualPageIndex_(key,doc,rev).pages.length>100);
+  assert.strictEqual(reads,1); assert.strictEqual(rev.indexStorage,"drive");
+  assert.strictEqual(jc.loadManualPageIndex_(key,doc,rev).pages.length>100,true);
+  assert.strictEqual(reads,1,"request cache must prevent duplicate reads");
+});
+test("外置索引缺檔不冒充已就緒，不借其他文件", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context;
+  const key="M8_FM70X_FM803", doc=jc.MANUAL_PAGE_RAG_DATA_.documents[key];
+  delete doc.pageIndex.data; delete doc.pageIndex.dataRef; doc.pageIndex.storage="drive";
+  assert.strictEqual(jc.findManualPageRagPlan_("藍牙喇叭怎麼連", "S32FM803UC"),null);
+  assert.strictEqual(j.fetches.length,0);
+});
+test("索引上傳讀回失敗保留舊指標，不會半切版", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context;
+  const key="M8_FM70X_FM803", old=JSON.stringify({sha256:"old",indexChecksum:"old",indexFileId:"old-file"});
+  j.properties.set("MANUAL_ACTIVE::"+key,old);
+  jc.Drive={Files:{get:()=>({mimeType:"application/vnd.google-apps.folder",capabilities:{canAddChildren:true}}),create:()=>({id:"bad-upload"})}};
+  jc.DriveApp.getFileById=()=>({getBlob:()=>jc.Utilities.newBlob([1,2,3],"application/gzip")});
+  const result=jc.publishCompiledManualIndexes_(6);
+  assert(result.failed.length>0);
+  assert.strictEqual(j.properties.get("MANUAL_ACTIVE::"+key),old);
+  assert.strictEqual(j.fetches.length,0);
+});
+
+test("索引匯入共用真正授權、雜湊與Drive讀回；重送不新增檔", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context;
+  jc.ScriptApp.getService=()=>({getUrl:()=>"https://example.test/dev"});
+  const token=jc.issueTestUiAccessToken_(), key="M8_FM70X_FM803", doc=jc.MANUAL_PAGE_RAG_DATA_.documents[key];
+  const record={docKeys:[key],sha256:doc.pageIndex.sha256,data:jc.compiledManualIndexData_(doc)};
+  const uploaded=new Map(); let writes=0;
+  jc.Drive={Files:{get:()=>({mimeType:"application/vnd.google-apps.folder",capabilities:{canAddChildren:true}}),
+    create:(_,blob)=>{const id="immutable-"+(++writes); uploaded.set(id,blob); return {id};}}};
+  jc.DriveApp.getFileById=id=>({getBlob:()=>uploaded.get(id)});
+  assert.throws(()=>jc.importManualIndexRecordFromTestUi(record,"bad"),/未授權/);
+  assert.throws(()=>jc.importManualIndexRecordFromTestUi({...record,docKeys:["unknown"]},token),/NOT_REGISTERED/);
+  assert.throws(()=>jc.importManualIndexRecordFromTestUi({...record,data:record.data.slice(0,-10)},token));
+  assert.strictEqual(writes,0);
+  assert.strictEqual(jc.importManualIndexRecordFromTestUi(record,token).active.length,1);
+  assert.strictEqual(jc.importManualIndexRecordFromTestUi(record,token).active.length,1);
+  assert.strictEqual(writes,1);
+  assert.strictEqual(JSON.parse(j.properties.get("MANUAL_ACTIVE::"+key)).sha256,doc.sourcePdfSha256);
+  assert.strictEqual(j.fetches.length,0);
+  jc.ScriptApp.getService=()=>({getUrl:()=>"https://example.test/exec"});
+  assert.throws(()=>jc.importManualIndexRecordFromTestUi(record,token),/編輯者/);
+});
+
+test("RULE唯一不完整代號直接解析，多款系列仍選型且不借舊型號", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context;
+  const single=jc.resolveTurnProductIdentity_("G932如何開啟PBP？","S32FM703UC");
+  assert.strictEqual(single.model,"S49DG932SC");
+  const series=jc.resolveTurnProductIdentity_("G8如何開PBP？","S32FM703UC");
+  assert(series.candidates.length>1); assert.strictEqual(series.model,"");
+  assert.strictEqual(j.fetches.length,0);
+});
+
 console.log(`Offline assertions passed=${passed}; paid provider calls=0. Not LINE/TestUI acceptance.`);

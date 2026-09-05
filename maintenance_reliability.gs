@@ -3,6 +3,13 @@
  * Uses existing editor authorization, without adding userinfo.email scope. */
 function runReliabilityMaintenanceFromTestUi(action, token) {
   assertEditorOnlyTestUiMaintenance_(token);
+  if (action === "library_report") return readManualLibraryActivationReport_();
+  if (action === "indexes") {
+    const lease = acquireManualMaintenanceLease_("PUBLISH_INDEXES", false);
+    if (!lease) return {busy:true};
+    try { return publishCompiledManualIndexes_(6); }
+    finally { finishManualMaintenanceLease_(lease, true); }
+  }
   if (action === "repair") return adminRepairManualRevisionsV303_();
   if (action === "compare") {
     const lease = acquireManualMaintenanceLease_("FILESEARCH_LAB_V303", false);
@@ -12,6 +19,58 @@ function runReliabilityMaintenanceFromTestUi(action, token) {
   }
   if (action === "report") return readReliabilityReportV303_();
   throw new Error("UNKNOWN_RELIABILITY_ACTION");
+}
+
+function importManualIndexRecordFromTestUi(record, token) {
+  assertEditorOnlyTestUiMaintenance_(token);
+  // Long editor imports remain authorized while active; inactivity still
+  // expires after 15 minutes. Normal conversation tokens are not extended.
+  CacheService.getScriptCache().put(`test_ui_access_${token}`,"1",900);
+  assertManualFolderWritable_();
+  if (!record || !Array.isArray(record.docKeys) || !record.docKeys.length || record.docKeys.length>100 ||
+      typeof record.data!=="string" || record.data.length>4000000 || !/^[a-f0-9]{64}$/.test(record.sha256)) throw new Error("INDEX_PACKAGE_INVALID");
+  const docs=MANUAL_PAGE_RAG_DATA_.documents;
+  const revisions=record.docKeys.map(function(key) {
+    const doc=docs[key];
+    if(!doc || doc.pageIndex.sha256!==record.sha256) throw new Error("INDEX_PACKAGE_NOT_REGISTERED");
+    const revision=readManualRevision_(key,doc);
+    if(!revision) throw new Error(`INDEX_SOURCE_REVISION_CHANGED:${key}`);
+    return revision;
+  });
+  // Client supplies compressed content only, never a model binding or Drive ID.
+  const bytes=Utilities.base64Decode(record.data);
+  const unpacked=Utilities.ungzip(Utilities.newBlob(bytes,"application/gzip","pages.json.gz"));
+  if(manualIndexDigest_(unpacked.getBytes())!==record.sha256) throw new Error("INDEX_PACKAGE_CHECKSUM_MISMATCH");
+  const index=JSON.parse(unpacked.getDataAsString("UTF-8"));
+  if(!index.lex || !Array.isArray(index.pages) || index.pages.length!==index.lex.N) throw new Error("INDEX_PACKAGE_SCHEMA_INVALID");
+  const lease=acquireManualMaintenanceLease_("IMPORT_"+record.sha256.slice(0,24),false);
+  if(!lease) throw new Error("INDEX_IMPORT_RUNNING");
+  try {
+    const props=PropertiesService.getScriptProperties();
+    const current=record.docKeys.map(function(key) { return JSON.parse(props.getProperty(`MANUAL_ACTIVE::${key}`)||"null"); });
+    let fileId=(current.find(function(active) { return active && active.indexChecksum===record.sha256 && active.sha256===revisions[0].sha256 && active.indexFileId; })||{}).indexFileId;
+    if(!fileId) fileId=Drive.Files.create({name:`manual.${record.sha256}.pages.json.gz`,parents:[CONFIG.DRIVE_FOLDER_ID]},Utilities.newBlob(bytes,"application/gzip","pages.json.gz"),{fields:"id",supportsAllDrives:true}).id;
+    const check=Utilities.ungzip(DriveApp.getFileById(fileId).getBlob());
+    if(manualIndexDigest_(check.getBytes())!==record.sha256) throw new Error("INDEX_UPLOAD_READBACK_FAILED");
+    const lock=LockService.getScriptLock();
+    if(!lock.tryLock(5000)) throw new Error("INDEX_ACTIVATION_LOCK_BUSY");
+    try {
+      revisions.forEach(function(revision) {
+        const latest=readManualRevision_(revision.docKey,docs[revision.docKey]);
+        if(!latest || latest.sha256!==revision.sha256) throw new Error("INDEX_ACTIVATION_REVISION_CHANGED");
+      });
+      // Publish only verified pointers in one call under the script lock.
+      // Every alias references immutable bytes; no active index is overwritten.
+      const changes={};
+      revisions.forEach(function(revision,n) {
+        const key=`MANUAL_ACTIVE::${revision.docKey}`;
+        if(current[n] && current[n].indexChecksum!==record.sha256) changes[`MANUAL_PREVIOUS::${revision.docKey}`]=JSON.stringify(current[n]);
+        changes[key]=JSON.stringify(Object.assign({},revision,{indexFileId:fileId,activatedAt:new Date().toISOString()}));
+      });
+      props.setProperties(changes,false);
+    } finally { lock.releaseLock(); }
+    return {active:record.docKeys,failed:[],providerCalls:0};
+  } finally { finishManualMaintenanceLease_(lease,true); }
 }
 
 function readReliabilityReportV303_() {

@@ -1,6 +1,51 @@
 /** Query-time page retrieval. No provider call and no product facts invented here. */
 let manualIndexRequestCache_ = {};
 
+function findManualPrintedTableParent_(page, pageMap) {
+  for (let distance = 0; distance <= 3; distance++) {
+    const candidate = pageMap[page.pdfPage - distance];
+    if (!candidate) return null;
+    const blocks = candidate.blocks || [];
+    if (distance > 0 && blocks.some(function (block) { return block.layoutSection; })) return null;
+    const header = blocks.findIndex(function (block) { return /第[23](?:第[23])?說明/.test(block.text.replace(/\s+/g, "")); });
+    if (header < 0) return null;
+    const prefix = blocks.slice(0, header);
+    const heading = prefix.map(function (block) { return block.text.trim(); }).reverse().find(function (text) {
+      return /^[A-Za-z][A-Za-z /+().-]{1,50}$/.test(text);
+    });
+    if (heading) return { heading: heading, pageNumber: candidate.pdfPage, text: prefix.map(function (block) { return block.text; }).join("\n") };
+  }
+  return null;
+}
+
+function hasReadyManualIndexForModel_(model) {
+  if(typeof MANUAL_PAGE_RAG_DATA_ === "undefined") return false;
+  const docs=MANUAL_PAGE_RAG_DATA_.documents;
+  const keys=Object.keys(docs).filter(function(key) { return docs[key].models.some(function(m) { return manualEvidenceModelMatchesTarget_(m,model); }); });
+  if(keys.length!==1) return false;
+  try {
+    const key=keys[0], revision=readManualRevision_(key,docs[key]);
+    if(!revision) return false;
+    const active=JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${key}`)||"null");
+    return Boolean(active && active.sha256===revision.sha256 && active.indexChecksum===revision.indexChecksum && active.indexFileId);
+  } catch(error) { return false; }
+}
+
+function readManualLibraryActivationReport_() {
+  const docs=MANUAL_PAGE_RAG_DATA_.documents, props=PropertiesService.getScriptProperties().getProperties();
+  const active=[],missing=[];
+  Object.keys(docs).forEach(function(key) {
+    const revision=readManualRevision_(key,docs[key]);
+    let stored=null; try {stored=JSON.parse(props[`MANUAL_ACTIVE::${key}`]||"null");} catch(error) {}
+    if(revision && stored && stored.sha256===revision.sha256 && stored.indexChecksum===revision.indexChecksum && stored.indexFileId) active.push(key);
+    else missing.push(key);
+  });
+  return {version:GAS_VERSION,registered:Object.keys(docs).length,active:active.length,missing:missing,
+    models:[...new Set(active.reduce(function(all,key) {return all.concat(docs[key].models);},[]))].length,
+    uniqueIndexes:[...new Set(active.map(function(key) {return docs[key].pageIndex.sha256;}))].length,
+    providerCalls:0,budget:JSON.parse(props[providerMonthKey_()]||"null")};
+}
+
 function manualIndexTerms_(text) {
   const normalized = manualPageRagNormalizeText_(text)
     .replace(/[slc]?\d{2,3}[a-z]{1,3}\d{2,4}[a-z]*/gi, " ")
@@ -83,7 +128,7 @@ function readManualRevision_(docKey, document) {
 function loadManualPageIndex_(docKey, document, revision) {
   const key = `${docKey}:${revision.indexChecksum}`;
   if (manualIndexRequestCache_[key]) return manualIndexRequestCache_[key];
-  let compressed = document.pageIndex.data;
+  let compressed = compiledManualIndexData_(document);
   try {
     const active = JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${docKey}`) || "null");
     if (active && active.sha256 === revision.sha256 &&
@@ -114,6 +159,35 @@ function loadManualPageIndex_(docKey, document, revision) {
   return index;
 }
 
+function compiledManualIndexData_(document) {
+  const index = document.pageIndex || {};
+  if (index.data) return index.data;
+  const owner = (MANUAL_PAGE_RAG_DATA_.documents || {})[index.dataRef];
+  if (owner && owner.pageIndex && owner.pageIndex.sha256 === index.sha256 &&
+      owner.sourcePdfSha256 === document.sourcePdfSha256) return owner.pageIndex.data;
+  return null;
+}
+
+function manualRuleRetrievalPhrases_(question) {
+  // Reuse the maintained RULE terminology dictionary across all documents.
+  // Retrieval expansion is not a model-capability or equivalence assertion.
+  const terms=loadRuleTermOntology_();
+  const strict=findRuleTermOntologyMatches_(question);
+  let keys=strict.map(function(term) { return term.canonical; });
+  if (!keys.length) {
+    const runs=String(question||"").match(/[\u3400-\u9fff]+/g)||[];
+    const grams=[];
+    runs.forEach(function(run) { for(let n=4;n<=8;n++) for(let i=0;i+n<=run.length;i++) grams.push(run.slice(i,i+n)); });
+    const partial=terms.filter(function(term) {
+      return term.aliases.some(function(alias) { return grams.some(function(gram) { return alias.includes(gram); }); });
+    });
+    // Ambiguous abbreviated terminology is left to normal safe routing.
+    if(partial.length===1) keys=[partial[0].canonical];
+  }
+  return [...new Set(terms.filter(function(term) { return keys.includes(term.canonical); })
+    .reduce(function(all,term) { return all.concat(term.aliases); },[]))].slice(0,24);
+}
+
 function findIndexedManualPagePlan_(question, targetModel) {
   const catalog = MANUAL_PAGE_RAG_DATA_;
   const model = normalizeManualEvidenceModel_(targetModel);
@@ -142,6 +216,11 @@ function findIndexedManualPagePlan_(question, targetModel) {
   const aliases = [];
   const retrievalPhrases = [];
   const relatedPhrases = [];
+  manualRuleRetrievalPhrases_(question).forEach(function(phrase) {
+    retrievalPhrases.push(phrase);
+    relatedPhrases.push(phrase);
+    manualIndexTerms_(phrase).forEach(function(term) { weights[term]=Math.max(weights[term]||0,2); });
+  });
   groups.forEach(function (group) {
     relatedPhrases.push.apply(relatedPhrases, group.relatedTerms || []);
     (group.aliases || []).concat(group.relatedTerms || []).forEach(function (alias) {
@@ -207,24 +286,77 @@ function findIndexedManualPagePlan_(question, targetModel) {
     const scopedBlocks = blocks.filter(function (block) {
       return manualEvidenceNamedFamilyMatchesTarget_(block.text, model);
     });
-    const text = scopedBlocks.map(function (block) { return block.text; }).join("\n");
-    // Curated aliases expand recall; they do not prove equivalence. Without
-    // aliases, require distinctive original query terms (not generic settings).
-    const anchored = retrievalPhrases.some(function (alias) {
-      return manualPageRagPhraseMatches_(manualPageRagNormalizeText_(text), alias);
-    }) || manualIndexTerms_(query).some(function (term) {
-      return (lex.postings[term] || []).some(function (row) { return row[0] === page.pdfPage; }) &&
-        Number(lex.df[term] || 0) < Math.max(3, lex.N * 0.25);
+    const sectionMap = {};
+    scopedBlocks.forEach(function (block) {
+      if (!block.layoutSection) return;
+      const section = sectionMap[block.layoutSection.id] || { heading: block.layoutSection.heading || "", blocks: [] };
+      section.blocks.push(block.text);
+      sectionMap[block.layoutSection.id] = section;
     });
-    if (!anchored) continue;
-    // Whole selected pages retain footnotes, table labels and restrictions.
-    // Never truncate a paragraph to make a numerical claim look unconditional.
-    if (text.length > 12000) continue;
-    fragments.push({ evidenceId: `E${fragments.length + 1}`, pageNumber: page.pdfPage,
-      pageHeading: heading, evidenceText: text, pageHash: page.pageHash,
-      excludedFamilyBlocks: blocks.length - scopedBlocks.length });
+    const sectionUnits = Object.keys(sectionMap).map(function (key) {
+      const section = sectionMap[key];
+      const commonHeaders = scopedBlocks.filter(function (block) {
+        return !block.layoutSection && !/^\s*\d+\s*$/.test(block.text);
+      }).map(function (block) { return block.text; });
+      return { heading: section.heading || heading, text: commonHeaders.concat([section.heading], section.blocks).filter(Boolean).join("\n") };
+    });
+    const units = sectionUnits.length ? sectionUnits : [{ heading: heading, text: scopedBlocks.map(function (block) { return block.text; }).join("\n") }];
+    let selectedOnPage = 0;
+    units.forEach(function (unit) {
+      if (fragments.length >= 5 || selectedOnPage >= 2) return;
+      let text = unit.text;
+      const unitTerms = manualIndexTerms_(text);
+      // Related names expand recall, never model applicability or equivalence.
+      const anchored = retrievalPhrases.some(function (alias) {
+        return manualPageRagPhraseMatches_(manualPageRagNormalizeText_(text), alias);
+      }) || manualIndexTerms_(query).some(function (term) {
+        return unitTerms.includes(term) && (lex.postings[term] || []).some(function (row) { return row[0] === page.pdfPage; }) &&
+          Number(lex.df[term] || 0) < Math.max(3, lex.N * 0.25);
+      });
+      if (!anchored) return;
+      // Keep a whole setting row/section with following notes, never just its title.
+      if (text.length > 12000) return;
+      const tableText = blocks.map(function (block) { return block.text; }).join(" ").replace(/\s+/g, "");
+      let settingRow = text.match(/^([A-Za-z][A-Za-z0-9 /+().-]{2,55}?)\s+\1(?:\s|$)/m);
+      const headerIndex = blocks.findIndex(function (block) { return /第[23](?:第[23])?說明/.test(block.text.replace(/\s+/g, "")); });
+      const headingIndex = blocks.findIndex(function (block) { return block.text.trim() === unit.heading; });
+      // A continuation page's first setting is not its parent menu. Without
+      // a printed parent before the table header, do not invent a hierarchy.
+      const printedParent = sectionUnits.length > 0 ? null : findManualPrintedTableParent_(page, pageMap);
+      const menuHeading = printedParent ? printedParent.heading : unit.heading;
+      const parentVerified = sectionUnits.length > 0 || Boolean(printedParent) || (headingIndex >= 0 && headingIndex < headerIndex);
+      if (!settingRow && parentVerified) {
+        const lines = text.split("\n");
+        const tableStart = lines.findIndex(function (line) { return /第[23](?:第[23])?說明/.test(line.replace(/\s+/g, "")); });
+        const label = lines.slice(Math.max(0, tableStart + 1)).map(function (line) {
+          const prefix = line.match(/^([A-Za-z][A-Za-z0-9 /+().-]{2,55})(?:[\u3400-\u9fff]|$)/);
+          return prefix ? prefix[1].trim() : "";
+        }).find(function (line) {
+          return line && line !== unit.heading &&
+            retrievalPhrases.some(function (phrase) { return manualPageRagPhraseMatches_(manualPageRagNormalizeText_(line), phrase); });
+        });
+        if (label) settingRow = [label, label];
+      }
+      const menuPath = /第[23](?:第[23])?說明/.test(tableText) && parentVerified && settingRow && menuHeading &&
+        manualPageRagNormalizeText_(menuHeading) !== manualPageRagNormalizeText_(settingRow[1])
+        ? `${menuHeading} → ${settingRow[1].trim()}` : "";
+      const evidencePages = menuPath && printedParent && printedParent.pageNumber !== page.pdfPage
+        ? [printedParent.pageNumber, page.pdfPage] : [page.pdfPage];
+      if (evidencePages.length > 1) text = `【第${printedParent.pageNumber}頁的接續表格標題】\n${printedParent.text}\n【第${page.pdfPage}頁設定列】\n${text}`;
+      fragments.push({ evidenceId: `E${fragments.length + 1}`, pageNumber: page.pdfPage,
+        pageHeading: unit.heading, evidenceText: text, pageHash: page.pageHash,
+        menuPath: menuPath,
+        evidencePages: evidencePages,
+        excludedFamilyBlocks: blocks.length - scopedBlocks.length });
+      selectedOnPage++;
+    });
   }
   if (!fragments.length) return null;
+  if (isManualActionPathQuestion_(query)) {
+    fragments.sort(function (a, b) {
+      return Number(Boolean(b.menuPath)) - Number(Boolean(a.menuPath));
+    });
+  }
   return Object.assign({}, revision, {
     model: model, groupId: groups.map(function (group) { return group.id; }).join("+") || "query_time",
     retrievalPolicy: "QueryTimeV1", sourceFileName: document.sourceFileName,
@@ -235,8 +367,10 @@ function findIndexedManualPagePlan_(question, targetModel) {
 }
 
 /** Editor/daily maintenance only; no publicly callable deployment mutation. */
-function publishCompiledManualIndexes_() {
-  const result = { active: [], failed: [] };
+function publishCompiledManualIndexes_(maxWrites) {
+  const result = { active: [], failed: [], pending: [], written: 0 };
+  const started = Date.now();
+  const limit = Math.max(1, Math.min(Number(maxWrites) || 3, 6));
   const catalog = typeof MANUAL_PAGE_RAG_DATA_ !== "undefined" ? MANUAL_PAGE_RAG_DATA_ : null;
   if (!catalog || catalog.retrievalPolicy !== "QueryTimeV1") return result;
   try { assertManualFolderWritable_(); }
@@ -247,6 +381,15 @@ function publishCompiledManualIndexes_() {
     return result;
   }
   const props = PropertiesService.getScriptProperties();
+  const reusable = {};
+  const verifiedUploads = {};
+  const stored = props.getProperties();
+  Object.keys(stored).filter(function (key) { return key.indexOf("MANUAL_ACTIVE::") === 0; }).forEach(function (key) {
+    try {
+      const active = JSON.parse(stored[key]);
+      if (active.indexFileId && active.indexChecksum && active.sha256) reusable[`${active.sha256}:${active.indexChecksum}`] = active.indexFileId;
+    } catch (error) { /* An invalid pointer is not a reusable artifact. */ }
+  });
   Object.keys(catalog.documents).forEach(function (docKey) {
     const document = catalog.documents[docKey];
     const revision = readManualRevision_(docKey, document);
@@ -256,12 +399,26 @@ function publishCompiledManualIndexes_() {
       if (old && old.sha256 === revision.sha256 && old.indexChecksum === revision.indexChecksum) {
         result.active.push(docKey); return;
       }
-      loadManualPageIndex_(docKey, document, revision);
-      const blob = Utilities.newBlob(Utilities.base64Decode(document.pageIndex.data), "application/gzip", `${docKey}.${revision.indexChecksum}.pages.json.gz`);
-      const created = Drive.Files.create({ name: blob.getName(), parents: [CONFIG.DRIVE_FOLDER_ID] }, blob, { fields: "id", supportsAllDrives: true });
+      if (result.written >= limit || Date.now() - started > 120000) {
+        result.pending.push(docKey); return;
+      }
+      const compiledData = compiledManualIndexData_(document);
+      const reusableKey = `${revision.sha256}:${revision.indexChecksum}`;
+      let indexFileId = reusable[reusableKey];
+      if (!indexFileId) {
+        if (!compiledData) throw new Error("INDEX_STAGING_DATA_REQUIRED");
+        loadManualPageIndex_(docKey, document, revision);
+        const blob = Utilities.newBlob(Utilities.base64Decode(compiledData), "application/gzip", `${docKey}.${revision.indexChecksum}.pages.json.gz`);
+        indexFileId = Drive.Files.create({ name: blob.getName(), parents: [CONFIG.DRIVE_FOLDER_ID] }, blob, { fields: "id", supportsAllDrives: true }).id;
+        result.written++;
+      }
       // Read back before activation; do not silently bind partially uploaded data.
-      const check = Utilities.ungzip(DriveApp.getFileById(created.id).getBlob());
-      if (manualIndexDigest_(check.getBytes()) !== revision.indexChecksum) throw new Error("INDEX_UPLOAD_READBACK_FAILED");
+      if (!verifiedUploads[indexFileId]) {
+        const check = Utilities.ungzip(DriveApp.getFileById(indexFileId).getBlob());
+        if (manualIndexDigest_(check.getBytes()) !== revision.indexChecksum) throw new Error("INDEX_UPLOAD_READBACK_FAILED");
+        verifiedUploads[indexFileId] = true;
+      }
+      reusable[reusableKey] = indexFileId;
       const lock = LockService.getScriptLock();
       if (!lock.tryLock(5000)) throw new Error("INDEX_ACTIVATION_LOCK_BUSY");
       try {
@@ -269,7 +426,7 @@ function publishCompiledManualIndexes_() {
         if (!latestRevision || latestRevision.sha256 !== revision.sha256) throw new Error("INDEX_ACTIVATION_REVISION_CHANGED");
         const current = props.getProperty(`MANUAL_ACTIVE::${docKey}`);
         if (current) props.setProperty(`MANUAL_PREVIOUS::${docKey}`, current);
-        props.setProperty(`MANUAL_ACTIVE::${docKey}`, JSON.stringify(Object.assign({}, revision, { indexFileId: created.id, activatedAt: new Date().toISOString() })));
+        props.setProperty(`MANUAL_ACTIVE::${docKey}`, JSON.stringify(Object.assign({}, revision, { indexFileId: indexFileId, activatedAt: new Date().toISOString() })));
       } finally { lock.releaseLock(); }
       result.active.push(docKey);
     } catch (error) {

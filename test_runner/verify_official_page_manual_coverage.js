@@ -238,6 +238,7 @@ vm.runInNewContext(
     "inferManualPackageTypeFromFileName_",
     "getValidatedOfficialManualPackageType_",
     "discoverOfficialTwManualCandidate_",
+    "isFullUserManualCandidate_",
   ]
     .map((name) => extractFunction(linebot, name))
     .join("\n\n"),
