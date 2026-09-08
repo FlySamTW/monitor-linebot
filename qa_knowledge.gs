@@ -944,11 +944,15 @@ function qaKnowledgeInferSourceTag_(userText, replyText) {
 }
 
 function qaKnowledgeManualQueryMatches_(record, query) {
-  var normalizedQuery = qaKnowledgeNormalizeText_(query);
+  // 完整規格詞不是同名動作：更新率不可拆成「更新」命中 App／韌體操作。
+  // 只用於片段的詞彙/動作匹配；原 query 仍交給答案覆蓋驗證與正常規格路由。
+  var actionQuery = String(query || "").replace(/更新率|更新頻率|刷新率|刷新頻率|REFRESH\s*RATE/gi, " ");
+  var normalizedQuery = qaKnowledgeNormalizeText_(actionQuery);
+  var normalizedOriginalQuery = qaKnowledgeNormalizeText_(query);
   if (!normalizedQuery) return false;
   if ((record.excludeTerms || []).some(function (term) {
     var normalized = qaKnowledgeNormalizeText_(term);
-    return normalized && normalizedQuery.indexOf(normalized) >= 0;
+    return normalized && normalizedOriginalQuery.indexOf(normalized) >= 0;
   })) {
     return false;
   }
@@ -959,7 +963,7 @@ function qaKnowledgeManualQueryMatches_(record, query) {
   if (termHits === 0) return false;
   if (record.requiresAction === true) {
     return /(?:如何|怎麼|怎樣|哪裡|在哪|設定|操作|連接|連線|配對|安裝|下載|刪除|移除|更新|升級|恢復|回復|還原|重設|投影|分享|鏡像|開啟|找不到|看|觀看|播放)/i.test(
-      String(query || ""),
+      actionQuery,
     );
   }
   return true;

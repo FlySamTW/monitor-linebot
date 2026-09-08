@@ -20,24 +20,24 @@ function findManualPrintedTableParent_(page, pageMap) {
 
 function hasReadyManualIndexForModel_(model) {
   if(typeof MANUAL_PAGE_RAG_DATA_ === "undefined") return false;
-  const docs=MANUAL_PAGE_RAG_DATA_.documents;
+  const docs=getEffectiveManualDocuments_();
   const keys=Object.keys(docs).filter(function(key) { return docs[key].models.some(function(m) { return manualEvidenceModelMatchesTarget_(m,model); }); });
   if(keys.length!==1) return false;
   try {
     const key=keys[0], revision=readManualRevision_(key,docs[key]);
     if(!revision) return false;
-    const active=JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${key}`)||"null");
+    const active=getEffectiveManualActive_(key);
     return Boolean(active && active.sha256===revision.sha256 && active.indexChecksum===revision.indexChecksum && active.indexFileId);
   } catch(error) { return false; }
 }
 
 function readManualLibraryActivationReport_() {
-  const docs=MANUAL_PAGE_RAG_DATA_.documents, props=PropertiesService.getScriptProperties().getProperties();
+  const docs=getEffectiveManualDocuments_(), props=PropertiesService.getScriptProperties().getProperties();
   const manifest=readOfficialManualManifest_();
   const active=[],missing=[];
   Object.keys(docs).forEach(function(key) {
     const revision=readManualRevision_(key,docs[key],manifest);
-    let stored=null; try {stored=JSON.parse(props[`MANUAL_ACTIVE::${key}`]||"null");} catch(error) {}
+    const stored=getEffectiveManualActive_(key,props);
     if(revision && stored && stored.sha256===revision.sha256 && stored.indexChecksum===revision.indexChecksum && stored.indexFileId) active.push(key);
     else missing.push(key);
   });
@@ -45,17 +45,22 @@ function readManualLibraryActivationReport_() {
     models:[...new Set(active.reduce(function(all,key) {return all.concat(docs[key].models);},[]))].length,
     uniqueIndexes:[...new Set(active.map(function(key) {return docs[key].pageIndex.sha256;}))].length,
     pendingIndexRevisions:readPendingManualIndexBuilds_(),
+    workerHealth:JSON.parse(props.MANUAL_WORKER_HEALTH||'null'),
+    officialDocumentGaps:typeof OFFICIAL_MANUAL_ALTERNATIVES_==='undefined'?{}:Object.keys(OFFICIAL_MANUAL_ALTERNATIVES_).reduce(function(report,model){
+      report[model]=Object.assign({},OFFICIAL_MANUAL_ALTERNATIVES_[model],{pageIndexReady:active.some(function(key){return docs[key].models.some(function(m){return normalizeModelForDisplay(m)===normalizeModelForDisplay(model);});})});
+      return report;
+    },{}),
     providerCalls:0,budget:JSON.parse(props[providerMonthKey_()]||"null")};
 }
 
 function readReadyManualIndexModels_() {
   if (typeof MANUAL_PAGE_RAG_DATA_ === "undefined") return [];
-  const docs = MANUAL_PAGE_RAG_DATA_.documents;
+  const docs = getEffectiveManualDocuments_();
   const properties = PropertiesService.getScriptProperties().getProperties();
   const manifest = readOfficialManualManifest_();
   return [...new Set(Object.keys(docs).reduce(function (models, key) {
     let active;
-    try { active = JSON.parse(properties[`MANUAL_ACTIVE::${key}`] || "null"); } catch (error) { return models; }
+    active = getEffectiveManualActive_(key,properties);
     const revision = readManualRevision_(key, docs[key], manifest);
     return revision && active && active.sha256 === revision.sha256 &&
       active.indexChecksum === revision.indexChecksum && active.indexFileId ? models.concat(docs[key].models) : models;
@@ -119,7 +124,8 @@ function readManualRevision_(docKey, document, manifestSnapshot) {
   const index = document.pageIndex;
   if (!index || index.schemaVersion !== 2 || index.revision !== sourceSha ||
       !/^[a-f0-9]{64}$/.test(sourceSha)) return null;
-  const manifest = manifestSnapshot || readOfficialManualManifest_();
+  const workerVerified = isWorkerManualRevision_(docKey,document);
+  const manifest = workerVerified ? {} : (manifestSnapshot || readOfficialManualManifest_());
   const applicable = Object.keys(manifest).map(function (sku) {
     return Object.assign({ fullSku: sku }, manifest[sku]);
   }).filter(function (entry) {
@@ -146,7 +152,7 @@ function loadManualPageIndex_(docKey, document, revision) {
   if (manualIndexRequestCache_[key]) return manualIndexRequestCache_[key];
   let compressed = compiledManualIndexData_(document);
   try {
-    const active = JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${docKey}`) || "null");
+    const active = getEffectiveManualActive_(docKey);
     if (active && active.sha256 === revision.sha256 &&
         active.indexChecksum === revision.indexChecksum && active.indexFileId) {
       const cache = CacheService.getScriptCache();
@@ -204,8 +210,18 @@ function manualRuleRetrievalPhrases_(question) {
     .reduce(function(all,term) { return all.concat(term.aliases); },[]))].slice(0,24);
 }
 
+function normalizeManualRetrievalQuery_(question) {
+  // Retrieval-only grammatical variants: do not rewrite the canonical question
+  // or equate two different feature names. Existing curated aliases still decide
+  // which evidence to recall; model/scope/numeric guards stay unchanged.
+  return manualPageRagNormalizeText_(question)
+    .replace(/([前後左右上下])(?:面|側|方)\s*(?:的\s*)?/g, "$1方")
+    .replace(/(背面|背後|機背|底部|頂部|中央)\s*的\s*/g, "$1")
+    .replace(/([前後左右上下]方|背面|背後|機背|底部|頂部|中央)\s*[這那](?:一)?[個圈條排顆片塊]\s*(?=[\u3400-\u9fff])/g, "$1");
+}
+
 function findIndexedManualPagePlan_(question, targetModel) {
-  const catalog = MANUAL_PAGE_RAG_DATA_;
+  const catalog = Object.assign({}, MANUAL_PAGE_RAG_DATA_, {documents:getEffectiveManualDocuments_()});
   const model = normalizeManualEvidenceModel_(targetModel);
   const matches = Object.keys(catalog.documents || {}).filter(function (key) {
     return catalog.documents[key].models.some(function (candidate) {
@@ -220,7 +236,7 @@ function findIndexedManualPagePlan_(question, targetModel) {
   let index;
   try { index = loadManualPageIndex_(docKey, document, revision); }
   catch (error) { writeLog(`[Manual Index] ${error.message}`); return null; }
-  const query = manualPageRagNormalizeText_(question);
+  const query = normalizeManualRetrievalQuery_(question);
   const weights = {};
   manualIndexTerms_(query).forEach(function (term) { weights[term] = 1; });
   const groups = ((catalog.lexicon || {}).groups || []).filter(function (group) {
@@ -319,6 +335,7 @@ function findIndexedManualPagePlan_(question, targetModel) {
     const units = sectionUnits.length ? sectionUnits : [{ heading: heading, text: scopedBlocks.map(function (block) { return block.text; }).join("\n") }];
     let selectedOnPage = 0;
     units.forEach(function (unit) {
+      if (!manualSourceSwitchEvidenceMatches_(question,unit.text,unit.heading)) return;
       if (fragments.length >= 5 || selectedOnPage >= 2) return;
       let text = unit.text;
       const unitTerms = manualIndexTerms_(text);
@@ -377,6 +394,7 @@ function findIndexedManualPagePlan_(question, targetModel) {
     model: model, groupId: groups.map(function (group) { return group.id; }).join("+") || "query_time",
     retrievalPolicy: "QueryTimeV1", sourceFileName: document.sourceFileName,
     sourcePdfSha256: revision.sha256.toUpperCase(), modelBinding: document.modelBinding,
+    language: document.language || "", sourceRegion: document.sourceRegion || "",
     exactModelInDocument: document.exactModelInDocument !== false,
     aliases: aliases, allowRuleBackedAliasCompletion: false, fragments: fragments,
   });

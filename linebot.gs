@@ -1,8 +1,7 @@
 // ⛔️ FATAL RULE: NEVER USE LINE PUSH MESSAGES. EVER.
 // ⛔️ IRON RULE: DEPLOYMENT PROTOCOL (GOOGLE OFFICIAL STANDARD)
-// 1. PUSH CODE: `clasp push`
-// 2. VERSION: `clasp version "vxx.x.xx desc"` (Create immutable snapshot)
-// 3. DEPLOY: `clasp deploy -i [DEPLOYMENT_ID] -V [VERSION_NUM]` (Update pointer)
+// Only tools/release_existing_webhook.ps1 may stage, version and update the existing deployment.
+// Run its DryRun first; never assemble independent clasp commands or bypass its guards.
 // ⚠️ NEVER create new deployments. ALWAYS update the existing deployment ID with a new version number.
 // ════════════════════════════════════════════════════════════════
 // 🔧 模型與計價設定 (要調整就改這裡！)
@@ -13,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.306"; // 索引更新保護、操作提醒與一致覆蓋
-const BUILD_TIMESTAMP = "2026-09-08 12:40";
+const GAS_VERSION = "v29.6.311"; // 操作許可與步驟意圖分離，避免漏頁與多餘補救
+const BUILD_TIMESTAMP = "2026-09-08 16:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +22,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV22-VerifiedActionGuidance";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV26-OperationPermission";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -3034,7 +3033,13 @@ function shouldRunSemanticRouter_(options) {
   const multiClaim = input.multiClaim || isPotentialMultiClaimQuestion_(question);
   const ellipticalFollowup =
     input.possibleFollowUp ||
-    (Boolean(input.previousTopic) && isEllipticalEvidenceFollowUp_(question));
+    (Boolean(input.previousTopic) && isEllipticalEvidenceFollowUp_(question)) ||
+    // A named replacement object can omit the previous action: after
+    // "Wi-Fi怎麼連", "那有線網路呢" still needs action inheritance.
+    // Full local answers already returned above; this is not every follow-up.
+    (isManualActionPathQuestion_(input.previousTopic) &&
+      /^(?:那|換成).{1,18}呢[?？!！。\s]*$/.test(question) &&
+      !isManualActionPathQuestion_(question));
   // 已確認完整型號時，舊候選快取不得重新製造產品歧義。
   const ambiguousProduct = Boolean(
     !input.confirmedModel &&
@@ -6255,7 +6260,7 @@ function isShortModelContinuation(text) {
     /\b(?:M\d{1,2}[A-Z]?|G\d{1,2}[A-Z]?|S\d{1,2}[A-Z]{0,3}\d{0,4}[A-Z0-9]*|[A-Z]{1,3}\d{2,3}[A-Z]{1,3}\d{3,4}[A-Z0-9]*)\b/gi,
     "",
   ).replace(/[\s？?，,。.!！]/g, "");
-  return Boolean(remainder) && /^(?:那|換(?:成)?|改(?:成)?|同樣|一樣|howabout|whatabout|and)?(?:呢|的話)?$/i.test(remainder);
+  return Boolean(remainder) && /^(?:那|換(?:成)?|改(?:成)?|同樣|一樣|howabout|whatabout|and)?(?:(?:同(?:樣|一)?|一樣的)(?:功能|操作|問題|設定))?(?:呢|的話)?$/i.test(remainder);
 }
 
 function expandShortModelContinuation(text, previousTopic) {
@@ -6385,6 +6390,14 @@ function isEllipticalEvidenceFollowUp_(query) {
   if (!text || text.length > 24 || extractFullModelLikeTokens(text).length > 0) {
     return false;
   }
+  // A temporal reference omits the operation subject even without "那".
+  // Preserve that subject; the conditional planner still verifies the new limit.
+  if (/^(?:那|所以)?(?:測試|操作|執行|進行|使用)(?:時|期間|過程中|途中|中)/.test(text)) return true;
+  // An omitted subject may still have an object ("可以跟畫面同步嗎").
+  // Do not mistake that object for a new product feature; preserve the prior
+  // subject and let the existing conditional planner resolve the new claim.
+  if (/^(?:我(?:想|要)|可以|能不能|能否|要|能)(?:跟|和|與|讓|把|再|它|這|同時)/.test(text) &&
+      getManualFeatureChecks_(text).length === 0) return true;
   if (!/^(?:那|它|這個|這款|這台|所以|再|接著|然後|要|可以|能|該|如何|怎麼|怎樣|哪裡|在哪)/i.test(text)) return false;
   // An explicit feature noun makes a self-contained new claim, even after
   // "那". Only grammatical references and added limits need topic expansion.
@@ -9085,6 +9098,8 @@ function buildAdvancedSourceQuickReplies_(
     );
   }
   if (options.forceOfficial || shouldOfferSamsungOfficialPage_(replyText)) {
+    const alternative = buildOfficialAlternativeQuickReply_(model);
+    if(alternative) items.unshift(alternative);
     const page = getSamsungOfficialModelPage_(model);
     const officialItem = buildSamsungOfficialPageQuickReply_(page);
     if (officialItem) items.push(officialItem);
@@ -9830,6 +9845,10 @@ function mergeKnownRuleAnchorWithAdvancedAnswer_(
   const known = String(knownRuleAnswer || "").trim();
   const answer = String(finalText || "").trim();
   if (!known) return answer;
+  // A mode-specific numeric question is not answered by unrelated whole-device
+  // maxima. Keep those anchors internal instead of repeating the spec sheet.
+  if (options.originalQuestion && /\d+(?:\.\d+)?\s*(?:HZ|瓦|W\b|FPS|K\b|GBPS)/i.test(options.originalQuestion) &&
+      /兩邊|兩側|各自|同時|模式|PBP|PIP|雙畫面|分割/i.test(options.originalQuestion)) return answer;
   // Capability facts may help validate an operation, but are not themselves
   // requested answers. Keep them internal for a single how-to question.
   if (options.originalQuestion && isManualActionPathQuestion_(options.originalQuestion) &&
@@ -10102,6 +10121,10 @@ function tryManualFreeLocalAnswer_(
 
 function isExactProductFactQuestion_(query) {
   const text = String(query || "");
+  // An operation followed by a numeric restriction still contains an exact
+  // product claim; the earlier '怎麼開' must not erase the added constraint.
+  if (/\d+(?:\.\d+)?\s*(?:HZ|瓦|W\b|FPS|GBPS|MS\b)/i.test(text) &&
+      /兩邊|兩側|各自|同時|模式|支援|能|可以|是否|限制/i.test(text)) return true;
   const asksFact =
     /(?:多少|幾(?:個|組|條|孔|埠|台|吋|HZ)?|最高|最低|各自|分別|每(?:一)?(?:邊|側)|是否|有沒有|支援嗎|能否)/i.test(
       text,
@@ -10156,13 +10179,17 @@ function buildSafeNoEvidenceNextStep_(query, model) {
     }
     return `${modelPrefix}目前沒有足夠證據確認這款具備內建 App 商店，我先不套用 Smart Monitor 的選單；可從本款官網或三星客服核對。`;
   }
-  if (/(?:聲音|音效|喇叭|耳機|藍牙|AUX)/i.test(text)) {
+  // Topic words are not symptoms: e.g. screen synchronization is not a
+  // signal failure. Only offer generic troubleshooting for an actual fault.
+  const asksFaultRecovery = /(?:沒(?:有)?聲音|無聲|黑屏|閃爍|無訊號|斷線|連不上|沒反應|不能用|無法|故障|異常|不穩|怎麼排除|怎麼修)/i.test(text);
+  if (asksFaultRecovery && /(?:聲音|音效|喇叭|耳機|藍牙|AUX)/i.test(text)) {
     return `${modelPrefix}可先確認螢幕與播放裝置沒有靜音，並重新選一次正確的音訊輸出；若問題是某個連接孔是否存在，請以機身端子標示或本款官網照片核對。`;
   }
-  if (/(?:畫面|黑屏|閃爍|無訊號|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|連接|投影)/i.test(text)) {
+  if (asksFaultRecovery && /(?:畫面|黑屏|閃爍|無訊號|HDMI|DISPLAYPORT|USB[\s-]*C|TYPE[\s-]*C|連接|投影)/i.test(text)) {
     return `${modelPrefix}可先重新選擇正確訊號源、把線材兩端重插，並暫時拿掉轉接器或 Hub 直接連接；這些都無法改善時，再交由三星檢查。`;
   }
-  return `${modelPrefix}目前沒有足夠證據可下結論，我先不套用其他型號的做法；可從本款官網或三星客服核對這一項。`;
+  const unresolvedFocus = stripInternalRoutingHints_(text).replace(/[\r\n]+/g, " ").trim().substring(0, 100);
+  return `${modelPrefix}關於「${unresolvedFocus || "這一項"}」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。`;
 }
 
 function buildTentativeManualFallback_(rawResponse, model, question) {
@@ -10847,7 +10874,7 @@ function buildGroundedSupportedAnswer_(
       );
       if (
         !segment ||
-        (/(?:非官方)?推測|這(?:表示|暗示)|通常|有些|部分|可能|一般來說/i.test(
+        (/(?:非官方)?推測|這(?:表示|暗示)|通常|有些|部分|可能|一般來說|多數|大多|類似|相近/i.test(
           segment,
         ) && !lowRiskTroubleshooting)
       ) {
@@ -10930,7 +10957,7 @@ function buildGroundedSupportedAnswer_(
       originalQuestion,
     );
     const hasConservativeQualifier =
-      /(?:可能|通常|有些|部分|一般來說)/i.test(answer);
+      /(?:可能|通常|有些|部分|一般來說|多數|大多|類似|相近)/i.test(answer);
     const coverage =
       complete && !lowRiskGeneric && !hasConservativeQualifier
         ? "full"
@@ -11247,7 +11274,12 @@ function buildManualWebRescueReply_(rescue, manualResponse, model, question) {
   if (hadPartialManualEvidence && partialManualBody) {
     // A generic no-evidence fallback describes the unresolved Web claim, not
     // the whole answer. Never append it as if verified manual facts vanished.
-    const webNote = "網路補充還無法核對到這款；有疑問的部分可請 Sam 一起確認，先別套用其他型號的資料。";
+    const unresolvedMatch = rawManual.match(/\[MANUAL_EVIDENCE_PARTIAL:([^\]]+)\]/i) ||
+      rawManual.match(/手冊還沒直接回答：([^\n]+)/);
+    const unresolvedFocus = stripInternalRoutingHints_(
+      (unresolvedMatch && unresolvedMatch[1]) || (rescue && rescue.unresolvedQuestion) || question || "",
+    ).replace(/[\r\n]+/g, " ").trim().substring(0, 120);
+    const webNote = `至於「${unresolvedFocus || "剩下的部分"}」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。`;
     return [
       "手冊能確認：",
       partialManualBody,
@@ -12108,6 +12140,9 @@ function executeAdvancedSourceQuery_(
     const needsAutomaticWebRescue =
       manualFailedBeforeWeb || Boolean(plannedWebQuery);
     if (needsAutomaticWebRescue) {
+      writeLog(`[Manual Rescue Decision] ${JSON.stringify({expired:response === "[KB_EXPIRED]",
+        preflight:manualPreflightStopped,notFound:manualEvidenceNotFound,partial:manualEvidencePartial,
+        failed:manualEvidenceFailed,recommended:recommendedWeb,planned:Boolean(plannedWebQuery)})}`);
       const rescueQuery = manualFailedBeforeWeb
         ? [normalizedQuery, plannedWebQuery]
             .filter(Boolean)
@@ -13756,11 +13791,7 @@ function getManualAttachmentProvenance_(filesToAttach, targetModel) {
 
   let manifest = {};
   try {
-    manifest = JSON.parse(
-      PropertiesService.getScriptProperties().getProperty(
-        "OFFICIAL_MANUAL_MANIFEST",
-      ) || "{}",
-    );
+    manifest = readOfficialManualManifest_();
     if (!manifest || Array.isArray(manifest)) manifest = {};
   } catch (error) {
     writeLog(
@@ -13941,6 +13972,17 @@ function isManualActionPathQuestion_(questionText) {
   }
   return /(?:哪(?:一)?個|什麼).{0,10}(?:選單|功能表|設定|入口|路徑)|(?:選單|功能表|設定|入口|路徑).{0,12}(?:在哪|哪裡|怎麼|如何|怎樣)/i.test(
     question,
+  );
+}
+
+// 「操作步驟與設定路徑」是同一操作的回答格式，不是兩項功能。
+// 僅在手冊適用性判斷移除這類格式詞之間的連接詞；原題、功能
+// 連接詞與數值/每側限制都保持不變，不放寬全域 router 的多主張判斷。
+function isMultipleManualProcedureClaim_(questionText) {
+  const form = "(?:(?:操作|設定|連線|連接|配對|使用)?(?:步驟|方法|方式|流程)|(?:設定|選單|操作)?(?:路徑|入口))";
+  const formattingPair = new RegExp(`(${form})\\s*(?:以及|並且|和|與|及|、)\\s*(?=${form})`, "g");
+  return isPotentialMultiClaimQuestion_(
+    String(questionText || "").replace(formattingPair, "$1 "),
   );
 }
 
@@ -14126,6 +14168,7 @@ function manualEvidenceAllowedByAttachmentProvenance_(
   const state = provenance || {};
   if (state.hashMismatch) return false;
   if (state.supportPageOnly && state.hashMissing) return false;
+  if (isRegisteredPrintedCoverEvidence_(evidence, targetModel, state)) return true;
   if (!state.supportPageOnly) return true;
   if (evidence.documentBound && evidence.conditionalProcedure) return true;
   if (manualEvidenceExplicitlyTargetsModel_(evidence, targetModel)) return true;
@@ -14724,10 +14767,10 @@ function normalizeManualStructuredResponse_(
     // without proving this unit has it. Keep that distinction in the answer;
     // never use it to establish support, numerical limits or equivalence.
     conditionalProcedure: Boolean(options.trustedPageIndex && item && item.documentBound &&
-      isManualActionPathQuestion_(questionText) && !isPotentialMultiClaimQuestion_(questionText) &&
+      isManualActionPathQuestion_(questionText) && !isMultipleManualProcedureClaim_(questionText) &&
       !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制|支援|有沒有|能不能/i.test(questionText)),
     capabilityBound: Boolean(options.trustedPageIndex && item && item.documentBound &&
-      isManualActionPathQuestion_(questionText) && !isPotentialMultiClaimQuestion_(questionText) &&
+      isManualActionPathQuestion_(questionText) && !isMultipleManualProcedureClaim_(questionText) &&
       !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制/i.test(questionText) &&
       manualLocalEvidenceSupportsFeature_(questionText, targetModel)),
     supportedAnswer: String((item && item.supportedAnswer) || "")
@@ -14758,6 +14801,7 @@ function normalizeManualStructuredResponse_(
         item.pageNumber > 0 &&
         allowedScope &&
         item.supportedAnswer.length >= 4 &&
+        isManualSourceSwitchAnswerFaithful_(questionText, item.supportedAnswer) &&
         !/\[(?:AUTO_SEARCH|MANUAL_|KB_|NO_RELEVANT)/i.test(
           item.supportedAnswer,
         ) &&
@@ -14772,11 +14816,11 @@ function normalizeManualStructuredResponse_(
           item.supportedAnswer,
           targetModel,
         ) &&
-        manualSupportedAnswerMatchesExcerpt_(
+        (manualSupportedAnswerMatchesExcerpt_(
           item.supportedAnswer,
           item.excerpt,
           questionText,
-        ) &&
+        ) || isVerifiedGenericSourceSelectionCoverage_(item.supportedAnswer, questionText, [item])) &&
         manualEvidenceAllowedByAttachmentProvenance_(
           item,
           targetModel,
@@ -14867,9 +14911,10 @@ function normalizeManualStructuredResponse_(
     .join("\n")
     .trim();
   if (!safeAnswer) return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
-  if (!manualAnswerCoversQuestionFeatures_(safeAnswer, questionText)) {
+  if (!manualAnswerCoversQuestionFeatures_(safeAnswer, questionText) &&
+      !isVerifiedGenericSourceSelectionCoverage_(safeAnswer, questionText, validEvidence)) {
     writeLog(
-      "[Manual Claim Coverage] 手冊摘錄有相關內容，但整理後答案未回答原題明說功能",
+      `[Manual Claim Coverage] 手冊摘錄有相關內容，但整理後答案未回答原題明說功能; question=${String(questionText).substring(0,160)}; answer=${safeAnswer.substring(0,260)}`,
     );
     return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
   }
@@ -15324,7 +15369,10 @@ function hydrateManualPageRagResponse_(
         ),
       )
     : normalized;
-  return addManualActionGuidance_(answer, question, plan, parsed.evidence);
+  const guidedAnswer = addManualActionGuidance_(answer, question, plan, parsed.evidence);
+  return plan.language === "EN" && !isManualEvidenceFailureReply_(guidedAnswer)
+    ? `以下依三星官方英文版手冊；不同地區的選配與選單仍以實機為準。\n${guidedAnswer}`
+    : guidedAnswer;
 }
 
 function callManualPageRag_(
@@ -16664,6 +16712,7 @@ function enforcePdfAttachmentModelScope_(files, targetModels) {
       safeFiles.push(file);
       return safeFiles;
     }
+    if (!validateWorkerPdfAttachment_(file,models)) return safeFiles;
     if (
       models.length === 0 ||
       !pdfFileNameMatchesModels(String((file && file.name) || ""), models)
@@ -16886,6 +16935,9 @@ function recoverRelevantPdfUrisFromDrive(
 
   const cache = CacheService.getScriptCache();
   const normalizedPrimary = normalizePdfModelToken_(primaryModel) || "UNKNOWN";
+  let workerCandidates;
+  try { workerCandidates=workerPdfCandidates_(exactModels); }
+  catch(error) { writeLog('[Manual Worker] active PDF unavailable; refusing stale root PDF'); return []; }
   const bestCandidateCacheKey = `PDF_BEST_DRIVE_V246:${normalizedPrimary}`;
   let candidates = [];
   try {
@@ -16905,6 +16957,7 @@ function recoverRelevantPdfUrisFromDrive(
     candidates = [];
   }
 
+  if (workerCandidates.length) candidates=workerCandidates;
   if (candidates.length === 0) {
     const byName = {};
     try {
@@ -19194,7 +19247,7 @@ function readOfficialManualManifest_() {
       props.getProperty("OFFICIAL_MANUAL_MANIFEST") || "{}",
     );
     return manifest && typeof manifest === "object" && !Array.isArray(manifest)
-      ? manifest
+      ? mergeWorkerManualManifest_(manifest)
       : {};
   } catch (error) {
     return {};
@@ -19452,7 +19505,11 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
     Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes),
   );
   const queuedRevision = readPendingManualIndexRevision_(candidate.fullSku, sha256);
-  if (queuedRevision && !isManualIndexPromotionReady_(candidate, sha256)) {
+  if (queuedRevision && queuedRevision.candidate.workerBinding && isReadyWorkerManualRevisionForCandidate_(candidate, sha256)) {
+    return Object.assign({}, candidate, { sha256: sha256, action: "ACTIVE_WORKER_INDEX",
+      manualStatus: "ACTIVE_WORKER_INDEX", validationReason: "VERIFIED_WORKER_REVISION" });
+  }
+  if (queuedRevision && queuedRevision.candidate.workerBinding && !isManualIndexPromotionReady_(candidate, sha256)) {
     return Object.assign({}, candidate, { sha256: sha256, action: "INDEX_PENDING",
       manualStatus: "PENDING_PAGE_INDEX", validationReason: "PAGE_INDEX_BUILD_REQUIRED" });
   }
@@ -19461,7 +19518,10 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
     const verifiedCandidate = Object.assign({}, candidate, {
       modelBinding: validation.modelBinding || "pdf_first_page",
       exactModelInDocument: validation.exactModelInDocument !== false,
+      workerBinding: {schemaVersion:1, sourcePdfSha256:sha256.toLowerCase(),
+        models:[normalizeModelForDisplay(candidate.fullSku)],documentRole:'manual',verifiedAt:new Date().toISOString()},
     });
+    savePendingManualRevision_(verifiedCandidate, sha256, validation.finalFileName, 'PAGE_INDEX_BUILD_REQUIRED');
     try {
       const promotion = promoteOfficialManualToRoot_(
         blob,
@@ -23515,13 +23575,17 @@ function handleMessage(event) {
       return;
     }
     const messageId = event.message.id || null;
-    let msg = userMessage;
+    // Pure conversational controls share the button path. Do not strip new
+    // feature words or turn a substantive follow-up into an expansion command.
+    let msg = /^(?:請)?(?:再)?(?:詳細(?:說明|說|解釋)?(?:一點)?|說(?:詳細|清楚)(?:一點)?)[。！!？?\s]*$/.test(String(userMessage).trim())
+      ? "#再詳細說明" : userMessage;
     let routingQuestion = userMessage;
     let activeAnswerEnvelope = null;
     let inheritedElaborationEnvelope = null;
     const incomingMessageWasModelSelection = /^#型號(?::|頁:)/i.test(msg);
     const incomingMessageWasElaboration = msg === "#再詳細說明";
     let elaborationOriginalQuestion = "";
+    let elaborationEvidenceText = "";
     let elaborationReplyAnchor = "";
     let resumedFromPlainModelClarification = false;
     let resumedFromSemanticClarification = false;
@@ -23544,9 +23608,38 @@ function handleMessage(event) {
       contextId,
       userId,
     );
-    const pendingSemanticClarification = parseSourceStateJson_(
+    // 明確未知新型號先於來源處理與持久型號注入。沿用現有澄清狀態，
+    // 保留已確認產品但不讓下一句省略型號時偷借；不新增平行路由狀態。
+    const earlyUnknownModels = !msg.startsWith("/") && !isOutOfProjectScopeQuery(msg)
+      ? getUnknownFullModelTokens(msg) : [];
+    if (earlyUnknownModels.length) {
+      cache.put(semanticClarificationKey, JSON.stringify({
+        question: msg, model: "", unknownModels: earlyUnknownModels,
+        expiresAt: Date.now() + 600000,
+      }), 600);
+      const unknownReply = buildUnknownFullModelReply(earlyUnknownModels);
+      writeLog(`[Unknown Model Guard v29.6.307] 未知新型號先於來源與產品狀態: ${earlyUnknownModels.join(", ")}`);
+      replyMessage(replyToken, unknownReply);
+      writeRecordDirectly(userId, msg, contextId, "user", "");
+      writeRecordDirectly(userId, unknownReply, contextId, "assistant", "");
+      return;
+    }
+    let pendingSemanticClarification = parseSourceStateJson_(
       cache.get(semanticClarificationKey),
     );
+    if (pendingSemanticClarification && pendingSemanticClarification.unknownModels &&
+        Number(pendingSemanticClarification.expiresAt || 0) >= Date.now()) {
+      const knownExplicitModels = extractFullModelLikeTokens(msg).filter(isKnownFullModelToken);
+      if (knownExplicitModels.length) {
+        cache.remove(semanticClarificationKey);
+        pendingSemanticClarification = null;
+      } else if (!msg.startsWith("#") && !msg.startsWith("/") &&
+          !/^(?:取消|N)$/i.test(msg.trim()) && !isOutOfProjectScopeQuery(msg)) {
+        replyMessage(replyToken, buildUnknownFullModelReply(pendingSemanticClarification.unknownModels) +
+          "\n剛才的型號還沒確認，這題先不套用上一台螢幕的規格；請補完整型號。");
+        return;
+      }
+    }
     if (
       pendingSemanticClarification &&
       Number(pendingSemanticClarification.expiresAt || 0) >= Date.now() &&
@@ -24398,6 +24491,7 @@ function handleMessage(event) {
     if (!isCommand && !isQuickCommand && isShortModelContinuation(msg)) {
       const pendingTopicForContinuation =
         cache.get(`${userId}:pending_topic`) ||
+        (canonicalTopicBeforeTurn && canonicalTopicBeforeTurn.canonicalQuestion) ||
         cache.get(`${userId}:last_meaningful_query`) ||
         "";
       const expandedMsg = expandShortModelContinuation(
@@ -24410,6 +24504,7 @@ function handleMessage(event) {
         );
         msg = expandedMsg;
         userMessage = expandedMsg;
+        routingQuestion = stripInternalRoutingHints_(expandedMsg).trim();
       }
     }
 
@@ -25671,6 +25766,12 @@ function handleMessage(event) {
           Array.isArray(savedEnvelope.evidenceRefs) &&
           savedEnvelope.evidenceRefs.length > 0
       );
+      inheritedElaborationEnvelope = previousHasTrustedEvidence ? savedEnvelope : null;
+      if (previousHasTrustedEvidence && savedEnvelope.expandable === false) {
+        replyMessage(replyToken, "這題目前沒有更多已確認的補充；如果想問另一個細節，直接告訴我就好。");
+        writeLog("[Elaboration Evidence Guard] exhausted evidence; zero generation");
+        return;
+      }
       if (
         savedEnvelopeMatches &&
         savedEnvelope &&
@@ -25743,6 +25844,7 @@ function handleMessage(event) {
       const previousAnswerForElaboration = stripAnySourceTags(
         String(lastAssistantMsg.content || ""),
       ).substring(0, 1200);
+      elaborationEvidenceText = previousAnswerForElaboration;
       const continueMsg = [
         `請延續使用者原問題：「${previousQuestionForElaboration}」。`,
         selectedModelForElaboration
@@ -26840,6 +26942,29 @@ function handleMessage(event) {
       }
 
       if (rawResponse) {
+        if (incomingMessageWasElaboration && inheritedElaborationEnvelope &&
+            !isSafeEvidenceElaboration_(rawResponse, elaborationEvidenceText, routingQuestion)) {
+          if (elaborationReplyAnchor) writeElaborationState_(cache, userId, elaborationReplyAnchor, 0);
+          if (dailyQuestionReservedThisMessage) {
+            refundDailyQuestionUsage_(userId, "elaboration_unverified_addition");
+            dailyQuestionReservedThisMessage = false;
+          }
+          const safeElaborationEnd = "目前能確認的內容都在上一則，我先不補沒有把握的說法。如果有具體使用情境，可以直接告訴我。";
+          const retainedEnvelope = Object.assign({}, inheritedElaborationEnvelope, {expandable:false});
+          retainedEnvelope.allowedActions = (retainedEnvelope.allowedActions || []).filter(function(action){return action !== "elaborate";});
+          writeAnswerEnvelope_(contextId, retainedEnvelope);
+          if (currentRequestAudit) {
+            currentRequestAudit.finalCoverage = "unsupported";
+            currentRequestAudit.selectedModel = retainedEnvelope.model || "";
+          }
+          writeLog("[Elaboration Evidence Guard] rejected unsupported addition; no source escalation");
+          replyMessage(replyToken, safeElaborationEnd);
+          writeRecordDirectly(userId, event.message.text, contextId, "user", "");
+          writeRecordDirectly(userId, safeElaborationEnd, contextId, "assistant", "");
+          updateHistorySheetAndCache(contextId, getHistoryFromCacheOrSheet(contextId),
+            {role:"user", content:event.message.text}, {role:"assistant", content:safeElaborationEnd});
+          return;
+        }
         if (semanticRouterControlsThisTurn) {
           rawResponse = String(rawResponse)
             .replace(
@@ -26991,7 +27116,8 @@ function handleMessage(event) {
           normalizedFastAnswer,
           userQuestion: routingQuestion,
         });
-        if (!semanticRouterControlsThisTurn && shouldSopPdfEscalate) {
+        if (!semanticRouterControlsThisTurn && shouldSopPdfEscalate &&
+            !(incomingMessageWasElaboration && inheritedElaborationEnvelope)) {
           const degradedNote =
             contextHealth && contextHealth.degraded ? "；上下文降級" : "";
           writeLog(
@@ -28686,6 +28812,8 @@ function handleMessage(event) {
           }
 
           if (offerOfficialModelPage) {
+            const alternative = buildOfficialAlternativeQuickReply_(officialModelPage.model);
+            if(alternative) qrItems.unshift(alternative);
             const officialPageItem =
               buildSamsungOfficialPageQuickReply_(officialModelPage);
             if (officialPageItem) qrItems.push(officialPageItem);
@@ -32457,6 +32585,11 @@ function rollbackRichMenuDefault_() {
 }
 
 function doPost(e) {
+  // Signed maintenance never consumes LINE quotas, triggers, or model calls.
+  if (e && e.postData && /"protocol"\s*:\s*"manual-index-worker-v1"/.test(e.postData.contents || '')) {
+    return ContentService.createTextOutput(JSON.stringify(handleManualWorkerRequest_(e.postData.contents)))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   FAST_POSTBACK_HANDLED = false;
   LOADING_ANIMATION_SHOWN = false;
   LOADING_ANIMATION_ALLOWED = null;

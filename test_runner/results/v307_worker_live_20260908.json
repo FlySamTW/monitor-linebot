@@ -1,0 +1,14 @@
+{
+  "environment": "existing formal webhook @1488",
+  "ok": true,
+  "completed": [
+    {"model":"S32CM703UC","revision":"4db4e58c73f8ae7391272fe2aa8bc71f2a3054880ded85753da0f07ca8ec407a"},
+    {"model":"S27F612EAC","revision":"8b624dc56208ad5ac6ec3afcbf19df9880644b9c6031723f9711cd3d3aa0c82d"}
+  ],
+  "failed": [],
+  "providerCalls": 0,
+  "finishedAt": "2026-09-08T07:57:57Z",
+  "verification": "worker performed download SHA, full index generation or reviewed package checksum, cloud prepare, activation list readback and actual PDF/index SHA probe before marking each completed",
+  "scheduledTask": "SamsungLineBot-ManualPageIndex",
+  "schedule": "daily 09:30 Asia/Taipei and current-user logon; StartWhenAvailable; IgnoreNew overlap; hidden; 2h limit"
+}

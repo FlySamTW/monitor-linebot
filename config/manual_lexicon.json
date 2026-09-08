@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "groups": [
+    {"id": "self_diagnosis", "triggers": ["self diagnosis", "selfdiagnosis", "自我診斷", "自行診斷"], "aliases": ["Self Diagnosis", "自我診斷", "自行診斷"], "allowRuleBackedAliasCompletion": false},
     {"id": "rear_lighting", "triggers": ["後方環形燈", "後面環形燈", "背面燈", "背後燈", "後方燈", "機背燈", "環形燈", "core lighting", "infinity core"], "aliases": ["後方環形燈", "後面環形燈", "背面燈", "背後燈", "後方燈", "機背燈", "環形燈"], "relatedTerms": ["Core Lighting", "Infinity Core Lighting", "背面的 LED 照明"], "allowRuleBackedAliasCompletion": false},
     {"id": "retail_mode", "triggers": ["零售", "展示", "商店", "門市", "家庭模式", "使用模式"], "aliases": ["零售模式", "展示模式", "商店模式", "使用模式", "家庭模式", "零售環境"]},
     {"id": "usb_media", "triggers": ["隨身碟", "usb 播", "播放 usb", "usb 裡", "usb中", "媒體", "照片", "影片"], "excludeAny": ["更新", "升級", "firmware", "韌體"], "aliases": ["USB 播放", "播放 USB", "隨身碟播放", "媒體播放", "已連接裝置", "播放相片視訊音樂", "USB 裝置"]},

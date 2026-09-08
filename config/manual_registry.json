@@ -2,6 +2,32 @@
   "schemaVersion": 2,
   "documents": [
     {
+      "docKey": "S61F_F612_EN_PRINTED_FAMILY_241113",
+      "sourceFileName": "verified/7f45f96c4bd8834d/S27F612.pdf",
+      "models": ["S27F612EAC"],
+      "canary": false,
+      "documentRole": "user_manual",
+      "modelBinding": "official_family_cover",
+      "bindingPolicy": "unique_printed_cover_v1",
+      "coverPatterns": ["S27F61*"],
+      "exactModelInDocument": false,
+      "language": "EN",
+      "sourceRegion": "EU",
+      "applicabilityNote": "English official user guide; printed S27F61* family. Preserve regional and optional-feature restrictions; not a Taiwan support-page download.",
+      "supportUrl": "https://www.samsung.com/fi/support/model/LS27F612EAUXEN/",
+      "downloadUrl": "https://downloadcenter.samsung.com/content/UM/202503/20250322033840001/WUG_S61F_EU_L25_241113.zip",
+      "officialArchiveSha256": "da43bb5f1a324c4e4c11a383a37981dc17d5f65db36a9e1710a08ba11e8036da",
+      "archiveEntryName": "WUG_S61F_EU_L25_241113/WUG_S61F_EU_ENG_241113.pdf",
+      "sourceArtifactName": "WUG_S61F_EU_L25_241113.zip",
+      "sourceFormat": "zip_entry_pdf",
+      "archiveEntry": "WUG_S61F_EU_L25_241113/WUG_S61F_EU_ENG_241113.pdf",
+      "archiveSha256": "DA43BB5F1A324C4E4C11A383A37981DC17D5F65DB36A9E1710A08BA11E8036DA",
+      "fileId": "10112957",
+      "fileVersion": "241128",
+      "publishedAt": "2025-03-21",
+      "sourcePdfSha256": "7F45F96C4BD8834DFF6715A778EDC55553768BD076CF1CC93183BD98683A8E16"
+    },
+    {
       "docKey": "M7_CM703_SUPPORT_MANUAL_2510220",
       "sourceFileName": "new/S32CM703.pdf",
       "models": [

@@ -1,12 +1,16 @@
-# Samsung LINE Bot 開發手冊 — v29.6.306
+# Samsung LINE Bot 開發手冊 — v29.6.311
 
-本批變更及逐步接手指引：[v306 交接清單](docs/V306_HANDOFF.md)。正式狀態依當次發布紀錄，下列 v305 為前次基線。
+正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
 
-**2026-09-08正式 v29.6.306 @1487：** guarded release、local／HEAD／health一致。59項離線整合與全庫載入通過；Chrome17次文字／按鍵事件包含修正前失敗及重測，詳見[逐題實測](test_runner/results/v306_live_20260908.md)。新增約NT$0.073、共用驗證帳2.1352；沒有改模型／Prompt!C3／Rich Menu。完整20條旅程、全自動新PDF索引與外部資料缺口仍不能列完成。
+接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
+
+本批接手以本文件的v307 worker契約及 [AI_CONTEXT](AI_CONTEXT.md) 為準；[v306 交接清單](docs/V306_HANDOFF.md) 保留前版故障脈絡，其中「worker尚未實作」不是目前正式狀態。正式狀態依當次發布紀錄，以下v306／v305為歷史基線，不代表當次health。
+
+**歷史：2026-09-08 v29.6.306 @1487：** guarded release、local／HEAD／health一致。59項離線整合與全庫載入通過；Chrome17次文字／按鍵事件包含修正前失敗及重測，詳見[逐題實測](test_runner/results/v306_live_20260908.md)。新增約NT$0.073、共用驗證帳2.1352；沒有改模型／Prompt!C3／Rich Menu。完整20條旅程、全自動新PDF索引與外部資料缺口仍不能列完成。
 
 唯一現行設計契約。**候選程式不等於已發布、已驗收。** 實際進度見 DEVELOPMENT_LOG.md／test_runner/results。此前完整文件保存在 [歷史快照](docs/history/v29.6.302/Developer_Manual.md)，其中舊額度、旁路或模型政策不得重新套回正式服務。
 
-**當次發布狀態：2026-09-05 已以唯一 guarded release 上線 @1486，v29.6.305 [17:03]；local／HEAD／formal health相符。** 57項完整來源整合、static／contract及全庫驗證通過；47份索引全部雲端讀回啟用，覆蓋81筆範圍登錄／136型號。Chrome真實供應商複驗G932 PBP、F24護眼、同聊天室切H704自我診斷均有正確手冊路徑，每題1次Lite、零Web／Router。共同驗證費約NT$2.0622（本批約0.4727），未改模型／Prompt／Rich Menu。五個官方來源適用性缺口及全案20旅程、手機LINE驗收不可混稱完成。詳細見[實測與發布紀錄](test_runner/results/v305_manual_library_20260905.md)。
+**歷史發布狀態：2026-09-05 已以唯一 guarded release 上線 @1486，v29.6.305 [17:03]；local／HEAD／formal health相符。** 57項完整來源整合、static／contract及全庫驗證通過；47份索引全部雲端讀回啟用，覆蓋81筆範圍登錄／136型號。Chrome真實供應商複驗G932 PBP、F24護眼、同聊天室切H704自我診斷均有正確手冊路徑，每題1次Lite、零Web／Router。共同驗證費約NT$2.0622（本批約0.4727），未改模型／Prompt／Rich Menu。五個官方來源適用性缺口及全案20旅程、手機LINE驗收不可混稱完成。詳細見[實測與發布紀錄](test_runner/results/v305_manual_library_20260905.md)。
 
 ## 決策原委
 
@@ -38,11 +42,30 @@ v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改
 
 Fast／頁級固定2.5 Flash-Lite，整本PDF／Web固定2.5 Flash；既有條件式3.7 Flash不升級、不擴到每題。Router 無工具／無產品答案，只選候選 index、拆 claims；低信心、429、格式失敗不重試，回安全路徑。
 
+## v307 自動索引 worker 正式契約
+
+新PDF完整版本包已於v307正式雲端完成M7／F612端到端；無人排程亦已真啟動讀回LastTaskResult=0與成功health，具可核對E2E及排程成功證據。既有PDF發現／首頁驗證仍依現行受費用守門流程，worker抽頁本身不呼叫LLM、不增加付費服務。
+
+1. `stageOfficialTwManualCandidate_`把已核實單一SKU、官方URL、PDF SHA、文件角色寫入`workerBinding`；舊pending缺binding不可直接信任，須重新核實。不得從共用檔名繼承整群型號或替外部缺口猜範圍。編輯者短token入口`queueReviewedRegisteredManualFromTestUi(docKey,token)`只讀精確已登錄人工核實metadata，可排外區reviewed版本，不接受client自填scope／SHA／來源。
+2. `tools/manual_index_worker.py`在既有Windows以官方HTTP下載，核SHA後呼叫同一`build_manual_page_index.py`的`build_document`。逐筆失敗仍繼續其他候選，最多20筆／次，從去敏報告`lastAttempted`游標輪替，避免前列永久失敗餓死後續候選；空佇列不代表曾成功建過索引。
+3. 既有Webhook識別`manual-index-worker-v1`，獨立64-hex秘密HMAC簽署protocol／timestamp／nonce／action／原字串payload；5分鐘TTL、持久防重播及大小限制。只允許`list/prepare/probe/health`；秘密只經編輯者維護短token設定，不輸出、不交外部AI、不存repo。
+4. 一般PDF由GAS再次官方下載核SHA，驗索引checksum、頁數／詞索引／pageHash與文字結構。reviewed ZIP由本機核archive SHA、精確唯一entry及PDF SHA；F612 ZIP約60.5MB，不由GAS整包下載，同一簽章prepare可傳最多8MiB PDF，body最多12MiB，GAS核已登錄PDF／索引SHA後才寫入。PDF存`_MANUAL_WORKER_REVISIONS/<SHA>/<既有命名>.pdf`；資料夾／PDF／gzip／bundle一律Advanced Drive v3 `supportsAllDrives:true`建立並讀回。單一`MANUAL_WORKER_BUNDLE`指標是唯一生效點，保留previous及舊檔；同revision重送復用，舊base或pending已變拒絕。
+5. `manual_worker_runtime.gs`每請求讀同一bundle，僅覆蓋已核實SKU，不凍結其他compiled文件。頁檢索、manifest、PDF recovery及最終附件共用同SHA；缺新索引不借舊compiled頁，缺新PDF不退回root舊檔。`probe`核實不可變PDF及index兩個SHA；`health`僅代表worker回報時間與結果，不取代probe。
+6. `tools/run_manual_index_worker.ps1`鎖定既有正式endpoint、Local mutex防同session重跑。`--secret-file`讀受限本機JSON `{endpoint,secret}`；`--report`寫去敏`last-run.json`。排程依賴這台Windows、Python／requests／PyMuPDF及網路可用，不是GAS能自行執行PyMuPDF；新排程須先單次正式端到端通過，不能先建空殼。
+
+目前證據：`node test_runner/verify_manual_index_worker.js` 30項通過，載入root GAS、只模擬外部I/O，涵蓋SHA／失敗保舊／重跑／冷啟動／下一SHA／缺檔／附件／health／Python報告，以及ZIP錯entry、重複、路徑、炸彈與真F612 PDF＋索引的舊manifest原子換版。真官方M7 PDF244頁及F612 ZIP下載／雙SHA核對通過；雲端prepare與probe另已實測成功，排程／手機LINE不可由此冒稱通過。reviewed同SHA使用`tools/data/manual_index_packages/<indexSHA>.json`已核對追蹤資產，output僅fallback；query新詞映射不強制重建既有索引，一般新PDF仍自動build。
+
+交接最短路徑：先查當次health／LOG與`workerHealth`、讀去敏報告 → 執行worker離線測試 → 編輯者核實來源排入canary → 正式worker一次`prepare/probe`及Bot讀回 → 留存revision、PDF/index SHA、結果及零worker生成費用 → 才建排程並核對實際LastTaskResult／報告時間。遇秘密／來源／SHA／頁數／容量錯誤，停在精確錯誤，不放寬守門、不換模型、不重設正式資料。發布只用既有guarded入口；主責完成雲端證據後再更新本節狀態。
+
+外部範圍：F612官方英文38頁手冊印刷封面S27F61*完整匹配，index SHA `1de245a1c37998a06a77160b381946333177dbfebeff7d867687ca79de7f7b4f`，已由正式worker啟用且PDF／索引SHA probe成功；保留英文／外區與選配限制。S27D392GAC、S32D392GAC及S32AM703UC目前外區資料只作參考，不充當台灣適用證據；M9已核實HTML入口不等於PDF頁級ready。詳見[V307_OFFICIAL_GAPS](docs/V307_OFFICIAL_GAPS.md)。
+
 ## 手冊與 Evidence
+
+- v307檢索query以通用方向結構正規化處理「後面的／後側的／後方的」等語法，原canonical題及型號／關係驗證不變。沿用既有lexicon的relatedTerms召回，不把Core Lighting與其他燈效判為同一能力；四種自然後方燈問法已真全庫召回G9第115頁，PBP選單及H704警語回歸通過。未重建47份PDF索引，也不以離線召回冒稱live答案已通過。
 
 - v306 操作回答從同一已採用設定段保留必要警語，先去除PDF排版破折號再去重；不加第二次生成。明確禁止／不支援是可成立的否定答案，不應僅因不能提供正向做法而標記未解；仍須核對全部主張與適用条件。
 - 覆蓋報告納入已啟用且SHA／checksum吻合的頁索引，統一型號母集合；一次盤點只讀一次manifest快照，不對81筆登錄逐筆讀遠端屬性。聊天單題仍讀當次版本，不延用跨請求舊快照。
-- 自動新SHA promotion遇已登錄但索引未同步時，先記PENDING_PAGE_INDEX並保留舊PDF、manifest及active；重複相同SKU/SHA不再付首頁驗證費。這是保護，不是完整自動建索引；prepared版本包切換與可靠PyMuPDF執行環境尚待完成，詳見V306_HANDOFF，不得以放寬SHA解除阻擋。
+- 自動新SHA先記PENDING_PAGE_INDEX並保留舊完整版本；具有效workerBinding的相同SKU/SHA不重付首頁驗證費。v307已由上述worker建立完整版本包且正式端到端通過，排程實跑亦已成功讀回，不得以放寬SHA解除阻擋。
 
 - config/manual_registry.json 保存完整型號／料號、文件角色、適用範圍、來源／支援頁、SHA。檔名只辨識：維持無國家碼、型號本體排序逗號命名，不盲刪全部尾字母造成不同款碰撞。
 - tools/build_manual_page_index.py 驗證 SHA 後產生完整 lex/pages。manual_index_runtime.gs 按原題 BM25 查頁，保留標題、表格、步驟與限制。PBP/PIP/多重視窗等 related aliases 只擴召回，不證明等價能力。
@@ -54,7 +77,7 @@ Fast／頁級固定2.5 Flash-Lite，整本PDF／Web固定2.5 Flash；既有條�
 - Chrome文字備援使用package產生的`editor_import_001.json`等每包不超過6MB；不要把全庫13MB持續貼進同一textarea，否則輸入延遲可能超過瀏覽器控制逾時。這是輸入效能限制，不是權限或Gemini錯誤，不應要求Sam重新授權。每批完成再換下一批，正式索引指標不因中途停止而損毀。
 - 維護流程：`audit_manual_library.py`盤點→`resolve_manual_library.py`核對台灣支援頁／官方下載→`build_manual_page_index.py`產生候選→`package_manual_library.py`輸出精簡程式與匯入包→guarded StageOnly→TestUI選取匯入包→讀回與提問→guarded正式發布。新SHA僅重建受影響文件用`refresh_manual_index_candidate.py`；`--resume-doc-key`只適用已確認之前各包成功的續傳。禁止把13MB暫存全庫直接當正式程式；output整個排除clasp。
 - 事故規則：Samsung下載分類UM亦包含Product Guide，較新產品指南不能覆蓋操作手冊。首頁明確型號/實際星號範圍可建立候選，不能靠檔名；多SHA衝突改核對官方支援頁。明確首頁矛盾、DRM非PDF或只有產品指南列缺口，不假裝手冊已可用。2026-09-05 H704本機9CCD舊版被雲端D859阻擋，改取官方D859及新索引，禁止放寬SHA守門。
-- PDF 可查與頁級索引就緒分開。未登錄文件仍走既有 PDF。**尚未完成全 Drive 自動抽頁索引，不得宣稱新 PDF 全自動 RAG 就緒。** 日常使用不需 Sam 手動重啟。
+- PDF可查、頁級索引ready、worker最近成功與無人排程分別回報。未登錄但已驗證文件可保留既有PDF路線並排背景索引；v307完整worker已正式E2E通過，且無人排程已真啟動成功；仍依本機登入、網路與Python可用條件執行。日常問答不需Sam手動重啟。
 - promotion 失敗只留 pending，禁止暫存 Gemini URI／新 SHA 覆蓋有效 manifest；備份、讀回、失敗回復；manifest 短鎖，慢同步不持有聊天預算鎖。每日 lease 成功去重，保留已有 daily／4小時 URI 續期 trigger。
 - 模型只選 evidenceId，程式回填頁碼／原文／SHA。驗證型號、家族、原題功能與條件關係；不得因 PBP 與120Hz分別出現就推為每側120Hz。
 - 「依型號可能不支援」只在驗證文件綁定＋獨立完整型號 RULE／QA 能力成立時支持單一共通入口；數值／限制不放寬，原文限制保留。另一家族的例外不當成目前型號證據。

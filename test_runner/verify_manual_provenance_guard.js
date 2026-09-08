@@ -90,6 +90,10 @@ const context = {
   findLocalMatchInQA: () => null,
 };
 vm.createContext(context);
+// Load declarations as actual JavaScript: the legacy extractor is not a
+// JavaScript lexer and cannot distinguish regex quotes from string literals.
+vm.runInContext(fs.readFileSync(path.join(root, "manual_answer_quality.gs"), "utf8"), context);
+['manual_index_worker.gs','manual_worker_runtime.gs'].forEach(file=>vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context));
 
 [
   "bytesToHex_",

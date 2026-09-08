@@ -1,0 +1,3977 @@
+[
+  {
+    "id": 1,
+    "name": "M7選型接回HDMI再追USB-C",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "M7有幾個HDMI？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 「M7」系列有好幾款不同年份或尺寸\n\n請點選你使用的完整型號，我幫你解答 👇\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "#型號:S32FM703UC",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "有幾個HDMI?",
+            "canonicalClaimKey": "3c6e4e033b0ec0e1",
+            "lastQuestion": "有幾個HDMI?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "有幾個HDMI?",
+          "canonicalClaimKey": "3c6e4e033b0ec0e1",
+          "lastQuestion": "有幾個HDMI?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "那USB-C能幫筆電充幾瓦？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM703UC 的規格是：USB-C 65W x1(HDCP 2.2)。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "那USB-C能幫筆電充幾瓦?",
+            "canonicalClaimKey": "32a0e95c4510aaed",
+            "lastQuestion": "那USB-C能幫筆電充幾瓦?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "那USB-C能幫筆電充幾瓦?",
+          "canonicalClaimKey": "32a0e95c4510aaed",
+          "lastQuestion": "那USB-C能幫筆電充幾瓦?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "G8選型更新率再追G-Sync",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "G8更新率多少？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 「G8」系列有好幾款不同年份或尺寸\n\n請點選你使用的完整型號，我幫你解答 👇\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "#型號:S32DG802SC",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32DG802SC 的規格是：更新頻率最高240Hz。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32DG802SC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "更新率多少?",
+            "canonicalClaimKey": "aa942c19bc5b3139",
+            "lastQuestion": "更新率多少?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "更新率多少?",
+          "canonicalClaimKey": "aa942c19bc5b3139",
+          "lastQuestion": "更新率多少?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32DG802SC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "支援G-Sync嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32DG802SC 的規格是：G-Sync相容。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32DG802SC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "支援G-Sync嗎?",
+            "canonicalClaimKey": "96828a7c84d8bf52",
+            "lastQuestion": "支援G-Sync嗎?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "支援G-Sync嗎?",
+          "canonicalClaimKey": "96828a7c84d8bf52",
+          "lastQuestion": "支援G-Sync嗎?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32DG802SC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "G932 PBP再加兩邊120Hz限制",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S49DG932SC G932如何開啟PBP?",
+        "model": "S49DG932SC",
+        "evidenceId": "E1",
+        "page": 35,
+        "fixture": true,
+        "selectedText": "PIP/PBP\n― ― 可用功能會隨產品機型而有差異。零件的色彩與形狀可能與所示不同。規格可能隨品質的提升而有所變更，恕不另行通知。\n― ― 若 PIP/PBP 功能正在使用中，且電腦螢幕上顯示的文字看起來模糊或毀損，請將電腦螢幕解析度變更為建議的解析度，以解決問題。\n― ― 玩遊戲時請勿任意變更 PIP/PBP 功能。否則，有些遊戲應用程式可能無法回應，造成畫面發生錯誤。\n第 2 第 3 說明\nPIP/PBP Mode 開啟或關閉 PIP/PBP 模式。\nMode Type 選擇子畫面的大小與長寬比。\n˙ ˙ / / /\nScreen Size 選擇子畫面大小。\n˙ ˙ /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nScreen Position 從可用的選項選擇子畫面的位置。\n˙ ˙ / / /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nSource 選擇每個螢幕的訊號源。\n35"
+      },
+      {
+        "fixtureKind": "router-classification-only",
+        "input": {
+          "originalQuestion": "那兩邊都能120Hz嗎?",
+          "previousTopic": "G932如何開啟PBP?",
+          "confirmedModel": "S49DG932SC",
+          "candidates": [
+            "S49DG932SC"
+          ],
+          "identityKind": "persisted",
+          "localCoverage": "none",
+          "localEvidenceIds": [],
+          "manualAvailable": true
+        },
+        "result": {
+          "version": "RouteAnalysisV1",
+          "topicRelation": "followup",
+          "productAction": "keep_confirmed",
+          "candidateIndex": null,
+          "claims": [
+            {
+              "id": "C1",
+              "question": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+              "intent": "operation",
+              "evidenceNeed": "manual_model_specific",
+              "answerShape": "steps"
+            }
+          ],
+          "confidence": "high",
+          "reasonCode": "elliptical_followup"
+        }
+      },
+      {
+        "question": "S49DG932SC G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+        "model": "S49DG932SC",
+        "evidenceId": "E1",
+        "page": 35,
+        "fixture": true,
+        "selectedText": "PIP/PBP\n― ― 可用功能會隨產品機型而有差異。零件的色彩與形狀可能與所示不同。規格可能隨品質的提升而有所變更，恕不另行通知。\n― ― 若 PIP/PBP 功能正在使用中，且電腦螢幕上顯示的文字看起來模糊或毀損，請將電腦螢幕解析度變更為建議的解析度，以解決問題。\n― ― 玩遊戲時請勿任意變更 PIP/PBP 功能。否則，有些遊戲應用程式可能無法回應，造成畫面發生錯誤。\n第 2 第 3 說明\nPIP/PBP Mode 開啟或關閉 PIP/PBP 模式。\nMode Type 選擇子畫面的大小與長寬比。\n˙ ˙ / / /\nScreen Size 選擇子畫面大小。\n˙ ˙ /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nScreen Position 從可用的選項選擇子畫面的位置。\n˙ ˙ / / /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nSource 選擇每個螢幕的訊號源。\n35"
+      },
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG932SC G932如何開啟PBP?；那兩邊都能120HZ嗎? PBP CONNECTION.PBP 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG932SC G932如何開啟PBP?；那兩邊都能120Hz嗎? PBP connection.pbp 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "turns": [
+      {
+        "input": "G932如何開啟PBP？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG932SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "G932如何開啟PBP?",
+            "canonicalClaimKey": "f0c55f9102c8ea5f",
+            "lastQuestion": "G932如何開啟PBP?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_d21c60aa425cccf5d8216c73_b877bbd227c427c1bc7212ce",
+              "contextId": "OFFLINE_J3",
+              "source": "manual",
+              "finalText": "進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]",
+              "model": "S49DG932SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "G932開啟PBP",
+              "canonicalQuery": "G932如何開啟PBP?",
+              "knowledgeFingerprint": "PAGE_RAG_43661a34f40f4a21",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "G932如何開啟PBP?",
+          "canonicalClaimKey": "f0c55f9102c8ea5f",
+          "lastQuestion": "G932如何開啟PBP?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG932SC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S49DG932SC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG932SC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG932SC group=multi_view",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=35",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S49DG932SC group=multi_view pages=35,26,40,29,34 latencyMs=0"
+        ]
+      },
+      {
+        "input": "那兩邊都能120Hz嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S49DG932SC：目前沒有足夠可靠的資料直接回答「那兩邊都能120Hz嗎?」。\n我先不猜數字或功能結論，避免現場拿到錯答案。\n這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。\n\n[費用:NT$0.0134（合計 3 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG932SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+            "canonicalClaimKey": "8ff860dea2bbbea2",
+            "lastQuestion": "那兩邊都能120Hz嗎?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_d21c60aa425cccf5d8216c73_56e12c8550fea1ab83122c7d",
+              "contextId": "OFFLINE_J3",
+              "source": "manual",
+              "finalText": "S49DG932SC：目前沒有足夠可靠的資料直接回答「那兩邊都能120Hz嗎?」。\n我先不猜數字或功能結論，避免現場拿到錯答案。\n這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。",
+              "model": "S49DG932SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "G932開啟PBP兩邊都能120HZ嗎",
+              "canonicalQuery": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+              "knowledgeFingerprint": "PAGE_RAG_43661a34f40f4a21",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+          "canonicalClaimKey": "8ff860dea2bbbea2",
+          "lastQuestion": "那兩邊都能120Hz嗎?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG932SC"
+        },
+        "calls": 4,
+        "audit": {
+          "stages": [
+            "router",
+            "pdf",
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-3.7-flash",
+            "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 3,
+          "billableCalls": 3,
+          "paidCalls": 3,
+          "routerCalls": 1,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0.007200000000000001,
+          "routePlanValid": true,
+          "routePlan": {
+            "topicRelation": "followup",
+            "productAction": "keep_confirmed",
+            "claimRoutes": [
+              "C1:manual_model_specific"
+            ],
+            "confidence": "high",
+            "reasonCode": "elliptical_followup"
+          },
+          "claimRoutes": [
+            "C1:manual_model_specific"
+          ],
+          "selectedModel": "S49DG932SC",
+          "finalCoverage": "unsupported",
+          "pdfCalls": 1,
+          "webCalls": 1,
+          "inputTokens": 700,
+          "outputTokens": 170,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 170,
+          "estimatedCostTwd": 0.01344,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那兩邊都能120Hz嗎? (型號: S49DG932SC)",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG932SC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG932SC group=multi_view",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=0/1, pages=none",
+          "[General] [Manual Evidence Reject v29.6.277] item=1 page=1 scope=支援頁綁定 model=1 answerModel=1 excerptMatch=0 provenance=1",
+          "[General] [Manual Structured Output v29.6.267] 已回 found=true，但沒有任何主張通過頁碼、型號與摘錄驗證: total=1",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S49DG932SC group=multi_view pages=35,26,40,29,34 latencyMs=0",
+          "[General] [Manual Rescue Decision] {\"expired\":false,\"preflight\":false,\"notFound\":false,\"partial\":false,\"failed\":true,\"recommended\":false,\"planned\":false}",
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "M8選型藍牙能力再操作",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "M8可以接藍牙喇叭嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 「M8」系列有好幾款不同年份或尺寸\n\n請點選你使用的完整型號，我幫你解答 👇\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "#型號:S32FM803UC",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC 的規格是：10W立體聲喇叭；藍牙5.2。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "可以接藍牙喇叭嗎?",
+            "canonicalClaimKey": "890ffbc7afc1aed6",
+            "lastQuestion": "可以接藍牙喇叭嗎?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "可以接藍牙喇叭嗎?",
+          "canonicalClaimKey": "890ffbc7afc1aed6",
+          "lastQuestion": "可以接藍牙喇叭嗎?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "怎麼連藍牙喇叭？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC，可以從音效輸出清單配對藍牙喇叭或耳機。\n\n你可以這樣做：\n1. 先讓藍牙喇叭或耳機進入配對模式。\n2. 依序選擇「設定 → 所有設定 → 音效 → 音效輸出 → 藍牙揚聲器清單」。\n3. 從清單選取裝置完成配對；找不到時把裝置移近螢幕並選擇重新整理。\n\n提醒你：藍牙音訊可能受無線網路影響，功能也可能依型號或地區而異。\n\n官方手冊：第 151 頁\n[來源:官方手冊]\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "怎麼連藍牙喇叭?",
+            "canonicalClaimKey": "11f91908812ec2e9",
+            "lastQuestion": "怎麼連藍牙喇叭?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼連藍牙喇叭?",
+          "canonicalClaimKey": "11f91908812ec2e9",
+          "lastQuestion": "怎麼連藍牙喇叭?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "M8 Wi-Fi再改有線網路",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "fixtureKind": "local-insufficient-manual-required",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "S32FM803UC Wi-Fi怎麼連?"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "text": "S32FM803UC，準備好 Wi-Fi 名稱與密碼後，就能從網路設定連線。\n\n你可以這樣做：\n1. 依序選擇「設定 → 所有設定 → 連線 → 網路 → 網路設定 → 無線」。\n2. 選擇基地台名稱（SSID）並輸入密碼；找不到時可選擇新增網路手動輸入 SSID。\n3. 要檢查連線，可到「設定 → 所有設定 → 連線 → 網路 → 網路狀態」。\n\n官方手冊：第 8–10 頁"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "改接網路線呢? (型號: S32FM803UC)"
+              }
+            ]
+          }
+        ],
+        "providedContext": {
+          "parts": [
+            {
+              "text": "=== 💡 精選問答 (QA - 最優先參考) ===\n=== 🖥️ 產品型號詳細規格 (Spec Rules - Smart Filtered) ===\n【證據鐵律】「術語_」列只用來解釋功能名稱，絕對不能證明某個產品具備該功能；特定型號能力只能依該完整型號自己的規格列判定。規格列未記載時只能說目前無法確認，不得把同系列其他型號的功能套用。\n術語_GameBar2,canonical=game.game_bar_2；aliases=Game Bar 2.0、遊戲設定列；類別=遊戲介面；快速查看與調整遊戲顯示設定；definition_only=true；選項與路徑依完整型號而異；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n術語_UltrawideGameView,canonical=game.ultrawide_game_view；aliases=Ultrawide Game View、超寬遊戲螢幕；類別=遊戲畫面模式；將相容遊戲畫面切換為超寬比例；definition_only=true；支援比例與來源條件須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n術語_VirtualAimPoint,canonical=game.virtual_aim_point；aliases=Virtual Aim Point、虛擬準星、虛擬準心；類別=遊戲輔助；在畫面中央顯示瞄準標記；definition_only=true；不得推定型號支援；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n術語_AIUpscaling,canonical=image.ai_upscaling_4k；aliases=AI Upscaling、AI 影像升頻、4K AI Upscaling、4K AI 升頻；類別=legacy 相容別名；舊雲端 key 僅導向一般版 4K AI Upscaling 的術語定義；definition_only=true；不得由泛指 AI Upscaling 證明任何型號支援、推定輸出解析度或當作 Pro 版本；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n術語_Workspace,canonical=work.workspace；aliases=Workspace、工作空間；類別=生產力；整合遠端電腦與相容生產力服務；definition_only=true；服務內容須看完整型號與地區；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n術語_AirPlay,canonical=connection.airplay；aliases=AirPlay、Apple AirPlay、蘋果無線投放；類別=無線投放；definition_only=true；相容版本、地區與裝置條件須看完整型號；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\nLS32FM803UCXZW,型號：S32FM803UC,32吋智慧聯網螢幕 M8 M80F,32吋16:9 VA平面螢幕,4K UHD(3840x2160)解析度,可視面積697.306x392.234mm,原生對比3000:1,亮度400/300 cd/㎡(典型/最小),HDR10,HDR10+認證,反應時間4ms(GtG),最大刷新率60Hz,可視角178°/178°,色彩支援Max 1B,sRGB 99%(CIE1931),低藍光模式,零閃屏,Windows 11認證,Game Bar 2.0,HDMI-CEC,Auto Source Switch+,Adaptive picture,Ultrawide Game View,Tizen作業系統,長距離語音辨識,SmartThings Hub,Multi Device Experience,Multi View(最多2影片),Smart Calibration(基本),Knox Vault,Remote Access,Wireless Display,介面:HDMI 2.0x1(HDCP 2.2),USB 2.0x2,USB-C 65W x1(HDCP 2.2),Wi-Fi 5,藍牙5.2,10W立體聲喇叭,Adaptive Sound Pro,操作溫度10~40℃,濕度10~80%,HAS PIVOT底座(高度120±5mm),前後傾斜-2°~15°,垂直旋轉-92°~92°,100x100mm壁掛,電源AC 100~240V外接變壓器,最大耗電140W,尺寸含底座713.4x616.2x200.1mm,不含底座713.4x423.8x24.5mm,包裝909x122x483mm,重量含底座7.0kg,不含底座4.0kg,包裝10.5kg,配件含1.5m電源線、HDMI線、USB-C線、太陽能智慧遙控器、SlimFit Camera磁吸攝影機、Pogo Gender\n術語_OneUITizen,canonical=smart.one_ui_tizen；aliases=One UI Tizen、One UI；類別=智慧操作介面；definition_only=true；不得由 Tizen 自動推定使用此介面版本；官方來源=https://www.samsung.com/tw/monitors/smart/smart-monitor-m8-32-inch-smart-tv-apps-4k-uhd-ls32fm803ucxzw/\n\n\n【已確認型號】S32FM803UC。直接回答，不得再次追問型號。\n【共同輸出規則】\n使用台灣繁體中文與「你」，先答核心；像熟悉硬體的朋友在 LINE 說明，短句、自然換行。\n回答完成就停。只有缺少必要資訊時才引導一次；不要固定邀請追問、客服尾語、重複「喔」、表情或內部術語。\n只用本輪提供且可對應目前型號的證據；資料沒寫只能說「目前資料未記載」，不能推成「沒有／不支援」。不要跨型號套規格，不評論或貶低競品，不自行標示來源。"
+            }
+          ]
+        }
+      },
+      {
+        "question": "S32FM803UC 改接網路線呢?",
+        "model": "S32FM803UC",
+        "evidenceId": "E2",
+        "page": 8,
+        "fixture": true,
+        "selectedText": "連線至網路\n您可以透過 產品 存取網路。\n向左方向按鈕 設定 所有設定 連線 網路 網路設定 立即嘗試\n請設定網路設定，以連接至可用網路。\n為確保產品安全且運作穩定，請透過安全管理的路由器連線至網路。\n網路連線後，即可啟用YouTube 影片投放、DLNA 影音無線分享、Wi-Fi 喇叭、SmartThings、Easy Setting Box 和 Screen\nMirroring 等功能。軟體更新可能會影響已支援的服務。\n建立有線網路連線\n向左方向按鈕 設定 所有設定 連線 網路 網路設定 有線\n如果連接區域網路纜線，產品 會自動存取網路。\n如果 產品 不會自動連接網路，請參閱「疑難排解」中的「有線網路連接失敗。」。\n若要連接 LAN 纜線，請使用 CAT 7（*STP 型）纜線來連接。(100/10 Mbps)\n* Shielded Twisted Pair\n如果網路速度低於 10 Mbps，產品 將無法連線到網路。\n依型號而定，可能不支援此功能。\n部分型號不支援有線網路。\n- 8 -"
+      },
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S32FM803UC 改接網路線呢? 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, M8, Smart Monitor M8, Odyssey M8）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S32FM803UC 改接網路線呢? 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "turns": [
+      {
+        "input": "S32FM803UC Wi-Fi怎麼連？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC，準備好 Wi-Fi 名稱與密碼後，就能從網路設定連線。\n\n你可以這樣做：\n1. 依序選擇「設定 → 所有設定 → 連線 → 網路 → 網路設定 → 無線」。\n2. 選擇基地台名稱（SSID）並輸入密碼；找不到時可選擇新增網路手動輸入 SSID。\n3. 要檢查連線，可到「設定 → 所有設定 → 連線 → 網路 → 網路狀態」。\n\n官方手冊：第 8–10 頁\n[來源:官方手冊]\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "Wi-Fi怎麼連?",
+            "canonicalClaimKey": "28a87d2dc0ac833f",
+            "lastQuestion": "Wi-Fi怎麼連?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "Wi-Fi怎麼連?",
+          "canonicalClaimKey": "28a87d2dc0ac833f",
+          "lastQuestion": "Wi-Fi怎麼連?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "改接網路線呢？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC：關於「改接網路線呢?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0067（合計 3 次生成請求）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "改接網路線呢?",
+            "canonicalClaimKey": "a8d1335d584ec439",
+            "lastQuestion": "改接網路線呢?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_9c197659aeecc3ee21be427c_d020418e7a4e79a917a8effd",
+              "contextId": "OFFLINE_J5",
+              "source": "manual",
+              "finalText": "S32FM803UC：關於「改接網路線呢?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+              "model": "S32FM803UC",
+              "date": "2026-09-08",
+              "canonicalTopic": "改接網路線呢",
+              "canonicalQuery": "改接網路線呢?",
+              "knowledgeFingerprint": "PAGE_RAG_8a53002cd527f0c3",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "改接網路線呢?",
+          "canonicalClaimKey": "a8d1335d584ec439",
+          "lastQuestion": "改接網路線呢?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 5,
+        "audit": {
+          "stages": [
+            "fast",
+            "pdf",
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 3,
+          "billableCalls": 3,
+          "paidCalls": 3,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S32FM803UC",
+          "finalCoverage": "unsupported",
+          "pdfCalls": 1,
+          "webCalls": 1,
+          "inputTokens": 700,
+          "outputTokens": 140,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 140,
+          "estimatedCostTwd": 0.006688,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] Fast Mode 資料不足，直接交由統一手冊路由",
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S32FM803UC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S32FM803UC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S32FM803UC group=query_time",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=0/1, pages=none",
+          "[General] [Manual Evidence Reject v29.6.277] item=1 page=1 scope=支援頁綁定 model=0 answerModel=1 excerptMatch=1 provenance=1",
+          "[General] [Manual Structured Output v29.6.267] 已回 found=true，但沒有任何主張通過頁碼、型號與摘錄驗證: total=1",
+          "[General] [Manual Coverage] coverage=partial unresolved=目前型號是否支援有線網路仍需核對。",
+          "[General] [Manual Page RAG] model=S32FM803UC group=query_time pages=212,8,175,9,85 latencyMs=0",
+          "[General] [Manual Rescue Decision] {\"expired\":false,\"preflight\":false,\"notFound\":false,\"partial\":false,\"failed\":true,\"recommended\":false,\"planned\":false}",
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "M8 App切換再問零售模式",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "S32FM803UC內建App怎麼切？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC，連上網路後，可以從應用程式首頁安裝或管理 App。\n\n你可以這樣做：\n1. 從「首頁 → 應用程式」找到 Netflix、YouTube 等 App；未安裝時按安裝，已安裝時直接開啟並登入。\n2. 要更新、移除或重新安裝，請到應用程式首頁底部的「應用程式設定」管理。\n\n提醒你：預設的標準應用程式無法解除安裝；使用與更新 App 時螢幕必須連線到網路。\n\n官方手冊：第 68–72 頁\n[來源:官方手冊]\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "內建App怎麼切?",
+            "canonicalClaimKey": "457cf230e5dc49ff",
+            "lastQuestion": "內建App怎麼切?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "內建App怎麼切?",
+          "canonicalClaimKey": "457cf230e5dc49ff",
+          "lastQuestion": "內建App怎麼切?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "零售模式在哪？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM803UC，可以在使用模式裡切換零售模式或家庭模式。\n\n你可以這樣做：\n1. 依序選擇「設定 → 所有設定 → 一般與隱私權 → 使用模式 → 零售模式」。\n\n提醒你：零售模式只供店內展示，部分功能會停用且設定會定時自動重設；一般使用請選家庭模式。\n\n官方手冊：第 170 頁\n[來源:官方手冊]\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM803UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "零售模式在哪?",
+            "canonicalClaimKey": "3034b5a4c65f5d61",
+            "lastQuestion": "零售模式在哪?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "零售模式在哪?",
+          "canonicalClaimKey": "3034b5a4c65f5d61",
+          "lastQuestion": "零售模式在哪?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM803UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "G9選型後方燈再加畫面同步",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S49DG952SC 後方那圈燈怎麼開?",
+        "model": "S49DG952SC",
+        "evidenceId": "E1",
+        "page": 115,
+        "fixture": true,
+        "selectedText": "變更虛擬瞄準點\n功能表 設定 所有設定 遊戲 虛擬瞄準點\n在螢幕中央顯示虛擬瞄準點。\n依型號而定，可能不支援此功能。\n設定Core Lighting\n功能表 設定 所有設定 遊戲 Core Lighting\n開啟或關閉產品正面和背面的 LED 照明。\n依型號而定，可能不支援此功能。\n使用AI Sound Booster\n功能表 設定 所有設定 遊戲 AI Sound Booster\nAI Sound Booster 會透過即時 AI 分析，提供具有最大化方向的 3D 音效。其生動地表達各種音效，提供更身歷其境的遊 戲體驗。\n依型號而定，可能不支援此功能。\n使用動態黑色等化器\n功能表 設定 所有設定 遊戲 動態黑色等化器 立即嘗試\n您可以透過提升黑暗場景中的可見度和物體細部，輕鬆偵測潛伏在黑暗角落的項目或隱藏的敵人，無需使場景變得較 明亮而降低色彩豔度和對比度。\n依型號而定，可能不支援此功能。\n- 115 -"
+      },
+      {
+        "fixtureKind": "router-classification-only",
+        "input": {
+          "originalQuestion": "我要跟畫面同步。",
+          "previousTopic": "後方那圈燈怎麼開?",
+          "confirmedModel": "S49DG952SC",
+          "candidates": [
+            "S49DG952SC"
+          ],
+          "identityKind": "persisted",
+          "localCoverage": "none",
+          "localEvidenceIds": [],
+          "manualAvailable": true
+        },
+        "result": {
+          "version": "RouteAnalysisV1",
+          "topicRelation": "followup",
+          "productAction": "keep_confirmed",
+          "candidateIndex": null,
+          "claims": [
+            {
+              "id": "C1",
+              "question": "後方那圈燈怎麼開?；我要跟畫面同步。",
+              "intent": "operation",
+              "evidenceNeed": "manual_model_specific",
+              "answerShape": "steps"
+            }
+          ],
+          "confidence": "high",
+          "reasonCode": "elliptical_followup"
+        }
+      },
+      {
+        "question": "S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。",
+        "model": "S49DG952SC",
+        "evidenceId": "E1",
+        "page": 115,
+        "fixture": true,
+        "selectedText": "變更虛擬瞄準點\n功能表 設定 所有設定 遊戲 虛擬瞄準點\n在螢幕中央顯示虛擬瞄準點。\n依型號而定，可能不支援此功能。\n設定Core Lighting\n功能表 設定 所有設定 遊戲 Core Lighting\n開啟或關閉產品正面和背面的 LED 照明。\n依型號而定，可能不支援此功能。\n使用AI Sound Booster\n功能表 設定 所有設定 遊戲 AI Sound Booster\nAI Sound Booster 會透過即時 AI 分析，提供具有最大化方向的 3D 音效。其生動地表達各種音效，提供更身歷其境的遊 戲體驗。\n依型號而定，可能不支援此功能。\n使用動態黑色等化器\n功能表 設定 所有設定 遊戲 動態黑色等化器 立即嘗試\n您可以透過提升黑暗場景中的可見度和物體細部，輕鬆偵測潛伏在黑暗角落的項目或隱藏的敵人，無需使場景變得較 明亮而降低色彩豔度和對比度。\n依型號而定，可能不支援此功能。\n- 115 -"
+      },
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "turns": [
+      {
+        "input": "G9後方那圈燈怎麼開？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 「G9」系列有好幾款不同年份或尺寸\n\n請點選你使用的完整型號，我幫你解答 👇\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "#型號:S49DG952SC",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n官方手冊：第115頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG952SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "後方那圈燈怎麼開?",
+            "canonicalClaimKey": "8f393298eb0f5114",
+            "lastQuestion": "後方那圈燈怎麼開?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_14e3065dd3a2469dee2e42ba_919af0de8cc00113f5998dc6",
+              "contextId": "OFFLINE_J7",
+              "source": "manual",
+              "finalText": "可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n官方手冊：第115頁\n\n[來源:官方手冊]",
+              "model": "S49DG952SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "機背圈燈開",
+              "canonicalQuery": "後方那圈燈怎麼開?",
+              "knowledgeFingerprint": "PAGE_RAG_5a09b1cf085da779",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "後方那圈燈怎麼開?",
+          "canonicalClaimKey": "8f393298eb0f5114",
+          "lastQuestion": "後方那圈燈怎麼開?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG952SC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S49DG952SC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG952SC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG952SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG952SC group=rear_lighting",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=115",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S49DG952SC group=rear_lighting pages=115 latencyMs=0"
+        ]
+      },
+      {
+        "input": "我要跟畫面同步。",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 手冊能確認：\n可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n\n官方手冊：第115頁\n\n至於「後方燈與畫面同步的設定仍未核實。。我接著補查一次公開網頁，不另扣網搜次數。」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。\n[來源:官方手冊]\n\n[費用:NT$0.0134（合計 3 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG952SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "後方那圈燈怎麼開?；我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
+            "canonicalClaimKey": "ef71cc6f1bdd64d3",
+            "lastQuestion": "我要跟畫面同步。",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_14e3065dd3a2469dee2e42ba_57ef71229a7154bf8e9da315",
+              "contextId": "OFFLINE_J7",
+              "source": "manual",
+              "finalText": "手冊能確認：\n可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n\n官方手冊：第115頁\n\n至於「後方燈與畫面同步的設定仍未核實。。我接著補查一次公開網頁，不另扣網搜次數。」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。\n[來源:官方手冊]",
+              "model": "S49DG952SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "機背圈燈開我要跟畫面同步",
+              "canonicalQuery": "後方那圈燈怎麼開?；我要跟畫面同步。",
+              "knowledgeFingerprint": "PAGE_RAG_c83f140e0c5bd7d7",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "後方那圈燈怎麼開?；我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
+          "canonicalClaimKey": "ef71cc6f1bdd64d3",
+          "lastQuestion": "我要跟畫面同步。",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG952SC"
+        },
+        "calls": 4,
+        "audit": {
+          "stages": [
+            "router",
+            "pdf",
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-3.7-flash",
+            "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 3,
+          "billableCalls": 3,
+          "paidCalls": 3,
+          "routerCalls": 1,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0.007200000000000001,
+          "routePlanValid": true,
+          "routePlan": {
+            "topicRelation": "followup",
+            "productAction": "keep_confirmed",
+            "claimRoutes": [
+              "C1:manual_model_specific"
+            ],
+            "confidence": "high",
+            "reasonCode": "elliptical_followup"
+          },
+          "claimRoutes": [
+            "C1:manual_model_specific"
+          ],
+          "selectedModel": "S49DG952SC",
+          "finalCoverage": "partial",
+          "pdfCalls": 1,
+          "webCalls": 1,
+          "inputTokens": 700,
+          "outputTokens": 170,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 170,
+          "estimatedCostTwd": 0.01344,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 我要跟畫面同步。 (型號: S49DG952SC)",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG952SC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG952SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG952SC group=rear_lighting",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=115",
+          "[General] [Manual Coverage] coverage=partial unresolved=後方燈與畫面同步的設定仍未核實。",
+          "[General] [Manual Page RAG] model=S49DG952SC group=rear_lighting pages=115,141,11,117,91 latencyMs=0",
+          "[General] [Manual Rescue Decision] {\"expired\":false,\"preflight\":false,\"notFound\":false,\"partial\":true,\"failed\":false,\"recommended\":true,\"planned\":false}",
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "M7 HDMI換G9同功能不混款",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S32FM703UC HDMI怎麼切換?",
+        "model": "S32FM703UC",
+        "evidenceId": "E1",
+        "page": 14,
+        "fixture": true,
+        "selectedText": "在連接 產品 的外部裝置間切換\n您可以在 產品 節目和外部裝置的內容間切換。\n向左方向按鈕 已連接裝置\n當您在訊號源畫面選擇連接的外部裝置時，所選裝置的輸出會顯示在 產品 螢幕上。\n若要使用 產品 的遙控器控制支援通用遙控器的裝置（Blu-ray 播放機、遊戲主機等），請將裝置連接到 產品 的 HDMI 連接\n埠，然後開啟裝置。顯示在 產品 上的輸出會自動切換到裝置的輸出，或者您可以自動設定裝置的通用遙控器。如需詳細資\n訊，請參閱「使用 Samsung 遙控器控制外部裝置 - 使用通用遙控器設定」。\n當 USB 裝置連接到 USB 連接埠時，會出現快顯訊息，讓您輕鬆切換至裝置上所列的媒體內容。\n依裝置和地理區域而定，可能不支援此功能。\n- 14 -"
+      },
+      {
+        "question": "HDMI怎麼切換?（這次對象改為 S49DG952SC）",
+        "model": "S49DG952SC",
+        "evidenceId": "E1",
+        "page": 13,
+        "fixture": true,
+        "selectedText": "在連接 產品 的外部裝置間切換\n您可以在 產品 節目和外部裝置的內容間切換。\n功能表 已連接裝置\n當您在訊號源畫面選擇連接的外部裝置時，所選裝置的輸出會顯示在 產品 螢幕上。\n若要使用 產品 的遙控器控制支援通用遙控器的裝置（Blu-ray 播放機、遊戲主機等），請將裝置連接到 產品 的 HDMI 連接埠，然\n後開啟裝置。顯示在 產品 上的輸出會自動切換到裝置的輸出，或者您可以自動設定裝置的通用遙控器。如需詳細資訊，請參閱\n「使用 Samsung 遙控器控制外部裝置 - 使用通用遙控器設定」。\n當 USB 裝置連接到 USB 連接埠時，會出現快顯訊息，讓您輕鬆切換至裝置上所列的媒體內容。\n依裝置和地理區域而定，可能不支援此功能。\n- 13 -"
+      }
+    ],
+    "turns": [
+      {
+        "input": "S32FM703UC HDMI怎麼切換？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第14頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "HDMI怎麼切換?",
+            "canonicalClaimKey": "486729276b9c605b",
+            "lastQuestion": "HDMI怎麼切換?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_6bc5dac0b2f4e9125cf4e900_2793ce9211a58ed7aa7091ec",
+              "contextId": "OFFLINE_J8",
+              "source": "manual",
+              "finalText": "按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第14頁\n\n[來源:官方手冊]",
+              "model": "S32FM703UC",
+              "date": "2026-09-08",
+              "canonicalTopic": "HDMI切換",
+              "canonicalQuery": "S32FM703UC HDMI怎麼切換?",
+              "knowledgeFingerprint": "PAGE_RAG_abf79b436b491032",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "HDMI怎麼切換?",
+          "canonicalClaimKey": "486729276b9c605b",
+          "lastQuestion": "HDMI怎麼切換?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S32FM703UC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S32FM703UC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S32FM703UC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S32FM703UC group=query_time",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=14",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S32FM703UC group=query_time pages=14 latencyMs=0"
+        ]
+      },
+      {
+        "input": "改成S49DG952SC同功能呢？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第13頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG952SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "HDMI怎麼切換?（這次對象改為 ）",
+            "canonicalClaimKey": "96f6a13bd79d7db3",
+            "lastQuestion": "HDMI怎麼切換?（這次對象改為 ）",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_6bc5dac0b2f4e9125cf4e900_9dd8f5dccac3b32baf15d969",
+              "contextId": "OFFLINE_J8",
+              "source": "manual",
+              "finalText": "按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第13頁\n\n[來源:官方手冊]",
+              "model": "S49DG952SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "HDMI切換這次對象改為",
+              "canonicalQuery": "HDMI怎麼切換?（這次對象改為 S49DG952SC）",
+              "knowledgeFingerprint": "PAGE_RAG_2b3ac5f6c2afe6eb",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "HDMI怎麼切換?（這次對象改為 ）",
+          "canonicalClaimKey": "96f6a13bd79d7db3",
+          "lastQuestion": "HDMI怎麼切換?（這次對象改為 ）",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG952SC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S49DG952SC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG952SC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG952SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG952SC group=query_time",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=13",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S49DG952SC group=query_time pages=13 latencyMs=0"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "name": "G8選型跨日PBP保留身分",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S32DG802SC 昨天那台怎麼開PBP?",
+        "model": "S32DG802SC",
+        "evidenceId": "E1",
+        "page": 101,
+        "fixture": true,
+        "selectedText": "使用 多重視窗\n您可以透過多重視窗檢視多個內容項目。\n向左方向按鈕 設定 多重視窗 立即嘗試\n依型號而定，可能不支援此功能。\n在 多重視窗 模式中不支援 遊戲模式、VRR 和 雲端遊戲。\n使用多重視窗檢視多個小畫面時，某些畫面的解析度可能會顯得很低。\n只能顯示一個外部輸入（包括 HDMI、DisplayPort、Type-C）和一個鏡像裝置螢幕。\n在多重視窗模式中，對於外部輸入支援高達 120 Hz 的更新頻率。某些型號最高支援 60 Hz。\n若要啟動 多重視窗 ，請至 向左方向按鈕 設定 多重視窗。接下來，從新增檢視清單中選取您想要的\n項目。或選取建立我自己的配置以設定自訂版面配置和畫面。您可以按下遙控器上的向下方向鍵，以在目前的 多重 視窗 畫面中新增或刪除畫面。\n產品 上的影像依型號和地理區域而定，可能與上述影像不同。\n當 多重視窗 正在執行時，按下選擇按鈕即可設定以下功能表。\n此功能和所提供每個功能表圖示的選項不一定都可用，視型號和地區而定。\n• 應用程式/訊號源\n您可以變更所選視窗的內容。\n- 101 -"
+      },
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S32DG802SC 昨天那台怎麼開PBP? PBP CONNECTION.PBP 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G8, Smart Monitor G8, Odyssey G8）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S32DG802SC 昨天那台怎麼開PBP? PBP connection.pbp 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "turns": [
+      {
+        "input": "G8更新率多少？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 「G8」系列有好幾款不同年份或尺寸\n\n請點選你使用的完整型號，我幫你解答 👇\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "#型號:S32DG802SC",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32DG802SC 的規格是：更新頻率最高240Hz。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32DG802SC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "更新率多少?",
+            "canonicalClaimKey": "aa942c19bc5b3139",
+            "lastQuestion": "更新率多少?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "更新率多少?",
+          "canonicalClaimKey": "aa942c19bc5b3139",
+          "lastQuestion": "更新率多少?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32DG802SC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "昨天那台怎麼開PBP？",
+        "clockAdvanced": 86400000,
+        "replies": [
+          "[General] [Reply Audit] S32DG802SC：關於「昨天那台怎麼開PBP?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0062（合計 2 次生成請求）]"
+        ],
+        "model": {
+          "model": "S32DG802SC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "昨天那台怎麼開PBP?",
+            "canonicalClaimKey": "632381b54d0f1f59",
+            "lastQuestion": "昨天那台怎麼開PBP?",
+            "claims": [],
+            "updatedAt": 1788933600000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_b32bac2f0e493e81a2e11858_d13844051a261e7b9afe7df3",
+              "contextId": "OFFLINE_J9",
+              "source": "manual",
+              "finalText": "S32DG802SC：關於「昨天那台怎麼開PBP?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+              "model": "S32DG802SC",
+              "date": "2026-09-09",
+              "canonicalTopic": "昨天台開PBP",
+              "canonicalQuery": "昨天那台怎麼開PBP?",
+              "knowledgeFingerprint": "PAGE_RAG_8968ea48d003363e",
+              "createdAt": 1788933600000,
+              "expiresAt": 1788934200000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788933600000,
+          "reason": "model_selection"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "昨天那台怎麼開PBP?",
+          "canonicalClaimKey": "632381b54d0f1f59",
+          "lastQuestion": "昨天那台怎麼開PBP?",
+          "claims": [],
+          "updatedAt": 1788933600000,
+          "model": "S32DG802SC"
+        },
+        "calls": 3,
+        "audit": {
+          "stages": [
+            "pdf",
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite",
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 2,
+          "billableCalls": 2,
+          "paidCalls": 2,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S32DG802SC",
+          "finalCoverage": "unsupported",
+          "pdfCalls": 1,
+          "webCalls": 1,
+          "inputTokens": 600,
+          "outputTokens": 130,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 130,
+          "estimatedCostTwd": 0.006240000000000001,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S32DG802SC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S32DG802SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S32DG802SC group=multi_view",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=0/1, pages=none",
+          "[General] [Manual Evidence Reject v29.6.277] item=1 page=1 scope=支援頁綁定 model=1 answerModel=1 excerptMatch=0 provenance=1",
+          "[General] [Manual Structured Output v29.6.267] 已回 found=true，但沒有任何主張通過頁碼、型號與摘錄驗證: total=1",
+          "[General] [Manual Coverage] coverage=partial unresolved=目前型號的 PBP 操作仍未確認，不能由多重視窗推論兩者相同。",
+          "[General] [Manual Page RAG] model=S32DG802SC group=multi_view pages=101,73,102,103,12 latencyMs=0",
+          "[General] [Manual Rescue Decision] {\"expired\":false,\"preflight\":false,\"notFound\":false,\"partial\":false,\"failed\":true,\"recommended\":false,\"planned\":false}",
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "name": "手冊按鈕取消再M7規格",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "rm_action=select_source&source=manual&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 📖 官方手冊｜今日剩餘 2/2 次\n\n我會先用現有規格與問答確認；仍不足就直接查官方手冊。手冊沒有明確答案時，會再補查一次公開網頁。\n\n請直接輸入「系列／型號＋問題」；若需要選型號，選完就會直接查。輸入「取消」離開。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": []
+      },
+      {
+        "input": "rm_action=cancel_source&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 已取消，現在是「規格＆FAQ」快速模式，沒有扣除次數。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": []
+      },
+      {
+        "input": "S32FM703UC有幾個HDMI？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "有幾個HDMI?",
+            "canonicalClaimKey": "3c6e4e033b0ec0e1",
+            "lastQuestion": "有幾個HDMI?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "有幾個HDMI?",
+          "canonicalClaimKey": "3c6e4e033b0ec0e1",
+          "lastQuestion": "有幾個HDMI?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "name": "DRM無PDF型號手冊轉網路安全終點",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "fixtureKind": "web-empty-grounding",
+        "question": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "turns": [
+      {
+        "input": "S27D392GAC怎麼自我診斷？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0034（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27D392GAC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "dc73507fd176bf43",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_8e7c536b1dc3c3b57518c287_1116b8303e6f1eaaeae579fc",
+              "contextId": "OFFLINE_J11",
+              "source": "manual",
+              "finalText": "S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+              "model": "S27D392GAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27D392GAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PDF_a2739d71dc6058e7",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "dc73507fd176bf43",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27D392GAC"
+        },
+        "calls": 2,
+        "audit": {
+          "stages": [
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27D392GAC",
+          "finalCoverage": "unsupported",
+          "pdfCalls": 0,
+          "webCalls": 1,
+          "inputTokens": 100,
+          "outputTokens": 30,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 30,
+          "estimatedCostTwd": 0.00336,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27D392GAC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27D392GAC，選型完成後直接執行",
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      },
+      {
+        "input": "rm_action=select_source&source=manual&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n[費用:NT$0.0000]"
+        ],
+        "model": {
+          "model": "S27D392GAC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "dc73507fd176bf43",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_8e7c536b1dc3c3b57518c287_1116b8303e6f1eaaeae579fc",
+              "contextId": "OFFLINE_J11",
+              "source": "manual",
+              "finalText": "S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+              "model": "S27D392GAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27D392GAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PDF_a2739d71dc6058e7",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "dc73507fd176bf43",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27D392GAC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27D392GAC",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": [
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27D392GAC，選型完成後直接執行"
+        ]
+      },
+      {
+        "input": "rm_action=select_source&source=web&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n也可以點「到這款官網」確認，或請 Sam 幫忙。\n\n[費用:NT$0.0034（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27D392GAC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "dc73507fd176bf43",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_8e7c536b1dc3c3b57518c287_1116b8303e6f1eaaeae579fc",
+              "contextId": "OFFLINE_J11",
+              "source": "manual",
+              "finalText": "S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+              "model": "S27D392GAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27D392GAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PDF_a2739d71dc6058e7",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": {
+              "status": "done",
+              "key": "SRC_OP_8e7c536b1dc3c3b57518c287_a6fb681c85b782da2e314b40",
+              "contextId": "OFFLINE_J11",
+              "source": "web",
+              "finalText": "S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n也可以點「到這款官網」確認，或請 Sam 幫忙。",
+              "model": "S27D392GAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "SAMSUNG電腦螢幕自我診斷台灣非官方公開網頁實務解法SITESAMSUNGCOM",
+              "canonicalQuery": "Samsung 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -site:samsung.com",
+              "knowledgeFingerprint": "WEB_2026-09-08",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            }
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "dc73507fd176bf43",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27D392GAC"
+        },
+        "calls": 2,
+        "audit": {
+          "stages": [
+            "web"
+          ],
+          "model": "models/gemini-2.5-flash",
+          "billableModels": [
+            "models/gemini-2.5-flash"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27D392GAC",
+          "finalCoverage": "unsupported",
+          "pdfCalls": 0,
+          "webCalls": 1,
+          "inputTokens": 100,
+          "outputTokens": 30,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 30,
+          "estimatedCostTwd": 0.00336,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Grounding] 🌐 偵測到 groundingMetadata, 包含欄位: groundingChunks, groundingSupports",
+          "[General] [Grounding] webSearchQueries 不存在或為空",
+          "[General] [Grounding] groundingChunks 不存在或為空",
+          "[General] [Grounding Audit v29.6.075] 可稽核 Google Search 證據: false",
+          "[General] [Grounding Audit v29.6.132] queries=0 chunks=0 supports=0 entry=0 finish=none",
+          "[General] [Grounding Support v29.6.167] nonOfficialSupportedSegments=0",
+          "[General] [Grounding] AI 搜尋回應: 目前沒有可核對的公開網頁證據，無法確認這項操作或限制。",
+          "[General] [Grounding Audit v29.6.152] 本次無 groundingChunks/groundingSupports；保留安全過濾後的可能解法，不冒充有引用的網搜答案"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "name": "同款同題同資料版本重按手冊",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S49DG932SC G932如何開啟PBP?",
+        "model": "S49DG932SC",
+        "evidenceId": "E1",
+        "page": 35,
+        "fixture": true,
+        "selectedText": "PIP/PBP\n― ― 可用功能會隨產品機型而有差異。零件的色彩與形狀可能與所示不同。規格可能隨品質的提升而有所變更，恕不另行通知。\n― ― 若 PIP/PBP 功能正在使用中，且電腦螢幕上顯示的文字看起來模糊或毀損，請將電腦螢幕解析度變更為建議的解析度，以解決問題。\n― ― 玩遊戲時請勿任意變更 PIP/PBP 功能。否則，有些遊戲應用程式可能無法回應，造成畫面發生錯誤。\n第 2 第 3 說明\nPIP/PBP Mode 開啟或關閉 PIP/PBP 模式。\nMode Type 選擇子畫面的大小與長寬比。\n˙ ˙ / / /\nScreen Size 選擇子畫面大小。\n˙ ˙ /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nScreen Position 從可用的選項選擇子畫面的位置。\n˙ ˙ / / /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nSource 選擇每個螢幕的訊號源。\n35"
+      }
+    ],
+    "turns": [
+      {
+        "input": "G932如何開啟PBP？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S49DG932SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "G932如何開啟PBP?",
+            "canonicalClaimKey": "f0c55f9102c8ea5f",
+            "lastQuestion": "G932如何開啟PBP?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_cc23046c19c0a6696887d2f6_b877bbd227c427c1bc7212ce",
+              "contextId": "OFFLINE_J12",
+              "source": "manual",
+              "finalText": "進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]",
+              "model": "S49DG932SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "G932開啟PBP",
+              "canonicalQuery": "G932如何開啟PBP?",
+              "knowledgeFingerprint": "PAGE_RAG_43661a34f40f4a21",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "G932如何開啟PBP?",
+          "canonicalClaimKey": "f0c55f9102c8ea5f",
+          "lastQuestion": "G932如何開啟PBP?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG932SC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S49DG932SC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG932SC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG932SC group=multi_view",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=35",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S49DG932SC group=multi_view pages=35,26,40,29,34 latencyMs=0"
+        ]
+      },
+      {
+        "input": "rm_action=select_source&source=manual&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n[費用:NT$0.0000]"
+        ],
+        "model": {
+          "model": "S49DG932SC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "G932如何開啟PBP?",
+            "canonicalClaimKey": "f0c55f9102c8ea5f",
+            "lastQuestion": "G932如何開啟PBP?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_cc23046c19c0a6696887d2f6_b877bbd227c427c1bc7212ce",
+              "contextId": "OFFLINE_J12",
+              "source": "manual",
+              "finalText": "進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]",
+              "model": "S49DG932SC",
+              "date": "2026-09-08",
+              "canonicalTopic": "G932開啟PBP",
+              "canonicalQuery": "G932如何開啟PBP?",
+              "knowledgeFingerprint": "PAGE_RAG_43661a34f40f4a21",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "G932如何開啟PBP?",
+          "canonicalClaimKey": "f0c55f9102c8ea5f",
+          "lastQuestion": "G932如何開啟PBP?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S49DG932SC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S49DG932SC",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": [
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "name": "已證據回答再詳細再重按",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S27H704EAC怎麼自我診斷?",
+        "model": "S27H704EAC",
+        "evidenceId": "E1",
+        "page": 41,
+        "fixture": true,
+        "selectedText": "Support\nSelf Diagnosis Self Diagnosis 在顯示器的圖片發生問題時執行此測試。\n― 在自行診斷期間，切勿關閉電源，也不要變更輸入來源。如果可能，\n盡量不要中斷測試。"
+      },
+      {
+        "fixtureKind": "elaboration-no-new-product-facts",
+        "question": "請延續使用者原問題：「S27H704EAC怎麼自我診斷?」。\n目前已確認型號：S27H704EAC。\n上一則回答：「進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁」\n請只補一次真正有幫助的新資訊：先直接回答，再補必要步驟、使用情境與注意事項；不要重複上一則。\n只能把上一則已核對內容講得更白話，或補充不改變結論的一般使用提醒；不得新增任何型號能力、規格、支援、數字或選單路徑。\n保持像熟悉產品的朋友，簡短自然；不查 PDF、不搜尋網路，也不要輸出任何系統暗號或工程術語。"
+      }
+    ],
+    "turns": [
+      {
+        "input": "S27H704EAC怎麼自我診斷？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27H704EAC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "d03a5f2af94013b8",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_f8a591de8c685bdb7f656465_d03a7337c525fb0e06d49a3d",
+              "contextId": "OFFLINE_J13",
+              "source": "manual",
+              "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]",
+              "model": "S27H704EAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27H704EAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PAGE_RAG_a7bff570825b6c91",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "d03a5f2af94013b8",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27H704EAC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27H704EAC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27H704EAC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=41",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S27H704EAC group=self_diagnosis pages=41,43,44 latencyMs=0"
+        ]
+      },
+      {
+        "input": "再詳細一點",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 測試前，先把目前的工作告一段落。\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。\n\n[來源:官方手冊]\n\n[費用:NT$0.0010（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27H704EAC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "d03a5f2af94013b8",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_f8a591de8c685bdb7f656465_d03a7337c525fb0e06d49a3d",
+              "contextId": "OFFLINE_J13",
+              "source": "manual",
+              "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]",
+              "model": "S27H704EAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27H704EAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PAGE_RAG_a7bff570825b6c91",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "d03a5f2af94013b8",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27H704EAC"
+        },
+        "calls": 2,
+        "audit": {
+          "stages": [
+            "fast"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27H704EAC",
+          "finalCoverage": "supported",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 50,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 50,
+          "estimatedCostTwd": 0.00096,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "rm_action=select_source&source=manual&v=2",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n[費用:NT$0.0000]"
+        ],
+        "model": {
+          "model": "S27H704EAC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "d03a5f2af94013b8",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_f8a591de8c685bdb7f656465_d03a7337c525fb0e06d49a3d",
+              "contextId": "OFFLINE_J13",
+              "source": "manual",
+              "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]",
+              "model": "S27H704EAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27H704EAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PAGE_RAG_a7bff570825b6c91",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "d03a5f2af94013b8",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27H704EAC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27H704EAC",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": [
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "name": "未知型號兩輪拒猜",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "S99ZZ999支援PBP嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 目前找不到「S99ZZ999」這個型號，可以幫忙看一下螢幕背貼或外盒上的完整型號有沒有打錯 👀\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": []
+      },
+      {
+        "input": "那更新率呢？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 目前找不到「S99ZZ999」這個型號，可以幫忙看一下螢幕背貼或外盒上的完整型號有沒有打錯 👀\n剛才的型號還沒確認，這題先不套用上一台螢幕的規格；請補完整型號。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "H704自我診斷再問切輸入警語",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "S27H704EAC怎麼自我診斷?",
+        "model": "S27H704EAC",
+        "evidenceId": "E1",
+        "page": 41,
+        "fixture": true,
+        "selectedText": "Support\nSelf Diagnosis Self Diagnosis 在顯示器的圖片發生問題時執行此測試。\n― 在自行診斷期間，切勿關閉電源，也不要變更輸入來源。如果可能，\n盡量不要中斷測試。"
+      },
+      {
+        "fixtureKind": "router-classification-only",
+        "input": {
+          "originalQuestion": "那測試時能切換輸入嗎?",
+          "previousTopic": "怎麼自我診斷?",
+          "confirmedModel": "S27H704EAC",
+          "candidates": [
+            "S27H704EAC"
+          ],
+          "identityKind": "persisted",
+          "localCoverage": "none",
+          "localEvidenceIds": [],
+          "manualAvailable": true
+        },
+        "result": {
+          "version": "RouteAnalysisV1",
+          "topicRelation": "followup",
+          "productAction": "keep_confirmed",
+          "candidateIndex": null,
+          "claims": [
+            {
+              "id": "C1",
+              "question": "怎麼自我診斷?；那測試時能切換輸入嗎?",
+              "intent": "operation",
+              "evidenceNeed": "manual_model_specific",
+              "answerShape": "steps"
+            }
+          ],
+          "confidence": "high",
+          "reasonCode": "elliptical_followup"
+        }
+      },
+      {
+        "question": "S27H704EAC 怎麼自我診斷?；那測試時能切換輸入嗎?",
+        "model": "S27H704EAC",
+        "evidenceId": "E1",
+        "page": 41,
+        "fixture": true,
+        "selectedText": "Support\nSelf Diagnosis Self Diagnosis 在顯示器的圖片發生問題時執行此測試。\n― 在自行診斷期間，切勿關閉電源，也不要變更輸入來源。如果可能，\n盡量不要中斷測試。"
+      }
+    ],
+    "turns": [
+      {
+        "input": "S27H704EAC怎麼自我診斷？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27H704EAC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?",
+            "canonicalClaimKey": "d03a5f2af94013b8",
+            "lastQuestion": "怎麼自我診斷?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_0143c6961a2886f21de1b0f0_d03a7337c525fb0e06d49a3d",
+              "contextId": "OFFLINE_J15",
+              "source": "manual",
+              "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]",
+              "model": "S27H704EAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷",
+              "canonicalQuery": "S27H704EAC怎麼自我診斷?",
+              "knowledgeFingerprint": "PAGE_RAG_a7bff570825b6c91",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?",
+          "canonicalClaimKey": "d03a5f2af94013b8",
+          "lastQuestion": "怎麼自我診斷?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27H704EAC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "S27H704EAC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27H704EAC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=41",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S27H704EAC group=self_diagnosis pages=41,43,44 latencyMs=0"
+        ]
+      },
+      {
+        "input": "那測試時能切換輸入嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n小提醒：如果可能， 盡量不要中斷測試。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0101（合計 2 次生成請求）]"
+        ],
+        "model": {
+          "model": "S27H704EAC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "怎麼自我診斷?；那測試時能切換輸入嗎?",
+            "canonicalClaimKey": "462a16bf425a59fb",
+            "lastQuestion": "那測試時能切換輸入嗎?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_0143c6961a2886f21de1b0f0_48bdeaec1be9059781852590",
+              "contextId": "OFFLINE_J15",
+              "source": "manual",
+              "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n小提醒：如果可能， 盡量不要中斷測試。\n官方手冊：第41頁\n\n[來源:官方手冊]",
+              "model": "S27H704EAC",
+              "date": "2026-09-08",
+              "canonicalTopic": "自我診斷測試時能切換輸入嗎",
+              "canonicalQuery": "怎麼自我診斷?；那測試時能切換輸入嗎?",
+              "knowledgeFingerprint": "PAGE_RAG_d35ead2e5ddeed72",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "怎麼自我診斷?；那測試時能切換輸入嗎?",
+          "canonicalClaimKey": "462a16bf425a59fb",
+          "lastQuestion": "那測試時能切換輸入嗎?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S27H704EAC"
+        },
+        "calls": 2,
+        "audit": {
+          "stages": [
+            "router",
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-3.7-flash",
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 2,
+          "billableCalls": 2,
+          "paidCalls": 2,
+          "routerCalls": 1,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0.007200000000000001,
+          "routePlanValid": true,
+          "routePlan": {
+            "topicRelation": "followup",
+            "productAction": "keep_confirmed",
+            "claimRoutes": [
+              "C1:manual_model_specific"
+            ],
+            "confidence": "high",
+            "reasonCode": "elliptical_followup"
+          },
+          "claimRoutes": [
+            "C1:manual_model_specific"
+          ],
+          "selectedModel": "S27H704EAC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 600,
+          "outputTokens": 140,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 140,
+          "estimatedCostTwd": 0.01008,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那測試時能切換輸入嗎? (型號: S27H704EAC)",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27H704EAC",
+          "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=41",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=S27H704EAC group=self_diagnosis pages=41,43,43,11,26 latencyMs=0"
+        ]
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "name": "另款F24護眼再基本規格",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [
+      {
+        "question": "LF24T350FHC護眼模式怎麼開?",
+        "model": "F24T350FHC",
+        "evidenceId": "E3",
+        "page": 20,
+        "fixture": true,
+        "selectedText": "【第18頁的接續表格標題】\n第 4 章\n功能表\n功能鍵導覽 →\n― ― 可用功能會隨產品機型而有差異。零件的色彩與形狀可能與所示不同。規格可能隨品質的提升而有所變更，恕不另行通知。\nPicture\n【第20頁設定列】\n第 2 第 3 說明\nColor 調整螢幕色彩濃淡。\n˙ ˙ Red：調整紅色飽和度等級。值越接近 100 表示色彩濃度越強。\n˙ ˙ Green：調整綠色飽和度等級。值越接近 100 表示色彩濃度越強。\n˙ ˙ Blue：調整藍色飽和度等級。值越接近 100 表示色彩濃度越強。\n˙ ˙ Color Tone：選擇最適合您觀賞需求的色調。\n˙ ˙ Gamma：調整亮度的中間等級。\n― ― 當 Picture Mode 設定為 Cinema 或 Dynamic Contrast 模式時，無法使用本功能表。\n― ― 啟用 Game Mode 時，無法使用本功能表。\n― ― 啟用 Eye Saver Mode 時，無法使用本功能表。\nBlack Level 若 DVD 播放器或機上盒等透過 HDMI 連接至產品，視所連接的訊號源裝置而定，可能導致影像品質下降 (對比/色彩下降、黑階變化等)。\n在這種情況下，可使用 Black Level 調整影像品質。\n˙ ˙ Normal / Low\n― ― 此項功能僅在 HDMI 模式下可用。\n― ― Black Level 功能可能與部分訊號源裝置不相容。\n― ― Black Level 功能僅在某些 AV 解析度（例如 480p @ 60 Hz、576p @ 50 Hz、720p @ 60 Hz 和 1080p @ 60 Hz）下才能啟動。\nEye Saver Mode 設定讓眼睛放鬆的最佳畫質。\nGame Mode 設定產品遊戲模式的螢幕設定。\n在電腦上玩遊戲或連接 PlayStation™ 或 Xbox™ 遊戲主控台時，可使用此功能。\n― ― 啟用 Eye Saver Mode 時，無法使用本功能表。\n― ― 在關閉產品、進入節能模式或變更輸入訊號源時，即使 Game Mode 已設定為 On 亦會轉為 Off。\n― ― 若要一直啟用 Game Mode，選取 Always On。\n20"
+      }
+    ],
+    "turns": [
+      {
+        "input": "LF24T350FHC護眼模式怎麼開？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 進入 Picture → Eye Saver Mode。Eye Saver Mode 設定讓眼睛放鬆的最佳畫質。\n官方手冊：第18、20頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+        ],
+        "model": {
+          "model": "F24T350FHC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "L 護眼模式怎麼開?",
+            "canonicalClaimKey": "d2d7570edbb9c502",
+            "lastQuestion": "L 護眼模式怎麼開?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_28e48164982106043acd52ef_a765583ae3f5f163f2368345",
+              "contextId": "OFFLINE_J16",
+              "source": "manual",
+              "finalText": "進入 Picture → Eye Saver Mode。Eye Saver Mode 設定讓眼睛放鬆的最佳畫質。\n官方手冊：第18、20頁\n\n[來源:官方手冊]",
+              "model": "F24T350FHC",
+              "date": "2026-09-08",
+              "canonicalTopic": "L護眼模式開",
+              "canonicalQuery": "LF24T350FHC護眼模式怎麼開?",
+              "knowledgeFingerprint": "PAGE_RAG_0c73beba919a2b38",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "L 護眼模式怎麼開?",
+          "canonicalClaimKey": "d2d7570edbb9c502",
+          "lastQuestion": "L 護眼模式怎麼開?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "F24T350FHC"
+        },
+        "calls": 1,
+        "audit": {
+          "stages": [
+            "pdf"
+          ],
+          "model": "models/gemini-2.5-flash-lite",
+          "billableModels": [
+            "models/gemini-2.5-flash-lite"
+          ],
+          "attemptedCalls": 1,
+          "billableCalls": 1,
+          "paidCalls": 1,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "F24T350FHC",
+          "finalCoverage": "supported",
+          "pdfCalls": 1,
+          "webCalls": 0,
+          "inputTokens": 500,
+          "outputTokens": 100,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 100,
+          "estimatedCostTwd": 0.00288,
+          "sources": [
+            "官方手冊"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": [
+          "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=F24T350FHC",
+          "[General] [Manual Free Precheck v29.6.147] 無 deterministic RULE 事實，禁止 Fast 擋住 PDF",
+          "[General] [Manual Authorization v29.6.160] source=pending model=LF24T350FHC，選型完成後直接執行",
+          "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=LF24T350FHC group=query_time",
+          "[General] [Manual Structured Output v29.6.178] found=true, evidence=1/1, pages=20",
+          "[General] [Manual Coverage] coverage=full unresolved=",
+          "[General] [Manual Page RAG] model=F24T350FHC group=query_time pages=20,23,14,14,13 latencyMs=0"
+        ]
+      },
+      {
+        "input": "這台更新率多少？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] F24T350FHC 的規格是：最大75Hz更新頻率。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "F24T350FHC",
+          "lastSource": "manual",
+          "topic": {
+            "canonicalQuestion": "這台更新率多少?",
+            "canonicalClaimKey": "e46b54553ffdd669",
+            "lastQuestion": "這台更新率多少?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": {
+              "status": "done",
+              "key": "SRC_OP_28e48164982106043acd52ef_a765583ae3f5f163f2368345",
+              "contextId": "OFFLINE_J16",
+              "source": "manual",
+              "finalText": "進入 Picture → Eye Saver Mode。Eye Saver Mode 設定讓眼睛放鬆的最佳畫質。\n官方手冊：第18、20頁\n\n[來源:官方手冊]",
+              "model": "F24T350FHC",
+              "date": "2026-09-08",
+              "canonicalTopic": "L護眼模式開",
+              "canonicalQuery": "LF24T350FHC護眼模式怎麼開?",
+              "knowledgeFingerprint": "PAGE_RAG_0c73beba919a2b38",
+              "createdAt": 1788847200000,
+              "expiresAt": 1788847800000
+            },
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "這台更新率多少?",
+          "canonicalClaimKey": "e46b54553ffdd669",
+          "lastQuestion": "這台更新率多少?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "F24T350FHC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "無型號一般FAQ兩款手機不混答",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "iPhone 17可以用USB-C接Smart螢幕嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] Apple 官方規格明載 iPhone 17 的 USB-C 支援 DisplayPort 4K HDR 輸出，螢幕端需具備 USB-C 影像輸入介面。\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "QA庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "iPhone Air可以用USB-C接Smart螢幕嗎？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] iPhone Air 的 USB-C 僅支援 USB 2 無外接 DisplayPort 輸出，無法有線顯示，請改用 AirPlay。\n\n[來源:QA庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "QA庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "name": "插入非產品題後續問",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "S32FM703UC有幾個HDMI？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "有幾個HDMI?",
+            "canonicalClaimKey": "3c6e4e033b0ec0e1",
+            "lastQuestion": "有幾個HDMI?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "有幾個HDMI?",
+          "canonicalClaimKey": "3c6e4e033b0ec0e1",
+          "lastQuestion": "有幾個HDMI?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "今天台北天氣如何？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 這題超出三星電腦螢幕資料範圍，我先不亂答。\n換成螢幕型號或連線、設定問題，我再接著看。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "有幾個HDMI?",
+            "canonicalClaimKey": "3c6e4e033b0ec0e1",
+            "lastQuestion": "有幾個HDMI?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "有幾個HDMI?",
+          "canonicalClaimKey": "3c6e4e033b0ec0e1",
+          "lastQuestion": "有幾個HDMI?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "那USB-C能充幾瓦？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] S32FM703UC 的規格是：USB-C 65W x1(HDCP 2.2)。\n[來源:官方規格庫]\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "那USB-C能充幾瓦?",
+            "canonicalClaimKey": "3b056a920e12ef5f",
+            "lastQuestion": "那USB-C能充幾瓦?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "那USB-C能充幾瓦?",
+          "canonicalClaimKey": "3b056a920e12ef5f",
+          "lastQuestion": "那USB-C能充幾瓦?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [
+            "官方規格庫"
+          ],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "name": "無上下文價格再補型號",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "多少錢？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 這題是價格相關，我這邊不直接回覆數字價格，避免提供過期或錯誤報價。\n\n你可以直接看三星官網查價頁（頁面會顯示當下建議售價/活動資訊）：\n1. https://www.samsung.com/tw/search/?searchvalue=%E4%B8%89%E6%98%9F%20%E8%9E%A2%E5%B9%95\n\n若你要，我可以再幫你整理這些型號目前在官網是否有促銷活動。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "S32FM703UC多少錢？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 這題是價格相關，我這邊不直接回覆數字價格，避免提供過期或錯誤報價。\n\n你可以直接看三星官網查價頁（頁面會顯示當下建議售價/活動資訊）：\n1. https://www.samsung.com/tw/search/?searchvalue=S32FM703UC\n\n若你要，我可以再幫你整理這些型號目前在官網是否有促銷活動。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": {
+          "model": "S32FM703UC",
+          "lastSource": "",
+          "topic": {
+            "canonicalQuestion": "多少錢?",
+            "canonicalClaimKey": "9249465a10ee99e0",
+            "lastQuestion": "多少錢?",
+            "claims": [],
+            "updatedAt": 1788847200000
+          },
+          "advancedBySource": {
+            "manual": null,
+            "web": null
+          },
+          "lastAdvanced": null,
+          "updatedAt": 1788847200000,
+          "reason": "question"
+        },
+        "canonicalTopic": {
+          "canonicalQuestion": "多少錢?",
+          "canonicalClaimKey": "9249465a10ee99e0",
+          "lastQuestion": "多少錢?",
+          "claims": [],
+          "updatedAt": 1788847200000,
+          "model": "S32FM703UC"
+        },
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "name": "洗衣機範圍外接取消",
+    "status": "PASS",
+    "failure": "",
+    "unsupported": [],
+    "providerEvidence": [],
+    "turns": [
+      {
+        "input": "三星洗衣機怎麼用？",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 這題超出三星電腦螢幕資料範圍，我先不亂答。\n換成螢幕型號或連線、設定問題，我再接著看。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [
+          "[General] [History Sheet Error] ss.insertSheet is not a function"
+        ],
+        "evidenceTrace": []
+      },
+      {
+        "input": "取消",
+        "clockAdvanced": 0,
+        "replies": [
+          "[General] [Reply Audit] 已取消，現在是「規格＆FAQ」快速模式，沒有扣除次數。\n\n[費用:NT$0.0000（未呼叫 LLM）]"
+        ],
+        "model": null,
+        "canonicalTopic": null,
+        "calls": 0,
+        "audit": {
+          "stages": [],
+          "model": "",
+          "billableModels": [],
+          "attemptedCalls": 0,
+          "billableCalls": 0,
+          "paidCalls": 0,
+          "routerCalls": 0,
+          "routerCacheHits": 0,
+          "plannerLatencyMs": 0,
+          "routerCostTwd": 0,
+          "routePlanValid": false,
+          "routePlan": null,
+          "claimRoutes": [],
+          "selectedModel": "",
+          "finalCoverage": "",
+          "pdfCalls": 0,
+          "webCalls": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "thoughtTokens": 0,
+          "billedOutputTokens": 0,
+          "estimatedCostTwd": 0,
+          "sources": [],
+          "logged": true
+        },
+        "error": "",
+        "fatal": [],
+        "evidenceTrace": []
+      }
+    ]
+  }
+]

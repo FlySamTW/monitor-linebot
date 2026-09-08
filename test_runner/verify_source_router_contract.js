@@ -2394,9 +2394,14 @@ vm.runInContext(
    ${extractFunction(linebot, "isExplicitManualAlternativeAnswer_")}
    ${extractFunction(linebot, "manualEvidenceRelationMatchesExcerpt_")}
    ${extractFunction(linebot, "manualSupportedAnswerMatchesExcerpt_")}
+   ${extractFunction(linebot, "getManualSourceSwitchIntent_")}
+   ${extractFunction(linebot, "isManualSourceSwitchAnswerFaithful_")}
+   ${extractFunction(linebot, "manualSourceSwitchEvidenceMatches_")}
+   ${extractFunction(linebot, "isVerifiedGenericSourceSelectionCoverage_")}
    ${extractFunction(linebot, "manualAnswerCoversQuestionFeatures_")}
    ${extractFunction(linebot, "selectManualEvidenceForQuestion_")}
    ${extractFunction(linebot, "manualEvidenceAllowedByAttachmentProvenance_")}
+   ${extractFunction(linebot, "isRegisteredPrintedCoverEvidence_")}
    ${extractFunction(linebot, "normalizeManualStructuredResponse_")}
    ${extractFunction(linebot, "applyManualEvidenceGuard_")}
    ${extractFunction(linebot, "buildManualWebRescueReply_")}
@@ -3041,6 +3046,7 @@ assert(
   `完整型號一旦確認，PDF 候選必須鎖死該型號: ${JSON.stringify(strictPdfLockVm.locked)}`,
 );
 const strictAttachmentVm = {
+  PropertiesService: {getScriptProperties:()=>({getProperty:()=>null})},
   isPdfKbFile: (file) => /\.pdf$/i.test(String((file && file.name) || "")),
   enrichPdfKbItemWithOfficialProvenance_: (file) => file,
   pdfFileNameMatchesModels: (fileName, models) =>
@@ -3051,6 +3057,7 @@ const strictAttachmentVm = {
     ),
 };
 vm.createContext(strictAttachmentVm);
+['manual_index_worker.gs','manual_worker_runtime.gs'].forEach(file=>vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),strictAttachmentVm));
 vm.runInContext(
   `${extractFunction(linebot, "enforcePdfAttachmentModelScope_")}
    globalThis.withTarget = enforcePdfAttachmentModelScope_([
@@ -3130,6 +3137,7 @@ const promotionFolder = {
   createFile: (blob) => ({ getId: () => `created:${blob.name}` }),
 };
 const focusedPromotionVm = {
+  PropertiesService: {getScriptProperties:()=>({getProperty:()=>null})},
   // This legacy-overlap fixture exercises an unindexed document. Registered
   // revision blocking is tested with real catalog/importer in library tests.
   MANUAL_PAGE_RAG_DATA_: {documents:{}},
@@ -3150,6 +3158,10 @@ const focusedPromotionVm = {
 vm.createContext(focusedPromotionVm);
 vm.runInContext(
   `${extractFunction.production.assertManualIndexPromotionReady_.toString()}
+   let manualWorkerSnapshot_;
+   ${extractFunction.production.readManualWorkerBundle_.toString()}
+   ${extractFunction.production.getManualWorkerSnapshot_.toString()}
+   ${extractFunction.production.isReadyWorkerManualRevisionForCandidate_.toString()}
    ${extractFunction.production.isManualIndexPromotionReady_.toString()}
    ${extractFunction(linebot, "bytesToHex_")}
    ${extractFunction.production.manualIndexDigest_.toString()}

@@ -1,0 +1,84 @@
+// Real checksum-bound worker bundle reader / effective catalog / page retrieval /
+// hydrate. Only immutable Drive bytes and Script Properties are I/O fixtures.
+const fs=require('fs'),path=require('path'),assert=require('assert'),crypto=require('crypto');
+const {createProductionHarness}=require('./production_harness');
+const h=createProductionHarness({quiet:true}),c=h.context;
+const key='S61F_F612_EN_PRINTED_FAMILY_241113',workerKey='WORKER_F612';
+const original=c.MANUAL_PAGE_RAG_DATA_.documents[key];
+const sha=original.sourcePdfSha256.toLowerCase();
+const pack=JSON.parse(fs.readFileSync(path.join(__dirname,'../output/manual_library/v307_f612/editor_import.json'),'utf8'));
+const doc=JSON.parse(JSON.stringify(original));
+doc.sourcePdfSha256=sha;delete doc.bindingPolicy;delete doc.coverPatterns;delete doc.reviewedDocKey;
+const bundle={revision:'reviewed-fixture-v1',documents:{[workerKey]:doc},active:{[workerKey]:{
+ sha256:sha,indexChecksum:pack.records[0].sha256,indexFileId:'index',pdfFileId:'pdf'}}};
+const bundleBytes=Buffer.from(JSON.stringify(bundle));
+const bytes={bundle:bundleBytes,index:Buffer.from(pack.records[0].data,'base64'),pdf:fs.readFileSync(path.join(__dirname,'../三星螢幕使用手冊/verified/7f45f96c4bd8834d/S27F612.pdf'))};
+const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
+assert.strictEqual(digest(bytes.pdf),sha);
+c.DriveApp.getFileById=id=>({getBlob:()=>c.Utilities.newBlob(Array.from(bytes[id]),id==='index'?'application/gzip':'application/octet-stream')});
+h.properties.set('MANUAL_WORKER_BUNDLE',JSON.stringify({fileId:'bundle',revision:bundle.revision,sha256:digest(bundleBytes)}));
+const effective=c.getEffectiveManualDocuments_()[workerKey];
+assert.strictEqual(effective.reviewedDocKey,key);assert.strictEqual(effective.exactModelInDocument,false);
+assert.strictEqual(c.findRegisteredPrintedCoverBinding_({...doc,sourcePdfSha256:'0'.repeat(64)}),null);
+assert.strictEqual(c.findRegisteredPrintedCoverBinding_({...doc,models:['S27F612EAU']}),null);
+const query='S27F612EAC怎麼自我診斷？',plan=c.findManualPageRagPlan_(query,'S27F612EAC');
+assert.strictEqual(plan.docKey,workerKey);
+const f=plan.fragments.find(f=>f.pageNumber===28);assert(f);
+const answer='在螢幕畫面發生問題時執行 Self Diagnosis 測試。';
+const state={supportPageOnly:true,hashMissing:false,hashMismatch:false,entries:[{sha256:sha,hashVerifiedAgainstAttachment:true}]};
+const evidence={documentBound:true,excerpt:f.evidenceText,supportedAnswer:answer};
+assert(c.isRegisteredPrintedCoverEvidence_(evidence,'S27F612EAC',state));
+for(const model of ['S27D392GAC','S32D392GAC','S32AM703UC','S27F612EAU'])
+ assert(!c.isRegisteredPrintedCoverEvidence_(evidence,model,state),model);
+assert(!c.isRegisteredPrintedCoverEvidence_(evidence,'S27F612EAC',{...state,entries:[{sha256:'0'.repeat(64),hashVerifiedAgainstAttachment:true}]}));
+assert(!c.isRegisteredPrintedCoverEvidence_({...evidence,excerpt:f.evidenceText+' Depending on the model, this feature may not be supported.'},'S27F612EAC',state));
+assert(!c.isRegisteredPrintedCoverEvidence_({...evidence,excerpt:f.evidenceText+'依型號而定，可能不支援此功能。'},'S27F612EAC',state));
+assert(!c.isRegisteredPrintedCoverEvidence_({...evidence,documentBound:false},'S27F612EAC',state));
+const hydrated=c.hydrateManualPageRagResponse_(JSON.stringify({found:true,coverage:'full',evidence:[{evidenceId:f.evidenceId,supportedAnswer:answer}]}),plan,query,'');
+assert(!/ERROR|NOT_FOUND|PARTIAL/.test(hydrated),hydrated);
+assert(hydrated.includes('28'));assert.strictEqual(h.fetches.length,0);
+const pending=(model,sourceSha)=>JSON.stringify({reason:'PAGE_INDEX_BUILD_REQUIRED',sourcePdfSha256:sourceSha,candidate:{fullSku:model},finalFileName:'S27F612.pdf'});
+h.properties.set('MANUAL_PENDING_COMPLETED',pending('LS27F612EACXZW',sha));
+h.properties.set('MANUAL_PENDING_NEW_SHA',pending('S27F612EAC','1'.repeat(64)));
+h.properties.set('MANUAL_PENDING_OTHER_MODEL',pending('S27D392GAC',sha));
+let pendingReport=c.readPendingManualIndexBuilds_();
+assert(c.isManualIndexPromotionReady_({fullSku:'LS27F612EACXZW'},sha));
+assert(!c.isReadyWorkerManualRevisionForCandidate_({fullSku:'LS27F612EACXZW'},'1'.repeat(64)));
+assert(!c.isReadyWorkerManualRevisionForCandidate_({fullSku:'S27D392GAC'},sha));
+assert.strictEqual(pendingReport.length,2);
+assert(pendingReport.some(p=>p.sourcePdfSha256==='1'.repeat(64)));
+assert(pendingReport.some(p=>p.model==='S27D392GAC'));
+assert(h.properties.has('MANUAL_PENDING_COMPLETED'),'history retained');
+const current=c.getManualWorkerSnapshot_();
+const pointer=current.active[workerKey].indexFileId;
+delete current.active[workerKey].indexFileId;
+assert(!c.isReadyWorkerManualRevisionForCandidate_({fullSku:'LS27F612EACXZW'},sha));
+assert.strictEqual(c.readPendingManualIndexBuilds_().length,3,'missing ready index remains pending');
+current.active[workerKey].indexFileId=pointer;
+const oldChecksum=current.active[workerKey].indexChecksum;
+current.active[workerKey].indexChecksum='2'.repeat(64);
+assert.strictEqual(c.readPendingManualIndexBuilds_().length,3,'wrong active index remains pending');
+current.active[workerKey].indexChecksum=oldChecksum;
+console.log('PASS pending report excludes only ready same-model same-PDF worker revision; history/new SHA/missing index retained');
+// True maintenance entry: same worker revision must return before first-page
+// model verification or root promotion. New queued bytes remain INDEX_PENDING.
+const candidate={fullSku:'S27F612EAC',packageType:'PDF',fileName:'S27F612.pdf',downloadUrl:'https://downloadcenter.samsung.com/fixture.pdf'};
+h.run("CONFIG.DRIVE_FOLDER_ID='offline-folder'");
+let downloadBytes=bytes.pdf;
+c.Drive={Files:{get:()=>({mimeType:'application/vnd.google-apps.folder',capabilities:{canAddChildren:true}}),create:()=>{throw new Error('unexpected promotion');}}};
+h.properties.set('GEMINI_API_KEY','offline-not-real');
+h.setFetch(url=>{
+ assert.strictEqual(url,candidate.downloadUrl,'must not upload/call first-page model');
+ return {getResponseCode:()=>200,getBlob:()=>c.Utilities.newBlob(Array.from(downloadBytes),'application/pdf')};
+});
+const queue=sourceSha=>JSON.stringify({reason:'PAGE_INDEX_BUILD_REQUIRED',sourcePdfSha256:sourceSha,candidate:{...candidate,workerBinding:{schemaVersion:1}},finalFileName:'S27F612.pdf'});
+h.properties.set('MANUAL_PENDING_S27F612EAC',queue(sha));
+const ready=c.stageOfficialTwManualCandidate_({},candidate);
+assert.strictEqual(ready.action,'ACTIVE_WORKER_INDEX');
+downloadBytes=Buffer.concat([bytes.pdf,Buffer.from('\n%new-revision')]);
+h.properties.set('MANUAL_PENDING_S27F612EAC',queue(digest(downloadBytes)));
+const notReady=c.stageOfficialTwManualCandidate_({},candidate);
+assert.strictEqual(notReady.action,'INDEX_PENDING');
+assert.strictEqual(h.fetches.length,2,'two official PDF I/O only; zero first-page model/upload');
+console.log('PASS true stage same SHA ACTIVE_WORKER_INDEX; changed queued SHA INDEX_PENDING; zero first-page model/root writes');
+console.log('PASS legacy worker metadata rebound to exact registered SHA/model cover; true page28 hydrate; wrong SHA/model/unreviewed/caveat fail; providerCalls=0');

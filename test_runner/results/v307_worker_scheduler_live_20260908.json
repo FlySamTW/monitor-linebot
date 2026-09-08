@@ -1,0 +1,10 @@
+{
+  "taskName": "SamsungLineBot-ManualPageIndex",
+  "startedAtTaipei": "2026-09-08T16:16:10+08:00",
+  "lastTaskResult": 0,
+  "workerReport": {"ok": true, "completed": [], "failed": [], "providerCalls": 0, "finishedAt": "2026-09-08T08:16:28Z"},
+  "cloudWorkerHealth": {"seenAt": "2026-09-08T08:16:25.433Z", "failed": 0, "completed": 0, "ok": true},
+  "schedule": "09:30 Asia/Taipei daily and current-user logon; start when available; ignore overlap",
+  "settingsDirectory": "D:/99_tools/SamsungLineBotWorker",
+  "scope": "Actual Task Scheduler launch and authenticated cloud health; empty queue, not a new PDF build. Actual two-document prepare/probe is recorded separately in v307_worker_live_20260908.json."
+}

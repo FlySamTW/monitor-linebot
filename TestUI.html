@@ -759,6 +759,9 @@
           <button class="btn" onclick="runReliabilityMaintenance('report', this)">讀取驗證報告（不呼叫模型）</button>
           <button class="btn" onclick="runReliabilityMaintenance('indexes', this)">上傳／續傳已驗證頁索引（零模型）</button>
           <button class="btn" onclick="runReliabilityMaintenance('library_report', this)">讀取索引啟用與費用報告</button>
+          <button class="btn" onclick="configureManualWorker(this)">啟用索引 Worker 並下載私人設定</button>
+          <button class="btn" onclick="queueManualWorkerCanary(this)">排入已核實 M7 索引端到端驗證</button>
+          <button class="btn" onclick="queueReviewedManual(this)">排入已審核 F612 官方英文手冊</button>
           <label for="manual-index-package">本機已驗證索引匯入包（JSON）</label>
           <input type="file" id="manual-index-file" accept="application/json,.json" aria-label="選取本機索引包" onchange="loadManualIndexPackageFile(this)">
           <textarea id="manual-index-package" rows="2" style="width:100%" placeholder="貼上本機產生的索引包；不會呼叫模型"></textarea>
@@ -812,6 +815,32 @@
 
     <script>
       // --- 變數 ---
+      function configureManualWorker(button) {
+        button.disabled=true;
+        const secret=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
+        const output=document.getElementById('reliability-result');
+        google.script.run.withSuccessHandler(function(result){
+          const url=URL.createObjectURL(new Blob([JSON.stringify({endpoint:result.endpoint,secret:secret})],{type:'application/json'}));
+          const link=document.createElement('a');link.href=url;link.download='samsung-manual-worker.private.json';link.click();
+          setTimeout(()=>URL.revokeObjectURL(url),10000);
+          output.textContent='已建立私人設定；秘密不顯示在日誌。尚須本機端到端成功後才能啟用排程。';button.disabled=false;
+        }).withFailureHandler(function(error){output.textContent=String(error.message||error);button.disabled=false;})
+          .configureManualWorkerFromTestUi(secret,TEST_UI_ACCESS_TOKEN);
+      }
+      function queueManualWorkerCanary(button) {
+        button.disabled=true;
+        const output=document.getElementById('reliability-result');
+        google.script.run.withSuccessHandler(function(result){output.textContent=JSON.stringify(result,null,2);button.disabled=false;})
+          .withFailureHandler(function(error){output.textContent=String(error.message||error);button.disabled=false;})
+          .queueVerifiedManualWorkerCanaryFromTestUi('M7_CM703_SUPPORT_MANUAL_2510220',TEST_UI_ACCESS_TOKEN);
+      }
+      function queueReviewedManual(button) {
+        button.disabled=true;
+        const output=document.getElementById('reliability-result');
+        google.script.run.withSuccessHandler(function(result){output.textContent=JSON.stringify(result,null,2);button.disabled=false;})
+          .withFailureHandler(function(error){output.textContent=String(error.message||error);button.disabled=false;})
+          .queueReviewedRegisteredManualFromTestUi('S61F_F612_EN_PRINTED_FAMILY_241113',TEST_UI_ACCESS_TOKEN);
+      }
       function syncReviewedRules(button) {
         const rows = document.getElementById('reviewed-rule-rows').value.split(/\r?\n/).filter(function (row) { return row.trim(); });
         if (!rows.length) return;

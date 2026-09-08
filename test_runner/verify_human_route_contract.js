@@ -294,6 +294,7 @@ const recoveryContext = {
   writeLog: () => {},
 };
 vm.createContext(recoveryContext);
+['manual_index_worker.gs','manual_worker_runtime.gs'].forEach(file=>vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),recoveryContext));
 vm.runInContext(
   [
     extractFunction(linebot, "normalizePdfModelToken_"),

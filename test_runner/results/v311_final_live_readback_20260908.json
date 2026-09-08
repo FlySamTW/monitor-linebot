@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-08",
+  "version": "v29.6.311",
+  "build": "2026-09-08 16:35",
+  "deploymentVersion": 1492,
+  "versionCapacity": {"used": 36, "limit": 200},
+  "formalHealthMatchesLocalAndHead": true,
+  "cloudLogReadback": {"surface": "Chrome authenticated Google Sheets GViz LOG", "gid": 174529670, "latestAnswerAtTaipei": "2026-09-08 16:32:34", "matchesTestUiAnswerAndRequestAudit": true, "pdfCalls": 1, "webCalls": 0, "coverage": "supported", "page": 41},
+  "testSurface": "Chrome editor TestUI /dev?test=1 using deployed source/router and real Gemini calls; not phone LINE delivery",
+  "library": {"registered": 82, "active": 82, "models": 137, "uniqueIndexes": 49, "missing": [], "pendingIndexRevisions": []},
+  "workerHealth": {"seenAt": "2026-09-08T08:16:25.433Z", "completed": 0, "failed": 0, "ok": true},
+  "verificationBudget": {"limitTwd": 5, "openingSpentTwd": 2.13517696, "finalSpentTwd": 3.54995296, "reservedTwd": 0, "basis": "application usage estimate, not final Google invoice"},
+  "offlineJourneys": {"count": 20, "events": 49, "passed": 20, "failed": 0, "blocked": 0, "providerCalls": 0},
+  "finalAffectedLiveChecks": [
+    {"atTaipei": "16:18:07", "question": "S32FM703UC的HDMI怎麼切換？", "page": 14, "routerCalls": 0, "pdfCalls": 1, "webCalls": 0, "costTwd": 0.003280, "result": "supported source-selection instruction"},
+    {"atTaipei": "16:19:03", "question": "S27F612EAC怎麼自我診斷？", "page": 28, "routerCalls": 0, "pdfCalls": 1, "webCalls": 0, "costTwd": 0.005539, "result": "supported English manual with region disclosure; printed cover, not fake exact-model assertion"},
+    {"atTaipei": "16:32:34", "priorQuestion": "S27H704EAC怎麼自我診斷？", "question": "測試時可以切換輸入嗎？", "page": 41, "routerCalls": 1, "pdfCalls": 1, "webCalls": 0, "fullPdfAttached": false, "estimatedCostTwd": 0.0318, "finalCoverage": "supported", "answer": "在自行診斷期間，請勿關閉電源，也不要變更輸入來源。如果可能，盡量不要中斷測試。"}
+  ],
+  "officialScope": {
+    "S27F612EAC": "official English PDF indexed and answered; same-SHA registered printed-cover proof",
+    "S32FM902SC": "official Taiwan Traditional Chinese HTML manual link, not a PDF index",
+    "S27D392GAC": "Taiwan PDF DRM; overseas family reference only, exact Taiwan applicability not established",
+    "S32D392GAC": "Taiwan PDF DRM; overseas family reference only, exact Taiwan applicability not established",
+    "S32AM703UC": "China family reference only; Taiwan exact applicability not established"
+  },
+  "notClaimed": ["20 live provider journeys", "phone LINE delivery", "all five exact Taiwan PDF scopes verified", "Windows worker running while computer is powered off"]
+}

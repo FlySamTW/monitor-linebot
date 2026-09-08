@@ -74,11 +74,11 @@ for(const [model,question] of questions) {
 }
 assert.strictEqual(h.fetches.length,0);
 const activeReport=c.readManualLibraryActivationReport_();
-assert.strictEqual(activeReport.active,81);
-assert.strictEqual(activeReport.models,136);
-assert.strictEqual(activeReport.uniqueIndexes,47);
+assert.strictEqual(activeReport.active,82);
+assert.strictEqual(activeReport.models,137);
+assert.strictEqual(activeReport.uniqueIndexes,48);
 assert.strictEqual(activeReport.missing.length,0);
-assert.strictEqual(c.readReadyManualIndexModels_().length,136);
+assert.strictEqual(c.readReadyManualIndexModels_().length,137);
 const manifestReader=c.readOfficialManualManifest_; let manifestReads=0;
 c.readOfficialManualManifest_=()=>{manifestReads++;return manifestReader();};
 c.readReadyManualIndexModels_();

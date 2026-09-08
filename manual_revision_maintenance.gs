@@ -61,6 +61,7 @@ function readPendingManualIndexRevision_(fullSku, sha256) {
 }
 
 function isManualIndexPromotionReady_(candidate, sha256) {
+  if (isReadyWorkerManualRevisionForCandidate_(candidate, sha256)) return true;
   const docs = typeof MANUAL_PAGE_RAG_DATA_ === "undefined" ? {} : MANUAL_PAGE_RAG_DATA_.documents;
   const matches = Object.keys(docs).filter(function (key) {
     return docs[key].models.some(function (model) { return manualEvidenceModelMatchesTarget_(model, candidate.fullSku); });
@@ -88,11 +89,31 @@ function assertManualIndexPromotionReady_(candidate, sha256, finalFileName) {
   throw new Error("PAGE_INDEX_BUILD_REQUIRED");
 }
 
+function isReadyWorkerManualRevisionForCandidate_(candidate, sourceSha) {
+  const bundle=getManualWorkerSnapshot_(), sha=String(sourceSha||'').toLowerCase();
+  if(!bundle||!candidate||!candidate.fullSku||!/^[a-f0-9]{64}$/.test(sha)) return false;
+  const keys=Object.keys(bundle.active||{}).filter(function(key){
+    const doc=(bundle.documents||{})[key];
+    return doc && (doc.models||[]).some(function(model){return normalizeModelForDisplay(model)===normalizeModelForDisplay(candidate.fullSku);});
+  });
+  if(keys.length!==1) return false;
+  const key=keys[0],doc=bundle.documents[key],active=bundle.active[key];
+  if(!active.pdfFileId||!active.indexFileId||String(active.sha256).toLowerCase()!==sha||
+    String(doc.sourcePdfSha256).toLowerCase()!==sha) return false;
+  const revision=readManualRevision_(key,doc);
+  return Boolean(revision && revision.sha256===sha && revision.indexChecksum===active.indexChecksum);
+}
+
 function readPendingManualIndexBuilds_() {
   const properties = PropertiesService.getScriptProperties().getProperties();
   return Object.keys(properties).filter(function (key) { return key.indexOf("MANUAL_PENDING_") === 0; })
     .map(function (key) { try { return JSON.parse(properties[key]); } catch (error) { return null; } })
     .filter(function (item) { return item && /PAGE_INDEX_BUILD_REQUIRED/.test(item.reason || ""); })
+    .filter(function (item) {
+      // Report unresolved work only. Retain the historical pending property;
+      // a different/new source SHA must never disappear behind an old index.
+      return !isReadyWorkerManualRevisionForCandidate_(item.candidate,item.sourcePdfSha256);
+    })
     .map(function (item) { return { model: item.candidate.fullSku, sourcePdfSha256: item.sourcePdfSha256,
       finalFileName: item.finalFileName, downloadUrl: item.candidate.downloadUrl,
       status: "PENDING_PAGE_INDEX", detectedAt: item.detectedAt }; });

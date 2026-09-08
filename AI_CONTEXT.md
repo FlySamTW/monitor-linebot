@@ -1,8 +1,22 @@
-# AI_CONTEXT — v29.6.306 已發布 @1487；正式仍以當次 health 為準
+# AI_CONTEXT — v29.6.311 正式 @1492
 
-本批入口：[v306 交接清單](docs/V306_HANDOFF.md)，含修改位置、驗收命令與未完成範圍。不得把待建索引佇列稱為自動建索引已完成。
+正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
 
-9/8已實測17次文字／按鍵事件，含失敗修正及重測；59項離線整合全過，雲端81登錄／136型號／47索引就緒。新增測試費約NT$0.073，總驗證帳2.1352。正式health／HEAD／local均v306；完整20條旅程、全自動新PDF建索引及五項外部資料缺口尚未全部完成，詳見實測表，不宣稱全案完成。
+本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
+
+v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 FAIL／0 BLOCKED，見[離線報告](test_runner/results/v307_20_journeys_offline.md)。載入真路由、只模擬外部I/O，不冒稱20條真人供應商通過。M7真PDF244頁與F612官方ZIP下載／SHA／精確entry核對通過，worker零生成呼叫；M7與F612於15:57:57完成正式prepare／activation／PDF與index SHA probe，零provider，見[正式worker實測](test_runner/results/v307_worker_live_20260908.json)。
+
+前版證據：9/8 v306 @1487曾實測17次文字／按鍵事件（含失敗及重測），59項離線整合通過；81登錄／136型號／47索引就緒，測試帳2.1352。這是歷史讀回，接手須重查正式health，不把其HEAD／local一致敘述套到v307候選。
+
+## 給後續模型的最短操作單
+
+1. 先讀本頁和Developer_Manual的v307節；使用者報錯先Chrome讀雲端LOG／所有紀錄。保持main與未追蹤結果，不改Prompt!C3／模型／Rich Menu／額度。
+2. 檢查worker：`node test_runner/verify_manual_index_worker.js`，應核對當次輸出（本次30項）。`manual_index_worker.gs`是簽章入口與原子提交；`manual_worker_runtime.gs`負責同請求版本、catalog／manifest／附件；`tools/manual_index_worker.py`抽頁；`tools/run_manual_index_worker.ps1`是固定正式目標＋Local mutex入口。
+3. 秘密只由編輯者短token設定；設定檔在repo外並限制ACL。只回報布林、revision、SHA、去敏`last-run.json`。不得dump設定檔、token、環境變數，也不把它們傳外部AI。
+4. `workerHealth`只看最近回報，不等於索引ready。正式一次下載→build→prepare→probe雙SHA→Bot頁檢索／PDF備援讀回全部成功，才建立排程；再查LastTaskResult與報告時間。尚未提供這組雲端證據，勿替主責寫成已部署／已自動每日執行。
+5. 新SHA失敗保留舊完整版本；不要提前改manifest或鬆綁SHA。舊pending缺workerBinding須重驗；新文件只綁被官方核實的單一SKU，不借共用檔名整群範圍。
+6. F612官方英文38頁手冊印刷封面S27F61*完整匹配，索引SHA `1de245a1c37998a06a77160b381946333177dbfebeff7d867687ca79de7f7b4f`；透過reviewed queue原子換版，不先放寬舊manifest SHA。D392兩款／M703外區資料僅參考，非台灣適用證據；M9 HTML入口不等於PDF頁索引就緒。
+7. static／contract／diff／guarded DryRun通過後，由主責走唯一正式發布入口及Chrome TestUI；不要自行clasp push或建立deployment。真LINE手機證據另列。
 
 現行唯一契約：[Developer_Manual.md](Developer_Manual.md)。正式版本當次讀health，不把候選當已發布。[完整舊脈絡](docs/history/v29.6.302/AI_CONTEXT.md) 僅供歷史。
 
@@ -22,7 +36,7 @@
 `Prompt.csv` 為本地鏡像/人工備份；部署流程不會自動把它上傳到 Google Sheet。
 Prompt 維護鐵律：除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`。本批不增加題型提示。
 
-## 錯答先讀LOG
+## 歷史發布與事故背景（以下不是v307現況）
 
 v305已正式發布 **@1486 / v29.6.305 [2026-09-05 17:03]**；guarded release全部通過，local／HEAD／formal health及build一致，30/200版本。81登錄／136型號／47不同PDF索引已全部啟用且SHA讀回；非81本手冊。修復雙欄交錯、實際表格階層及跨頁引用、SCFU完整型號和唯一代號。Chrome實問G932 PBP、F24護眼、接續切H704自我診斷，均1次2.5Lite、零Router／Web、有核對頁碼。共同測試約NT$2.0622；詳見[本批紀錄](test_runner/results/v305_manual_library_20260905.md)。尚有5個官方來源適用性缺口，不冒充已取得完整手冊；未宣稱本批手機LINE／全案20旅程通過。
 

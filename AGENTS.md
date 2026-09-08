@@ -1,8 +1,10 @@
 # Samsung LINE Bot 開發規範
 
+正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 
-v306 接手先讀 [具體操作單](docs/V306_HANDOFF.md) 與 [本次實測](test_runner/results/v306_live_20260908.md)：分開已修／實測／外部限制；禁止把待建索引佇列說成已無人建索引、把20條設計題庫說成20條全過。
+接手先讀 [交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[快速索引](AI_CONTEXT.md) 與 [worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)。歷史失敗與修復保留證據，不當成現行待辦。
 
 - 使用者報錯先讀雲端LOG／所有紀錄；TestUI、Mock、手機LINE分開驗收，不混稱。
 - 保持main、不開分支、不清未追蹤結果、不升貴模型、不新增付費服務。QA/RULE→必要PDF→未解部分一次Web，不無證據編造。
@@ -10,7 +12,9 @@ v306 接手先讀 [具體操作單](docs/V306_HANDOFF.md) 與 [本次實測](tes
 - 生成前月預留，再來源扣次；重試每次算費，缺usage不填0。一般10／手冊2／網路5，補救3；月90元應用停止線。**首次月帳seed未完成禁止發布**。Cloud cap實際9/5讀回NT$90，不依名稱100判斷；幣別／服務另核對，非即時阻斷。
 - 一般LINE禁止Push；等待動畫尽早。RichMenu不任意重建。
 - 型號／文件角色／官方來源／SHA／頁碼共同守門，檔名非範圍證據。更新失敗保留有效版，不拿暫存URI當成功。
-- root .gs才是正式來源；.claspignore排除 **/*.js、tools/**、test_runner/**、output/**。Webhook不掃整庫，改背景排程。全庫完整索引禁止整包嵌入正式程式；用已登錄SHA的編輯者分包匯入，讀回後才啟用。
+- root .gs才是正式來源；.claspignore排除 **/*.js、tools/**、test_runner/**、output/**。聊天Webhook不掃整庫。既有compiled索引用編輯者分包匯入；新PDF用簽章本機worker→官方SHA核對→不可變PDF/index→單一MANUAL_WORKER_BUNDLE指標切換，不能放寬舊manifest SHA，也不能把全索引塞Properties／正式程式。
+- worker只接受已驗證pending單一SKU／角色／官方URL；舊pending缺workerBinding須重驗。秘密僅編輯者短token設定，存本機受限設定檔及ScriptProperties，不入repo／LOG。先真實一次下載、建索引、prepare、probe與Bot讀回，再建排程；失敗留舊完整版本，不以health心跳冒稱索引完成。
+- F612已找到官方英文38頁手冊，印刷封面S27F61*完整匹配、索引SHA `1de245a1c37998a06a77160b381946333177dbfebeff7d867687ca79de7f7b4f`，已由正式worker啟用並完成PDF／索引SHA probe。D392兩款與M703仍只有外區參考，不能充作台灣適用證據；M9已有官方HTML入口，不是PDF頁索引就緒。詳見[來源重查](docs/V307_OFFICIAL_GAPS.md)；不解DRM、不借相似型號、不捏造頁碼。
 - UM下載分類不代表使用手冊角色；Product Guide／快速入門不得因日期較新而覆蓋操作手冊。已授權計畫不能把「分批發布」當作自行停止點；若剩外部資料缺口，必須列出實際證據與影響。
 - CLASS_RULES維持A欄CSV大字串，不展欄。UTF8讀檔，勿因終端解碼亂碼重部署。
 - PDF命名沿用無國家碼型號本體排序逗號；第一頁／支援頁核範圍，不能盲刪全部尾字母造成混款。

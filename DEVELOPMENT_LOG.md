@@ -1,5 +1,15 @@
 # 開發對話紀錄
 
+正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+
+## v29.6.311 正式 @1492（2026-09-08）
+
+16:32 Chrome J15修後PASS：H704首輪引用第41頁（約NT$0.0048）；追問「測試時可以切換輸入嗎？」走真正pageRAG1、證據1/1、coverage full，Router1 NT$0.0268＋Lite NT$0.005046≈NT$0.0318，Web0、未讀整本，答「診斷期間不要變更輸入」。修前約NT$0.2458為歷史失敗；通用許可／條件分類修復，不是單題Prompt。
+
+新增簽章本機索引worker與原子PDF/index/catalog bundle；30項worker離線PASS、20條真路由離線旅程49事件20 PASS／0 FAIL／0 BLOCKED，只模擬外部I/O，不冒稱20條真人供應商驗收。F612官方英文38頁手冊印刷封面S27F61*完整匹配，index SHA `1de245a1c37998a06a77160b381946333177dbfebeff7d867687ca79de7f7b4f`；M7與F612於15:57:57完成正式prepare／activation及PDF／索引SHA probe，零provider，見[實測JSON](test_runner/results/v307_worker_live_20260908.json)。ZIP由本機核archive／entry／PDF，GAS核已登錄PDF＋index及Drive雙讀回才原子切換；寫入統一Advanced Drive v3。排程真啟動LastTaskResult=0，16:16:28報告ok=true且雲端health成功。
+
+D392兩款與M703外區資料仍只作參考、非台灣適用證據；M9官方HTML入口不是PDF索引ready。真人PBP數值追問發现廣泛系列說法誤作完整證據，已修數值限制意圖與推測詞守門。現行交接與逐題證據以[V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md)為準；以下舊版紀錄保留歷史，不代表v307當次狀態。
+
 ## 2026-09-05（v29.6.305 全庫核實索引，正式 @1486）
 
 - 使用者指出已授權的全庫擴充不應停在「後續批次」。接續完成本機全庫 SHA／首頁盤點與官方支援頁下載核對，不呼叫模型。
