@@ -1,4 +1,8 @@
-# Samsung LINE Bot 開發手冊 — v29.6.305
+# Samsung LINE Bot 開發手冊 — v29.6.306
+
+本批變更及逐步接手指引：[v306 交接清單](docs/V306_HANDOFF.md)。正式狀態依當次發布紀錄，下列 v305 為前次基線。
+
+**2026-09-08正式 v29.6.306 @1487：** guarded release、local／HEAD／health一致。59項離線整合與全庫載入通過；Chrome17次文字／按鍵事件包含修正前失敗及重測，詳見[逐題實測](test_runner/results/v306_live_20260908.md)。新增約NT$0.073、共用驗證帳2.1352；沒有改模型／Prompt!C3／Rich Menu。完整20條旅程、全自動新PDF索引與外部資料缺口仍不能列完成。
 
 唯一現行設計契約。**候選程式不等於已發布、已驗收。** 實際進度見 DEVELOPMENT_LOG.md／test_runner/results。此前完整文件保存在 [歷史快照](docs/history/v29.6.302/Developer_Manual.md)，其中舊額度、旁路或模型政策不得重新套回正式服務。
 
@@ -17,6 +21,8 @@ v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改
 
 - 沿用 AnswerEnvelope／RouteAnalysisV1／持久 product topic；共用真正原題、型號、功能、claims、evidenceRefs、未解部分及已執行來源，不另建競爭路由。內部補充 prompt 不得當原題。
 - QA 同時符合意圖與產品範圍。系列共識可答就不選型；答案因機型而異才選。補型號接回原題；型號跨日保存，明確換系列解除舊綁定。
+- 家族辨識包含句中的 Smart螢幕／顯示器，不只句首Smart或完整Smart Monitor。家族已明講且現有QA完整命中時，免費回答先於再問M5/M7/M8/M9；有線「接螢幕」與「充幾瓦」仍分不同意圖。
+- 取消／N／/取消永遠先走同一來源控制入口，即使沒有pending也零LLM、零提問額度；清待選型／澄清／中斷恢復，不清持久型號或費用帳。
 - 新限制不能因上一輪有 plan 而丟失。例如「那兩邊都120Hz嗎」保留 PBP 主題＋新限制。明確新功能不能沿用舊題。
 - 按手冊／網路即授權，不再確認；缺必要資料自動往 PDF，未解部分一次非三星公開 Web 補救（個人網搜不扣，系統每日最多3次）。網路不附 PDF，已解部分不重做。
 - 有結果不等於答對。無證據時保留未知、已知事實、明示未證實方向、安全下一步／官網連結／請 Sam 補 QA，不拿無關連結充數。
@@ -33,6 +39,10 @@ v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改
 Fast／頁級固定2.5 Flash-Lite，整本PDF／Web固定2.5 Flash；既有條件式3.7 Flash不升級、不擴到每題。Router 無工具／無產品答案，只選候選 index、拆 claims；低信心、429、格式失敗不重試，回安全路徑。
 
 ## 手冊與 Evidence
+
+- v306 操作回答從同一已採用設定段保留必要警語，先去除PDF排版破折號再去重；不加第二次生成。明確禁止／不支援是可成立的否定答案，不應僅因不能提供正向做法而標記未解；仍須核對全部主張與適用条件。
+- 覆蓋報告納入已啟用且SHA／checksum吻合的頁索引，統一型號母集合；一次盤點只讀一次manifest快照，不對81筆登錄逐筆讀遠端屬性。聊天單題仍讀當次版本，不延用跨請求舊快照。
+- 自動新SHA promotion遇已登錄但索引未同步時，先記PENDING_PAGE_INDEX並保留舊PDF、manifest及active；重複相同SKU/SHA不再付首頁驗證費。這是保護，不是完整自動建索引；prepared版本包切換與可靠PyMuPDF執行環境尚待完成，詳見V306_HANDOFF，不得以放寬SHA解除阻擋。
 
 - config/manual_registry.json 保存完整型號／料號、文件角色、適用範圍、來源／支援頁、SHA。檔名只辨識：維持無國家碼、型號本體排序逗號命名，不盲刪全部尾字母造成不同款碰撞。
 - tools/build_manual_page_index.py 驗證 SHA 後產生完整 lex/pages。manual_index_runtime.gs 按原題 BM25 查頁，保留標題、表格、步驟與限制。PBP/PIP/多重視窗等 related aliases 只擴召回，不證明等價能力。

@@ -3130,6 +3130,9 @@ const promotionFolder = {
   createFile: (blob) => ({ getId: () => `created:${blob.name}` }),
 };
 const focusedPromotionVm = {
+  // This legacy-overlap fixture exercises an unindexed document. Registered
+  // revision blocking is tested with real catalog/importer in library tests.
+  MANUAL_PAGE_RAG_DATA_: {documents:{}},
   CONFIG: { DRIVE_FOLDER_ID: "drive-folder" },
   DriveApp: { getFolderById: () => promotionFolder,
     getFileById: () => ({getBlob: () => ({getBytes: () => Array.from(Buffer.from("fixture"))})}) },
@@ -3146,7 +3149,9 @@ const focusedPromotionVm = {
 };
 vm.createContext(focusedPromotionVm);
 vm.runInContext(
-  `${extractFunction(linebot, "bytesToHex_")}
+  `${extractFunction.production.assertManualIndexPromotionReady_.toString()}
+   ${extractFunction.production.isManualIndexPromotionReady_.toString()}
+   ${extractFunction(linebot, "bytesToHex_")}
    ${extractFunction.production.manualIndexDigest_.toString()}
    ${extractFunction(linebot, "normalizePdfModelToken_")}
    ${extractFunction(linebot, "getPdfFileModelTokens_")}

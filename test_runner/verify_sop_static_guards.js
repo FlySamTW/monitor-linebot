@@ -92,7 +92,7 @@ const deployExistingWebhook = read("tools/deploy_existing_webhook.ps1");
 const releaseExistingWebhook = read("tools/release_existing_webhook.ps1");
 const syncPrompt = read("tools/sync_prompt_c3.ps1");
 const developmentLog = read("DEVELOPMENT_LOG.md");
-const developerManual = read("程式編寫開發及功能手冊.md");
+const developerManual = read("Developer_Manual.md");
 const aiContext = read("AI_CONTEXT.md");
 const copilotInstructions = read(".github/copilot-instructions.md");
 const toolsReadme = read("tools/README.md");
@@ -365,8 +365,8 @@ for (const staleMainFile of [
 }
 
 assertStep(
-  developerManual.includes(`完整流程解析 (${localVersion})`) &&
-    developerManual.includes(`現行鐵律 SOP（${localVersion}）`),
+  developerManual.includes(`# Samsung LINE Bot 開發手冊 — ${localVersion}`) &&
+    developerManual.includes("唯一回答與守門契約"),
   "developer manual headline and SOP version must match linebot.gs GAS_VERSION",
 );
 

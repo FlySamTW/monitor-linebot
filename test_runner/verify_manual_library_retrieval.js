@@ -52,6 +52,12 @@ for(const [model,question] of questions) {
     }]}),plan,question,'');
     assert(!/ERROR|AUTO_SEARCH_WEB/.test(answer),answer);
     assert(answer.includes('Support → Self Diagnosis'),answer);
+    assert(answer.includes('不要變更輸入來源'),answer);
+    assert(answer.includes('小提醒：'),answer);
+    const alreadyComplete=c.hydrateManualPageRagResponse_(JSON.stringify({found:true,coverage:'full',unresolvedQuestion:'',evidence:[{
+      evidenceId:diagnosis.evidenceId,supportedAnswer:'進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。'
+    }]}),plan,question,'');
+    assert.strictEqual((alreadyComplete.match(/不要變更輸入來源/g)||[]).length,1,alreadyComplete);
   }
   if(model==='LF24T350FHC') {
     const entry=plan.fragments.find(f=>f.menuPath==='Picture → Eye Saver Mode');
@@ -72,6 +78,28 @@ assert.strictEqual(activeReport.active,81);
 assert.strictEqual(activeReport.models,136);
 assert.strictEqual(activeReport.uniqueIndexes,47);
 assert.strictEqual(activeReport.missing.length,0);
+assert.strictEqual(c.readReadyManualIndexModels_().length,136);
+const manifestReader=c.readOfficialManualManifest_; let manifestReads=0;
+c.readOfficialManualManifest_=()=>{manifestReads++;return manifestReader();};
+c.readReadyManualIndexModels_();
+assert.strictEqual(manifestReads,1,'coverage must not read remote manifest once per registered document');
+c.readOfficialManualManifest_=manifestReader;
+const sample=Object.values(c.MANUAL_PAGE_RAG_DATA_.documents)[0];
+const candidate={fullSku:sample.models[0],downloadUrl:'https://downloadcenter.samsung.com/test.pdf'};
+assert.strictEqual(c.isManualIndexPromotionReady_(candidate,sample.sourcePdfSha256),true);
+const sampleKey=Object.keys(c.MANUAL_PAGE_RAG_DATA_.documents)[0],pointerKey='MANUAL_ACTIVE::'+sampleKey;
+const savedPointer=h.properties.get(pointerKey);
+h.properties.delete(pointerKey);
+assert.strictEqual(c.isManualIndexPromotionReady_(candidate,sample.sourcePdfSha256),false,'compiled metadata without read-back active pointer is not ready');
+h.properties.set(pointerKey,savedPointer);
+const before=created;
+assert.throws(()=>c.assertManualIndexPromotionReady_(candidate,'f'.repeat(64),'test.pdf'),/PAGE_INDEX_BUILD_REQUIRED/);
+assert.strictEqual(created,before,'changed revision must be stopped before any Drive write');
+c.savePendingManualRevision_(candidate,'f'.repeat(64),'test.pdf','PROMOTION_EXCEPTION_PAGE_INDEX_BUILD_REQUIRED');
+assert(c.readPendingManualIndexRevision_(candidate.fullSku,'f'.repeat(64)),'promotion wrapper must not defeat dedup');
+assert.strictEqual(c.readPendingManualIndexRevision_(candidate.fullSku,'e'.repeat(64)),null);
+assert.strictEqual(c.readPendingManualIndexBuilds_().length,1);
+assert.strictEqual(c.hasReadyManualIndexForModel_(candidate.fullSku),true,'old active revision remains usable');
 assert.strictEqual(c.hasReadyManualIndexForModel_('S99ZZ999'),false);
 assert.strictEqual(c.findManualPageRagPlan_('HDMI沒有畫面怎麼辦','C24F390FHC'),null,'not registered in current RULE must not borrow another model');
 console.log(JSON.stringify({registrations:Object.keys(c.MANUAL_PAGE_RAG_DATA_.documents).length,boundModels:bound,uniqueIndexes:created,providerCalls:0}));

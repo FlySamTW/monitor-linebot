@@ -3160,3 +3160,6 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 
 - 以固定 20 題正式 TestUI 基準找出共同根因，修正產品身分、條件限定 RULE、手冊片段覆蓋、自然追問、PDF 證據完整度與 Files URI 續期；沒有加入個別題目字串特判，也沒有更換模型。
 - 正式發布與修後真人驗收結果將於本版發布完成後補記。
+# v29.6.306（2026-09-08，正式 @1487）
+
+更新SHA先擋下不相容／未讀回頁索引的promotion、保留舊完整版本；同SHA待建項去重避免每日重付驗證。操作回答保留同段必要警語、去重，明確否定不再無謂升Web；覆蓋報告納入已啟用頁索引並只讀一次manifest。真人測出Smart螢幕錯借H704、無pending取消會付費，已修通用身分／QA／控制入口。59項離線整合全過，17次Chrome事件及失敗重測完整列在test_runner/results/v306_live_20260908.md；新增NT$0.0729792。guarded正式@1487、local/HEAD/health一致，未換模型／未加生成層／未改Prompt!C3或RichMenu。完整自動索引、20條旅程及外部資料限制仍見docs/V306_HANDOFF.md，不以本批發布冒稱全案完成。

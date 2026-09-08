@@ -13,8 +13,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.305"; // 全庫核實索引與使用手冊角色守門
-const BUILD_TIMESTAMP = "2026-09-05 17:03";
+const GAS_VERSION = "v29.6.306"; // 索引更新保護、操作提醒與一致覆蓋
+const BUILD_TIMESTAMP = "2026-09-08 12:40";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,7 +23,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV21-QueryTimeV1-PrintedMenuHierarchy";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV22-VerifiedActionGuidance";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -4109,7 +4109,7 @@ function extractNamedMonitorFamilyTokens_(text) {
   const q = toHalfWidth(String(text || "")).toUpperCase().trim();
   const families = [];
   if (
-    /(?:^|[^A-Z0-9])SMART\s*MONITOR(?:[^A-Z0-9]|$)/i.test(q) ||
+    /(?:^|[^A-Z0-9])SMART\s*(?:MONITOR|螢幕|顯示器)(?:[^A-Z0-9]|$)/i.test(q) ||
     /(?:^|[^A-Z0-9])SMART\s*系列(?:[^A-Z0-9]|$)/i.test(q) ||
     /智慧(?:聯網)?螢幕/.test(q) ||
     /^(?:三星\s*|SAMSUNG\s*)?SMART(?:\s|，|,|：|:|如何|怎麼|有|可|能|支援|開啟|設定)/i.test(q)
@@ -5430,7 +5430,7 @@ function getQaIntentTokens_(text) {
     (connections.indexOf("USB_C") >= 0 ||
       connections.indexOf("DISPLAYPORT") >= 0 ||
       connections.indexOf("HDMI") >= 0) &&
-    /顯示|畫面|影像|視訊|輸出|連接|沒畫面|無畫面/i.test(raw)
+    /顯示|畫面|影像|視訊|輸出|連接|沒畫面|無畫面|(?:接|插)(?:到)?\s*(?:三星\s*)?(?:SMART\s*)?(?:螢幕|顯示器|MONITOR)/i.test(raw)
   ) {
     tokens.push("WIRED_DISPLAY");
   }
@@ -8252,6 +8252,11 @@ function handleRichMenuPostback_(event) {
   if (action === "cancel_source") {
     clearPendingSourceState_(contextId);
     clearLegacyAdvancedRouteState_(CacheService.getScriptCache(), userId, contextId);
+    const cancelCache = CacheService.getScriptCache();
+    [getSemanticClarificationKey_(contextId), `${userId}:pending_topic`,
+      `${userId}:model_select_mode`, `${userId}:suggested_models`, `${userId}:interrupted_query`]
+      .forEach(function (key) { cancelCache.remove(key); });
+    clearDailyQuestionModelSelectionHold_(userId);
     LAST_SOURCE_TEST_STATE = {
       source: "spec",
       pending: false,
@@ -15311,7 +15316,7 @@ function hydrateManualPageRagResponse_(
       trustedPageIndex: Boolean(plan.retrievalPolicy && plan.revisionVerified),
     },
   );
-  return ruleBackedAliasCompletion
+  const answer = ruleBackedAliasCompletion
     ? humanizeManualPageRagAnswer_(
         String(normalized).replace(
           /^(?:官方)?手冊(?:中)?可查到的相近操作是/,
@@ -15319,6 +15324,7 @@ function hydrateManualPageRagResponse_(
         ),
       )
     : normalized;
+  return addManualActionGuidance_(answer, question, plan, parsed.evidence);
 }
 
 function callManualPageRag_(
@@ -15354,9 +15360,10 @@ function callManualPageRag_(
     "你是三星台灣電腦螢幕官方手冊證據整理器。",
     "只能依輸入的 officialManualText 回答，不可用常識、其他型號或自行搜尋。",
     "每個 supportedAnswer 只能綁一個 evidenceId；頁碼與原文會由程式回填，你不要把頁碼寫進答案。",
+    "明確禁止、不支援也是完整的否定答案，不是缺資料；適用條件吻合且全部主張都有答案才填 coverage=full，不再為相同主張要求其他來源。",
     "操作題須回答步驟／選單路徑，不重複功能用途。選單章節標題＋設定項目＋開關說明已構成入口，寫成『章節 → 項目』；不另猜首頁步驟。只有啟動後的說明不算完成。",
     "若使用者用詞不在手冊片段，但片段有能完成相同目的的入口，supportedAnswer 必須以『官方手冊中可查到的相近操作是「手冊實際名稱」：』開頭；不可宣稱兩者完全等同。",
-    "只回簡潔、自然的繁體中文。沒有直接證據就 found=false，不得猜測。",
+    "像同事般用簡潔繁中引導，保留原選單名稱、完成操作必需的動作與同段警語，不只列箭頭；不可補猜操作。沒有直接證據就 found=false。",
   ].join("\n");
   const userPayload = {
     model: plan.model,
@@ -19276,6 +19283,7 @@ function persistOfficialManualManifest_(candidate, sha256, finalFileName) {
 }
 
 function promoteOfficialManualToRoot_(blob, candidate, sha256, finalFileName) {
+  assertManualIndexPromotionReady_(candidate, sha256, finalFileName);
   const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
   const affectedCacheModels = getPdfFileModelTokens_(finalFileName).concat([
     candidate.fullSku,
@@ -19443,6 +19451,11 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
   const sha256 = bytesToHex_(
     Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes),
   );
+  const queuedRevision = readPendingManualIndexRevision_(candidate.fullSku, sha256);
+  if (queuedRevision && !isManualIndexPromotionReady_(candidate, sha256)) {
+    return Object.assign({}, candidate, { sha256: sha256, action: "INDEX_PENDING",
+      manualStatus: "PENDING_PAGE_INDEX", validationReason: "PAGE_INDEX_BUILD_REQUIRED" });
+  }
   const validation = validateOfficialManualFirstPage_(blob, candidate);
   if (validation.valid) {
     const verifiedCandidate = Object.assign({}, candidate, {
@@ -20010,11 +20023,14 @@ function buildManualCoverageReport_() {
         .filter(Boolean),
     ),
   ).sort();
-  const indexAvailable = pdfIndex.length > 0;
+  const readyModels = readReadyManualIndexModels_();
+  const indexAvailable = pdfIndex.length > 0 || readyModels.length > 0;
   const coveredModels = [];
   const missingModels = [];
   identities.forEach(function (identity) {
-    const covered = pdfIndex.some(function (pdfModel) {
+    const covered = readyModels.some(function (model) {
+      return manualEvidenceModelMatchesTarget_(model, identity.model);
+    }) || pdfIndex.some(function (pdfModel) {
       return isPdfModelTokenMatch_(pdfModel, identity.model);
     });
     (covered ? coveredModels : missingModels).push(identity.model);
@@ -20052,6 +20068,10 @@ function buildManualCoverageReport_() {
     autoImportRetryModels: autoRetryModels,
     offlineZipPendingCount: offlineZipPendingModels.length,
     offlineZipPendingModels: offlineZipPendingModels,
+    pageIndexReadyModels: identities.filter(function (identity) {
+      return readyModels.some(function (model) { return manualEvidenceModelMatchesTarget_(model, identity.model); });
+    }).map(function (identity) { return identity.model; }),
+    pendingIndexRevisions: readPendingManualIndexBuilds_(),
     acquisitionMode: "OFFICIAL_DISCOVERY_WITH_MANUAL_VALIDATION",
   };
 }
@@ -23464,6 +23484,13 @@ function handleMessage(event) {
       : userId;
     const cache = CacheService.getScriptCache();
     // v29.6.003: 智慧型圖片-文字併發衝突恢復機制 (Concurrently Pending Query Recovery)
+    // Cancellation is always a control event, even without pending mode.
+    // Resolve it before one-character recovery, daily quota or any LLM.
+    if (isSourceCancelText_(userMessage)) {
+      handleRichMenuPostback_({type:"postback", source:event.source, replyToken:replyToken,
+        postback:{data:"rm_action=cancel_source&v=2"}});
+      return;
+    }
     let processedMessage = userMessage;
     const cleanRaw = processedMessage.trim();
     if (cleanRaw === '.' || cleanRaw === '。' || cleanRaw === '繼續' || cleanRaw === '點' || cleanRaw.length === 1) {
@@ -23989,6 +24016,10 @@ function handleMessage(event) {
     // 幾天前的 Odyssey／其他 Smart 型號；先補 M5/M7/M8/M9，再接回原題。
     if (!msg.startsWith("#") && shouldPromptSmartMonitorAlias_(routingQuestion)) {
       const familyQuestion = stripInternalRoutingHints_(routingQuestion);
+      // Product-family scope is explicit. A complete matching QA is enough;
+      // do not inject the previous unrelated model or force needless selection.
+      const familyQa = findLocalMatchInQA(familyQuestion, userId, "");
+      if (familyQa && replyWithLocalQaMatch_(familyQa, familyQuestion, userId, replyToken, contextId)) return;
       cache.put(`${userId}:pending_topic`, familyQuestion, 600);
       cache.put(`${userId}:model_select_mode`, "family_alias", 600);
       cache.put(

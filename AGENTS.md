@@ -2,6 +2,8 @@
 
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 
+v306 接手先讀 [具體操作單](docs/V306_HANDOFF.md) 與 [本次實測](test_runner/results/v306_live_20260908.md)：分開已修／實測／外部限制；禁止把待建索引佇列說成已無人建索引、把20條設計題庫說成20條全過。
+
 - 使用者報錯先讀雲端LOG／所有紀錄；TestUI、Mock、手機LINE分開驗收，不混稱。
 - 保持main、不開分支、不清未追蹤結果、不升貴模型、不新增付費服務。QA/RULE→必要PDF→未解部分一次Web，不無證據編造。
 - 按來源即授權，不重複確認；型號跨日保存，新限制不能丟失。Prompt不補單題特例，正式Prompt!C3非本機Prompt.csv，程式發布不覆寫。

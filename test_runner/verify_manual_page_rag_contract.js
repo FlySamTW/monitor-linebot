@@ -48,6 +48,7 @@ function extractFunction(source, name) {
 }
 
 const context = {
+  addManualActionGuidance_: require('./production_harness').createProductionHarness({quiet:true}).context.addManualActionGuidance_,
   console,
   JSON,
   Math,

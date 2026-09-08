@@ -418,4 +418,35 @@ test("RULE唯一不完整代號直接解析，多款系列仍選型且不借舊�
   assert.strictEqual(j.fetches.length,0);
 });
 
+test("明確Smart螢幕家族不得借H704；完整QA先於選型與用完的PDF額度", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context, id='FAMILY_QA';
+  j.run('IS_TEST_MODE=true');
+  jc.rememberSourceProductModel_(id,'S27H704EAC','fixture');
+  for(const question of ['iPhone 17可以用USB-C接Smart螢幕嗎？','iPhone Air可以用USB-C接Smart螢幕嗎？']) {
+    assert.strictEqual(jc.resolveTurnProductIdentity_(question,'S27H704EAC').kind,'family');
+    jc.handleMessage({type:'message',replyToken:'fixture',source:{type:'user',userId:id},message:{type:'text',text:question}});
+  }
+  const replies=j.logs.filter(x=>x.includes('[Reply Audit]'));
+  assert.strictEqual(replies.length,2,j.logs.join('\n'));
+  assert(replies[0].includes('4K HDR') && !replies[0].includes('S27H704'),replies[0]);
+  assert(replies[1].includes('無法有線顯示'),replies[1]);
+  assert(!jc.isQaQuestionDirectMatch_('iPhone 17接Smart螢幕可以充幾瓦？','iPhone 17可以用USB-C直接連接Smart Monitor顯示嗎？'));
+  assert.strictEqual(j.fetches.length,0);
+});
+
+test("取消有無pending皆為零費控制，不恢復中斷題、不丟持久型號", () => {
+  const j=createProductionHarness({quiet:true}), jc=j.context, id='CANCEL_IDLE';
+  j.run('IS_TEST_MODE=true'); jc.rememberSourceProductModel_(id,'S27H704EAC','fixture');
+  for(const q of ['取消','N','/取消']) {
+    j.cache.set(id+':interrupted_query','幫我查手冊');
+    j.cache.set(id+':pending_topic','舊問題');
+    jc.handleMessage({type:'message',replyToken:'fixture',source:{type:'user',userId:id},message:{type:'text',text:q}});
+    assert(!j.cache.has(id+':pending_topic'));
+    assert.strictEqual(jc.readSourceProductState_(id).model,'S27H704EAC');
+  }
+  assert.strictEqual(jc.getDailyQuestionRemaining_(id),10);
+  assert.strictEqual(j.fetches.length,0);
+  assert.strictEqual(j.logs.filter(x=>x.includes('[Reply Audit]')&&x.includes('已取消')).length,3);
+});
+
 console.log(`Offline assertions passed=${passed}; paid provider calls=0. Not LINE/TestUI acceptance.`);

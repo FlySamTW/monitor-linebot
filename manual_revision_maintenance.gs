@@ -50,3 +50,50 @@ function savePendingManualRevision_(candidate, sha256, finalFileName, reason) {
     finalFileName: finalFileName, status: "PROMOTION_PENDING", reason: String(reason || ""),
     detectedAt: new Date().toISOString()}));
 }
+
+function readPendingManualIndexRevision_(fullSku, sha256) {
+  try {
+    const pending = JSON.parse(PropertiesService.getScriptProperties().getProperty(
+      `MANUAL_PENDING_${String(fullSku || "").toUpperCase()}`) || "null");
+    return pending && /(?:^|_)PAGE_INDEX_BUILD_REQUIRED$/.test(pending.reason || "") &&
+      String(pending.sourcePdfSha256).toLowerCase() === String(sha256).toLowerCase() ? pending : null;
+  } catch (error) { return null; }
+}
+
+function isManualIndexPromotionReady_(candidate, sha256) {
+  const docs = typeof MANUAL_PAGE_RAG_DATA_ === "undefined" ? {} : MANUAL_PAGE_RAG_DATA_.documents;
+  const matches = Object.keys(docs).filter(function (key) {
+    return docs[key].models.some(function (model) { return manualEvidenceModelMatchesTarget_(model, candidate.fullSku); });
+  });
+  // Previously unindexed manuals retain the existing validated PDF route.
+  if (!matches.length) return true;
+  return matches.every(function (key) {
+    const doc = docs[key];
+    if (String(doc.sourcePdfSha256).toLowerCase() !== String(sha256).toLowerCase()) return false;
+    // A compiled checksum alone is not evidence that its Drive package was
+    // uploaded/read back. Do not promote against an old or missing pointer.
+    let active;
+    try { active = JSON.parse(PropertiesService.getScriptProperties().getProperty(`MANUAL_ACTIVE::${key}`) || "null"); }
+    catch (error) { return false; }
+    return Boolean(doc.pageIndex && doc.pageIndex.revision === String(sha256).toLowerCase() &&
+      active && active.sha256 === String(sha256).toLowerCase() &&
+      active.indexChecksum === doc.pageIndex.sha256 && active.indexFileId);
+  });
+}
+
+function assertManualIndexPromotionReady_(candidate, sha256, finalFileName) {
+  if (isManualIndexPromotionReady_(candidate, sha256)) return;
+  savePendingManualRevision_(candidate, sha256, finalFileName, "PAGE_INDEX_BUILD_REQUIRED");
+  writeLog(`[Manual Index Update] ${candidate.fullSku} PAGE_INDEX_BUILD_REQUIRED; previous PDF/index retained`);
+  throw new Error("PAGE_INDEX_BUILD_REQUIRED");
+}
+
+function readPendingManualIndexBuilds_() {
+  const properties = PropertiesService.getScriptProperties().getProperties();
+  return Object.keys(properties).filter(function (key) { return key.indexOf("MANUAL_PENDING_") === 0; })
+    .map(function (key) { try { return JSON.parse(properties[key]); } catch (error) { return null; } })
+    .filter(function (item) { return item && /PAGE_INDEX_BUILD_REQUIRED/.test(item.reason || ""); })
+    .map(function (item) { return { model: item.candidate.fullSku, sourcePdfSha256: item.sourcePdfSha256,
+      finalFileName: item.finalFileName, downloadUrl: item.candidate.downloadUrl,
+      status: "PENDING_PAGE_INDEX", detectedAt: item.detectedAt }; });
+}

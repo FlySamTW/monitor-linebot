@@ -57,6 +57,8 @@ const properties = new Map([
 ]);
 const cache = new Map();
 const context = {
+  readReadyManualIndexModels_: require('./production_harness').createProductionHarness({quiet:true}).context.readReadyManualIndexModels_,
+  readPendingManualIndexBuilds_: require('./production_harness').createProductionHarness({quiet:true}).context.readPendingManualIndexBuilds_,
   console,
   Utilities: {
     DigestAlgorithm: { SHA_256: "SHA_256" },

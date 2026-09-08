@@ -33,9 +33,10 @@ function hasReadyManualIndexForModel_(model) {
 
 function readManualLibraryActivationReport_() {
   const docs=MANUAL_PAGE_RAG_DATA_.documents, props=PropertiesService.getScriptProperties().getProperties();
+  const manifest=readOfficialManualManifest_();
   const active=[],missing=[];
   Object.keys(docs).forEach(function(key) {
-    const revision=readManualRevision_(key,docs[key]);
+    const revision=readManualRevision_(key,docs[key],manifest);
     let stored=null; try {stored=JSON.parse(props[`MANUAL_ACTIVE::${key}`]||"null");} catch(error) {}
     if(revision && stored && stored.sha256===revision.sha256 && stored.indexChecksum===revision.indexChecksum && stored.indexFileId) active.push(key);
     else missing.push(key);
@@ -43,7 +44,22 @@ function readManualLibraryActivationReport_() {
   return {version:GAS_VERSION,registered:Object.keys(docs).length,active:active.length,missing:missing,
     models:[...new Set(active.reduce(function(all,key) {return all.concat(docs[key].models);},[]))].length,
     uniqueIndexes:[...new Set(active.map(function(key) {return docs[key].pageIndex.sha256;}))].length,
+    pendingIndexRevisions:readPendingManualIndexBuilds_(),
     providerCalls:0,budget:JSON.parse(props[providerMonthKey_()]||"null")};
+}
+
+function readReadyManualIndexModels_() {
+  if (typeof MANUAL_PAGE_RAG_DATA_ === "undefined") return [];
+  const docs = MANUAL_PAGE_RAG_DATA_.documents;
+  const properties = PropertiesService.getScriptProperties().getProperties();
+  const manifest = readOfficialManualManifest_();
+  return [...new Set(Object.keys(docs).reduce(function (models, key) {
+    let active;
+    try { active = JSON.parse(properties[`MANUAL_ACTIVE::${key}`] || "null"); } catch (error) { return models; }
+    const revision = readManualRevision_(key, docs[key], manifest);
+    return revision && active && active.sha256 === revision.sha256 &&
+      active.indexChecksum === revision.indexChecksum && active.indexFileId ? models.concat(docs[key].models) : models;
+  }, []))];
 }
 
 function manualIndexTerms_(text) {
@@ -98,12 +114,12 @@ function manualIndexDigest_(bytes) {
   return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes)).toLowerCase();
 }
 
-function readManualRevision_(docKey, document) {
+function readManualRevision_(docKey, document, manifestSnapshot) {
   const sourceSha = String(document.sourcePdfSha256 || "").toLowerCase();
   const index = document.pageIndex;
   if (!index || index.schemaVersion !== 2 || index.revision !== sourceSha ||
       !/^[a-f0-9]{64}$/.test(sourceSha)) return null;
-  const manifest = readOfficialManualManifest_();
+  const manifest = manifestSnapshot || readOfficialManualManifest_();
   const applicable = Object.keys(manifest).map(function (sku) {
     return Object.assign({ fullSku: sku }, manifest[sku]);
   }).filter(function (entry) {
