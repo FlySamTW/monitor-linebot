@@ -1,0 +1,436 @@
+{
+  "reviewedAt": "2026-09-09",
+  "basis": "local source v29.6.311 / aa42454; formal verification record 2026-09-08",
+  "items": [
+    {
+      "id": "F01",
+      "label": "查規格、接孔與功能",
+      "section": "店員問答",
+      "group": "產品與選購",
+      "file": "linebot.gs",
+      "line": 9364,
+      "anchor": "function buildDeterministicExactRuleReply_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F02",
+      "label": "比較機型與系列差異",
+      "section": "店員問答",
+      "group": "產品與選購",
+      "file": "Developer_Manual.md",
+      "line": 103,
+      "anchor": "系列共通規格",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F03",
+      "label": "辨識系列並引導選型",
+      "section": "店員問答",
+      "group": "產品與選購",
+      "file": "linebot.gs",
+      "line": 3017,
+      "anchor": "function shouldRunSemanticRouter_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F04",
+      "label": "查手冊操作步驟與限制",
+      "section": "店員問答",
+      "group": "操作與解決問題",
+      "file": "linebot.gs",
+      "line": 15523,
+      "anchor": "function applyManualEvidenceGuard_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F05",
+      "label": "不足時補查公開網路解答",
+      "section": "店員問答",
+      "group": "操作與解決問題",
+      "file": "linebot.gs",
+      "line": 11026,
+      "anchor": "function runManualWebRescue_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F06",
+      "label": "查看來源與本款官網",
+      "section": "店員問答",
+      "group": "操作與解決問題",
+      "file": "manual_official_alternatives.gs",
+      "line": 22,
+      "anchor": "function",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F07",
+      "label": "承接追問與已確認型號",
+      "section": "店員問答",
+      "group": "連續對話",
+      "file": "Developer_Manual.md",
+      "line": 27,
+      "anchor": "型號跨日",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F08",
+      "label": "同題跨來源查證、快取重用",
+      "section": "店員問答",
+      "group": "連續對話",
+      "file": "Developer_Manual.md",
+      "line": 33,
+      "anchor": "operationId",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F09",
+      "label": "補充一次詳細說明",
+      "section": "店員問答",
+      "group": "連續對話",
+      "file": "linebot.gs",
+      "line": 18,
+      "anchor": "MAX_ELABORATE_PER_ANSWER",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F10",
+      "label": "維護常見問答與規格",
+      "section": "知識與手冊維護",
+      "group": "基礎知識",
+      "file": "Developer_Manual.md",
+      "line": 155,
+      "anchor": "CLASS_RULES",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F11",
+      "label": "整理系列對照與功能術語",
+      "section": "知識與手冊維護",
+      "group": "基礎知識",
+      "file": "config/manual_lexicon.json",
+      "line": 4,
+      "anchor": "aliases",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F12",
+      "label": "記錄問答供後續補強",
+      "section": "知識與手冊維護",
+      "group": "基礎知識",
+      "file": "linebot.gs",
+      "line": 32005,
+      "anchor": "function updateHistorySheetAndCache",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F13",
+      "label": "發現並核實新版官方文件",
+      "section": "知識與手冊維護",
+      "group": "官方手冊",
+      "file": "linebot.gs",
+      "line": 19446,
+      "anchor": "function stageOfficialTwManualCandidate_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F14",
+      "label": "自動產生完整逐頁索引",
+      "section": "知識與手冊維護",
+      "group": "官方手冊",
+      "file": "tools/manual_index_worker.py",
+      "line": 18,
+      "anchor": "build_document",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F15",
+      "label": "失敗保留前一有效版本",
+      "section": "知識與手冊維護",
+      "group": "官方手冊",
+      "file": "manual_index_worker.gs",
+      "line": 211,
+      "anchor": "previous",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F16",
+      "label": "核對型號與文件適用範圍",
+      "section": "知識與手冊維護",
+      "group": "資料品質",
+      "file": "manual_answer_quality.gs",
+      "line": 2,
+      "anchor": "isRegisteredPrintedCoverEvidence_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F17",
+      "label": "保留頁碼、步驟及限制條件",
+      "section": "知識與手冊維護",
+      "group": "資料品質",
+      "file": "manual_index_runtime.gs",
+      "line": 373,
+      "anchor": "menuPath",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F18",
+      "label": "區分可用手冊與參考文件",
+      "section": "知識與手冊維護",
+      "group": "資料品質",
+      "file": "manual_official_alternatives.gs",
+      "line": 9,
+      "anchor": "referenceIsModelEvidence",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F19",
+      "label": "一般／手冊／網搜每日額度",
+      "section": "管理與費用控管",
+      "group": "使用管理",
+      "file": "linebot.gs",
+      "line": 26,
+      "anchor": "SOURCE_DAILY_LIMITS",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F20",
+      "label": "取消、選型不扣進階次數",
+      "section": "管理與費用控管",
+      "group": "使用管理",
+      "file": "Developer_Manual.md",
+      "line": 88,
+      "anchor": "取消／選型",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F21",
+      "label": "限制重複送出與來源連點",
+      "section": "管理與費用控管",
+      "group": "使用管理",
+      "file": "linebot.gs",
+      "line": 7763,
+      "anchor": "function beginAdvancedSourceOperation_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F22",
+      "label": "回覆附估算費用與使用模型",
+      "section": "管理與費用控管",
+      "group": "費用透明",
+      "file": "Developer_Manual.md",
+      "line": 34,
+      "anchor": "約 NT$",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F23",
+      "label": "達月停止線後保留免費回答",
+      "section": "管理與費用控管",
+      "group": "費用透明",
+      "file": "provider_cost_gateway.gs",
+      "line": 5,
+      "anchor": "90",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F24",
+      "label": "所有生成與重試納入計費",
+      "section": "管理與費用控管",
+      "group": "費用透明",
+      "file": "provider_cost_gateway.gs",
+      "line": 101,
+      "anchor": "function providerFetch_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F25",
+      "label": "查詢雲端對話與執行紀錄",
+      "section": "管理與費用控管",
+      "group": "維運與驗收",
+      "file": "Developer_Manual.md",
+      "line": 133,
+      "anchor": "雲端LOG",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F26",
+      "label": "使用 TestUI 驗證真實問答",
+      "section": "管理與費用控管",
+      "group": "維運與驗收",
+      "file": "TestUI.html",
+      "line": 165,
+      "anchor": "getCloudHistory",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "F27",
+      "label": "檢查索引更新與版本健康",
+      "section": "管理與費用控管",
+      "group": "維運與驗收",
+      "file": "maintenance_reliability.gs",
+      "line": 6,
+      "anchor": "library_report",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-planner",
+      "label": "planner",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "linebot.gs",
+      "line": 3017,
+      "anchor": "function shouldRunSemanticRouter_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-cost",
+      "label": "cost",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "provider_cost_gateway.gs",
+      "line": 101,
+      "anchor": "function providerFetch_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-manual",
+      "label": "manual",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "manual_index_runtime.gs",
+      "line": 4,
+      "anchor": "function",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-worker",
+      "label": "worker",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "tools/manual_index_worker.py",
+      "line": 18,
+      "anchor": "build_document",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-atomic",
+      "label": "atomic",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "manual_index_worker.gs",
+      "line": 2,
+      "anchor": "function",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-state",
+      "label": "state",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "linebot.gs",
+      "line": 897,
+      "anchor": "PropertiesService",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-reply",
+      "label": "reply",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "linebot.gs",
+      "line": 33034,
+      "anchor": "function replyMessage",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-gas-entry",
+      "label": "gas-entry",
+      "section": "技術架構",
+      "group": "回答邏輯與技術",
+      "file": "appsscript.json",
+      "line": 4,
+      "anchor": "runtimeVersion",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-line-client",
+      "label": "line-client",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "linebot.gs",
+      "line": 32587,
+      "anchor": "function doPost",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-test-client",
+      "label": "test-client",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "TestUI.html",
+      "line": 83,
+      "anchor": "google.script.run",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-sheets",
+      "label": "sheets",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "linebot.gs",
+      "line": 32005,
+      "anchor": "function updateHistorySheetAndCache",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-discovery",
+      "label": "discovery",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "linebot.gs",
+      "line": 19446,
+      "anchor": "function stageOfficialTwManualCandidate_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-boundary",
+      "label": "boundary",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "manual_index_runtime.gs",
+      "line": 4,
+      "anchor": "function",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-drive",
+      "label": "drive",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "manual_index_worker.gs",
+      "line": 57,
+      "anchor": "Drive",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-local",
+      "label": "local",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "linebot.gs",
+      "line": 9364,
+      "anchor": "function buildDeterministicExactRuleReply_",
+      "evidenceType": "current source or verified project record"
+    },
+    {
+      "id": "T-web",
+      "label": "web",
+      "section": "技術架構",
+      "group": "服務與資料",
+      "file": "linebot.gs",
+      "line": 11026,
+      "anchor": "function runManualWebRescue_",
+      "evidenceType": "current source or verified project record"
+    }
+  ]
+}

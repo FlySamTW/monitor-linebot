@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-09-09",
+  "slideCount": 2,
+  "slideSizeCm": [72, 48],
+  "nativePowerPointRender": true,
+  "pngSizes": {"功能全貌.png": [6000,4000], "技術架構.png": [6000,4000]},
+  "openXmlValidation": "passed",
+  "officeCliLayoutIssues": 0,
+  "notesSlides": 2,
+  "pictureObjects": 0,
+  "slideNumberFields": 0,
+  "functionalLeaves": 27,
+  "allFunctionalLeavesMapped": true,
+  "visualInspection": "Both native previews inspected; no clipping or text overlap. Worker polling arrow corrected and final second slide reinspected.",
+  "independentReview": "Two findings addressed: worker polling direction and F12 source anchor.",
+  "productionChanged": false,
+  "paidProviderCalls": 0,
+  "scope": "Artifact verification only; not a new production or mobile LINE acceptance."
+}
