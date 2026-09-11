@@ -1,6 +1,6 @@
 # Samsung LINE Bot 開發手冊 — v29.6.313
 
-正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容，未呼叫供應商。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，所以真人 Gemini／PDF／Web 路徑尚未恢復驗收；同憑證已熔斷、失敗退款且不再誤報「沒有證據」。本批沒有改模型、Prompt、Rich Menu或配額，也沒有新增模型費。
+正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容，未呼叫供應商。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，所以真人 Gemini／PDF／Web 路徑尚未恢復驗收；同憑證已熔斷、失敗退款且不再誤報「沒有證據」。9/11申訴已由Google收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，通常兩個工作天內審查。本批沒有改模型、Prompt、Rich Menu或配額，也沒有新增模型費。
 
 接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 

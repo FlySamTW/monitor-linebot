@@ -1,6 +1,6 @@
 # v307–v311 最短接手指引
 
-正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已熔斷同憑證、退款並停止後續重送。正式 LOG 已遮蔽172／1048筆命中內容，零供應商呼叫。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已熔斷同憑證、退款並停止後續重送。正式 LOG 已遮蔽172／1048筆命中內容，零供應商呼叫。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，Google表示通常兩個工作天內回覆。
 
 本文件記錄這批實作決策；正式版本／雲端驗收以 `V307_LIVE_ACCEPTANCE.md` 最後讀回為準。不要把候選測試當正式部署。唯一現行契約仍是 `Developer_Manual.md`。
 

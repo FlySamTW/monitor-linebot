@@ -1,6 +1,6 @@
 # 開發對話紀錄
 
-正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容、零供應商呼叫。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權；真人 Gemini／PDF／Web 路徑尚未恢復驗收。程式已對同憑證熔斷、退款並停止補救重送，本批無新增模型費。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容、零供應商呼叫。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權；真人 Gemini／PDF／Web 路徑尚未恢復驗收。程式已對同憑證熔斷、退款並停止補救重送，本批無新增模型費。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`。
 
 ## v29.6.313 正式 @1494（2026-09-11）
 
@@ -8,7 +8,8 @@
 - Smart／Tizen 拆成平台，Smart Monitor 才是產品家族；裸重設一次只問整台／Smart Hub／畫面音效，明確出廠重設使用既有已核實第171頁片段，不叫 Router、不要求 M5～M9。
 - 新增零供應商整合驗證：403 只送一次、後續熔斷、額度退還、費用0、LOG無key；Smart/Tizen身分、完整handler兩輪與已鎖定型號口語追問全部通過。模型、Prompt、Rich Menu、配額不變。
 - v29.6.312 已先正式發布 @1493；v29.6.313 只補編輯者 TestUI 的受保護健康檢查與既有 LOG 遮蔽按鈕，讓復原流程可實際執行，不開公開維護入口。
-- 正式 health 已讀回 `v29.6.313 [2026-09-11 10:38]`；受保護 `redact_logs` 掃描1048列、遮蔽172筆命中內容、providerCalls=0。`provider_health` 仍回 `PROVIDER_CREDENTIAL_SUSPENDED`，與 Cloud 停權頁一致；申訴已備妥但未代表使用者送出。
+- 正式 health 已讀回 `v29.6.313 [2026-09-11 10:38]`；受保護 `redact_logs` 掃描1048列、遮蔽172筆命中內容、providerCalls=0。`provider_health` 仍回 `PROVIDER_CREDENTIAL_SUSPENDED`，與 Cloud 停權頁一致。9/11 11:13申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，Google表示通常兩個工作天內回覆。
+- Gmail實讀9/9 01:26 `google-cloud-compliance@google.com` 停權通知：原因為「符合資源遭劫持的濫用活動」，不是欠費；同專案9/9前搜尋未找到本次事件的提前警告。Google信中說若未預警，是因行為嚴重影響其他使用者；通知未提供具體API、IP或單一資源名稱。
 
 ## v29.6.311 正式 @1492（2026-09-08）
 

@@ -1,6 +1,6 @@
 # AI_CONTEXT — v29.6.313 正式 @1494
 
-正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已零供應商呼叫遮蔽172／1048筆命中內容。Google Cloud 專案因疑似憑證外洩後遭第三方濫用仍停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已對同憑證熔斷、退款並停止補救重送。本批不換模型、不改 Prompt／Rich Menu／配額，也沒有新增模型費。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已零供應商呼叫遮蔽172／1048筆命中內容。Google Cloud 專案因疑似憑證外洩後遭第三方濫用仍停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已對同憑證熔斷、退款並停止補救重送。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，通常兩個工作天內審查。本批不換模型、不改 Prompt／Rich Menu／配額，也沒有新增模型費。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 

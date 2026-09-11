@@ -6,7 +6,7 @@
 - 受保護 TestUI 維護入口實際執行 `redact_logs`：掃描1048列、遮蔽172筆命中內容、providerCalls=0，未刪除稽核列。
 - `provider_health` 實際回 `PROVIDER_CREDENTIAL_SUSPENDED`。Cloud申訴頁明載專案因疑似憑證外洩後遭第三方濫用而停權；這不是查無手冊或欠費。程式已熔斷同憑證並退款，不再連續送PDF／Web。
 - Smart／Tizen全handler與403路徑已用正式程式、模擬外部I/O做61項整合驗證；裸Smart重設只澄清一次，已鎖定M7的出廠重設直接取核實第171頁片段，均零供應商呼叫。
-- Chrome真人供應商路徑因外部專案停權不能完成；申訴尚未送出。不得把離線handler通過寫成 Gemini／手機LINE已驗收。
+- Chrome真人供應商路徑因外部專案停權不能完成；9/11申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，Google表示通常兩個工作天內回覆。不得把申訴收件或離線handler通過寫成 Gemini／手機LINE已驗收。
 
 最後另以Chrome直接讀Google Sheets `LOG`（gid174529670）最新60列，核對16:32:34的保存答案與Request Audit：H704第41頁、router1/PDF1/Web0、coverage=supported、約NT$0.0318，與TestUI一致；不是只看前端文字。結構化讀回見 `test_runner/results/v311_final_live_readback_20260908.json`。
 
