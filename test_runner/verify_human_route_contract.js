@@ -477,7 +477,7 @@ assert(
       extractFunction(linebot, "executeAdvancedSourceQuery_"),
     ) &&
     /sourceGrant:\s*advancedGrant/.test(extractFunction(linebot, "callLLMWithRetry")) &&
-    /reserveAdvancedSourceUsage_\(grant\)[\s\S]*UrlFetchApp\.fetch\(url, options\)/.test(
+    /reserveAdvancedSourceUsage_\(grant\)[\s\S]*UrlFetchApp\.fetch\(target, options\)/.test(
       fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8")),
   "明確來源入口必須統一進來源狀態機，並在供應商請求前原子保留額度",
 );

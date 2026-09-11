@@ -964,9 +964,9 @@ assert(
   "PDF/Web 必須在載入供應商設定前驗證本輪來源授權",
 );
 assert(
-  llmText.includes("sourceGrant: advancedGrant") &&
+    llmText.includes("sourceGrant: advancedGrant") &&
     fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("reserveAdvancedSourceUsage_(grant)") <
-      fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("const response = UrlFetchApp.fetch(url, options)"),
+      fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("const response = UrlFetchApp.fetch(target, options)"),
   "配額必須在 generateContent 前原子保留",
 );
 assert(

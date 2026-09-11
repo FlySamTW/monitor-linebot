@@ -1,6 +1,6 @@
 # Samsung LINE Bot 開發規範
 
-正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Smart／Tizen 已與 Smart Monitor 家族分離；出廠重設與停用憑證路徑的完整 handler 回歸通過。正式 LOG 已遮蔽 172／1048 筆命中內容，零供應商呼叫。Google Cloud 目前因疑似憑證外洩後遭第三方濫用而停權，Gemini 真人付費路徑尚不能驗收；同憑證已熔斷且失敗不扣次、不記成查無資料。9/11 已提交恢復申訴，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，Google 回覆通常兩個工作天內審查；不能把申訴收件寫成外部服務已恢復。既有 v311 worker、索引、20旅程與共享驗收 NT$3.54995296 證據仍有效；本批沒有新增模型費。
+正式 v29.6.314 @1495（BUILD11:55／Gemini Header／Provider Failover）：static／contract／production-contract、HEAD／health／readiness 全過；正式 Gemini URL 禁止 key，改由共用 gateway 使用 `x-goog-api-key`。專用新專案 `shining-sphinx-508304-f9` 已連既有 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key，Cloud Console 仍顯示帳戶違規警告；不可繞過或反覆建專案。付費路徑仍未恢復、模型費0；切換有效 key 後仍須健康檢查及 QA／PDF／Web 各一題才算恢復。
 
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 

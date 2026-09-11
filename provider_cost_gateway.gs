@@ -229,21 +229,38 @@ function refundProviderSourceGrant_(grant, reason) {
 }
 
 function providerFetch_(url, rawOptions) {
-  const target = String(url || "");
+  let target = String(url || "");
+  const options = Object.assign({}, rawOptions || {});
+  let apiKey = String(options.geminiApiKey || "");
+  delete options.geminiApiKey;
+  const legacyApiKeyMatch = target.match(/[?&]key=([^&]+)/i);
+  if (!apiKey && legacyApiKeyMatch) {
+    apiKey = decodeURIComponent(legacyApiKeyMatch[1]);
+  }
+  // API keys must not leave Apps Script in a URL. Keep the legacy normalizer
+  // temporarily so an overlooked caller is still protected at the boundary.
+  target = target
+    .replace(/([?&])key=[^&]*/i, "$1")
+    .replace(/\?&/, "?")
+    .replace(/&&+/g, "&")
+    .replace(/[?&]$/, "");
+  if (/^https:\/\/generativelanguage\.googleapis\.com\//i.test(target) && apiKey) {
+    options.headers = Object.assign({}, options.headers || {}, {
+      "x-goog-api-key": apiKey,
+    });
+  }
   if (/openrouter\.ai\/api\/v1\/chat\/completions/i.test(target)) {
     throw new Error("PROVIDER_MODEL_NOT_APPROVED");
   }
   const match = target.match(/^https:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?\/models\/([^/:?]+):generateContent(?:\?|$)/);
-  if (!match) return UrlFetchApp.fetch(url, rawOptions);
-  const options = Object.assign({}, rawOptions || {});
+  if (!match) return UrlFetchApp.fetch(target, options);
   const grant = options.sourceGrant;
   delete options.sourceGrant;
   let knownInput = Number(options.budgetInputTokens || 0);
   delete options.budgetInputTokens;
   const model = match[1];
   const modelName = `models/${model}`;
-  const apiKeyMatch = target.match(/[?&]key=([^&]+)/i);
-  const apiKey = apiKeyMatch ? decodeURIComponent(apiKeyMatch[1]) : "";
+  if (!apiKey) throw new Error("MISSING_GEMINI_API_KEY");
   try {
     assertProviderCredentialUsable_(apiKey);
   } catch (error) {
@@ -270,6 +287,7 @@ function providerFetch_(url, rawOptions) {
   if (!knownInput && /"(?:file_data|fileData|inline_data|inlineData)"/.test(options.payload)) {
     const response = UrlFetchApp.fetch(target.replace(":generateContent", ":countTokens"), {
       method: "post", contentType: "application/json", muteHttpExceptions: true,
+      headers: {"x-goog-api-key": apiKey},
       payload: JSON.stringify({generateContentRequest: Object.assign({model: modelName}, payload)}),
     });
     if (response.getResponseCode() !== 200) {
@@ -316,7 +334,7 @@ function providerFetch_(url, rawOptions) {
     if (!pendingProviderAttempt_) markGenerationAttempt_(search ? "web" : model === "gemini-3.7-flash" ? "router" : "fast", modelName);
     pendingProviderAttempt_ = null;
     reservation.sent = true;
-    const response = UrlFetchApp.fetch(url, options);
+    const response = UrlFetchApp.fetch(target, options);
     const responseText = response.getContentText() || "";
     const httpOutcome = classifyProviderHttpOutcome_(
       response.getResponseCode(),

@@ -1,10 +1,18 @@
-# Samsung LINE Bot 開發手冊 — v29.6.313
+# Samsung LINE Bot 開發手冊 — v29.6.314
 
-正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容，未呼叫供應商。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，所以真人 Gemini／PDF／Web 路徑尚未恢復驗收；同憑證已熔斷、失敗退款且不再誤報「沒有證據」。9/11申訴已由Google收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，通常兩個工作天內審查。本批沒有改模型、Prompt、Rich Menu或配額，也沒有新增模型費。
+正式 v29.6.314 @1495（BUILD11:55／Gemini Header／Provider Failover）：static／contract／production-contract、HEAD／health／readiness 全過。所有正式 Gemini 呼叫改以 `x-goog-api-key` Header 傳遞金鑰，網址不得再含 `?key=`；共用 gateway 仍會攔截並清洗漏網的舊呼叫。新專用專案 `Samsung RAG LINE Bot`（`shining-sphinx-508304-f9`）已建立並連上既有 Billing，但 AI Studio 拒絕產生 key，明確顯示 `The request is suspicious`；Cloud Console 同時仍顯示帳戶有疑似違規專案。未反覆建立專案或繞過限制，Gemini／PDF／Web 仍未恢復。模型、Prompt、Rich Menu、來源順序與配額不變，新增模型費為 0。
 
 接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
 本批接手以本文件的v307 worker契約及 [AI_CONTEXT](AI_CONTEXT.md) 為準；[v306 交接清單](docs/V306_HANDOFF.md) 保留前版故障脈絡，其中「worker尚未實作」不是目前正式狀態。正式狀態依當次發布紀錄，以下v306／v305為歷史基線，不代表當次health。
+
+## v29.6.314 供應商快速接替契約
+
+- 停權屬 Google Cloud 專案／憑證層，LINE webhook、QA／RULE、Drive 索引與程式不應一起停擺；免費答案照常，付費路徑熔斷。
+- 正式 Gemini URL 禁止含 API key；只由 `providerFetch_` 加入 `x-goog-api-key`。回歸測試須核對送出的 URL 無 key、Header 有 key、內部選項未外送。
+- 快速接替採專用新專案，不借其他正式專案：連結既有有效 Billing account、只啟用 Generative Language API、建立限制至該 API 的新 key，先設定費用封頂，再寫入既有 Apps Script 的 `GEMINI_API_KEY` ScriptProperty。key 不入 Git、文件、網址、LOG 或外部 AI。
+- 切換後只做一次受控健康檢查；成功才解除新憑證指紋的熔斷，再各驗證 QA、PDF、Web 一題及雲端 LOG。LINE deployment／webhook 不重建；舊 key 在成功切換後撤銷。
+- Gemini Files API 暫存檔屬專案且會過期，換專案後按既有流程重新上傳；本機 QA／RULE、Drive PDF、逐頁索引與 worker bundle 不需重建。申訴可繼續，但不能作為營運唯一復原方案。
 
 ## v29.6.313 Smart／Tizen 與供應商失敗契約（正式 @1494）
 

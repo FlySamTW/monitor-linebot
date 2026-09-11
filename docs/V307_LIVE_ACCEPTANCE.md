@@ -1,5 +1,11 @@
 # v307–v311 Chrome TestUI 實測（本批結案）
 
+## 2026-09-11 v29.6.314 正式補充
+
+- 正式部署 @1495，health／HEAD 讀回 `v29.6.314 [2026-09-11 11:55]`；static／contract／production-contract與 readiness 通過。Gemini key 傳輸改為 Header，正式 URL 無 key，模型／Prompt／配額不變。
+- Chrome 以 `flysamtw@gmail.com` 建立專用 `Samsung RAG LINE Bot` 專案並連既有 Billing；AI Studio 實際回 `Failed to generate API key, The request is suspicious.`，Cloud Console 同時仍顯示帳戶疑似違規專案警告。依安全 stop rule 未重試、未借其他專案、未建立不受限 key。
+- 新增供應商費用為0；QA／RULE免費路徑與正式 webhook 可用，但 Gemini／PDF／Web 沒有有效新 key，不能作真人付費驗收或標示恢復。
+
 ## 2026-09-11 v29.6.313 正式補充
 
 - 正式部署 @1494，health 讀回 `v29.6.313 [2026-09-11 10:38]`；static／contract／production-contract及20條離線旅程20 PASS／49事件。

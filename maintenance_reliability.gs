@@ -54,8 +54,9 @@ function probeProviderCredentialAndResume_() {
     resetRequestAudit_();
     markGenerationAttempt_("fast", GEMINI_MODEL_FAST);
     const response = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         contentType: "application/json",
         muteHttpExceptions: true,
@@ -174,8 +175,8 @@ function adminRepairManualRevisionsV303_() {
 function fileSearchLabRequest_(path, method, body) {
   if (!/^(?:fileSearchStores(?:\/[-a-zA-Z0-9]+(?:\/operations\/[-a-zA-Z0-9]+)?)?(?::importFile)?|files\/[-a-zA-Z0-9]+)(?:\?force=true)?$/.test(path)) throw new Error("LAB_RESOURCE_INVALID");
   const key = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-  const response = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/${path}${path.indexOf("?")<0 ? "?" : "&"}key=${key}`, {
-    method:method, contentType:"application/json", muteHttpExceptions:true,
+  const response = providerFetch_(`https://generativelanguage.googleapis.com/v1beta/${path}`, {
+    geminiApiKey:key, method:method, contentType:"application/json", muteHttpExceptions:true,
     ...(body ? {payload:JSON.stringify(body)} : {}),
   });
   if (response.getResponseCode() >= 300) throw new Error(`LAB_HTTP_${response.getResponseCode()}: ${response.getContentText().slice(0,250)}`);
@@ -209,8 +210,8 @@ function adminRunFileSearchComparisonV303_() {
       if (!fileName) throw new Error("LAB_UPLOAD_RESOURCE_INVALID");
       state = {fileName:fileName, cursor:0, done:false, sha:doc.sourcePdfSha256};
       props.setProperty(stateKey,JSON.stringify(state));
-      const countResponse = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:countTokens?key=${key}`, {
-        method:"post",contentType:"application/json",payload:JSON.stringify({contents:[{parts:[{fileData:{fileUri:uri,mimeType:"application/pdf"}}]}]}),muteHttpExceptions:true,
+      const countResponse = providerFetch_("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:countTokens", {
+        geminiApiKey:key,method:"post",contentType:"application/json",payload:JSON.stringify({contents:[{parts:[{fileData:{fileUri:uri,mimeType:"application/pdf"}}]}]}),muteHttpExceptions:true,
       });
       const fullTokens = Number(JSON.parse(countResponse.getContentText()).totalTokens || 0);
       if (!fullTokens || fullTokens > 150000) throw new Error("LAB_TOKEN_PREFLIGHT_FAILED");
@@ -254,8 +255,8 @@ function adminRunFileSearchComparisonV303_() {
         props.setProperty(resultKey,JSON.stringify(result));
       }
       resetRequestAudit_(); const t=Date.now();
-      const response=providerFetch_(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`, {
-        budgetInputTokens:state.fullTokens,method:"post",contentType:"application/json",muteHttpExceptions:true,
+      const response=providerFetch_("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent", {
+        geminiApiKey:key,budgetInputTokens:state.fullTokens,method:"post",contentType:"application/json",muteHttpExceptions:true,
         payload:JSON.stringify({contents:[{parts:[{text:`只依這本 ${model} 官方手冊回答：${question}。請提供操作步驟、頁碼與限制，找不到就明說，勿借其他型號。`}]}],tools:[{fileSearch:{fileSearchStoreNames:[state.store]}}],generationConfig:{temperature:0,maxOutputTokens:700,thinkingConfig:{thinkingBudget:0}}}),
       });
       const body=JSON.parse(response.getContentText()||"{}");

@@ -193,7 +193,8 @@ assert(
   "大型手冊必須先移除無關歷史，20K 只警告，100K 與 NT$0.35 雙重硬擋",
 );
 assert(
-  /:countTokens\?key=/.test(linebot) &&
+  /:countTokens/.test(linebot) &&
+    /geminiApiKey:\s*apiKey/.test(linebot) &&
     /generateContentRequest: generateContentRequest/.test(linebot) &&
     /generateContentRequest\.generationConfig/.test(linebot) &&
     /file_data/.test(linebot) &&

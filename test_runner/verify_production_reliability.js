@@ -12,6 +12,12 @@ function test(name, fn) {
   catch(error) {console.error("FAIL " + name + ": " + error.message); process.exitCode = 1;}
 }
 const cases = JSON.parse(fs.readFileSync(path.join(__dirname, "manual_golden_cases.json"))).cases;
+test("正式呼叫端不得把 Gemini 金鑰放在 URL", () => {
+  for (const file of ["linebot.gs", "maintenance_reliability.gs"]) {
+    const source=fs.readFileSync(path.join(__dirname,"..",file),"utf8");
+    assert(!/[?&]key=/.test(source),file);
+  }
+});
 for (const item of cases) test("retrieval " + item.id + " / " + item.queries[0], () => {
   const plan = c.findManualPageRagPlan_(item.queries[0], item.model);
   assert(plan && plan.retrievalPolicy === "QueryTimeV1");
@@ -208,15 +214,19 @@ test("真實歷史讀取：新功能與新限制不可被免費舊片段搶答",
 });
 
 const g=createProductionHarness({quiet:true,now:"2026-09-05T08:00:00Z"}), p=g.context;
-const url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=fixture";
+const url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const usage={promptTokenCount:1000,candidatesTokenCount:100,thoughtsTokenCount:50,cachedContentTokenCount:200,totalTokenCount:1150};
-const opts={method:"post",payload:JSON.stringify({contents:[{parts:[{text:"fixture"}]}],generationConfig:{maxOutputTokens:1000}})};
+const opts={geminiApiKey:"fixture",method:"post",payload:JSON.stringify({contents:[{parts:[{text:"fixture"}]}],generationConfig:{maxOutputTokens:1000}})};
 const response=(body,code=200)=>({getResponseCode:()=>code,getContentText:()=>JSON.stringify(body)});
 test("未初始化預算0付費呼叫",()=>assert.throws(()=>p.providerFetch_(url,opts),/NOT_INITIALIZED/));
 test("usage含thinking/cache只結算一次",()=>{
   p.initializeProviderBudget_(5.59,p.providerMonthKey_()); p.resetRequestAudit_();
   g.setFetch(()=>response({usageMetadata:usage}));
   p.providerFetch_(url,opts);
+  const sent=g.fetches[g.fetches.length-1];
+  assert(!/[?&]key=/.test(sent.url),sent.url);
+  assert.strictEqual(sent.options.headers["x-goog-api-key"],"fixture");
+  assert.strictEqual(sent.options.geminiApiKey,undefined);
   p.addGenerationUsageToAudit_(usage,999,"models/gemini-2.5-flash-lite");
   const audit=g.run("currentRequestAudit");
   assert(Math.abs(audit.estimatedCostTwd-0.004544)<1e-10,JSON.stringify(audit));
@@ -258,9 +268,9 @@ test("403停用憑證歸零退款、開路後不重送且LOG遮蔽",()=>{
   dc.initializeProviderBudget_(0,dc.providerMonthKey_());
   dc.resetRequestAudit_();
   denied.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",details:[{reason:"CONSUMER_SUSPENDED"}],message:`key ${fakeKey} disabled`}},403));
-  const deniedUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${fakeKey}`;
+  const deniedUrl="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
   const grant={contextId:"DENIED",source:"manual"};
-  assert.throws(()=>dc.providerFetch_(deniedUrl,{...opts,sourceGrant:grant}),/CREDENTIAL_SUSPENDED/);
+  assert.throws(()=>dc.providerFetch_(deniedUrl,{...opts,geminiApiKey:fakeKey,sourceGrant:grant}),/CREDENTIAL_SUSPENDED/);
   assert.strictEqual(dc.readSourceQuota_("DENIED").manual,0);
   assert.strictEqual(grant.refunded,true);
   assert.strictEqual(denied.fetches.length,1);
@@ -270,7 +280,7 @@ test("403停用憑證歸零退款、開路後不重送且LOG遮蔽",()=>{
   assert.strictEqual(audit.providerOutcome,"credential_denied");
   assert(dc.buildReplyCostAuditText_().includes("NT$0.0000"));
   const before=denied.fetches.length;
-  assert.throws(()=>dc.providerFetch_(deniedUrl,opts),/CREDENTIAL_SUSPENDED/);
+  assert.throws(()=>dc.providerFetch_(deniedUrl,{...opts,geminiApiKey:fakeKey}),/CREDENTIAL_SUSPENDED/);
   assert.strictEqual(denied.fetches.length,before);
   dc.writeLog(`raw=${fakeKey}&key=${fakeKey}`);
   assert(!denied.logs.join("\n").includes("AIzaFixtureCredential"),denied.logs.join("\n"));
@@ -284,8 +294,8 @@ test("403停用憑證歸零退款、開路後不重送且LOG遮蔽",()=>{
   fc.initializeProviderBudget_(0,fc.providerMonthKey_());
   fc.resetRequestAudit_();
   preflight.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",details:[{reason:"CONSUMER_SUSPENDED"}]}},403));
-  const fileUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${preflightKey}`;
-  const filePayload={...opts,payload:JSON.stringify({contents:[{parts:[{file_data:{file_uri:"https://files.example/manual",mime_type:"application/pdf"}},{text:"test"}]}],generationConfig:{maxOutputTokens:64}})};
+  const fileUrl="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+  const filePayload={...opts,geminiApiKey:preflightKey,payload:JSON.stringify({contents:[{parts:[{file_data:{file_uri:"https://files.example/manual",mime_type:"application/pdf"}},{text:"test"}]}],generationConfig:{maxOutputTokens:64}})};
   assert.throws(()=>fc.providerFetch_(fileUrl,filePayload),/CREDENTIAL_SUSPENDED/);
   assert.strictEqual(preflight.fetches.length,1,"countTokens 403 後不得再送 generateContent");
   assert.strictEqual(preflight.run("currentRequestAudit.estimatedCostTwd"),0);

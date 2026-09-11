@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.313"; // Smart/Tizen、供應商熔斷與編輯者復原入口
-const BUILD_TIMESTAMP = "2026-09-11 10:38";
+const GAS_VERSION = "v29.6.314"; // Gemini Header 憑證與專用新專案快速接替準備
+const BUILD_TIMESTAMP = "2026-09-11 11:55";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -3212,8 +3212,9 @@ function callSemanticRouter_(inputValue) {
   markGenerationAttempt_("router", GEMINI_MODEL_ROUTER);
   try {
     const response = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_ROUTER}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_ROUTER}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(payload),
@@ -15622,8 +15623,9 @@ function callManualPageRag_(
   const startedAt = Date.now();
   try {
     const response = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         sourceGrant: advancedGrant,
         method: "post",
         contentType: "application/json",
@@ -18705,7 +18707,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
   try {
     assertProviderCredentialUsable_(apiKey);
-    const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
+    const initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files";
     const headers = {
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
@@ -18715,8 +18717,9 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     };
     const metadata = { file: { display_name: blob.getName() } };
 
-    const initReq = UrlFetchApp.fetch(initUrl, {
+    const initReq = providerFetch_(initUrl, {
       method: "post",
+      geminiApiKey: apiKey,
       headers: headers,
       payload: JSON.stringify(metadata),
       muteHttpExceptions: true,
@@ -18778,9 +18781,9 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
 
     while (state === "PROCESSING" && attempts < 30) {
       Utilities.sleep(1000);
-      const check = UrlFetchApp.fetch(
-        `${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`,
-        { muteHttpExceptions: true },
+      const check = providerFetch_(
+        `${CONFIG.API_ENDPOINT}/${fileRes.file.name}`,
+        { geminiApiKey: apiKey, muteHttpExceptions: true },
       );
       if (check.getResponseCode() !== 200) {
         const checkOutcome = classifyProviderHttpOutcome_(
@@ -18827,8 +18830,11 @@ function cleanupOldGeminiFiles(apiKey) {
 
     // 持續刪除直到沒有檔案為止（處理超過 100 個的情況）
     while (hasMore) {
-      const listUrl = `${CONFIG.API_ENDPOINT}/files?key=${apiKey}&pageSize=100`;
-      const listRes = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });
+      const listUrl = `${CONFIG.API_ENDPOINT}/files?pageSize=100`;
+      const listRes = providerFetch_(listUrl, {
+        geminiApiKey: apiKey,
+        muteHttpExceptions: true,
+      });
 
       if (listRes.getResponseCode() !== 200) {
         const listOutcome = classifyProviderHttpOutcome_(
@@ -18854,9 +18860,10 @@ function cleanupOldGeminiFiles(apiKey) {
 
       for (const file of files) {
         try {
-          const deleteUrl = `${CONFIG.API_ENDPOINT}/${file.name}?key=${apiKey}`;
-          UrlFetchApp.fetch(deleteUrl, {
+          const deleteUrl = `${CONFIG.API_ENDPOINT}/${file.name}`;
+          providerFetch_(deleteUrl, {
             method: "delete",
+            geminiApiKey: apiKey,
             muteHttpExceptions: true,
           });
           totalDeleted++;
@@ -18919,9 +18926,9 @@ function rebuildSpecCachedContent() {
   const oldName = PropertiesService.getScriptProperties().getProperty("SPEC_CACHED_NAME");
   if (oldName) {
     try {
-      UrlFetchApp.fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${oldName}?key=${apiKey}`,
-        { method: "delete", muteHttpExceptions: true }
+      providerFetch_(
+        `https://generativelanguage.googleapis.com/v1beta/${oldName}`,
+        { method: "delete", geminiApiKey: apiKey, muteHttpExceptions: true }
       );
     } catch (e) {}
   }
@@ -18938,10 +18945,11 @@ function rebuildSpecCachedContent() {
   };
 
   try {
-    const response = UrlFetchApp.fetch(
-      `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`,
+    const response = providerFetch_(
+      "https://generativelanguage.googleapis.com/v1beta/cachedContents",
       {
         method: "post",
+        geminiApiKey: apiKey,
         contentType: "application/json",
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
@@ -19289,8 +19297,9 @@ function deleteTemporaryGeminiFile_(fileUri, apiKey) {
     return;
   }
   try {
-    UrlFetchApp.fetch(`${uri}?key=${encodeURIComponent(apiKey)}`, {
+    providerFetch_(uri, {
       method: "delete",
+      geminiApiKey: apiKey,
       muteHttpExceptions: true,
     });
   } catch (error) {
@@ -19347,10 +19356,11 @@ function validateOfficialManualFirstPage_(blob, candidate) {
         },
       },
     };
-    const countResponse = UrlFetchApp.fetch(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:countTokens?key=${apiKey}`,
+    const countResponse = providerFetch_(
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:countTokens`,
       {
         method: "post",
+        geminiApiKey: apiKey,
         contentType: "application/json",
         payload: JSON.stringify({ contents: payload.contents }),
         muteHttpExceptions: true,
@@ -19367,9 +19377,10 @@ function validateOfficialManualFirstPage_(blob, candidate) {
     }
     function requestFirstPageIdentity_(modelName) {
       const response = providerFetch_(
-        `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`,
+        `${CONFIG.API_ENDPOINT}/${modelName}:generateContent`,
         {
           method: "post",
+          geminiApiKey: apiKey,
           contentType: "application/json",
           payload: JSON.stringify(payload),
           muteHttpExceptions: true,
@@ -21585,9 +21596,10 @@ function countGeminiPayloadTokens_(apiKey, modelName, payload, attachPDFs) {
 
     // 官方 countTokens 的 generateContentRequest 可精確包含 systemInstruction、tools
     // 與 file_data/file_uri；這裡使用生成請求的同一份輸入，不另做字元推估。
-      const countUrl = `${CONFIG.API_ENDPOINT}/${modelName}:countTokens?key=${apiKey}`;
-      const response = UrlFetchApp.fetch(countUrl, {
+      const countUrl = `${CONFIG.API_ENDPOINT}/${modelName}:countTokens`;
+      const response = providerFetch_(countUrl, {
         method: "post",
+        geminiApiKey: apiKey,
         contentType: "application/json",
         payload: JSON.stringify({ generateContentRequest: generateContentRequest }),
         muteHttpExceptions: true,
@@ -22392,7 +22404,7 @@ ${recentOfficialManualAnswer}
   // 才在鎖內原子扣除每日額度。後續 429/5xx 退避重試沿用同一 grant。
   // providerFetch_ reserves the monthly budget before this source grant.
 
-  const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent?key=${apiKey}`;
+  const url = `${CONFIG.API_ENDPOINT}/${modelName}:generateContent`;
   // v29.5.0: Optimize API Log - Remove Start Log
   // writeLog(
   //   `[API Call] Model: ${modelName}, PDF: ${attachPDFs}, Think: ${useThinkModel}, Retry: ${isRetry}`
@@ -22463,6 +22475,7 @@ ${recentOfficialManualAnswer}
       lastLlmCallAttempted = true;
       markGenerationAttempt_(requestStage, modelName);
       const response = providerFetch_(url, {
+        geminiApiKey: apiKey,
         sourceGrant: advancedGrant,
         budgetInputTokens: tokenPreflight.ok ? tokenPreflight.totalTokens : 0,
         method: "post",
@@ -24953,11 +24966,12 @@ function handleMessage(event) {
         const startTime = new Date().getTime();
         const GEMINI_API_KEY =
           PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent`;
 
         try {
           lastLlmCallAttempted = true;
           const response = providerFetch_(apiUrl, {
+            geminiApiKey: GEMINI_API_KEY,
             method: "post",
             contentType: "application/json",
             payload: JSON.stringify(payload),
@@ -28513,8 +28527,9 @@ function handleMessage(event) {
 
                       lastLlmCallAttempted = true;
                       const topicCheckResponse = providerFetch_(
-                        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+                        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
                         {
+                          geminiApiKey: apiKey,
                           method: "post",
                           contentType: "application/json",
                           muteHttpExceptions: true,
@@ -30337,8 +30352,9 @@ RULE_主題,規則類型,完整規則說明...
   try {
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -30409,8 +30425,9 @@ function callGeminiToModifyRule(currentText, instruction) {
   try {
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -30950,9 +30967,9 @@ function findSimilarQA(newContent, polishedQA) {
       CONFIG.API_ENDPOINT +
         "/" +
         CONFIG.MODEL_NAME_FAST +
-        ":generateContent?key=" +
-        apiKey,
+        ":generateContent",
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -31095,9 +31112,9 @@ function callGeminiToMergeQA(existingQAs, newQA) {
       CONFIG.API_ENDPOINT +
         "/" +
         CONFIG.MODEL_NAME_THINK +
-        ":generateContent?key=" +
-        apiKey,
+        ":generateContent",
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -31243,8 +31260,9 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
     // v24.2.3: 對話修改用 Think 模型
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -31382,8 +31400,9 @@ function callGeminiToPolish(input, userId = null) {
     // v27.9.20: 使用 GEMINI_MODEL_POLISH（程式最前面設定），只有這裡會用到
     lastLlmCallAttempted = true;
     let res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -31409,8 +31428,9 @@ function callGeminiToPolish(input, userId = null) {
       writeLog(`[Polish Fallback] Switching to ${CONFIG.MODEL_NAME_FAST}`);
       lastLlmCallAttempted = true;
       res = providerFetch_(
-        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
         {
+          geminiApiKey: apiKey,
           method: "post",
           headers: { "Content-Type": "application/json" },
           payload: JSON.stringify(payload), // payload 通用
@@ -31543,8 +31563,9 @@ function callGeminiToModify(currentText, instruction) {
     // v24.2.3: 簡單格式化用 Fast 模型
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -31854,8 +31875,9 @@ function handleAutoQA(u, cid) {
     // v24.2.3: 簡單整理用 Fast 模型
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -32486,8 +32508,9 @@ function callGeminiToSummarize(messages) {
     // v24.2.3: 簡單摘要用 Fast 模型
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent?key=${apiKey}`,
+      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
         payload: JSON.stringify(payload),
@@ -33736,7 +33759,7 @@ function verifySmartThingsClaimFromCloudPdf() {
     "3) 若找不到，found=false 且 evidence=[]。",
   ].join("\n");
 
-  const url = `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`;
+  const url = `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`;
   const payload = {
     contents: [
       {
@@ -33759,6 +33782,7 @@ function verifySmartThingsClaimFromCloudPdf() {
   };
 
   const resp = providerFetch_(url, {
+    geminiApiKey: apiKey,
     method: "post",
     contentType: "application/json",
     payload: JSON.stringify(payload),
@@ -34403,9 +34427,10 @@ function doGet(e) {
     ].filter((modelName, index, list) => modelName && list.indexOf(modelName) === index);
     const results = [];
     for (const modelName of candidates) {
-      const url = CONFIG.API_ENDPOINT + "/" + modelName + ":generateContent?key=" + apiKey;
+      const url = CONFIG.API_ENDPOINT + "/" + modelName + ":generateContent";
       try {
         const response = providerFetch_(url, {
+          geminiApiKey: apiKey,
           method: "post",
           contentType: "application/json",
           payload: JSON.stringify({
@@ -34711,9 +34736,12 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.geminiFiles === "1") {
     if (!isDoGetMaintenanceAuthorized_(e)) return buildUnauthorizedResponse_();
     const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-    const url = "https://generativelanguage.googleapis.com/v1beta/files?key=" + apiKey + "&pageSize=100";
+    const url = "https://generativelanguage.googleapis.com/v1beta/files?pageSize=100";
     try {
-      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      const response = providerFetch_(url, {
+        geminiApiKey: apiKey,
+        muteHttpExceptions: true,
+      });
       const code = response.getResponseCode();
       const body = JSON.parse(response.getContentText());
       const files = (body.files || []).map((f) => ({

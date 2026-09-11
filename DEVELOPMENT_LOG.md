@@ -1,5 +1,12 @@
 # 開發對話紀錄
 
+## v29.6.314 正式 @1495（2026-09-11）
+
+- 為避免專案停權後換 key 又暴露，所有 Gemini generate／countTokens／Files／Cached Content／File Search 維護呼叫改由共用 gateway 以 `x-goog-api-key` Header 傳送；正式呼叫端不得再建 `?key=` URL。
+- gateway 會移除漏網舊 URL key，未帶 key 的生成請求直接拒絕；測試同時核對 URL、Header 與內部選項。模型、Prompt、路由、配額與 LINE webhook 均不變，尚未建立新專案或新 key，也沒有新增模型費。
+- 標準接替為「專用新專案＋既有有效 Billing＋費用封頂＋API 限制 key＋原 ScriptProperty」，健康檢查及 QA／PDF／Web 各一題通過後才撤銷舊 key；申訴同步保留，不再把等待申訴當唯一營運方案。
+- guarded release 完成，health／HEAD／readiness 讀回 `v29.6.314 [2026-09-11 11:55]`。Chrome 已建立 `Samsung RAG LINE Bot`（`shining-sphinx-508304-f9`）並連既有 Billing；AI Studio 實際拒絕產生 key：`The request is suspicious`，Cloud Console 同時持續顯示帳戶有疑似違規專案。依 stop rule 未重複建立／繞過，也未用其他專案 key；付費路徑仍停用，新增模型費0。
+
 正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容、零供應商呼叫。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權；真人 Gemini／PDF／Web 路徑尚未恢復驗收。程式已對同憑證熔斷、退款並停止補救重送，本批無新增模型費。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`。
 
 ## v29.6.313 正式 @1494（2026-09-11）

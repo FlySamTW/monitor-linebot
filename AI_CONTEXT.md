@@ -1,10 +1,12 @@
-# AI_CONTEXT — v29.6.313 正式 @1494
+# AI_CONTEXT — v29.6.314 正式 @1495
 
-正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已零供應商呼叫遮蔽172／1048筆命中內容。Google Cloud 專案因疑似憑證外洩後遭第三方濫用仍停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已對同憑證熔斷、退款並停止補救重送。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，通常兩個工作天內審查。本批不換模型、不改 Prompt／Rich Menu／配額，也沒有新增模型費。
+正式 v29.6.314 @1495（BUILD11:55）：static／contract／production-contract、HEAD／health／readiness 全過。Gemini 金鑰一律由共用 gateway 透過 `x-goog-api-key` Header 傳送，正式呼叫網址不得含 key；URL／Header 防回歸通過。專用新專案 `shining-sphinx-508304-f9` 已建立並連既有 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key，Cloud Console 仍顯示帳戶的疑似違規警告；依 stop rule 未繞過或再建專案。付費路徑仍未恢復，模型／Prompt／Rich Menu／路由／配額不變，新增模型費 0。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
 v29.6.313 新增鐵律：`Smart系列／Smart／Tizen` 是功能平台，不是 M5～M9 家族；只有明講 Smart Monitor／Smart螢幕且答案依款式不同才選系列。只有裸「重設」才問一次整台／Smart Hub／畫面音效，明講回出廠值直接用核實操作證據。Gemini `CONSUMER_SUSPENDED`／憑證拒絕是服務失敗，不是查無資料；同金鑰立刻熔斷 Router/PDF/Web/上傳、零元結算、退來源次數，健康檢查成功才解除。編輯者 TestUI 可執行一次健康檢查與既有 LOG 遮蔽；預留不可冒充實際費用。詳見 Developer_Manual 的 v29.6.313 節。
+
+供應商接替最短單：專用新專案連現有 Billing → 設封頂 → 只開 Generative Language API → 建立 API 限制 key → 寫入原 Apps Script ScriptProperty → 健康檢查 → QA／PDF／Web 各一題 → 撤銷舊 key。LINE webhook、Drive 索引與 worker 不重建；Files API 暫存檔會由既有流程重傳。
 
 v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 FAIL／0 BLOCKED，見[離線報告](test_runner/results/v307_20_journeys_offline.md)。載入真路由、只模擬外部I/O，不冒稱20條真人供應商通過。M7真PDF244頁與F612官方ZIP下載／SHA／精確entry核對通過，worker零生成呼叫；M7與F612於15:57:57完成正式prepare／activation／PDF與index SHA probe，零provider，見[正式worker實測](test_runner/results/v307_worker_live_20260908.json)。
 

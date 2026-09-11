@@ -1,6 +1,13 @@
 # v307–v311 最短接手指引
 
-正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已熔斷同憑證、退款並停止後續重送。正式 LOG 已遮蔽172／1048筆命中內容，零供應商呼叫。9/11恢復申訴已收件，Ticket `2FPP7WMWZSXUISBNIVU7DZHTMQ`，Google表示通常兩個工作天內回覆。
+正式 v29.6.314 @1495 已完成新專案接替前置：所有正式 Gemini 呼叫改用 `x-goog-api-key` Header，URL 不得帶 key；不更動模型／路由／配額。專用新專案已建立並連 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key；不可繞過或再建專案。舊專案申訴仍進行，新 key 尚未切換與真人驗收前不得宣稱付費路徑恢復。
+
+## v29.6.314 接替最短路徑
+
+- 專用新 Cloud project 連既有 Billing、先設封頂，只開 Generative Language API，再建限制該 API 的 key。
+- 只替換原 Apps Script 的 `GEMINI_API_KEY`；不改 deployment、webhook、LINE Rich Menu、Drive 索引或 worker。
+- 一次健康檢查成功後，QA／PDF／Web 各一題並核對 LOG；成功後撤銷舊 key。Files API 暫存 PDF 依既有流程重傳。
+- 新專案不是申訴繞過的官方保證；若 Cloud 明示帳戶級限制或新專案也拒絕，立即停止，不反覆建專案。
 
 本文件記錄這批實作決策；正式版本／雲端驗收以 `V307_LIVE_ACCEPTANCE.md` 最後讀回為準。不要把候選測試當正式部署。唯一現行契約仍是 `Developer_Manual.md`。
 
