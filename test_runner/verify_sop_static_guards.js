@@ -139,8 +139,8 @@ for (const constantName of productionGeminiModels) {
   );
   assertStep(match, `${constantName} must be defined`);
   assertStep(
-    match[1] === "models/gemini-2.5-flash-lite",
-    `${constantName} must be pinned to models/gemini-2.5-flash-lite, not a drifting latest alias`,
+    match[1] === "models/gemini-3.1-flash-lite",
+    `${constantName} must be pinned to models/gemini-3.1-flash-lite, not a drifting latest alias`,
   );
 }
 
@@ -149,8 +149,8 @@ const thinkModelMatch = linebot.match(
 );
 assertStep(thinkModelMatch, "GEMINI_MODEL_THINK must be defined");
 assertStep(
-  thinkModelMatch[1] === "models/gemini-2.5-flash",
-  "full-PDF fallback must use the reviewed stable models/gemini-2.5-flash model",
+  thinkModelMatch[1] === "models/gemini-3.7-flash",
+  "full-PDF fallback must use the reviewed stable models/gemini-3.7-flash model",
 );
 
 const webModelMatch = linebot.match(
@@ -158,8 +158,8 @@ const webModelMatch = linebot.match(
 );
 assertStep(webModelMatch, "GEMINI_MODEL_WEB must be defined");
 assertStep(
-  webModelMatch[1] === "models/gemini-2.5-flash",
-  "Web grounding must use the reviewed stable models/gemini-2.5-flash model",
+  webModelMatch[1] === "models/gemini-3.7-flash",
+  "Web grounding must use the reviewed stable models/gemini-3.7-flash model",
 );
 
 assertStep(
@@ -170,8 +170,8 @@ assertStep(
 const executableLinebot = stripNonExecutableComments(linebot);
 
 assertStep(
-  !/["']models\/gemini-(?!2\.5-flash(?:-lite)?["']|3\.7-flash["'])[^"']+["']/i.test(executableLinebot),
-  "executable GAS code must only hard-code reviewed 2.5 answer models and the 3.7 semantic router",
+  !/["']models\/gemini-(?!2\.5-flash(?:-lite)?["']|3\.1-flash-lite["']|3\.7-flash["'])[^"']+["']/i.test(executableLinebot),
+  "executable GAS code must only hard-code reviewed legacy rates and the pinned 3.1/3.7 answer models",
 );
 
 assertStep(

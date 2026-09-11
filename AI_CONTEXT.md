@@ -1,12 +1,14 @@
-# AI_CONTEXT — v29.6.314 正式 @1495
+# AI_CONTEXT — v29.6.319 冷備援完整模型驗證
 
-正式 v29.6.314 @1495（BUILD11:55）：static／contract／production-contract、HEAD／health／readiness 全過。Gemini 金鑰一律由共用 gateway 透過 `x-goog-api-key` Header 傳送，正式呼叫網址不得含 key；URL／Header 防回歸通過。專用新專案 `shining-sphinx-508304-f9` 已建立並連既有 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key，Cloud Console 仍顯示帳戶的疑似違規警告；依 stop rule 未繞過或再建專案。付費路徑仍未恢復，模型／Prompt／Rich Menu／路由／配額不變，新增模型費 0。
+正式 v29.6.319 @1501（BUILD14:02）已切到 standby。啟用條件要求 `gemini-3.1-flash-lite` 與 `gemini-3.7-flash` 都做極小生成且全數成功，避免 models.list 或單一 Fast 健康誤判整條回答鏈可用。2026-09-11 TestUI 實測兩模型皆成功，2 calls／約 NT$0.000328。3.1 minimal、3.7 low；完整 QA／RULE 仍不叫模型，守門不擴散到每題。403 不自動轉移。Prompt／路由／Rich Menu／配額不變。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
 v29.6.313 新增鐵律：`Smart系列／Smart／Tizen` 是功能平台，不是 M5～M9 家族；只有明講 Smart Monitor／Smart螢幕且答案依款式不同才選系列。只有裸「重設」才問一次整台／Smart Hub／畫面音效，明講回出廠值直接用核實操作證據。Gemini `CONSUMER_SUSPENDED`／憑證拒絕是服務失敗，不是查無資料；同金鑰立刻熔斷 Router/PDF/Web/上傳、零元結算、退來源次數，健康檢查成功才解除。編輯者 TestUI 可執行一次健康檢查與既有 LOG 遮蔽；預留不可冒充實際費用。詳見 Developer_Manual 的 v29.6.313 節。
 
-供應商接替最短單：專用新專案連現有 Billing → 設封頂 → 只開 Generative Language API → 建立 API 限制 key → 寫入原 Apps Script ScriptProperty → 健康檢查 → QA／PDF／Web 各一題 → 撤銷舊 key。LINE webhook、Drive 索引與 worker 不重建；Files API 暫存檔會由既有流程重傳。
+供應商接替最短單：專用新專案連結帳單並限制 key → TestUI 只儲存到 `GEMINI_API_KEY_STANDBY`（不啟用）→ 零生成 models.list 僅作診斷 → 全正式模型健康檢查 → 原子切換。`GEMINI_ACTIVE_KEY_SLOT` 才是唯一切換指標；不改 webhook、LINE Rich Menu、Drive 索引或 worker。健康檢查成本納入同一月費與驗收上限。
+
+備援專案帳單：`My Billing Account` 預付 NT$170、auto-reload 關閉；AI Studio 專案 spend cap 為每月 NT$90，另有程式端同額停止線。Google 約 10 分鐘的帳務延遲仍可能產生少量超額，不能描述成絕對零超支。
 
 v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 FAIL／0 BLOCKED，見[離線報告](test_runner/results/v307_20_journeys_offline.md)。載入真路由、只模擬外部I/O，不冒稱20條真人供應商通過。M7真PDF244頁與F612官方ZIP下載／SHA／精確entry核對通過，worker零生成呼叫；M7與F612於15:57:57完成正式prepare／activation／PDF與index SHA probe，零provider，見[正式worker實測](test_runner/results/v307_worker_live_20260908.json)。
 

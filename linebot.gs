@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.314"; // Gemini Header 憑證與專用新專案快速接替準備
-const BUILD_TIMESTAMP = "2026-09-11 11:55";
+const GAS_VERSION = "v29.6.319"; // 備援啟用前實測完整正式模型組合
+const BUILD_TIMESTAMP = "2026-09-11 14:02";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,12 +71,12 @@ const LLM_PROVIDER = "Gemini";
 // 2. 一般對話 (Fast Mode) 模型與價格 (可改)
 // ════════════════════════════════════════════════════════════════
 // 🅰️ 若上方選擇 'Gemini'，則使用以下設定：
-const GEMINI_MODEL_FAST = "models/gemini-2.5-flash-lite";
-const PRICE_FAST_INPUT = 0.1; // $0.10 per 1M Input (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
-const PRICE_FAST_OUTPUT = 0.4; // $0.40 per 1M Output (Gemini 2.5 Flash-Lite Standard, 2026-08-05 官方價)
-const GEMINI_MODEL_WEB = "models/gemini-2.5-flash";
-const PRICE_WEB_INPUT = 0.3; // $0.30 per 1M Input (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
-const PRICE_WEB_OUTPUT = 2.5; // $2.50 per 1M Output (Gemini 2.5 Flash Standard, 2026-08-16 官方價)
+const GEMINI_MODEL_FAST = "models/gemini-3.1-flash-lite";
+const PRICE_FAST_INPUT = 0.25; // $0.25 per 1M Input (Gemini 3.1 Flash-Lite Standard, 2026-09-11 官方價)
+const PRICE_FAST_OUTPUT = 1.5; // $1.50 per 1M Output (Gemini 3.1 Flash-Lite Standard, 2026-09-11 官方價)
+const GEMINI_MODEL_WEB = "models/gemini-3.7-flash";
+const PRICE_WEB_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
+const PRICE_WEB_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
 
 // 只有模糊、複合或省略式追問才使用較強的語意規劃器。它只拆主張與選來源，
 // 不回答產品事實、不掛 PDF／Web 工具；精準 QA／RULE 仍維持零 Router。
@@ -94,17 +94,17 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-2.5-flash";
-const PRICE_THINK_INPUT = 0.3; // $0.30 per 1M Input (Gemini 2.5 Flash Standard, full-PDF fallback only)
-const PRICE_THINK_OUTPUT = 2.5; // $2.50 per 1M Output (Gemini 2.5 Flash Standard)
+const GEMINI_MODEL_THINK = "models/gemini-3.7-flash";
+const PRICE_THINK_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
+const PRICE_THINK_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
 
 // ════════════════════════════════════════════════════════════════
-// 4. QA/RULE 生成 (Polish Mode) (固定 Gemini 2.5 Flash-Lite)
+// 4. QA/RULE 生成 (Polish Mode) (固定 Gemini 3.1 Flash-Lite)
 // ════════════════════════════════════════════════════════════════
-// ⚠️ 注意：/記錄 功能固定使用 Gemini 2.5 Flash-Lite，避免 latest alias 漂移造成成本上升。
-const GEMINI_MODEL_POLISH = "models/gemini-2.5-flash-lite";
-const PRICE_POLISH_INPUT = 0.1;
-const PRICE_POLISH_OUTPUT = 0.4; // $0.40 per 1M Output
+// ⚠️ 注意：/記錄功能固定使用 Gemini 3.1 Flash-Lite，避免 latest alias 漂移。
+const GEMINI_MODEL_POLISH = "models/gemini-3.1-flash-lite";
+const PRICE_POLISH_INPUT = 0.25;
+const PRICE_POLISH_OUTPUT = 1.5;
 // ════════════════════════════════════════════════════════════════
 // 💰 改模型時，只需改上面對應的 MODEL + PRICE 那兩行！
 // ════════════════════════════════════════════════════════════════
@@ -3159,9 +3159,7 @@ function recordSemanticRouterAudit_(result) {
 
 function callSemanticRouter_(inputValue) {
   const input = buildSemanticRouterInput_(inputValue || {});
-  const apiKey = PropertiesService.getScriptProperties().getProperty(
-    "GEMINI_API_KEY",
-  );
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     return {
       valid: false,
@@ -15559,9 +15557,7 @@ function callManualPageRag_(
 ) {
   const plan = preparedPlan || findManualPageRagPlan_(question, targetModel);
   if (!plan) return { handled: false, attempted: false };
-  const apiKey = PropertiesService.getScriptProperties().getProperty(
-    "GEMINI_API_KEY",
-  );
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) return { handled: false, attempted: false };
 
   const fragments = plan.fragments.map(function (fragment) {
@@ -15605,7 +15601,7 @@ function callManualPageRag_(
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 700,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_FAST),
       responseMimeType: "application/json",
       responseSchema: getManualPageRagResponseSchema_(
         fragments.map(function (fragment) {
@@ -16305,7 +16301,7 @@ const CONFIG = {
   // 並先受下方 NT$0.35 成本 ceiling 限制。
   PDF_INPUT_SOFT_WARNING_TOKENS: 20000,
   MAX_LEGACY_PDF_INPUT_TOKENS: 100000,
-  // 依目前 2.5 Flash Standard 費率與 NT$32/USD，含最多 1,200 output
+  // 依目前 3.7 Flash Standard 費率與 NT$32/USD，含最多 1,200 output
   // 的單次最壞成本不得超過 NT$0.35。v29.6.298 實測 244 頁 medium
   // 花費增加但召回仍失敗，因此不再為整本輸入放寬成本；常見操作改由
   // 型號綁定頁級 RAG 只送少量官方原文。
@@ -17097,8 +17093,7 @@ function recoverRelevantPdfUrisFromDrive(
     return [];
   }
 
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     writeLog("[PDF Recovery] 缺少 GEMINI_API_KEY，無法即時補回 PDF URI");
     return [];
@@ -17366,8 +17361,7 @@ function refreshStalePdfAttachmentsFromDrive_(filesToAttach) {
     return [];
   }
 
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     writeLog("[PDF Targeted Refresh] 缺少 GEMINI_API_KEY");
     return [];
@@ -17718,7 +17712,7 @@ function refreshManualPdfUriBatch_(requestedBatchSize) {
     }
 
     const props = PropertiesService.getScriptProperties();
-    const apiKey = props.getProperty("GEMINI_API_KEY");
+    const apiKey = getGeminiApiKey_();
     if (!apiKey) {
       writeLog("[PDF Rolling Refresh v29.6.275] 缺少 GEMINI_API_KEY");
       return { refreshed: 0, attempted: 0 };
@@ -17931,8 +17925,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
     // v29.5.0: Optimize Sync Log - Hide intermediate noise
     // writeLog(`[Sync] 開始執行知識庫同步... (forceRebuild: ${forceRebuild})`);
 
-    const apiKey =
-      PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const apiKey = getGeminiApiKey_();
     if (!apiKey) {
       throw new Error("缺少 GEMINI_API_KEY");
     }
@@ -18893,7 +18886,7 @@ function cleanupOldGeminiFiles(apiKey) {
  */
 function rebuildSpecCachedContent() {
   const cache = CacheService.getScriptCache();
-  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     writeLog("[CachedContent] GEMINI_API_KEY 缺失, 跳過");
     return null;
@@ -19308,8 +19301,7 @@ function deleteTemporaryGeminiFile_(fileUri, apiKey) {
 }
 
 function validateOfficialManualFirstPage_(blob, candidate) {
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) return { valid: false, reason: "MISSING_GEMINI_API_KEY" };
   const fileUri = uploadFileToGemini(
     apiKey,
@@ -19340,7 +19332,7 @@ function validateOfficialManualFirstPage_(blob, candidate) {
       generationConfig: {
         temperature: 0,
         maxOutputTokens: 400,
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_FAST),
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -19455,7 +19447,7 @@ function validateOfficialManualFirstPage_(blob, candidate) {
     let extraction = requestFirstPageIdentity_(GEMINI_MODEL_FAST);
     if (!extraction.valid && GEMINI_MODEL_THINK !== GEMINI_MODEL_FAST) {
       writeLog(
-        `[Manual Auto Import] ${candidate.fullSku} Flash-Lite 第一頁核對未通過，改由 2.5 Flash 再核對一次`,
+        `[Manual Auto Import] ${candidate.fullSku} Flash-Lite 第一頁核對未通過，改由 3.7 Flash 再核對一次`,
       );
       extraction = requestFirstPageIdentity_(GEMINI_MODEL_THINK);
     }
@@ -21883,8 +21875,7 @@ function callLLMWithRetry(
   if (forceWebSearch) {
     lastWebSearchAttempted = true;
   }
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("API Key Missing");
 
   // 同一輪與短時間內共用版本化 Prompt 設定，避免 Gemini 前重複等候 Sheet。
@@ -22183,25 +22174,23 @@ ${recentOfficialManualAnswer}
     genConfig.mediaResolution = CONFIG.PDF_PREFERRED_MEDIA_RESOLUTION;
     genConfig.responseMimeType = "application/json";
     genConfig.responseSchema = getManualStructuredResponseSchema_();
-    // 這是長文件中的證據抽取，不是開放式推理。2.5 Flash 預設 Thinking
-    // 會占用 maxOutputTokens，曾把合法 JSON 截在第 37 token；關閉後把
-    // 1,200 tokens 全留給 answer/page/evidence，一次呼叫完成且更省成本。
-    genConfig.thinkingConfig = { thinkingBudget: 0 };
+    // 這是長文件中的證據抽取，不是開放式推理。3.7 Flash 固定 low，
+    // 避免預設 medium 擴大延遲與思考費用，同時保留跨頁證據理解能力。
+    genConfig.thinkingConfig = providerThinkingConfigForModel_(modelName);
     dynamicPrompt += `\n\n【PDF 結構化輸出】目前鎖定完整型號：${normalizeManualEvidenceModel_(targetModelName) || "未提供"}。只輸出 schema 指定的 JSON。先把問題拆成所有明示對象、條件與要求；每一項都必須有直接證據才可把 coverage 設為 full。只找到相關背景、預防方式、開啟後選項，卻沒有回答使用者問的入口、故障處理、特定裝置／模式條件或每個比較項時，coverage 必須是 partial 並在 unresolvedQuestion 寫出缺口，不能用相關段落冒充完整答案。檢索時先把使用者口語需求轉成手冊中的裝置類別、連接介面、畫面形態、使用目的、功能名稱與同義詞；先看目錄找到功能章節，再閱讀該章節與相鄰頁，不可只比對原句字面。若問「怎麼開／如何設定／在哪裡／哪個選單」，第一筆 evidence 必須優先摘錄「若要啟動／前往／進入」的直接入口句，supportedAnswer 寫出手冊實際呈現的「功能分類 → 設定項目」路徑；只有功能已啟動後的控制、或只寫「開啟此功能」，都不算回答。若原題功能名稱在手冊全文未出現，但手冊找到名稱不同、且可完成相同使用目的的直接操作入口，可保留為 partial evidence：supportedAnswer 必須以「手冊中可查到的相近操作是「手冊實際名稱」：」開頭，evidenceExcerpt 同時包含該名稱與入口，unresolvedQuestion 保留原題未能直接核對的功能；不得寫成等同、就是、完全相同或同一功能。found=true 時，將答案拆成最多 5 個可獨立驗證的主張；每筆 evidence 的 supportedAnswer 只能寫同一筆 evidenceExcerpt 直接支持的一句自然繁中答案或必要步驟，選單入口也必須和其證據放在同一筆，且 supportedAnswer 不要重複完整型號或自行加頁碼。每筆都必須另外抄錄該頁 pageHeading，以及附近最近的 applicabilityExcerpt；即使 supportedAnswer 不需要，也不得省略標題中的 Odyssey Ark、其他系列／型號或「依型號而定」限制。程式會把這三段合併驗證適用範圍。程式會逐筆驗證並丟棄不適用目前型號的主張，所以不得把其他頁、其他型號或常識混在同一 supportedAnswer。全檔共通必須有正面依據，不能只因附近沒看到限制就推定；若摘錄含依／視型號而定、部分型號、可能不支援或不一定提供，此主張不得當成目前型號的確定答案。supportedAnswer 的專有功能名稱必須原樣出現在同一筆 evidenceExcerpt；CoreSync、Core Lighting(+)、Infinity Core Lighting、Eclipse Lighting 等不同名稱不得互換，任何名稱不同的畫面模式也只能依前述「相近操作」契約明確標示，不能冒充原題功能。只有附近明列目前型號時才填「型號明確」或「依型號而異」，且 evidenceExcerpt 必須連同最近的適用型號限定一併摘錄。只列其他型號時不得回答成目前型號，封面或型號清單也不能補當功能證據。手冊確定沒有直接證據時才回 found=false、coverage=none、notFoundReason 說明缺口且 evidence=[]。格式錯誤、讀取逾時或不確定，不得假裝 found=false。`;
     writeLog(
-      `[PDF Config v29.6.177] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingBudget=0`,
+      `[PDF Config v29.6.318] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingLevel=low`,
     );
   }
 
-  // 2.5 Flash 預設動態思考會先吃掉輸出額度，Web 短答可能在 1–2 點即 MAX_TOKENS。
-  // Google 官方允許 thinkingBudget=0；搜尋仍由 google_search 工具完成。
+  // 3.7 Flash 固定 low；搜尋仍由 google_search 工具完成。
   if (forceWebSearch) {
-    genConfig.thinkingConfig = { thinkingBudget: 0 };
+    genConfig.thinkingConfig = providerThinkingConfigForModel_(modelName);
     if (isManualActionPathQuestion_(effectiveQuery)) {
       dynamicPrompt += `\n\n【操作題短答】第一句直接回答功能入口，接著只列 2–4 個實際步驟；每個步驟都必須有搜尋結果支持。省略定義、優點、程式運作說明與無關預覽。精確型號無資料時可明標「同系列作法」，不可冒充該型號官方步驟。中文正文控制在 320 字內。`;
     }
     writeLog(
-      `[Web Config v29.6.294] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingBudget=0`,
+      `[Web Config v29.6.318] model=${modelName} maxOutputTokens=${genConfig.maxOutputTokens} thinkingLevel=low`,
     );
   }
 
@@ -23379,7 +23368,10 @@ function getCustomerModelUsageLabel_() {
       .replace(/^models\//i, "")
       .toLowerCase();
     if (normalized === "gemini-3.7-flash") {
-      return "Gemini 3.7 Flash（守門）";
+      return "Gemini 3.7 Flash";
+    }
+    if (normalized === "gemini-3.1-flash-lite") {
+      return "Gemini 3.1 Flash-Lite";
     }
     if (normalized === "gemini-2.5-flash-lite") {
       return "Gemini 2.5 Flash-Lite";
@@ -24964,8 +24956,7 @@ function handleMessage(event) {
         };
 
         const startTime = new Date().getTime();
-        const GEMINI_API_KEY =
-          PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+        const GEMINI_API_KEY = getGeminiApiKey_();
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent`;
 
         try {
@@ -28512,10 +28503,7 @@ function handleMessage(event) {
                       .reverse()
                       .find((h) => h.role === "assistant");
                     if (lastAssistantMsg) {
-                      const apiKey =
-                        PropertiesService.getScriptProperties().getProperty(
-                          "GEMINI_API_KEY",
-                        );
+                      const apiKey = getGeminiApiKey_();
                       if (!apiKey) {
                         throw new Error("API Key not configured");
                       }
@@ -30307,8 +30295,7 @@ function callGeminiToPolishRule(input, userId = null) {
     return normalizedInput;
   }
 
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   const campaignUrl = extractSamsungCampaignUrl(input);
@@ -30405,8 +30392,7 @@ RULE_主題,規則類型,完整規則說明...
 }
 
 function callGeminiToModifyRule(currentText, instruction) {
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   const prompt = `依修改指令調整下列 CLASS_RULES 單列規則。
@@ -30940,8 +30926,7 @@ function findSimilarQA(newContent, polishedQA) {
         "行" + allQAs[i].row + ": " + allQAs[i].text.substring(0, 150) + "\n";
     }
 
-    var apiKey =
-      PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    var apiKey = getGeminiApiKey_();
     if (!apiKey) return null;
 
     var prompt = "你是 QA 比對專家。\n\n";
@@ -31076,8 +31061,7 @@ function findSimilarQA(newContent, polishedQA) {
  * @returns {string} 合併後的 QA
  */
 function callGeminiToMergeQA(existingQAs, newQA) {
-  var apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  var apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   var existingText = "";
@@ -31217,8 +31201,7 @@ function deleteQARows(rowNumbers) {
  * @param {string[]} conversation - 所有修改指令歷史
  */
 function callGeminiToRefineQA(originalContent, currentQA, conversation) {
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   // 組裝完整上下文
@@ -31366,8 +31349,7 @@ function callGeminiToPolish(input, userId = null) {
     return normalizeOneLineQaText(input);
   }
 
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   const prompt = `你是「客服 QA 知識庫建檔專家」。
@@ -31526,8 +31508,7 @@ function callGeminiToPolish(input, userId = null) {
  * 簡化版修改：AI 根據指令修改現有文字
  */
 function callGeminiToModify(currentText, instruction) {
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) throw new Error("缺少 GEMINI_API_KEY");
 
   const prompt = `依修改指令調整下列QA，產生一行「問題 / A：答案」。
@@ -31853,8 +31834,7 @@ function handleAutoQA(u, cid) {
 
   try {
     // 將最近對話整理成一行 QA（問題, 答案）
-    const apiKey =
-      PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const apiKey = getGeminiApiKey_();
     const convo = history
       .slice(-6)
       .map((m) => `${m.role}: ${m.content}`)
@@ -32461,8 +32441,7 @@ function updateHistorySheetAndCache(cid, prev, uMsg, aMsg) {
  * 呼叫 Gemini 摘要對話紀錄
  */
 function callGeminiToSummarize(messages) {
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) return null;
 
   const convoText = messages
@@ -33709,8 +33688,7 @@ function getRecentLogs(count = 50) {
  */
 function verifySmartThingsClaimFromCloudPdf() {
   const targetPdfName = "S32FM702,S32FM703,S32FM803.pdf";
-  const apiKey =
-    PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     throw new Error("缺少 GEMINI_API_KEY");
   }
@@ -34415,7 +34393,7 @@ function doGet(e) {
 
   // v29.6.008: 測試多個 Gemini 模型的可用性
   if (e && e.parameter && e.parameter.testModels === "1") {
-    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const apiKey = getGeminiApiKey_();
     if (!isDoGetMaintenanceAuthorized_(e)) {
       return buildUnauthorizedResponse_();
     }
@@ -34735,7 +34713,7 @@ function doGet(e) {
   // v29.6.006: 直接呼叫 Gemini /v1beta/files 列出雲端實際檔案
   if (e && e.parameter && e.parameter.geminiFiles === "1") {
     if (!isDoGetMaintenanceAuthorized_(e)) return buildUnauthorizedResponse_();
-    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    const apiKey = getGeminiApiKey_();
     const url = "https://generativelanguage.googleapis.com/v1beta/files?pageSize=100";
     try {
       const response = providerFetch_(url, {
@@ -35736,7 +35714,7 @@ function upsertManualPdfToGemini_(fileName, pdfBytes, forceRefresh) {
     };
   }
 
-  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const apiKey = getGeminiApiKey_();
   if (!apiKey) {
     throw new Error("缺少 GEMINI_API_KEY，無法上傳到 Gemini Files API");
   }

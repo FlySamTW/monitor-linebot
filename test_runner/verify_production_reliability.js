@@ -18,6 +18,18 @@ test("正式呼叫端不得把 Gemini 金鑰放在 URL", () => {
     assert(!/[?&]key=/.test(source),file);
   }
 });
+test("正式呼叫統一由雙槽位金鑰解析器取得", () => {
+  const linebot=fs.readFileSync(path.join(__dirname,"..","linebot.gs"),"utf8");
+  const maintenance=fs.readFileSync(path.join(__dirname,"..","maintenance_reliability.gs"),"utf8");
+  assert(!/getProperty\("GEMINI_API_KEY"\)/.test(linebot));
+  assert(!/getProperty\("GEMINI_API_KEY"\)/.test(maintenance));
+  assert(linebot.includes("getGeminiApiKey_()"));
+});
+test("備援key同時接受舊AI Studio與新Cloud服務帳戶綁定格式",()=>{
+  assert.strictEqual(c.isAcceptedGeminiApiKeyFormat_("AI"+"za"+"A".repeat(35)),true);
+  assert.strictEqual(c.isAcceptedGeminiApiKeyFormat_("A"+"Q."+"B".repeat(45)),true);
+  assert.strictEqual(c.isAcceptedGeminiApiKeyFormat_("not-a-provider-key"),false);
+});
 for (const item of cases) test("retrieval " + item.id + " / " + item.queries[0], () => {
   const plan = c.findManualPageRagPlan_(item.queries[0], item.model);
   assert(plan && plan.retrievalPolicy === "QueryTimeV1");
@@ -301,6 +313,92 @@ test("403停用憑證歸零退款、開路後不重送且LOG遮蔽",()=>{
   assert.strictEqual(preflight.run("currentRequestAudit.estimatedCostTwd"),0);
 });
 
+test("雙專案冷備援不自動偷跑，健康通過才切換且不暴露key",()=>{
+  const primary="primary-fixture-secret";
+  const standby="standby-fixture-secret";
+  const cold=createProductionHarness({quiet:true,properties:{
+    GEMINI_API_KEY:primary,
+    GEMINI_API_KEY_STANDBY:standby,
+  }});
+  const cc=cold.context;
+  cc.initializeProviderBudget_(0,cc.providerMonthKey_());
+  let status=cc.readGeminiKeySlotStatus_();
+  assert.strictEqual(status.activeSlot,"primary");
+  assert.strictEqual(status.primary.configured,true);
+  assert.strictEqual(status.standby.configured,true);
+  assert.strictEqual(status.automaticFailover,false);
+  assert.strictEqual(cc.getGeminiApiKey_(),primary);
+  assert(!JSON.stringify(status).includes(primary));
+  assert(!JSON.stringify(status).includes(standby));
+
+  cc.suspendProviderCredential_(primary,{reason:"CONSUMER_SUSPENDED",httpStatus:403});
+  assert.strictEqual(cc.getGeminiApiKey_(),primary,"主key停用不得自動消耗備援");
+  assert.strictEqual(cold.fetches.length,0);
+
+  cold.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",details:[{reason:"CONSUMER_SUSPENDED"}]}},403));
+  assert.throws(()=>cc.activateGeminiKeySlot_("standby"),/CREDENTIAL_SUSPENDED/);
+  assert.strictEqual(cc.getActiveGeminiKeySlot_(),"primary");
+  assert.strictEqual(cold.fetches.length,1);
+
+  cold.setFetch(()=>response({candidates:[{content:{parts:[{text:"OK"}]}}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:1}},200));
+  const activated=cc.activateGeminiKeySlot_("standby");
+  assert.strictEqual(activated.activated,"standby");
+  assert.strictEqual(activated.probe.providerCalls,2,"啟用前必須實測兩種正式模型");
+  assert.deepStrictEqual(Array.from(activated.probe.verifiedModels),[
+    "models/gemini-3.1-flash-lite","models/gemini-3.7-flash"
+  ]);
+  assert.strictEqual(cc.getActiveGeminiKeySlot_(),"standby");
+  assert.strictEqual(cc.getGeminiApiKey_(),standby);
+  const sent=cold.fetches[cold.fetches.length-1];
+  assert.strictEqual(sent.options.headers["x-goog-api-key"],standby);
+  assert(activated.status.standby.healthVerifiedAt);
+  assert(!JSON.stringify(activated).includes(standby));
+});
+
+test("備援模型清單檢查零生成、零費用且不暴露key",()=>{
+  const standby="AQ."+"S".repeat(45);
+  const cold=createProductionHarness({quiet:true,properties:{
+    GEMINI_API_KEY:"primary-fixture-secret",
+    GEMINI_API_KEY_STANDBY:standby,
+  }});
+  const cc=cold.context;
+  cold.setFetch((url,options)=>{
+    assert.strictEqual(url,"https://generativelanguage.googleapis.com/v1beta/models?pageSize=100");
+    assert.strictEqual(options.headers["x-goog-api-key"],standby);
+    assert(!url.includes(standby));
+    return response({models:[
+      {name:"models/gemini-3.1-flash-lite",supportedGenerationMethods:["generateContent","countTokens"]},
+      {name:"models/gemini-3.7-flash",supportedGenerationMethods:["generateContent"]},
+      {name:"models/embedding-only",supportedGenerationMethods:["embedContent"]},
+    ]},200);
+  });
+  const beforeSlot=cc.getActiveGeminiKeySlot_();
+  const report=cc.probeGeminiModelsForSlot_("standby");
+  assert.strictEqual(report.ok,true);
+  assert.strictEqual(report.generationCalls,0);
+  assert.strictEqual(report.costTwd,0);
+  assert.strictEqual(report.required["models/gemini-3.1-flash-lite"],true);
+  assert.strictEqual(report.available.includes("models/embedding-only"),false);
+  assert.strictEqual(cc.getActiveGeminiKeySlot_(),beforeSlot);
+  assert(!JSON.stringify(report).includes(standby));
+  assert.strictEqual(cold.fetches.length,1);
+});
+
+test("備援模型清單錯誤只回傳清理後狀態且不切換",()=>{
+  const standby="AQ."+"T".repeat(45);
+  const cold=createProductionHarness({quiet:true,properties:{
+    GEMINI_API_KEY:"primary-fixture-secret",
+    GEMINI_API_KEY_STANDBY:standby,
+  }});
+  cold.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",message:`denied ${standby}`}},403));
+  const report=cold.context.probeGeminiModelsForSlot_("standby");
+  assert.strictEqual(report.ok,false);
+  assert.strictEqual(report.generationCalls,0);
+  assert.strictEqual(report.costTwd,0);
+  assert.strictEqual(cold.context.getActiveGeminiKeySlot_(),"primary");
+  assert(!JSON.stringify(report).includes(standby));
+});
+
 test("Smart/Tizen平台、重設範圍與已確認型號共用證據",()=>{
   const smart=createProductionHarness({quiet:true});
   const sc=smart.context;
@@ -374,7 +472,7 @@ test("完整handleMessage三輪：零售→App→睡眠，僅外部供應商替�
     if(target.includes("gemini-3.7-flash")) {
       answer={topicRelation:"new",productAction:"keep_confirmed",candidateIndex:0,claims:[{id:"c1",question:"睡眠計時器在哪裡設定？",intent:"operation",evidenceNeed:"manual_model_specific",answerShape:"menu_path"}],confidence:"high",reasonCode:"MODEL_SPECIFIC_OPERATION"};
     } else {
-      assert(target.includes("gemini-2.5-flash-lite"),target);
+      assert(target.includes("gemini-3.1-flash-lite"),target);
       const input=JSON.parse(request.contents[0].parts[0].text);
       assert(input.question.includes("睡眠計時器"));
       const fragment=input.evidenceCandidates.find(x=>x.pageNumber===157);
@@ -402,7 +500,7 @@ test("完整來源入口：G9選型轉手冊退款，額度耗盡仍免費重播
   journey.run("IS_TEST_MODE=true");
   jc.initializeProviderBudget_(0,jc.providerMonthKey_());
   journey.setFetch((target,options)=>{
-    assert(target.includes("gemini-2.5-flash-lite"),target);
+    assert(target.includes("gemini-3.1-flash-lite"),target);
     const input=JSON.parse(JSON.parse(options.payload).contents[0].parts[0].text);
     const fragment=input.evidenceCandidates.find(x=>x.pageNumber===115);
     assert(fragment);

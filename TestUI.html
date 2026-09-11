@@ -754,7 +754,15 @@
         <? if (isEditorOnlyDevelopmentWebApp_()) { ?>
         <details style="padding:8px">
           <summary>編輯者維護／隔離驗證（共用 NT$5 上限）</summary>
-          <button class="btn" onclick="runReliabilityMaintenance('provider_health', this)">驗證 Gemini 恢復並解除停用</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_status', this)">讀取 Gemini 主／備援狀態（零模型）</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_health_primary', this)">驗證主金鑰與正式模型</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_health_standby', this)">驗證備援金鑰與正式模型</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_models_standby', this)">檢查備援可用模型（零生成）</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_activate_primary', this)">全模型驗證並啟用主金鑰</button>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_activate_standby', this)">全模型驗證並啟用備援</button>
+          <label for="gemini-standby-key">備援專案 API key（只寫入 ScriptProperties，不顯示於結果）</label>
+          <input type="password" id="gemini-standby-key" autocomplete="off" spellcheck="false" aria-label="Gemini 備援 API key">
+          <button class="btn" onclick="configureGeminiStandby(this)">儲存備援 key（不啟用）</button>
           <button class="btn" onclick="runReliabilityMaintenance('redact_logs', this)">遮蔽既有 LOG 金鑰（不刪紀錄）</button>
           <button class="btn" onclick="runReliabilityMaintenance('repair', this)">核對兩份新手冊與頁索引</button>
           <button class="btn" onclick="runReliabilityMaintenance('compare', this)">執行／續跑 File Search 對照</button>
@@ -868,6 +876,22 @@
           output.textContent = String(error.message || error);
           button.disabled = false;
         }).runReliabilityMaintenanceFromTestUi(action, TEST_UI_ACCESS_TOKEN);
+      }
+      function configureGeminiStandby(button) {
+        const field = document.getElementById('gemini-standby-key');
+        const key = String(field.value || '').trim();
+        const output = document.getElementById('reliability-result');
+        field.value = '';
+        if (!key) { output.textContent = '請貼上備援專案 API key。'; return; }
+        button.disabled = true;
+        output.textContent = '儲存備援 key 中；尚未啟用。';
+        google.script.run.withSuccessHandler(function (result) {
+          output.textContent = JSON.stringify(result, null, 2);
+          button.disabled = false;
+        }).withFailureHandler(function (error) {
+          output.textContent = String(error.message || error);
+          button.disabled = false;
+        }).configureGeminiStandbyFromTestUi(key, TEST_UI_ACCESS_TOKEN);
       }
       function importManualIndexPackage(button) {
         const field=document.getElementById('manual-index-package');

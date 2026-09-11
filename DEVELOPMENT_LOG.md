@@ -1,5 +1,30 @@
 # 開發對話紀錄
 
+## v29.6.319 備援全模型健康守門（2026-09-11）
+
+- v318 實際頁級查詢發現：3.1 健康探測成功不代表 3.7 可用；新專案未綁帳單時 3.7 回 429。已將專案連結另一個既有運作中帳單帳戶；原「我的帳單帳戶」因可啟用計費的專案數已達上限而無法綁定。
+- 啟用前改為逐一對所有相異正式模型做 16 input／8 output 上限的極小生成，3.1／3.7 全過才寫入 active。models.list 維持零生成診斷用途，不能當生成健康證據；不新增自動 failover。
+- QA／RULE 零模型、條件式守門、一般10／手冊2／網路5、月NT$90應用停止線均不變；健康檢查也走共用預算入口。
+- Google 新制另要求正的 Gemini 預付餘額；已對獨立帳單預付 NT$170（auto-reload 關閉），並把新專案 AI Studio 月上限設為 NT$90。v319 @1501 正式發布後，TestUI 實測 3.1／3.7 兩模型共 2 calls 全過，約 NT$0.000328，standby 維持 active、舊 primary 維持 suspended。
+
+## v29.6.318 新專案模型相容接替（2026-09-11）
+
+- 正式 v317 models.list 以 standby key 回 HTTP 200，確認 3.1 Flash-Lite／3.7 Flash 可見；2.5 雖也被列出，但生成兩次回 404。Google 官方論壇人員說明新專案限制 2.5，只保留既有活躍使用者，不能再以 models.list 的表面能力判定可用。
+- 固定改用 3.1 Flash-Lite（Fast／頁級 RAG／Polish，minimal，US$0.25／1.50）與 3.7 Flash（Router／整本 PDF／Web，low，2026年底前US$0.75／3.75）。完整 QA／RULE 仍零模型；不使用 latest、不增加每題守門、不改來源配額與月停止線。
+
+## v29.6.317 冷備援模型相容性診斷（2026-09-11）
+
+- v29.6.316 已正式發布 @1497；Google Cloud 新專案、無 IAM 角色的專用服務帳戶及僅限 Gemini API 的 `AQ.` key 已建立，並以 TestUI 安全存入 standby，未寫入 Git／URL／LOG。
+- 第一次「驗證並啟用備援」對 2.5 Flash-Lite 回 HTTP 404；安全守門未切換 active，也未盲試第二次。v317 新增 models.list 唯讀檢查，零生成、零模型費、零額度、零狀態變更，只回必要模型存在性與清理後狀態。
+- 離線 `verify_production_reliability` 67項通過，新增 header 不帶 URL key、模型清單不洩密、不切 active、錯誤安全收斂。正式 models.list 結果尚待發布後由 Chrome TestUI 單次讀回。
+
+## v29.6.316 雙專案冷備援候選（2026-09-11）
+
+- 此批把原本「替換單一 `GEMINI_API_KEY`」改為 primary／standby 雙槽位；舊 property 仍當 primary 相容來源，所有 Router／Fast／頁級 RAG／整本 PDF／Web／Files 與維護呼叫共用 active-slot 解析器。
+- 不自動 failover：主金鑰 403／停用後繼續熔斷，不暗中重送 standby。編輯者可儲存備援 key（不啟用）、分別健康檢查、或驗證通過後原子切換；輸出不含金鑰。
+- 離線 `verify_production_reliability` 65項通過，含舊 `AIza`、新 `AQ.` 格式，以及備援驗證失敗不切換、成功才啟用、狀態無明文 key。Google Cloud 已在新專案啟用 Gemini API、建立專用服務帳戶與限制至 Gemini API 的綁定 key；未寫入／健康檢查前仍不切換。
+- 模型、Prompt!C3、路由、LINE Rich Menu、一般／PDF／Web 配額與月NT$90應用停止線均不變。專用新專案尚因 AI Studio `The request is suspicious` 無法建 key，程式就緒不等於實際備援已上線。
+
 ## v29.6.314 正式 @1495（2026-09-11）
 
 - 為避免專案停權後換 key 又暴露，所有 Gemini generate／countTokens／Files／Cached Content／File Search 維護呼叫改由共用 gateway 以 `x-goog-api-key` Header 傳送；正式呼叫端不得再建 `?key=` URL。

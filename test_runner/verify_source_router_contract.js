@@ -960,7 +960,7 @@ assert(
 );
 assert(
   llmText.indexOf("assertAdvancedSourceGrant_") <
-    llmText.indexOf('getProperty("GEMINI_API_KEY")'),
+    llmText.indexOf("getGeminiApiKey_()"),
   "PDF/Web 必須在載入供應商設定前驗證本輪來源授權",
 );
 assert(
@@ -1055,7 +1055,8 @@ assert(
 );
 assert(
   /本次約 \$\{customerCost\}/.test(linebot) &&
-    /return "Gemini 3\.7 Flash（守門）"/.test(linebot) &&
+    /return "Gemini 3\.7 Flash"/.test(linebot) &&
+    /return "Gemini 3\.1 Flash-Lite"/.test(linebot) &&
     /return `模型：\$\{/.test(linebot) &&
     /未使用模型/.test(linebot) &&
     /billableModels/.test(linebot) &&

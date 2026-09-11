@@ -218,9 +218,9 @@ const callContext = {
   String,
   Array,
   Object,
-  GEMINI_MODEL_FAST: "models/gemini-2.5-flash-lite",
-  PRICE_FAST_INPUT: 0.1,
-  PRICE_FAST_OUTPUT: 0.4,
+  GEMINI_MODEL_FAST: "models/gemini-3.1-flash-lite",
+  PRICE_FAST_INPUT: 0.25,
+  PRICE_FAST_OUTPUT: 1.5,
   CONFIG: { API_ENDPOINT: "https://generativelanguage.googleapis.com/v1beta" },
   PropertiesService: {
     getScriptProperties: () => ({ getProperty: () => "test-key" }),
@@ -242,6 +242,8 @@ const callContext = {
   stripAnySourceTags: (value) => String(value || ""),
   stripInternalRoutingHints_: (value) => String(value || ""),
   getManualPageRagResponseSchema_: () => ({}),
+  providerThinkingConfigForModel_: () => ({thinkingLevel:"minimal"}),
+  getGeminiApiKey_: () => "test-key",
   findManualPageRagPlan_: () => plan,
   reserveAdvancedSourceUsage_: (grant) => {
     reservedGrant = grant;
@@ -281,13 +283,13 @@ assert(
   "頁級供應商請求送出前必須共用手冊原子配額保留",
 );
 assert(
-  requestedUrl.includes("models/gemini-2.5-flash-lite:generateContent"),
-  "頁級證據整理固定使用最低費用 2.5 Flash-Lite",
+  requestedUrl.includes("models/gemini-3.1-flash-lite:generateContent"),
+  "頁級證據整理固定使用新專案最低費用的 3.1 Flash-Lite",
 );
 assert(
   requestedPayload.generationConfig.temperature === 0 &&
-    requestedPayload.generationConfig.thinkingConfig.thinkingBudget === 0,
-  "頁級證據整理關閉思考並固定低溫度",
+    requestedPayload.generationConfig.thinkingConfig.thinkingLevel === "minimal",
+  "頁級證據整理固定最小思考與低溫度",
 );
 assert(
   !JSON.stringify(requestedPayload).includes("fileData") &&

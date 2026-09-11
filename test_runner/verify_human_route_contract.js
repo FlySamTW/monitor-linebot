@@ -88,14 +88,14 @@ renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
 renderContext.currentRequestAudit = {
   attemptedCalls: 2,
   paidCalls: 2,
-  model: "models/gemini-2.5-flash",
-  billableModels: ["models/gemini-3.7-flash", "models/gemini-2.5-flash"],
+  model: "models/gemini-3.1-flash-lite",
+  billableModels: ["models/gemini-3.7-flash", "models/gemini-3.1-flash-lite"],
 };
 const routedCustomerReply = renderContext.renderCustomerFacingText_(
   "已查到操作步驟。\n[費用:NT$0.2345（合計 2 次生成請求）]",
 );
 assert(
-  /本次約 NT\$0\.2345｜模型：Gemini 3\.7 Flash（守門）＋Gemini 2\.5 Flash/.test(
+  /本次約 NT\$0\.2345｜模型：Gemini 3\.7 Flash＋Gemini 3\.1 Flash-Lite/.test(
     routedCustomerReply,
   ),
   "Router 與回答模型必須依實際稽核一起顯示",
@@ -275,6 +275,7 @@ const recoveryContext = {
       setProperty: (key, value) => recoveryProperties.set(key, String(value)),
     }),
   },
+  getGeminiApiKey_: () => recoveryProperties.get("GEMINI_API_KEY") || "",
   DriveApp: {
     getFolderById: () => ({ getFilesByType: driveIterator }),
     getFileById: (id) => driveFiles.find((file) => file.getId() === id),

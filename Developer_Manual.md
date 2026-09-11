@@ -1,17 +1,21 @@
-# Samsung LINE Bot 開發手冊 — v29.6.314
+# Samsung LINE Bot 開發手冊 — v29.6.319 冷備援完整模型驗證
 
-正式 v29.6.314 @1495（BUILD11:55／Gemini Header／Provider Failover）：static／contract／production-contract、HEAD／health／readiness 全過。所有正式 Gemini 呼叫改以 `x-goog-api-key` Header 傳遞金鑰，網址不得再含 `?key=`；共用 gateway 仍會攔截並清洗漏網的舊呼叫。新專用專案 `Samsung RAG LINE Bot`（`shining-sphinx-508304-f9`）已建立並連上既有 Billing，但 AI Studio 拒絕產生 key，明確顯示 `The request is suspicious`；Cloud Console 同時仍顯示帳戶有疑似違規專案。未反覆建立專案或繞過限制，Gemini／PDF／Web 仍未恢復。模型、Prompt、Rich Menu、來源順序與配額不變，新增模型費為 0。
+正式 v29.6.319 @1501（BUILD14:02）已切到新專案 standby。因實測發現單驗 3.1 仍可能漏掉 3.7 的帳單／配額問題，啟用條件已補強為 Fast／頁級用 `gemini-3.1-flash-lite` 與 Router／整本 PDF／Web 用 `gemini-3.7-flash` 都做極小生成且全數成功。3.1 使用 minimal、3.7 使用 low；QA／RULE 仍零模型，條件式守門規則不變。Prompt、Rich Menu、路由、來源順序與配額不變。
 
 接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
 本批接手以本文件的v307 worker契約及 [AI_CONTEXT](AI_CONTEXT.md) 為準；[v306 交接清單](docs/V306_HANDOFF.md) 保留前版故障脈絡，其中「worker尚未實作」不是目前正式狀態。正式狀態依當次發布紀錄，以下v306／v305為歷史基線，不代表當次health。
 
-## v29.6.314 供應商快速接替契約
+## v29.6.319 雙專案冷備援契約
 
 - 停權屬 Google Cloud 專案／憑證層，LINE webhook、QA／RULE、Drive 索引與程式不應一起停擺；免費答案照常，付費路徑熔斷。
 - 正式 Gemini URL 禁止含 API key；只由 `providerFetch_` 加入 `x-goog-api-key`。回歸測試須核對送出的 URL 無 key、Header 有 key、內部選項未外送。
-- 快速接替採專用新專案，不借其他正式專案：連結既有有效 Billing account、只啟用 Generative Language API、建立限制至該 API 的新 key，先設定費用封頂，再寫入既有 Apps Script 的 `GEMINI_API_KEY` ScriptProperty。key 不入 Git、文件、網址、LOG 或外部 AI。
-- 切換後只做一次受控健康檢查；成功才解除新憑證指紋的熔斷，再各驗證 QA、PDF、Web 一題及雲端 LOG。LINE deployment／webhook 不重建；舊 key 在成功切換後撤銷。
+- ScriptProperties：`GEMINI_API_KEY_PRIMARY` 可選；沒有時回相容舊 `GEMINI_API_KEY`。備援只寫 `GEMINI_API_KEY_STANDBY`；`GEMINI_ACTIVE_KEY_SLOT=primary|standby` 是唯一 active 指標。key 不入 Git、文件、URL、LOG 或外部 AI。啟用前必須逐一實測所有相異正式模型；models.list 只能診斷，不能授權切換。
+- 備援 Cloud 專案為 `shining-sphinx-508304-f9`；2026-09-11 綁定獨立 `My Billing Account` 後依 Google 新制預付 NT$170，auto-reload 關閉，AI Studio 專案月上限 NT$90。程式端仍在 NT$90 前停止新付費請求；兩層皆有約 10 分鐘帳務延遲風險。
+- v319 真人 TestUI 啟用證據：standby 指紋 `ed8221d46a54f0b9`，3.1／3.7 共 2 次極小生成皆成功，健康成本約 NT$0.000328。舊 primary 仍為 suspended，不重試。
+- 不做自動 failover。`CONSUMER_SUSPENDED`、403、429、5xx 皆不得在同一題自動改用 standby；原因是帳戶／政策限制可能同時影響兩專案，而自動重送會有雙重費用及兩把 key 一起停用的風險。
+- TestUI 編輯者維護區可讀狀態、設定 standby（儲存後仍不啟用）、列出 standby 可用模型、單獨檢查兩槽與「驗證並啟用」。models.list 是零生成診斷；啟用仍必須當次核准模型健康檢查成功，並在 lock 內再核對指紋才切換。輸出只有安全狀態、模型名稱與指紋，絕不回傳金鑰或原始錯誤本文。
+- 切換後再各驗證 QA、PDF、Web 一題及雲端 LOG。LINE deployment／webhook、Drive 索引、worker 與 Rich Menu 不重建；Files API 暫存檔由既有流程重傳。
 - Gemini Files API 暫存檔屬專案且會過期，換專案後按既有流程重新上傳；本機 QA／RULE、Drive PDF、逐頁索引與 worker bundle 不需重建。申訴可繼續，但不能作為營運唯一復原方案。
 
 ## v29.6.313 Smart／Tizen 與供應商失敗契約（正式 @1494）
@@ -63,7 +67,7 @@ v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改
 | 已確認型號的單一明確操作、同操作省略重述 | 0次 |
 | 指涉不明、意圖衝突、複合題、新限制難解析 | 最多1次，短結構化分析 |
 
-Fast／頁級固定2.5 Flash-Lite，整本PDF／Web固定2.5 Flash；既有條件式3.7 Flash不升級、不擴到每題。Router 無工具／無產品答案，只選候選 index、拆 claims；低信心、429、格式失敗不重試，回安全路徑。
+Fast／頁級／Polish 固定3.1 Flash-Lite，整本PDF／Web與既有條件式守門固定3.7 Flash；不擴到每題。Router 無工具／無產品答案，只選候選 index、拆 claims；低信心、429、格式失敗不重試，回安全路徑。
 
 ## v307 自動索引 worker 正式契約
 

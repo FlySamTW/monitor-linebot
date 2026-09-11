@@ -78,30 +78,30 @@ assert(
 );
 
 assert(
-  /PRICE_FAST_INPUT\s*=\s*0\.1/.test(linebot) &&
-    /PRICE_FAST_OUTPUT\s*=\s*0\.4/.test(linebot),
-  "Gemini 2.5 Flash-Lite Standard 成本常數符合官方現價",
+  /PRICE_FAST_INPUT\s*=\s*0\.25/.test(linebot) &&
+    /PRICE_FAST_OUTPUT\s*=\s*1\.5/.test(linebot),
+  "Gemini 3.1 Flash-Lite Standard 成本常數符合官方現價",
 );
 assert(
-  /GEMINI_MODEL_WEB\s*=\s*"models\/gemini-2\.5-flash"/.test(linebot) &&
-    /PRICE_WEB_INPUT\s*=\s*0\.3/.test(linebot) &&
-    /PRICE_WEB_OUTPUT\s*=\s*2\.5/.test(linebot) &&
+  /GEMINI_MODEL_WEB\s*=\s*"models\/gemini-3\.7-flash"/.test(linebot) &&
+    /PRICE_WEB_INPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
+    /PRICE_WEB_OUTPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
     /forceWebSearch[\s\S]{0,120}CONFIG\.MODEL_NAME_WEB/.test(linebot) &&
     /modelName === CONFIG\.MODEL_NAME_WEB[\s\S]{0,100}PRICE_WEB_INPUT/.test(
       linebot,
     ),
-  "Web grounding 必須獨立使用 Gemini 2.5 Flash 並依官方費率估算",
+  "Web grounding 必須獨立使用 Gemini 3.7 Flash 並依官方時段費率估算",
 );
 assert(
-  /GEMINI_MODEL_THINK\s*=\s*"models\/gemini-2\.5-flash"/.test(linebot) &&
-    /PRICE_THINK_INPUT\s*=\s*0\.3/.test(linebot) &&
-    /PRICE_THINK_OUTPUT\s*=\s*2\.5/.test(linebot) &&
+  /GEMINI_MODEL_THINK\s*=\s*"models\/gemini-3\.7-flash"/.test(linebot) &&
+    /PRICE_THINK_INPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
+    /PRICE_THINK_OUTPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
     /useThinkModel[\s\S]{0,180}CONFIG\.MODEL_NAME_THINK/.test(linebot),
-  "整本 PDF fallback 使用 Gemini 2.5 Flash 與官方費率；免費 Evidence 與一般 Fast 仍留在低成本路徑",
+  "整本 PDF fallback 使用 Gemini 3.7 Flash 與官方時段費率；免費 Evidence 與一般 Fast 仍留在低成本路徑",
 );
 assert(
-  /if \(attachPDFs\)[\s\S]{0,700}thinkingConfig\s*=\s*\{\s*thinkingBudget:\s*0\s*\}/.test(linebot),
-  "PDF Structured Output 必須關閉預設 Thinking，避免思考 token 截斷 JSON 並浪費成本",
+  /if \(attachPDFs\)[\s\S]{0,700}thinkingConfig\s*=\s*providerThinkingConfigForModel_\(modelName\)/.test(linebot),
+  "PDF Structured Output 必須使用固定低思考層級，避免預設思考擴大成本",
 );
 
 const costContext = { EXCHANGE_RATE: 32, Math, Number };
@@ -437,7 +437,7 @@ assert(
   "網搜缺引用時不重複付費，改以明確未證實的保守答案完成回覆",
 );
 assert(
-  /if \(forceWebSearch\)\s*\{\s*genConfig\.thinkingConfig\s*=\s*\{\s*thinkingBudget:\s*0\s*\}/.test(
+  /if \(forceWebSearch\)\s*\{\s*genConfig\.thinkingConfig\s*=\s*providerThinkingConfigForModel_\(modelName\)/.test(
     linebot,
   ) &&
     /maxOutputTokens:\s*forceWebSearch\s*\?\s*450/.test(linebot) &&
@@ -446,7 +446,7 @@ assert(
       extractFunction(linebot, "buildTentativeWebFallback_"),
     ) &&
     !/isMonitorUsbMediaWebQuestion_\([^)]*\)[\s\S]{0,240}finalText\s*=\s*buildSafeUsbMediaWebAnswer_/.test(linebot),
-  "Web 關閉動態思考並限制輸出；所有題型都只能使用 grounded 支持句，未驗證草稿不得冒充答案",
+  "Web 固定低思考並限制輸出；所有題型都只能使用 grounded 支持句，未驗證草稿不得冒充答案",
 );
 assert(
   /--paid-live/.test(paidRunner) &&

@@ -17,11 +17,19 @@ function providerPrice_(model) {
   const rates = {
     "gemini-2.5-flash-lite": {input: 0.1, output: 0.4, cached: 0.01},
     "gemini-2.5-flash": {input: 0.3, output: 2.5, cached: 0.03},
+    "gemini-3.1-flash-lite": {input: 0.25, output: 1.5, cached: 0.025},
     "gemini-3.7-flash": {input: nextYear ? 1.5 : 0.75, output: nextYear ? 7.5 : 3.75, cached: nextYear ? 0.15 : 0.075},
   };
   const price = rates[String(model || "").replace(/^models\//, "")];
   if (!price) throw new Error("PROVIDER_MODEL_NOT_APPROVED");
   return price;
+}
+
+function providerThinkingConfigForModel_(model) {
+  const normalized = String(model || "").replace(/^models\//, "");
+  if (normalized === "gemini-3.1-flash-lite") return { thinkingLevel: "minimal" };
+  if (normalized === "gemini-3.7-flash") return { thinkingLevel: "low" };
+  return { thinkingBudget: 0 };
 }
 
 function providerMonthKey_() {
@@ -121,6 +129,76 @@ function providerCredentialFingerprint_(apiKey) {
       return ((Number(value) + 256) % 256).toString(16).padStart(2, "0");
     })
     .join("");
+}
+
+/**
+ * Gemini cold-standby contract.
+ *
+ * GEMINI_API_KEY remains the legacy primary property so existing installs do
+ * not break.  A standby credential is never selected automatically: a
+ * credential/policy denial may apply beyond one key, and silently trying the
+ * second key would risk disabling both projects and creating a second charge.
+ */
+function normalizeGeminiKeySlot_(slot) {
+  return String(slot || "").toLowerCase() === "standby" ? "standby" : "primary";
+}
+
+function isAcceptedGeminiApiKeyFormat_(value) {
+  const key = String(value || "").trim();
+  // Legacy Gemini Developer API keys use AIza...; newer Cloud API keys bound
+  // to a service account use AQ.... Keep this syntactic only: a health probe
+  // is still mandatory before either format can become active.
+  return /^(?:AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z_-]{30,})$/.test(key);
+}
+
+function getGeminiKeyBySlot_(slot) {
+  const props = PropertiesService.getScriptProperties();
+  const normalized = normalizeGeminiKeySlot_(slot);
+  if (normalized === "standby") {
+    return String(props.getProperty("GEMINI_API_KEY_STANDBY") || "");
+  }
+  return String(
+    props.getProperty("GEMINI_API_KEY_PRIMARY") ||
+      props.getProperty("GEMINI_API_KEY") ||
+      "",
+  );
+}
+
+function getActiveGeminiKeySlot_() {
+  return normalizeGeminiKeySlot_(
+    PropertiesService.getScriptProperties().getProperty("GEMINI_ACTIVE_KEY_SLOT"),
+  );
+}
+
+function getGeminiApiKey_() {
+  return getGeminiKeyBySlot_(getActiveGeminiKeySlot_());
+}
+
+function geminiKeySlotHealthProperty_(slot, apiKey) {
+  return `GEMINI_KEY_HEALTH_${normalizeGeminiKeySlot_(slot)}_${providerCredentialFingerprint_(apiKey)}`;
+}
+
+function readGeminiKeySlotStatus_() {
+  const props = PropertiesService.getScriptProperties();
+  const activeSlot = getActiveGeminiKeySlot_();
+  const describe = function (slot) {
+    const key = getGeminiKeyBySlot_(slot);
+    const state = key ? readProviderCredentialState_(key) : null;
+    return {
+      configured: Boolean(key),
+      fingerprint: key ? providerCredentialFingerprint_(key) : "",
+      suspended: Boolean(state),
+      healthVerifiedAt: key
+        ? String(props.getProperty(geminiKeySlotHealthProperty_(slot, key)) || "")
+        : "",
+    };
+  };
+  return {
+    activeSlot: activeSlot,
+    primary: describe("primary"),
+    standby: describe("standby"),
+    automaticFailover: false,
+  };
 }
 
 function providerCredentialStateKey_(apiKey) {
@@ -311,7 +389,7 @@ function providerFetch_(url, rawOptions) {
   }
   const inputLimit = knownInput || Utilities.newBlob(options.payload).getBytes().length;
   const search = (payload.tools || []).some(function (tool) { return Boolean(tool.google_search || tool.googleSearch); });
-  if (search && model !== "gemini-2.5-flash") throw new Error("PROVIDER_SEARCH_MODEL_NOT_APPROVED");
+  if (search && model !== "gemini-3.7-flash") throw new Error("PROVIDER_SEARCH_MODEL_NOT_APPROVED");
   const reservation = {month: providerMonthKey_(), amount: ((inputLimit * price.input + outputLimit * price.output) / 1e6) * EXCHANGE_RATE, sent: false,
     verification: typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE === true};
   // A shared free tier is not guaranteed to remain unused by other clients.

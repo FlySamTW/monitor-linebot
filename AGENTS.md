@@ -1,6 +1,6 @@
 # Samsung LINE Bot 開發規範
 
-正式 v29.6.314 @1495（BUILD11:55／Gemini Header／Provider Failover）：static／contract／production-contract、HEAD／health／readiness 全過；正式 Gemini URL 禁止 key，改由共用 gateway 使用 `x-goog-api-key`。專用新專案 `shining-sphinx-508304-f9` 已連既有 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key，Cloud Console 仍顯示帳戶違規警告；不可繞過或反覆建專案。付費路徑仍未恢復、模型費0；切換有效 key 後仍須健康檢查及 QA／PDF／Web 各一題才算恢復。
+正式 v29.6.319 @1501 已用新專案 standby 接替；啟用守門要求 3.1 Flash-Lite 與 3.7 Flash 皆須極小實呼叫成功才可切換。固定模型為 3.1 Flash-Lite（Fast／頁級 RAG／Polish）與 3.7 Flash（Router／整本 PDF／Web），不使用 latest。專用專案 `shining-sphinx-508304-f9` 已連結獨立運作中帳單帳戶、預付 NT$170 且專案月上限 NT$90；primary／standby 不自動 failover，避免同題雙重費用與兩把 key 同時受牽連。
 
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 

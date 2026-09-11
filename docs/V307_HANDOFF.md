@@ -1,12 +1,13 @@
 # v307–v311 最短接手指引
 
-正式 v29.6.314 @1495 已完成新專案接替前置：所有正式 Gemini 呼叫改用 `x-goog-api-key` Header，URL 不得帶 key；不更動模型／路由／配額。專用新專案已建立並連 Billing，但 AI Studio 以 `The request is suspicious` 拒絕建立 key；不可繞過或再建專案。舊專案申訴仍進行，新 key 尚未切換與真人驗收前不得宣稱付費路徑恢復。
+正式 v29.6.319 @1501 已切到新專案 standby；切換守門要求 3.1 Flash-Lite（Fast／頁級）與 3.7 Flash（Router／整本 PDF／Web）都須極小實呼叫成功。受限 `AQ.` key 只存在 ScriptProperties；備援不自動 failover。2026-09-11 實測 2 calls 皆成功、約 NT$0.000328；新帳單預付 NT$170、auto-reload 關閉、專案月上限 NT$90。
 
-## v29.6.314 接替最短路徑
+## v29.6.319 冷備援最短路徑
 
 - 專用新 Cloud project 連既有 Billing、先設封頂，只開 Generative Language API，再建限制該 API 的 key。
-- 只替換原 Apps Script 的 `GEMINI_API_KEY`；不改 deployment、webhook、LINE Rich Menu、Drive 索引或 worker。
-- 一次健康檢查成功後，QA／PDF／Web 各一題並核對 LOG；成功後撤銷舊 key。Files API 暫存 PDF 依既有流程重傳。
+- 把新 key 儲存到 `GEMINI_API_KEY_STANDBY`，不覆寫舊 key，不改 deployment、webhook、LINE Rich Menu、Drive 索引或 worker。
+- TestUI 先讀狀態與「檢查備援可用模型（零生成）」作診斷；只有「全模型驗證並啟用備援」同時通過 3.1 與 3.7 極小生成，才可切換。啟用結果必須列 `verifiedModels`、呼叫數與費用。
+- 程式不會在 403 後自動用第二把 key；這是防止雙重費用與兩專案一起受影響，不可刪除此守門。
 - 新專案不是申訴繞過的官方保證；若 Cloud 明示帳戶級限制或新專案也拒絕，立即停止，不反覆建專案。
 
 本文件記錄這批實作決策；正式版本／雲端驗收以 `V307_LIVE_ACCEPTANCE.md` 最後讀回為準。不要把候選測試當正式部署。唯一現行契約仍是 `Developer_Manual.md`。

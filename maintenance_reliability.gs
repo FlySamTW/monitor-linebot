@@ -20,7 +20,22 @@ function runReliabilityMaintenanceFromTestUi(action, token) {
   if (action === "report") return readReliabilityReportV303_();
   if (action === "redact_logs") return redactExistingProviderSecretsFromLog_();
   if (action === "provider_health") return probeProviderCredentialAndResume_();
+  if (action === "provider_status") return readGeminiKeySlotStatus_();
+  if (action === "provider_health_primary") return probeProviderCredentialSlot_("primary");
+  if (action === "provider_health_standby") return probeProviderCredentialSlot_("standby");
+  if (action === "provider_models_standby") return probeGeminiModelsForSlot_("standby");
+  if (action === "provider_activate_primary") return activateGeminiKeySlot_("primary");
+  if (action === "provider_activate_standby") return activateGeminiKeySlot_("standby");
   throw new Error("UNKNOWN_RELIABILITY_ACTION");
+}
+
+function configureGeminiStandbyFromTestUi(apiKey, token) {
+  assertEditorOnlyTestUiMaintenance_(token);
+  const key = String(apiKey || "").trim();
+  if (!isAcceptedGeminiApiKeyFormat_(key)) throw new Error("STANDBY_KEY_FORMAT_INVALID");
+  if (key === getGeminiKeyBySlot_("primary")) throw new Error("STANDBY_KEY_MUST_DIFFER");
+  PropertiesService.getScriptProperties().setProperty("GEMINI_API_KEY_STANDBY", key);
+  return readGeminiKeySlotStatus_();
 }
 
 function redactExistingProviderSecretsFromLog_() {
@@ -44,40 +59,133 @@ function redactExistingProviderSecretsFromLog_() {
 }
 
 function probeProviderCredentialAndResume_() {
-  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-  if (!apiKey) throw new Error("API_KEY_MISSING");
+  return probeProviderCredentialSlot_(getActiveGeminiKeySlot_());
+}
+
+/**
+ * Read-only Gemini model discovery. This sends no prompt, reserves no model
+ * budget and never changes the active slot or credential suspension state.
+ * Only model names and a sanitized status are returned to TestUI.
+ */
+function probeGeminiModelsForSlot_(slot) {
+  const normalizedSlot = normalizeGeminiKeySlot_(slot);
+  const apiKey = getGeminiKeyBySlot_(normalizedSlot);
+  if (!apiKey) throw new Error(`PROVIDER_${normalizedSlot.toUpperCase()}_KEY_MISSING`);
+  const response = providerFetch_(
+    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+    {
+      geminiApiKey: apiKey,
+      method: "get",
+      muteHttpExceptions: true,
+    },
+  );
+  const httpStatus = Number(response.getResponseCode() || 0);
+  const responseText = String(response.getContentText() || "");
+  if (httpStatus < 200 || httpStatus >= 300) {
+    const outcome = classifyProviderHttpOutcome_(httpStatus, responseText, "");
+    return {
+      ok: false,
+      slot: normalizedSlot,
+      fingerprint: providerCredentialFingerprint_(apiKey),
+      httpStatus: httpStatus,
+      outcome: String(outcome.kind || "unknown_failure"),
+      reason: redactProviderSecrets_(String(outcome.reason || "http_error")).slice(0, 80),
+      generationCalls: 0,
+      costTwd: 0,
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(responseText || "{}");
+  } catch (_) {
+    return {
+      ok: false,
+      slot: normalizedSlot,
+      fingerprint: providerCredentialFingerprint_(apiKey),
+      httpStatus: httpStatus,
+      outcome: "invalid_response",
+      reason: "invalid_json",
+      generationCalls: 0,
+      costTwd: 0,
+    };
+  }
+  const available = (Array.isArray(parsed.models) ? parsed.models : [])
+    .filter(function (model) {
+      return model && Array.isArray(model.supportedGenerationMethods) &&
+        model.supportedGenerationMethods.indexOf("generateContent") >= 0;
+    })
+    .map(function (model) { return String(model.name || ""); })
+    .filter(Boolean)
+    .slice(0, 100);
+  const requiredModels = [GEMINI_MODEL_FAST, GEMINI_MODEL_WEB, GEMINI_MODEL_ROUTER];
+  const required = {};
+  requiredModels.forEach(function (modelName) {
+    required[modelName] = available.indexOf(modelName) >= 0;
+  });
+  return {
+    ok: true,
+    slot: normalizedSlot,
+    fingerprint: providerCredentialFingerprint_(apiKey),
+    httpStatus: httpStatus,
+    required: required,
+    available: available,
+    generationCalls: 0,
+    costTwd: 0,
+  };
+}
+
+function probeProviderCredentialSlot_(slot) {
+  const normalizedSlot = normalizeGeminiKeySlot_(slot);
+  const apiKey = getGeminiKeyBySlot_(normalizedSlot);
+  if (!apiKey) throw new Error(`PROVIDER_${normalizedSlot.toUpperCase()}_KEY_MISSING`);
   const stateKey = providerCredentialStateKey_(apiKey);
   const props = PropertiesService.getScriptProperties();
   const previousState = props.getProperty(stateKey);
   props.deleteProperty(stateKey);
   try {
     resetRequestAudit_();
-    markGenerationAttempt_("fast", GEMINI_MODEL_FAST);
-    const response = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`,
-      {
-        geminiApiKey: apiKey,
-        method: "post",
-        contentType: "application/json",
-        muteHttpExceptions: true,
-        payload: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Reply only: OK" }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 8,
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        }),
-      },
-    );
-    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-      throw new Error(`PROVIDER_HEALTH_HTTP_${response.getResponseCode()}`);
-    }
+    const requiredModels = Array.from(new Set([
+      GEMINI_MODEL_FAST,
+      GEMINI_MODEL_THINK,
+      GEMINI_MODEL_WEB,
+      GEMINI_MODEL_ROUTER,
+    ]));
+    const verifiedModels = [];
+    requiredModels.forEach(function (modelName) {
+      markGenerationAttempt_("credential_health", modelName);
+      const response = providerFetch_(
+        `${CONFIG.API_ENDPOINT}/${modelName}:generateContent`,
+        {
+          geminiApiKey: apiKey,
+          budgetInputTokens: 16,
+          method: "post",
+          contentType: "application/json",
+          muteHttpExceptions: true,
+          payload: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "Reply only: OK" }] }],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 8,
+              thinkingConfig: providerThinkingConfigForModel_(modelName),
+            },
+          }),
+        },
+      );
+      if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+        throw new Error(`PROVIDER_HEALTH_HTTP_${response.getResponseCode()}_${String(modelName).replace(/^models\//, "")}`);
+      }
+      verifiedModels.push(modelName);
+    });
     clearProviderCredentialSuspensionAfterHealthCheck_(apiKey);
+    const verifiedAt = new Date().toISOString();
+    props.setProperty(geminiKeySlotHealthProperty_(normalizedSlot, apiKey), verifiedAt);
     return {
       ok: true,
+      slot: normalizedSlot,
       fingerprint: providerCredentialFingerprint_(apiKey),
-      providerCalls: 1,
+      healthVerifiedAt: verifiedAt,
+      providerCalls: verifiedModels.length,
+      verifiedModels: verifiedModels,
       costTwd: Number(currentRequestAudit.estimatedCostTwd || 0),
     };
   } catch (error) {
@@ -86,6 +194,32 @@ function probeProviderCredentialAndResume_() {
     }
     throw error;
   }
+}
+
+function activateGeminiKeySlot_(slot) {
+  const normalizedSlot = normalizeGeminiKeySlot_(slot);
+  const probe = probeProviderCredentialSlot_(normalizedSlot);
+  const expectedFingerprint = probe.fingerprint;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) throw new Error("PROVIDER_KEY_SLOT_LOCK_BUSY");
+  try {
+    const currentKey = getGeminiKeyBySlot_(normalizedSlot);
+    if (!currentKey || providerCredentialFingerprint_(currentKey) !== expectedFingerprint) {
+      throw new Error("PROVIDER_KEY_CHANGED_AFTER_HEALTH_CHECK");
+    }
+    PropertiesService.getScriptProperties().setProperty(
+      "GEMINI_ACTIVE_KEY_SLOT",
+      normalizedSlot,
+    );
+  } finally {
+    lock.releaseLock();
+  }
+  return {
+    ok: true,
+    activated: normalizedSlot,
+    probe: probe,
+    status: readGeminiKeySlotStatus_(),
+  };
 }
 
 function importManualIndexRecordFromTestUi(record, token) {
@@ -174,7 +308,7 @@ function adminRepairManualRevisionsV303_() {
 
 function fileSearchLabRequest_(path, method, body) {
   if (!/^(?:fileSearchStores(?:\/[-a-zA-Z0-9]+(?:\/operations\/[-a-zA-Z0-9]+)?)?(?::importFile)?|files\/[-a-zA-Z0-9]+)(?:\?force=true)?$/.test(path)) throw new Error("LAB_RESOURCE_INVALID");
-  const key = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const key = getGeminiApiKey_();
   const response = providerFetch_(`https://generativelanguage.googleapis.com/v1beta/${path}`, {
     geminiApiKey:key, method:method, contentType:"application/json", muteHttpExceptions:true,
     ...(body ? {payload:JSON.stringify(body)} : {}),
@@ -187,7 +321,7 @@ function adminRunFileSearchComparisonV303_() {
   assertManualFolderWritable_();
   IS_TEST_MODE = true;
   const props = PropertiesService.getScriptProperties();
-  const key = props.getProperty("GEMINI_API_KEY");
+  const key = getGeminiApiKey_();
   const stateKey = "FILESEARCH_LAB_V303";
   let state = JSON.parse(props.getProperty(stateKey) || "null");
   if (state && (state.done || state.failed)) { console.log(JSON.stringify(state)); return state; }
@@ -210,7 +344,7 @@ function adminRunFileSearchComparisonV303_() {
       if (!fileName) throw new Error("LAB_UPLOAD_RESOURCE_INVALID");
       state = {fileName:fileName, cursor:0, done:false, sha:doc.sourcePdfSha256};
       props.setProperty(stateKey,JSON.stringify(state));
-      const countResponse = providerFetch_("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:countTokens", {
+      const countResponse = providerFetch_(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:countTokens`, {
         geminiApiKey:key,method:"post",contentType:"application/json",payload:JSON.stringify({contents:[{parts:[{fileData:{fileUri:uri,mimeType:"application/pdf"}}]}]}),muteHttpExceptions:true,
       });
       const fullTokens = Number(JSON.parse(countResponse.getContentText()).totalTokens || 0);
@@ -255,9 +389,9 @@ function adminRunFileSearchComparisonV303_() {
         props.setProperty(resultKey,JSON.stringify(result));
       }
       resetRequestAudit_(); const t=Date.now();
-      const response=providerFetch_("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent", {
+      const response=providerFetch_(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`, {
         geminiApiKey:key,budgetInputTokens:state.fullTokens,method:"post",contentType:"application/json",muteHttpExceptions:true,
-        payload:JSON.stringify({contents:[{parts:[{text:`只依這本 ${model} 官方手冊回答：${question}。請提供操作步驟、頁碼與限制，找不到就明說，勿借其他型號。`}]}],tools:[{fileSearch:{fileSearchStoreNames:[state.store]}}],generationConfig:{temperature:0,maxOutputTokens:700,thinkingConfig:{thinkingBudget:0}}}),
+        payload:JSON.stringify({contents:[{parts:[{text:`只依這本 ${model} 官方手冊回答：${question}。請提供操作步驟、頁碼與限制，找不到就明說，勿借其他型號。`}]}],tools:[{fileSearch:{fileSearchStoreNames:[state.store]}}],generationConfig:{temperature:0,maxOutputTokens:700,thinkingConfig:providerThinkingConfigForModel_(GEMINI_MODEL_FAST)}}),
       });
       const body=JSON.parse(response.getContentText()||"{}");
       result.fileSearch={http:response.getResponseCode(),answer:((((body.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||"").join(""),grounding:((body.candidates||[])[0]||{}).groundingMetadata||null,cost:currentRequestAudit.estimatedCostTwd,ms:Date.now()-t};
