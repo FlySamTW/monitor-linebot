@@ -18,7 +18,73 @@ function runReliabilityMaintenanceFromTestUi(action, token) {
     finally { finishManualMaintenanceLease_(lease, true); }
   }
   if (action === "report") return readReliabilityReportV303_();
+  if (action === "redact_logs") return redactExistingProviderSecretsFromLog_();
+  if (action === "provider_health") return probeProviderCredentialAndResume_();
   throw new Error("UNKNOWN_RELIABILITY_ACTION");
+}
+
+function redactExistingProviderSecretsFromLog_() {
+  const logSheet = ss && ss.getSheetByName(SHEET_NAMES.LOG);
+  if (!logSheet) throw new Error("LOG_SHEET_NOT_FOUND");
+  const lastRow = logSheet.getLastRow();
+  if (lastRow < 2) return { scanned: 0, updated: 0, providerCalls: 0 };
+  const firstRow = Math.max(2, lastRow - 1199);
+  const range = logSheet.getRange(firstRow, 2, lastRow - firstRow + 1, 1);
+  const values = range.getValues();
+  let updated = 0;
+  const sanitized = values.map(function (row) {
+    const original = String(row[0] || "");
+    const safe = redactProviderSecrets_(original);
+    if (safe !== original) updated++;
+    return [safe];
+  });
+  if (updated > 0) range.setValues(sanitized);
+  writeLog(`[Provider Log Redaction] scanned=${values.length} updated=${updated}`);
+  return { scanned: values.length, updated: updated, providerCalls: 0 };
+}
+
+function probeProviderCredentialAndResume_() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("API_KEY_MISSING");
+  const stateKey = providerCredentialStateKey_(apiKey);
+  const props = PropertiesService.getScriptProperties();
+  const previousState = props.getProperty(stateKey);
+  props.deleteProperty(stateKey);
+  try {
+    resetRequestAudit_();
+    markGenerationAttempt_("fast", GEMINI_MODEL_FAST);
+    const response = providerFetch_(
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent?key=${apiKey}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        muteHttpExceptions: true,
+        payload: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Reply only: OK" }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 8,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+      },
+    );
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      throw new Error(`PROVIDER_HEALTH_HTTP_${response.getResponseCode()}`);
+    }
+    clearProviderCredentialSuspensionAfterHealthCheck_(apiKey);
+    return {
+      ok: true,
+      fingerprint: providerCredentialFingerprint_(apiKey),
+      providerCalls: 1,
+      costTwd: Number(currentRequestAudit.estimatedCostTwd || 0),
+    };
+  } catch (error) {
+    if (!props.getProperty(stateKey) && previousState) {
+      props.setProperty(stateKey, previousState);
+    }
+    throw error;
+  }
 }
 
 function importManualIndexRecordFromTestUi(record, token) {

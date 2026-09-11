@@ -1,6 +1,6 @@
 # Samsung LINE Bot 開發規範
 
-正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Smart／Tizen 已與 Smart Monitor 家族分離；出廠重設與停用憑證路徑的完整 handler 回歸通過。正式 LOG 已遮蔽 172／1048 筆命中內容，零供應商呼叫。Google Cloud 目前因疑似憑證外洩後遭第三方濫用而停權，Gemini 真人付費路徑尚不能驗收；同憑證已熔斷且失敗不扣次、不記成查無資料。申訴內容已備妥但尚未送出，不能把外部服務恢復寫成完成。既有 v311 worker、索引、20旅程與共享驗收 NT$3.54995296 證據仍有效；本批沒有新增模型費。
 
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 
@@ -9,7 +9,7 @@
 - 使用者報錯先讀雲端LOG／所有紀錄；TestUI、Mock、手機LINE分開驗收，不混稱。
 - 保持main、不開分支、不清未追蹤結果、不升貴模型、不新增付費服務。QA/RULE→必要PDF→未解部分一次Web，不無證據編造。
 - 按來源即授權，不重複確認；型號跨日保存，新限制不能丟失。Prompt不補單題特例，正式Prompt!C3非本機Prompt.csv，程式發布不覆寫。
-- 生成前月預留，再來源扣次；重試每次算費，缺usage不填0。一般10／手冊2／網路5，補救3；月90元應用停止線。**首次月帳seed未完成禁止發布**。Cloud cap實際9/5讀回NT$90，不依名稱100判斷；幣別／服務另核對，非即時阻斷。
+- 生成前月預留，再來源扣次；重試每次算費，缺usage不填0。一般10／手冊2／網路5，補救3；程式月90元停止線仍保留，Cloud專案目前另有更嚴格的NT$50月封頂、預付餘額約NT$391且自動儲值關閉。封頂非即時阻斷，恢復服務後仍須核對幣別、服務與帳單。
 - 一般LINE禁止Push；等待動畫尽早。RichMenu不任意重建。
 - 型號／文件角色／官方來源／SHA／頁碼共同守門，檔名非範圍證據。更新失敗保留有效版，不拿暫存URI當成功。
 - root .gs才是正式來源；.claspignore排除 **/*.js、tools/**、test_runner/**、output/**。聊天Webhook不掃整庫。既有compiled索引用編輯者分包匯入；新PDF用簽章本機worker→官方SHA核對→不可變PDF/index→單一MANUAL_WORKER_BUNDLE指標切換，不能放寬舊manifest SHA，也不能把全索引塞Properties／正式程式。

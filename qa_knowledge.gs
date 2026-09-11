@@ -58,7 +58,11 @@ function qaKnowledgeNormalizeText_(text) {
     .replace(/藍芽/g, "藍牙")
     .replace(/耳機插孔/g, "耳機孔")
     .replace(/應用程序/g, "應用程式")
-    .replace(/恢復出廠|回復出廠|恢復原廠|回復原廠/g, "原廠重設")
+    // 操作本體正規化：涵蓋口語「重設回出廠值／回到原廠」，不是為
+    // 個別題目加捷徑。Smart Hub、畫面、音效等局部重設仍保留主詞，
+    // 不會與整機出廠資料重設混為一談。
+    .replace(/(?:恢復|回復|還原|回到|重設回|重置回)(?:到)?(?:出廠|原廠)(?:值|設定|設置|預設值)?/g, "原廠重設")
+    .replace(/(?:出廠|原廠)(?:資料)?(?:重設|重置|設定|設置|預設值)/g, "原廠重設")
     .replace(/重置/g, "重設")
     .replace(/USB[\s‑–—_-]*C|TYPE[\s‑–—_-]*C/g, "USBC")
     .replace(/DISPLAY[\s‑–—_-]*PORT/g, "DISPLAYPORT")

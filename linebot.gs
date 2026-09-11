@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.311"; // 操作許可與步驟意圖分離，避免漏頁與多餘補救
-const BUILD_TIMESTAMP = "2026-09-08 16:35";
+const GAS_VERSION = "v29.6.313"; // Smart/Tizen、供應商熔斷與編輯者復原入口
+const BUILD_TIMESTAMP = "2026-09-11 10:38";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -4115,9 +4115,7 @@ function extractNamedMonitorFamilyTokens_(text) {
   const families = [];
   if (
     /(?:^|[^A-Z0-9])SMART\s*(?:MONITOR|螢幕|顯示器)(?:[^A-Z0-9]|$)/i.test(q) ||
-    /(?:^|[^A-Z0-9])SMART\s*系列(?:[^A-Z0-9]|$)/i.test(q) ||
-    /智慧(?:聯網)?螢幕/.test(q) ||
-    /^(?:三星\s*|SAMSUNG\s*)?SMART(?:\s|，|,|：|:|如何|怎麼|有|可|能|支援|開啟|設定)/i.test(q)
+    /智慧(?:聯網)?螢幕/.test(q)
   ) {
     families.push("SMART_MONITOR");
   }
@@ -4128,6 +4126,28 @@ function extractNamedMonitorFamilyTokens_(text) {
     families.push("VIEWFINITY");
   }
   return [...new Set(families)];
+}
+
+/**
+ * Smart/Tizen 是功能平台，不等於 M5/M7/M8/M9 產品家族。詞彙來源為
+ * CLASS_RULES 的 Smart 系列／Tizen 定義；Smart View、SmartThings 與
+ * Smart Hub 保留各自功能身分，不能拿來切換產品家族。
+ */
+function extractMonitorPlatformTokens_(text) {
+  const q = toHalfWidth(String(text || "")).toUpperCase().trim();
+  const withoutNamedFeatures = q
+    .replace(/SMART\s*VIEW/g, "")
+    .replace(/SMARTTHINGS/g, "")
+    .replace(/SMART\s*HUB/g, "");
+  const platforms = [];
+  if (
+    /\bTIZEN\b/i.test(q) ||
+    /SMART\s*系列/i.test(q) ||
+    /(?:^|[^A-Z0-9])SMART(?:[^A-Z0-9]|$)/i.test(withoutNamedFeatures)
+  ) {
+    platforms.push("SMART_TIZEN");
+  }
+  return [...new Set(platforms)];
 }
 
 function extractPartialModelPrefixTokens_(text) {
@@ -4212,6 +4232,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
   const partialPrefixes = extractPartialModelPrefixTokens_(text);
   const aliases = extractShortAliasModelTokens(text);
   const families = extractNamedMonitorFamilyTokens_(text);
+  const platforms = extractMonitorPlatformTokens_(text);
   const persisted = normalizeModelForDisplay(persistedModel || "");
   if (fullModels.length > 0) {
     // 某些 7～8 碼字串在語法上像完整型號，實際卻只是多款 RULE 型號的前段。
@@ -4232,6 +4253,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
           partialPrefixes: [fullModels[0]],
           aliases: aliases,
           families: families,
+          platforms: platforms,
         };
       }
     }
@@ -4241,6 +4263,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
       candidates: fullModels,
       aliases: aliases,
       families: families,
+      platforms: platforms,
     };
   }
   if (partialPrefixes.length > 0) {
@@ -4256,6 +4279,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
       partialPrefixes: partialPrefixes,
       aliases: aliases,
       families: families,
+      platforms: platforms,
     };
   }
   if (aliases.length > 0) {
@@ -4269,6 +4293,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
       candidates: aliasCandidates,
       aliases: aliases,
       families: families,
+      platforms: platforms,
     };
   }
   if (families.length > 0) {
@@ -4278,6 +4303,20 @@ function resolveTurnProductIdentity_(text, persistedModel) {
       candidates: [],
       aliases: [],
       families: families,
+      platforms: platforms,
+    };
+  }
+  if (platforms.length > 0) {
+    const persistedUsesPlatform = Boolean(
+      persisted && getManualInterfaceVocabularyProfile_(persisted).usesTizen,
+    );
+    return {
+      kind: persistedUsesPlatform ? "persisted" : "platform",
+      model: persistedUsesPlatform ? persisted : "",
+      candidates: persistedUsesPlatform ? [persisted] : [],
+      aliases: [],
+      families: [],
+      platforms: platforms,
     };
   }
   return {
@@ -4286,6 +4325,7 @@ function resolveTurnProductIdentity_(text, persistedModel) {
     candidates: persisted ? [persisted] : [],
     aliases: [],
     families: [],
+    platforms: [],
   };
 }
 
@@ -4310,6 +4350,72 @@ function shouldPromptSmartMonitorAlias_(text) {
     extractShortAliasModelTokens(text).length === 0 &&
     !isPureNamedFamilyOverviewQuery_(text)
   );
+}
+
+function isAmbiguousResetScopeQuestion_(text) {
+  const q = stripInternalRoutingHints_(String(text || ""))
+    .replace(/\(型號:[^)]+\)/gi, "")
+    .trim();
+  if (!/(?:重設|重置|RESET)/i.test(q)) return false;
+  if (/(?:出廠|原廠|所有設定|整台|整機|SMART\s*HUB|應用程式|APP|畫面|影像|音效|網路|PIN|密碼)/i.test(q)) {
+    return false;
+  }
+  return true;
+}
+
+function shouldClarifyPlatformResetScope_(text, productIdentity) {
+  const identity = productIdentity || {};
+  return (
+    Array.isArray(identity.platforms) &&
+    identity.platforms.indexOf("SMART_TIZEN") >= 0 &&
+    isAmbiguousResetScopeQuestion_(text)
+  );
+}
+
+function buildPlatformResetScopeReply_() {
+  return [
+    "你想重設哪一部分？",
+    "• 整台恢復出廠：會清除整機設定",
+    "• 只重設 Smart Hub：只清 App 登入與商店資料，不動畫面設定",
+    "• 只重設畫面／音效：保留其他設定",
+    "直接回我其中一項，我就接著查；不用先找完整型號。",
+    "[費用:NT$0.0000（未呼叫 LLM）]",
+  ].join("\n");
+}
+
+function findPlatformScopedManualOperation_(query) {
+  if (!isFactoryResetQueryWithoutPinIssue(query)) return null;
+  const candidates = getVerifiedManualChunks_()
+    .filter(function (record) {
+      const families = record && record.scope && Array.isArray(record.scope.families)
+        ? record.scope.families
+        : [];
+      return families.some(function (family) {
+        return /SMART\s*MONITOR|智慧(?:聯網)?螢幕/i.test(String(family || ""));
+      }) &&
+        isVerifiedManualEvidenceQuery_(record, query) &&
+        qaKnowledgeManualAnswerCoversQuery_(record, query);
+    })
+    .sort(function (a, b) {
+      return Number(b.priority || 0) - Number(a.priority || 0);
+    });
+  return candidates[0] || null;
+}
+
+function buildPlatformScopedManualOperationReply_(query) {
+  const record = findPlatformScopedManualOperation_(query);
+  if (!record) return "";
+  const body = qaKnowledgeRenderAnswer_(record);
+  if (!body) return "";
+  const evidence = record.evidence || {};
+  return [
+    "如果畫面上的「所有設定」裡有「一般與隱私權」，可以照這個路徑操作：",
+    body,
+    "若你的畫面沒有「一般與隱私權」，回我目前看到的選單名稱，我再幫你對應；不用先找完整型號。",
+    `官方手冊：第 ${String(evidence.pages || "").trim()} 頁`,
+    "[來源:官方手冊]",
+    "[費用:NT$0.0000（未呼叫 LLM）]",
+  ].filter(Boolean).join("\n\n");
 }
 
 function isAliasOnlyQuery(text) {
@@ -4361,7 +4467,7 @@ function isOperationAnswerInsufficient(text) {
 
 function isFactoryResetQueryWithoutPinIssue(text) {
   const q = String(text || "");
-  const asksFactoryReset = /(恢復出廠|回復出廠|還原出廠|出廠設定|出廠資料重設|恢復原廠|還原原廠|重置為出廠|重設為出廠|重置|重設)/i.test(
+  const asksFactoryReset = /(恢復出廠|回復出廠|還原出廠|回到出廠|重設回出廠|重置回出廠|出廠設定|出廠資料重設|恢復原廠|還原原廠|回到原廠|重設回原廠|重置回原廠|重置為出廠|重設為出廠|重置|重設)/i.test(
     q,
   );
   const asksPinRecovery = isPinRecoveryQuery(q);
@@ -7572,6 +7678,19 @@ function refundAdvancedSourceUsage_(grant, reason) {
   try {
     const props = PropertiesService.getScriptProperties();
     const dateKey = getSourceDateKey_();
+    if (grant.systemRescueReserved === true && grant.source === "web") {
+      const rescueKey = `SRC_RESCUE_${getSourceContextHash_(grant.contextId)}_${dateKey}`;
+      const rescueUsed = Math.max(0, Number(props.getProperty(rescueKey) || 0));
+      props.setProperty(rescueKey, String(Math.max(0, rescueUsed - 1)));
+      grant.reserved = false;
+      grant.systemRescueReserved = false;
+      grant.refunded = true;
+      grant.remaining = getSourceRemaining_(grant.contextId, "web");
+      writeLog(
+        `[Source Rescue] refunded=1 reason=${String(reason || "system_failure")}`,
+      );
+      return grant;
+    }
     const key = getSourceQuotaKey_(grant.contextId, dateKey);
     let state = parseSourceStateJson_(props.getProperty(key));
     if (!state || state.date !== dateKey) {
@@ -12009,6 +12128,61 @@ function executeAdvancedSourceQuery_(
     }
   } catch (error) {
     const code = String(error && error.message ? error.message : error);
+    if (/^PROVIDER_(?:CREDENTIAL_SUSPENDED|PERMISSION_DENIED)$/.test(code)) {
+      if (grant.reserved) {
+        refundAdvancedSourceUsage_(grant, code.toLowerCase());
+      }
+      clearPendingSourceState_(contextId);
+      clearAdvancedSourceOperation_(sourceOperation);
+      if (currentRequestAudit) {
+        currentRequestAudit.providerOutcome = code === "PROVIDER_CREDENTIAL_SUSPENDED"
+          ? "credential_denied"
+          : "permission_denied";
+        currentRequestAudit.providerFailureCode = code;
+        currentRequestAudit.finalCoverage = "service_unavailable";
+      }
+      const serviceReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
+        knownRuleAnswer,
+        "這次查詢服務暫時連不上，不是你的問題。我先保留目前能確認的內容；未完成的查詢不扣次。",
+        { originalQuestion: originalQuestion },
+      );
+      LAST_SOURCE_TEST_STATE = {
+        source: normalizedSource,
+        outcome: "service_unavailable",
+        pending: false,
+        executed: normalizedSource,
+        reserved: false,
+        refunded: true,
+        remaining: getSourceRemaining_(contextId, normalizedSource),
+      };
+      writeLog(
+        `[Source Route] source=${normalizedSource} outcome=service_unavailable provider=${code}`,
+      );
+      replyMessage(
+        replyToken,
+        serviceReply,
+        buildAdvancedSourceQuickReplies_(
+          normalizedSource,
+          primaryModel || selectedModel,
+          serviceReply,
+          {
+            forceOfficial: true,
+            skipSameSource: true,
+            skipAlternateSource: true,
+            allowElaborate: false,
+          },
+        ),
+      );
+      writeRecordDirectly(userId, originalQuestion, contextId, "user", "");
+      writeRecordDirectly(userId, serviceReply, contextId, "assistant", "");
+      updateHistorySheetAndCache(
+        contextId,
+        history,
+        { role: "user", content: originalQuestion },
+        { role: "assistant", content: serviceReply },
+      );
+      return true;
+    }
     if (/^PROVIDER_(?:MONTH_BUDGET|TEST_BUDGET|BUDGET_)/.test(code)) {
       replyMessage(replyToken, providerBudgetReply_(code));
       clearAdvancedSourceOperation_(sourceOperation);
@@ -16222,6 +16396,8 @@ function resetRequestAudit_() {
     billedOutputTokens: 0,
     estimatedCostTwd: 0,
     sources: [],
+    providerOutcome: "",
+    providerFailureCode: "",
     logged: false,
   };
 }
@@ -16322,6 +16498,8 @@ function writeRequestAuditOnce_(visibleText) {
     billedOutputTokens: currentRequestAudit.billedOutputTokens,
     estimatedCostTwd: Number(currentRequestAudit.estimatedCostTwd.toFixed(4)),
     uncertainCostTwd: Number(Number(currentRequestAudit.uncertainCostTwd || 0).toFixed(4)),
+    providerOutcome: currentRequestAudit.providerOutcome || "",
+    providerFailureCode: currentRequestAudit.providerFailureCode || "",
     finalCoverage:
       currentRequestAudit.finalCoverage ||
       (/(?:部分|尚未|還沒).{0,20}(?:回答|確認|解答)|沒有.{0,20}(?:明確|證據|結論)/i.test(
@@ -18526,6 +18704,7 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 // 上傳檔案至 Gemini
 function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
   try {
+    assertProviderCredentialUsable_(apiKey);
     const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`;
     const headers = {
       "X-Goog-Upload-Protocol": "resumable",
@@ -18544,6 +18723,16 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     });
 
     if (initReq.getResponseCode() !== 200) {
+      const initOutcome = classifyProviderHttpOutcome_(
+        initReq.getResponseCode(),
+        initReq.getContentText(),
+        "",
+      );
+      if (initOutcome.kind === "credential_denied") {
+        suspendProviderCredential_(apiKey, initOutcome);
+        writeLog(`[Gemini File Upload] credential_denied fingerprint=${providerCredentialFingerprint_(apiKey)}`);
+        throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+      }
       writeLog(
         `[Gemini File Upload] start failed ${initReq.getResponseCode()} ${blob.getName()}: ${initReq
           .getContentText()
@@ -18565,6 +18754,16 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     });
 
     if (uploadReq.getResponseCode() !== 200) {
+      const uploadOutcome = classifyProviderHttpOutcome_(
+        uploadReq.getResponseCode(),
+        uploadReq.getContentText(),
+        "",
+      );
+      if (uploadOutcome.kind === "credential_denied") {
+        suspendProviderCredential_(apiKey, uploadOutcome);
+        writeLog(`[Gemini File Upload] credential_denied fingerprint=${providerCredentialFingerprint_(apiKey)}`);
+        throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+      }
       writeLog(
         `[Gemini File Upload] upload failed ${uploadReq.getResponseCode()} ${blob.getName()}: ${uploadReq
           .getContentText()
@@ -18581,7 +18780,23 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
       Utilities.sleep(1000);
       const check = UrlFetchApp.fetch(
         `${CONFIG.API_ENDPOINT}/${fileRes.file.name}?key=${apiKey}`,
+        { muteHttpExceptions: true },
       );
+      if (check.getResponseCode() !== 200) {
+        const checkOutcome = classifyProviderHttpOutcome_(
+          check.getResponseCode(),
+          check.getContentText(),
+          "",
+        );
+        if (checkOutcome.kind === "credential_denied") {
+          suspendProviderCredential_(apiKey, checkOutcome);
+          throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+        }
+        writeLog(
+          `[Gemini File Upload] status check failed ${check.getResponseCode()} ${blob.getName()}`,
+        );
+        return null;
+      }
       state = JSON.parse(check.getContentText()).state;
       attempts++;
     }
@@ -18595,6 +18810,7 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
       return null;
     }
   } catch (e) {
+    if (/^PROVIDER_/.test(String(e && e.message || e))) throw e;
     writeLog(`上傳錯誤: ${e.message}`);
     return null;
   }
@@ -18603,6 +18819,7 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
 // 清理 Gemini 上的所有舊檔案（在 forceRebuild 時呼叫）
 function cleanupOldGeminiFiles(apiKey) {
   try {
+    assertProviderCredentialUsable_(apiKey);
     writeLog("[Cleanup] 開始清理 Gemini 所有舊檔案...");
 
     let totalDeleted = 0;
@@ -18614,6 +18831,15 @@ function cleanupOldGeminiFiles(apiKey) {
       const listRes = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true });
 
       if (listRes.getResponseCode() !== 200) {
+        const listOutcome = classifyProviderHttpOutcome_(
+          listRes.getResponseCode(),
+          listRes.getContentText(),
+          "",
+        );
+        if (listOutcome.kind === "credential_denied") {
+          suspendProviderCredential_(apiKey, listOutcome);
+          throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+        }
         writeLog(`[Cleanup] 無法列出檔案: ${listRes.getResponseCode()}`);
         break;
       }
@@ -18646,6 +18872,7 @@ function cleanupOldGeminiFiles(apiKey) {
     writeLog(`[Cleanup] 已清理 ${totalDeleted} 個舊檔案`);
     return totalDeleted;
   } catch (e) {
+    if (/^PROVIDER_/.test(String((e && e.message) || e))) throw e;
     writeLog(`[Cleanup] 清理失敗: ${e.message}`);
     return 0;
   }
@@ -22888,6 +23115,7 @@ ${recentOfficialManualAnswer}
 
       writeLog(`[API Exception] ${e.message}`);
       if (e.message === "PROVIDER_MONTH_BUDGET_EXHAUSTED") return providerBudgetReply_();
+      if (/^PROVIDER_(?:CREDENTIAL_SUSPENDED|PERMISSION_DENIED)$/.test(e.message)) throw e;
       if (/^PROVIDER_/.test(e.message)) return "付費查證目前暫停，已有的規格與常見問答仍可查。這題還缺的資料可以請 Sam 協助確認。";
       if (e.message.includes("token")) return e.message;
       return "⚠️ 系統連線暫時異常，請稍後再試。";
@@ -23110,6 +23338,14 @@ function getCustomerModelUsageLabel_() {
     typeof currentRequestAudit !== "undefined" && currentRequestAudit
       ? currentRequestAudit
       : null;
+  if (
+    audit &&
+    ["credential_denied", "permission_denied"].indexOf(
+      String(audit.providerOutcome || ""),
+    ) >= 0
+  ) {
+    return "模型未完成（查詢服務拒絕）";
+  }
   let models = audit && Array.isArray(audit.billableModels)
     ? audit.billableModels.slice()
     : [];
@@ -23283,6 +23519,14 @@ function hasVisibleCostAudit_(text) {
 }
 
 function buildReplyCostAuditText_() {
+  if (
+    currentRequestAudit &&
+    ["credential_denied", "permission_denied"].indexOf(
+      String(currentRequestAudit.providerOutcome || ""),
+    ) >= 0
+  ) {
+    return "[費用:NT$0.0000（供應商拒絕，未完成生成）]";
+  }
   if (currentRequestAudit && Number(currentRequestAudit.uncertainCostTwd || 0) > 0) {
     return `[費用:NT$${currentRequestAudit.estimatedCostTwd.toFixed(4)}（保守估算，部分用量待確認）]`;
   }
@@ -23512,6 +23756,7 @@ function handleMessage(event) {
     lastWebEvidenceConflict = false;
     lastWebSearchAttempted = false;
     lastWebUnverifiedDraft = "";
+    if (typeof lastProviderOutcome_ !== "undefined") lastProviderOutcome_ = null;
     LAST_SEMANTIC_ROUTE_ANALYSIS = null;
     LAST_SOURCE_TEST_STATE = null;
     CURRENT_DAILY_QUESTION_REMAINING = null;
@@ -24025,6 +24270,16 @@ function handleMessage(event) {
           `[Comparison Context v29.6.264] 以已鎖定 ${previousComparisonModel} 補齊「跟 ${rememberedModels[1]}」比較`,
         );
       }
+      const pendingPlatformReset = cache.get(`RESET_SCOPE_${contextId}`);
+      if (pendingPlatformReset) {
+        if (/(?:整台|整機|全部|出廠|原廠|SMART\s*HUB|應用程式|APP|畫面|影像|音效)/i.test(msg)) {
+          msg = `Smart/Tizen ${msg}`;
+          userMessage = msg;
+          routingQuestion = msg;
+          writeLog("[Product Scope] 沿用上一輪 Smart/Tizen 重設範圍，不要求完整型號");
+        }
+        cache.remove(`RESET_SCOPE_${contextId}`);
+      }
       const turnIdentity = resolveTurnProductIdentity_(
         msg,
         productBeforeQuestion && productBeforeQuestion.model,
@@ -24105,8 +24360,75 @@ function handleMessage(event) {
       }
     }
 
-    // 「Smart」是家族，不是完整產品實體。使用者明講家族時，本輪不得借用
-    // 幾天前的 Odyssey／其他 Smart 型號；先補 M5/M7/M8/M9，再接回原題。
+    // Smart/Tizen 是平台；只有明說 Smart Monitor 才是 M5/M7/M8/M9 家族。
+    // 單說「重設」只確認一次重設範圍，不先逼問完整型號。
+    if (
+      !msg.startsWith("#") &&
+      shouldClarifyPlatformResetScope_(routingQuestion, activeTurnProductIdentity)
+    ) {
+      const scopeReply = buildPlatformResetScopeReply_();
+      cache.put(`RESET_SCOPE_${contextId}`, "SMART_TIZEN", 600);
+      LAST_SOURCE_TEST_STATE = {
+        source: "spec",
+        outcome: "needs_reset_scope",
+        pending: true,
+        reserved: false,
+      };
+      writeLog("[Semantic Router Decision] action=skip reason=minimal_reset_scope_clarification");
+      replyMessage(replyToken, scopeReply, {
+        quickReply: {
+          items: [
+            { type: "action", action: { type: "message", label: "整台恢復出廠", text: "整台恢復出廠" } },
+            { type: "action", action: { type: "message", label: "只重設 Smart Hub", text: "只重設 Smart Hub" } },
+            { type: "action", action: { type: "message", label: "只重設畫面／音效", text: "只重設畫面／音效" } },
+          ],
+        },
+      });
+      writeRecordDirectly(userId, stripInternalRoutingHints_(routingQuestion), contextId, "user", "");
+      writeRecordDirectly(userId, scopeReply, contextId, "assistant", "");
+      updateHistorySheetAndCache(
+        contextId,
+        getHistoryFromCacheOrSheet(contextId),
+        { role: "user", content: stripInternalRoutingHints_(routingQuestion) },
+        { role: "assistant", content: scopeReply },
+      );
+      return;
+    }
+
+    // 已核對的 Smart Monitor 操作資料可在平台問法下用條件式路徑直接
+    // 幫忙；選單不同才讓店員回報畫面，不先把 Smart 硬縮成某一代。
+    if (
+      !msg.startsWith("#") &&
+      activeTurnProductIdentity &&
+      Array.isArray(activeTurnProductIdentity.platforms) &&
+      activeTurnProductIdentity.platforms.indexOf("SMART_TIZEN") >= 0
+    ) {
+      const platformOperationReply = buildPlatformScopedManualOperationReply_(
+        routingQuestion,
+      );
+      if (platformOperationReply) {
+        LAST_SOURCE_TEST_STATE = {
+          source: "spec",
+          outcome: "verified_platform_operation",
+          pending: false,
+          executed: "verified_manual_chunk",
+          reserved: false,
+        };
+        writeLog("[Semantic Router Decision] action=skip reason=verified_platform_operation");
+        replyMessage(replyToken, platformOperationReply);
+        writeRecordDirectly(userId, stripInternalRoutingHints_(routingQuestion), contextId, "user", "");
+        writeRecordDirectly(userId, platformOperationReply, contextId, "assistant", "");
+        updateHistorySheetAndCache(
+          contextId,
+          getHistoryFromCacheOrSheet(contextId),
+          { role: "user", content: stripInternalRoutingHints_(routingQuestion) },
+          { role: "assistant", content: platformOperationReply },
+        );
+        return;
+      }
+    }
+
+    // 明講 Smart Monitor 且答案確實依機型而變時，才補 M5/M7/M8/M9。
     if (!msg.startsWith("#") && shouldPromptSmartMonitorAlias_(routingQuestion)) {
       const familyQuestion = stripInternalRoutingHints_(routingQuestion);
       // Product-family scope is explicit. A complete matching QA is enough;
@@ -26673,6 +26995,24 @@ function handleMessage(event) {
     if (semanticRouteResult.attempted) {
       writeLog(
         `[Semantic Router v29.6.277] mode=${semanticRouteResult.mode} valid=${semanticRouteResult.valid} cache=${semanticRouteResult.cacheHit} latency=${Number(semanticRouteResult.latencyMs || 0)}ms plan=${semanticRouteResult.analysis ? JSON.stringify(semanticRouteResult.analysis) : semanticRouteResult.error}`,
+      );
+    } else {
+      const skipReason = semanticRouterInput.localCoverage === "full"
+        ? "local_evidence_full"
+        : semanticRouterInput.explicitSource
+        ? "explicit_source"
+        : semanticRouterInput.confirmedModel &&
+            isOperationOrTroubleshootQuery(semanticRouterInput.originalQuestion) &&
+            !semanticRouterInput.multiClaim &&
+            !semanticRouterInput.possibleFollowUp
+        ? "deterministic_manual_route"
+        : semanticRouterInput.seriesAliasResolved
+        ? "series_alias_resolved"
+        : semanticRouterInput.priorRoutePlanAvailable
+        ? "reused_prior_claim_plan"
+        : "not_semantically_ambiguous";
+      writeLog(
+        `[Semantic Router Decision] action=skip reason=${skipReason}`,
       );
     }
     if (
@@ -31759,6 +32099,12 @@ function writeLog(a, b, c) {
     content = c || "";
   } else {
     content = a || "";
+  }
+
+  // console、TestUI 與雲端 Sheet 共用同一個遮蔽點；Google 錯誤本文
+  // 不得再把 API key 原文寫入任何紀錄。
+  if (typeof redactProviderSecrets_ === "function") {
+    content = redactProviderSecrets_(content);
   }
 
   refreshLogFilterConfig_();

@@ -754,6 +754,8 @@
         <? if (isEditorOnlyDevelopmentWebApp_()) { ?>
         <details style="padding:8px">
           <summary>編輯者維護／隔離驗證（共用 NT$5 上限）</summary>
+          <button class="btn" onclick="runReliabilityMaintenance('provider_health', this)">驗證 Gemini 恢復並解除停用</button>
+          <button class="btn" onclick="runReliabilityMaintenance('redact_logs', this)">遮蔽既有 LOG 金鑰（不刪紀錄）</button>
           <button class="btn" onclick="runReliabilityMaintenance('repair', this)">核對兩份新手冊與頁索引</button>
           <button class="btn" onclick="runReliabilityMaintenance('compare', this)">執行／續跑 File Search 對照</button>
           <button class="btn" onclick="runReliabilityMaintenance('report', this)">讀取驗證報告（不呼叫模型）</button>

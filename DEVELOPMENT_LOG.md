@@ -1,6 +1,14 @@
 # 開發對話紀錄
 
-正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容、零供應商呼叫。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權；真人 Gemini／PDF／Web 路徑尚未恢復驗收。程式已對同憑證熔斷、退款並停止補救重送，本批無新增模型費。
+
+## v29.6.313 正式 @1494（2026-09-11）
+
+- 讀取 9/10 雲端 LOG 定位：M7 型號與 factory_reset 索引正確，PDF 與 Web 都遭同一停用憑證 403；修正為供應商結果分類、同憑證熔斷、零元退款及秘密遮蔽，不再包裝成沒有證據。
+- Smart／Tizen 拆成平台，Smart Monitor 才是產品家族；裸重設一次只問整台／Smart Hub／畫面音效，明確出廠重設使用既有已核實第171頁片段，不叫 Router、不要求 M5～M9。
+- 新增零供應商整合驗證：403 只送一次、後續熔斷、額度退還、費用0、LOG無key；Smart/Tizen身分、完整handler兩輪與已鎖定型號口語追問全部通過。模型、Prompt、Rich Menu、配額不變。
+- v29.6.312 已先正式發布 @1493；v29.6.313 只補編輯者 TestUI 的受保護健康檢查與既有 LOG 遮蔽按鈕，讓復原流程可實際執行，不開公開維護入口。
+- 正式 health 已讀回 `v29.6.313 [2026-09-11 10:38]`；受保護 `redact_logs` 掃描1048列、遮蔽172筆命中內容、providerCalls=0。`provider_health` 仍回 `PROVIDER_CREDENTIAL_SUSPENDED`，與 Cloud 停權頁一致；申訴已備妥但未代表使用者送出。
 
 ## v29.6.311 正式 @1492（2026-09-08）
 

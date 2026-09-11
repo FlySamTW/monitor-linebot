@@ -40,6 +40,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -107,6 +109,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -174,6 +178,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -225,6 +231,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -292,6 +300,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -359,6 +369,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -515,6 +527,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -619,16 +633,18 @@
           "billedOutputTokens": 170,
           "estimatedCostTwd": 0.01344,
           "sources": [],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那兩邊都能120Hz嗎? (型號: S49DG932SC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG932SC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG932SC group=multi_view",
@@ -691,6 +707,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -758,6 +776,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -825,6 +845,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -960,6 +982,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1045,6 +1069,8 @@
           "billedOutputTokens": 140,
           "estimatedCostTwd": 0.006688,
           "sources": [],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1052,6 +1078,7 @@
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
+          "[General] [Semantic Router Decision] action=skip reason=not_semantically_ambiguous",
           "[General] [Automatic Manual Fallback v29.6.247] Fast Mode 資料不足，直接交由統一手冊路由",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S32FM803UC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S32FM803UC，選型完成後直接執行",
@@ -1141,6 +1168,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1208,6 +1237,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1321,6 +1352,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1405,6 +1438,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1510,16 +1545,18 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 我要跟畫面同步。 (型號: S49DG952SC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG952SC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S49DG952SC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG952SC group=rear_lighting",
@@ -1640,6 +1677,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1732,6 +1771,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1813,6 +1854,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1880,6 +1923,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -1964,6 +2009,8 @@
           "billedOutputTokens": 130,
           "estimatedCostTwd": 0.006240000000000001,
           "sources": [],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2034,6 +2081,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2073,6 +2122,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2138,6 +2189,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2257,6 +2310,8 @@
           "billedOutputTokens": 30,
           "estimatedCostTwd": 0.00336,
           "sources": [],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2344,6 +2399,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2439,6 +2496,8 @@
           "billedOutputTokens": 30,
           "estimatedCostTwd": 0.00336,
           "sources": [],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2551,6 +2610,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2639,6 +2700,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2747,6 +2810,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2838,13 +2903,17 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
         "fatal": [
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
-        "evidenceTrace": []
+        "evidenceTrace": [
+          "[General] [Semantic Router Decision] action=skip reason=deterministic_manual_route"
+        ]
       },
       {
         "input": "rm_action=select_source&source=manual&v=2",
@@ -2918,6 +2987,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -2969,6 +3040,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3008,6 +3081,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3149,6 +3224,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3252,16 +3329,18 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那測試時能切換輸入嗎? (型號: S27H704EAC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.311\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.313\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27H704EAC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
@@ -3365,6 +3444,8 @@
           "sources": [
             "官方手冊"
           ],
+          "providerOutcome": "success",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3453,6 +3534,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3506,6 +3589,8 @@
           "sources": [
             "QA庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3549,6 +3634,8 @@
           "sources": [
             "QA庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3626,6 +3713,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3691,6 +3780,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3758,6 +3849,8 @@
           "sources": [
             "官方規格庫"
           ],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3809,6 +3902,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3874,6 +3969,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3925,6 +4022,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",
@@ -3966,6 +4065,8 @@
           "billedOutputTokens": 0,
           "estimatedCostTwd": 0,
           "sources": [],
+          "providerOutcome": "",
+          "providerFailureCode": "",
           "logged": true
         },
         "error": "",

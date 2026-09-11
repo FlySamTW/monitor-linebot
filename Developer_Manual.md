@@ -1,14 +1,29 @@
-# Samsung LINE Bot 開發手冊 — v29.6.311
+# Samsung LINE Bot 開發手冊 — v29.6.313
 
-正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+正式 v29.6.313 @1494（BUILD10:38／Smart-Platform-Provider-Circuit）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已遮蔽172／1048筆命中內容，未呼叫供應商。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，所以真人 Gemini／PDF／Web 路徑尚未恢復驗收；同憑證已熔斷、失敗退款且不再誤報「沒有證據」。本批沒有改模型、Prompt、Rich Menu或配額，也沒有新增模型費。
 
 接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
 本批接手以本文件的v307 worker契約及 [AI_CONTEXT](AI_CONTEXT.md) 為準；[v306 交接清單](docs/V306_HANDOFF.md) 保留前版故障脈絡，其中「worker尚未實作」不是目前正式狀態。正式狀態依當次發布紀錄，以下v306／v305為歷史基線，不代表當次health。
 
+## v29.6.313 Smart／Tizen 與供應商失敗契約（正式 @1494）
+
+9/10「那要怎麼重設回出廠值」的正式紀錄是：型號 `S32FM703UC` 與 `factory_reset` 索引皆正確，Gemini 卻以 `CONSUMER_SUSPENDED` 拒絕 PDF 生成；隨後 Web 又用同一憑證重送。這是服務未完成，不是手冊沒有答案。此批不換模型、不增加每題 Router，也不改 Prompt。
+
+- 共用供應商結果固定分成 `success／no_evidence／credential_denied／permission_denied／resource_denied／transient／usage_unknown`。只有成功生成後仍缺引用才是 `no_evidence`；403／停用憑證不得改寫成查無資料。
+- `credential_denied` 以金鑰雜湊指紋開啟熔斷：同一憑證的 Router、PDF、Web 與上傳立即停止，避免店員每問一題就再撞一次。管理入口 `provider_health` 只做一次低價 2.5 Flash-Lite 健康檢查；成功才解除，不由一般對話自行重試。
+- 明確拒絕的請求結算為零、解除月預留並退還本輪來源額度；逾時、傳輸中斷或缺 usage 仍依原契約保守列待核對。預留不是實際費用。使用者只看到「查詢服務暫時連不上，不是你的問題；未完成不扣次」。
+- 全部 LOG 先經秘密遮蔽。編輯者 TestUI 提供「驗證 Gemini 恢復並解除停用」與「遮蔽既有 LOG 金鑰」；`redact_logs` 只覆寫近 1,200 列中暴露的憑證，不刪整份紀錄，新 LOG 不得落入明文 API key。
+- `Smart Monitor／Smart螢幕` 是 M5／M7／M8／M9 產品家族；`Smart系列／Smart／Tizen` 是功能平台。`Smart View／SmartThings／Smart Hub` 各自保留名稱，不能靠 Smart 單字混成產品家族。
+- 固定先辨識範圍，再找證據，再判斷要不要追問。平台共通操作有已核實片段就直接答；明講 Smart Monitor 且答案因機型不同才選 M5～M9。已鎖定 Tizen 型號則沿用該型號，不重問。
+- `回出廠值／恢復原廠` 明確代表整機資料重設；`重開機／重設 Smart Hub／重設畫面／重設音效` 是不同操作。只說「重設」且沒有上下文時，只問一次要重設哪一部分，不要求完整型號；店員選定後接回原題並立即到達答案。
+- 守門紀錄要留下 `action=skip/run` 與原因。完整 QA／RULE、系列平台對照、已核實操作片段與明確來源按鍵均略過；只有指涉不明、複合主張或新增限制衝突才最多一次 Router。
+
+回歸必須包含：裸 `Smart 怎麼重置` 一次範圍澄清、`整台恢復出廠` 接續直接回答、已鎖定 M7 的口語出廠重設零模型，以及停用憑證的退款／熔斷／遮蔽／不再 Web。測試成功必須同時核對答案、來源、呼叫數、費用與狀態，不得只看有文字。
+
 **歷史：2026-09-08 v29.6.306 @1487：** guarded release、local／HEAD／health一致。59項離線整合與全庫載入通過；Chrome17次文字／按鍵事件包含修正前失敗及重測，詳見[逐題實測](test_runner/results/v306_live_20260908.md)。新增約NT$0.073、共用驗證帳2.1352；沒有改模型／Prompt!C3／Rich Menu。完整20條旅程、全自動新PDF索引與外部資料缺口仍不能列完成。
 
-唯一現行設計契約。**候選程式不等於已發布、已驗收。** 實際進度見 DEVELOPMENT_LOG.md／test_runner/results。此前完整文件保存在 [歷史快照](docs/history/v29.6.302/Developer_Manual.md)，其中舊額度、旁路或模型政策不得重新套回正式服務。
+唯一現行設計契約。正式程式已發布；**外部供應商恢復與真人付費路徑仍未驗收，不能混稱完成。** 實際進度見 DEVELOPMENT_LOG.md／test_runner/results。此前完整文件保存在 [歷史快照](docs/history/v29.6.302/Developer_Manual.md)，其中舊額度、旁路或模型政策不得重新套回正式服務。
 
 **歷史發布狀態：2026-09-05 已以唯一 guarded release 上線 @1486，v29.6.305 [17:03]；local／HEAD／formal health相符。** 57項完整來源整合、static／contract及全庫驗證通過；47份索引全部雲端讀回啟用，覆蓋81筆範圍登錄／136型號。Chrome真實供應商複驗G932 PBP、F24護眼、同聊天室切H704自我診斷均有正確手冊路徑，每題1次Lite、零Web／Router。共同驗證費約NT$2.0622（本批約0.4727），未改模型／Prompt／Rich Menu。五個官方來源適用性缺口及全案20旅程、手機LINE驗收不可混稱完成。詳細見[實測與發布紀錄](test_runner/results/v305_manual_library_20260905.md)。
 

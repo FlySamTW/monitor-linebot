@@ -1,8 +1,10 @@
-# AI_CONTEXT — v29.6.311 正式 @1492
+# AI_CONTEXT — v29.6.313 正式 @1494
 
-正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。正式 LOG 已零供應商呼叫遮蔽172／1048筆命中內容。Google Cloud 專案因疑似憑證外洩後遭第三方濫用仍停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已對同憑證熔斷、退款並停止補救重送。本批不換模型、不改 Prompt／Rich Menu／配額，也沒有新增模型費。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
+
+v29.6.313 新增鐵律：`Smart系列／Smart／Tizen` 是功能平台，不是 M5～M9 家族；只有明講 Smart Monitor／Smart螢幕且答案依款式不同才選系列。只有裸「重設」才問一次整台／Smart Hub／畫面音效，明講回出廠值直接用核實操作證據。Gemini `CONSUMER_SUSPENDED`／憑證拒絕是服務失敗，不是查無資料；同金鑰立刻熔斷 Router/PDF/Web/上傳、零元結算、退來源次數，健康檢查成功才解除。編輯者 TestUI 可執行一次健康檢查與既有 LOG 遮蔽；預留不可冒充實際費用。詳見 Developer_Manual 的 v29.6.313 節。
 
 v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 FAIL／0 BLOCKED，見[離線報告](test_runner/results/v307_20_journeys_offline.md)。載入真路由、只模擬外部I/O，不冒稱20條真人供應商通過。M7真PDF244頁與F612官方ZIP下載／SHA／精確entry核對通過，worker零生成呼叫；M7與F612於15:57:57完成正式prepare／activation／PDF與index SHA probe，零provider，見[正式worker實測](test_runner/results/v307_worker_live_20260908.json)。
 

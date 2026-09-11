@@ -1,6 +1,7 @@
 /** All generative requests, including maintenance, pass this single boundary. */
 let lastProviderReceipt_ = null;
 let pendingProviderAttempt_ = null;
+let lastProviderOutcome_ = null;
 const PROVIDER_PRICE_VERIFIED_AT = "2026-09-05";
 const PROVIDER_MONTH_LIMIT_TWD = 90;
 // Read back in Chrome, 2026-09-05: Sam-Paid-Project / Gemini API gross TWD5.58,
@@ -98,6 +99,135 @@ function recordUncertainProviderCost_(amount, modelName) {
   if (!currentRequestAudit.billableModels.includes(modelName)) currentRequestAudit.billableModels.push(modelName);
 }
 
+function redactProviderSecrets_(value) {
+  return String(value === null || value === undefined ? "" : value)
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_API_KEY]")
+    .replace(/([?&](?:key|api_key)=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/(Authorization\s*[:=]\s*Bearer\s+)[^\s,"']+/gi, "$1[REDACTED]")
+    .replace(/((?:GEMINI_API_KEY|GOOGLE_API_KEY|apiKey|api_key)\s*[=:]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]");
+}
+
+function providerCredentialFingerprint_(apiKey) {
+  const key = String(apiKey || "");
+  if (!key) return "missing";
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    key,
+    Utilities.Charset.UTF_8,
+  );
+  return digest
+    .slice(0, 8)
+    .map(function (value) {
+      return ((Number(value) + 256) % 256).toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+function providerCredentialStateKey_(apiKey) {
+  return `PROVIDER_CREDENTIAL_STATE_${providerCredentialFingerprint_(apiKey)}`;
+}
+
+function readProviderCredentialState_(apiKey) {
+  const raw = PropertiesService.getScriptProperties().getProperty(
+    providerCredentialStateKey_(apiKey),
+  );
+  if (!raw) return null;
+  try {
+    const state = JSON.parse(raw);
+    return state && state.suspended === true ? state : null;
+  } catch (_) {
+    return { suspended: true, reason: "invalid_state" };
+  }
+}
+
+function suspendProviderCredential_(apiKey, outcome) {
+  const safeOutcome = outcome || {};
+  const state = {
+    suspended: true,
+    fingerprint: providerCredentialFingerprint_(apiKey),
+    reason: String(safeOutcome.reason || "credential_denied").slice(0, 80),
+    httpStatus: Number(safeOutcome.httpStatus || 0),
+    detectedAt: new Date().toISOString(),
+  };
+  PropertiesService.getScriptProperties().setProperty(
+    providerCredentialStateKey_(apiKey),
+    JSON.stringify(state),
+  );
+  return state;
+}
+
+function clearProviderCredentialSuspensionAfterHealthCheck_(apiKey) {
+  PropertiesService.getScriptProperties().deleteProperty(
+    providerCredentialStateKey_(apiKey),
+  );
+}
+
+function assertProviderCredentialUsable_(apiKey) {
+  const state = readProviderCredentialState_(apiKey);
+  if (!state) return true;
+  lastProviderOutcome_ = {
+    kind: "credential_denied",
+    reason: state.reason || "credential_suspended",
+    httpStatus: Number(state.httpStatus || 0),
+    circuitOpen: true,
+    costTwd: 0,
+  };
+  if (currentRequestAudit) {
+    currentRequestAudit.providerOutcome = "credential_denied";
+    currentRequestAudit.providerFailureCode = String(state.reason || "credential_suspended");
+  }
+  throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+}
+
+function classifyProviderHttpOutcome_(httpStatus, responseBody, requestPayload) {
+  const status = Number(httpStatus || 0);
+  const body = String(responseBody || "");
+  const payload = String(requestPayload || "");
+  let reason = "";
+  try {
+    const parsed = JSON.parse(body || "{}");
+    const details = parsed && parsed.error && Array.isArray(parsed.error.details)
+      ? parsed.error.details
+      : [];
+    const errorInfo = details.find(function (item) {
+      return item && (item.reason || item["@type"]);
+    });
+    reason = String((errorInfo && errorInfo.reason) || (parsed.error && parsed.error.status) || "");
+  } catch (_) {}
+  const credentialPattern = /CONSUMER_SUSPENDED|API_KEY_INVALID|API\s*KEY[^\n]{0,80}(?:SUSPENDED|BLOCKED|LEAKED|INVALID)|REPORTED\s+AS\s+LEAKED|CREDENTIAL[^\n]{0,40}(?:REVOKED|DISABLED)/i;
+  if (status >= 200 && status < 300) return { kind: "success", reason: "", httpStatus: status };
+  if (status === 401 || credentialPattern.test(`${reason}\n${body}`)) {
+    return { kind: "credential_denied", reason: reason || "authentication", httpStatus: status };
+  }
+  if (status === 403) {
+    const hasFileAttachment = /"(?:file_data|fileData)"/.test(payload);
+    return {
+      kind: hasFileAttachment ? "resource_denied" : "permission_denied",
+      reason: reason || "permission_denied",
+      httpStatus: status,
+    };
+  }
+  if (status === 404) return { kind: "resource_not_found", reason: reason || "not_found", httpStatus: status };
+  if (status === 400) return { kind: "client_rejected", reason: reason || "invalid_argument", httpStatus: status };
+  if (status === 408 || status === 429 || status >= 500) {
+    return { kind: "transient", reason: reason || `http_${status}`, httpStatus: status };
+  }
+  return { kind: "unknown_failure", reason: reason || `http_${status}`, httpStatus: status };
+}
+
+function markProviderOutcome_(outcome) {
+  lastProviderOutcome_ = Object.assign({ costTwd: 0 }, outcome || {});
+  if (!currentRequestAudit) return;
+  currentRequestAudit.providerOutcome = String(lastProviderOutcome_.kind || "");
+  currentRequestAudit.providerFailureCode = String(lastProviderOutcome_.reason || "");
+}
+
+function refundProviderSourceGrant_(grant, reason) {
+  if (grant && grant.reserved && typeof refundAdvancedSourceUsage_ === "function") {
+    refundAdvancedSourceUsage_(grant, reason);
+  }
+}
+
 function providerFetch_(url, rawOptions) {
   const target = String(url || "");
   if (/openrouter\.ai\/api\/v1\/chat\/completions/i.test(target)) {
@@ -112,6 +242,21 @@ function providerFetch_(url, rawOptions) {
   delete options.budgetInputTokens;
   const model = match[1];
   const modelName = `models/${model}`;
+  const apiKeyMatch = target.match(/[?&]key=([^&]+)/i);
+  const apiKey = apiKeyMatch ? decodeURIComponent(apiKeyMatch[1]) : "";
+  try {
+    assertProviderCredentialUsable_(apiKey);
+  } catch (error) {
+    if (pendingProviderAttempt_ && currentRequestAudit) {
+      currentRequestAudit.attemptedCalls = Math.max(0, currentRequestAudit.attemptedCalls - 1);
+      const pendingField = pendingProviderAttempt_.stage + "Calls";
+      if (Object.prototype.hasOwnProperty.call(currentRequestAudit, pendingField)) {
+        currentRequestAudit[pendingField] = Math.max(0, currentRequestAudit[pendingField] - 1);
+      }
+    }
+    pendingProviderAttempt_ = null;
+    throw error;
+  }
   const price = providerPrice_(model);
   const payload = JSON.parse(options.payload || "{}");
   const generation = payload.generationConfig || {};
@@ -127,7 +272,22 @@ function providerFetch_(url, rawOptions) {
       method: "post", contentType: "application/json", muteHttpExceptions: true,
       payload: JSON.stringify({generateContentRequest: Object.assign({model: modelName}, payload)}),
     });
-    if (response.getResponseCode() !== 200) throw new Error("PROVIDER_INPUT_ESTIMATE_UNAVAILABLE");
+    if (response.getResponseCode() !== 200) {
+      const estimateOutcome = classifyProviderHttpOutcome_(
+        response.getResponseCode(),
+        response.getContentText(),
+        options.payload,
+      );
+      markProviderOutcome_(estimateOutcome);
+      if (estimateOutcome.kind === "credential_denied") {
+        suspendProviderCredential_(apiKey, estimateOutcome);
+        throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+      }
+      if (estimateOutcome.kind === "permission_denied") {
+        throw new Error("PROVIDER_PERMISSION_DENIED");
+      }
+      throw new Error("PROVIDER_INPUT_ESTIMATE_UNAVAILABLE");
+    }
     knownInput = Number(JSON.parse(response.getContentText()).totalTokens || 0);
     if (!knownInput) throw new Error("PROVIDER_INPUT_ESTIMATE_UNAVAILABLE");
   }
@@ -157,8 +317,33 @@ function providerFetch_(url, rawOptions) {
     pendingProviderAttempt_ = null;
     reservation.sent = true;
     const response = UrlFetchApp.fetch(url, options);
+    const responseText = response.getContentText() || "";
+    const httpOutcome = classifyProviderHttpOutcome_(
+      response.getResponseCode(),
+      responseText,
+      options.payload,
+    );
+    if (httpOutcome.kind !== "success" &&
+        ["credential_denied", "permission_denied", "resource_denied", "resource_not_found", "client_rejected"].indexOf(httpOutcome.kind) >= 0) {
+      markProviderOutcome_(httpOutcome);
+      refundProviderSourceGrant_(grant, httpOutcome.kind);
+      changeProviderBudget_(reservation, 0, false);
+      settled = true;
+      costRecorded = true;
+      writeLog(
+        `[Provider Outcome] kind=${httpOutcome.kind} http=${httpOutcome.httpStatus} reason=${redactProviderSecrets_(httpOutcome.reason) || "none"} costTwd=0`,
+      );
+      if (httpOutcome.kind === "credential_denied") {
+        suspendProviderCredential_(apiKey, httpOutcome);
+        throw new Error("PROVIDER_CREDENTIAL_SUSPENDED");
+      }
+      if (httpOutcome.kind === "permission_denied") {
+        throw new Error("PROVIDER_PERMISSION_DENIED");
+      }
+      return response;
+    }
     let body = {};
-    try { body = JSON.parse(response.getContentText() || "{}"); } catch (_) {}
+    try { body = JSON.parse(responseText || "{}"); } catch (_) {}
     const rawUsage = body.usageMetadata;
     const usage = rawUsage && Number.isFinite(rawUsage.promptTokenCount) && rawUsage.promptTokenCount >= 0 &&
       ["candidatesTokenCount", "thoughtsTokenCount", "cachedContentTokenCount"].every(function (field) {
@@ -185,8 +370,10 @@ function providerFetch_(url, rawOptions) {
       }
       lastProviderReceipt_ = {signature: providerUsageSignature_(usage, modelName), audited: false};
       addGenerationUsageToAudit_(usage, cost, modelName);
+      markProviderOutcome_({kind: "success", reason: "", httpStatus: response.getResponseCode(), costTwd: cost});
     } else {
       recordUncertainProviderCost_(cost, modelName);
+      markProviderOutcome_({kind: httpOutcome.kind, reason: httpOutcome.reason, httpStatus: response.getResponseCode(), costTwd: cost});
     }
     costRecorded = true;
     changeProviderBudget_(reservation, cost, !usage);

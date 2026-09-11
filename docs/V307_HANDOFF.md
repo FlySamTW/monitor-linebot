@@ -1,8 +1,15 @@
 # v307–v311 最短接手指引
 
-正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
+正式 v29.6.313 @1494（BUILD10:38）：formal health、static／contract／production-contract通過，版本容量38/200；20條離線旅程20 PASS／49事件。Google Cloud 專案仍因疑似憑證外洩後遭第三方濫用而停權，故真人 Gemini／PDF／Web 尚未恢復驗收；程式已熔斷同憑證、退款並停止後續重送。正式 LOG 已遮蔽172／1048筆命中內容，零供應商呼叫。
 
 本文件記錄這批實作決策；正式版本／雲端驗收以 `V307_LIVE_ACCEPTANCE.md` 最後讀回為準。不要把候選測試當正式部署。唯一現行契約仍是 `Developer_Manual.md`。
+
+## v29.6.313 正式交接
+
+- Smart/Tizen 改為平台身分；Smart Monitor 才是 M5～M9 家族。平台共通重設有核實資料即答；裸「重設」只問一次範圍，不再先選機型。
+- 供應商 403 停用憑證改列 `credential_denied`：零實際費用、退來源次數、同憑證熔斷 Router/PDF/Web/上傳；不再自動 Web 重送，也不能顯示「手冊查無答案」。
+- 維護動作 `provider_health` 成功才解除熔斷；`redact_logs` 僅遮蔽近 1,200 列敏感字串，不刪 LOG。任何建立／替換 API key 都屬安全敏感動作，必須在實際操作前取得明確確認。
+- 離線回歸須見 `Smart 怎麼重置 → 一次範圍選擇 → 整台恢復出廠 → 第171頁答案`、已鎖定 S32FM703UC 口語追問直答，以及 403 一次送出後零後續 fetch。
 
 ## 不可變原則
 

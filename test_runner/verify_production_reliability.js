@@ -249,6 +249,84 @@ test("月90元含在途保留、耗盡0生成且不扣來源",()=>{
 });
 test("未核准模型零請求",()=>assert.throws(()=>p.providerFetch_(url.replace("2.5-flash-lite","3.8-flash"),opts),/MODEL_NOT_APPROVED/));
 
+test("403停用憑證歸零退款、開路後不重送且LOG遮蔽",()=>{
+  // Split the fake key prefix so repository scanners do not mistake the
+  // regression fixture for a committed Google credential.
+  const fakeKey="AI"+"zaFixtureCredential12345678901234567890";
+  const denied=createProductionHarness({quiet:true,properties:{GEMINI_API_KEY:fakeKey}});
+  const dc=denied.context;
+  dc.initializeProviderBudget_(0,dc.providerMonthKey_());
+  dc.resetRequestAudit_();
+  denied.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",details:[{reason:"CONSUMER_SUSPENDED"}],message:`key ${fakeKey} disabled`}},403));
+  const deniedUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${fakeKey}`;
+  const grant={contextId:"DENIED",source:"manual"};
+  assert.throws(()=>dc.providerFetch_(deniedUrl,{...opts,sourceGrant:grant}),/CREDENTIAL_SUSPENDED/);
+  assert.strictEqual(dc.readSourceQuota_("DENIED").manual,0);
+  assert.strictEqual(grant.refunded,true);
+  assert.strictEqual(denied.fetches.length,1);
+  const audit=denied.run("currentRequestAudit");
+  assert.strictEqual(audit.estimatedCostTwd,0);
+  assert.strictEqual(audit.uncertainCostTwd||0,0);
+  assert.strictEqual(audit.providerOutcome,"credential_denied");
+  assert(dc.buildReplyCostAuditText_().includes("NT$0.0000"));
+  const before=denied.fetches.length;
+  assert.throws(()=>dc.providerFetch_(deniedUrl,opts),/CREDENTIAL_SUSPENDED/);
+  assert.strictEqual(denied.fetches.length,before);
+  dc.writeLog(`raw=${fakeKey}&key=${fakeKey}`);
+  assert(!denied.logs.join("\n").includes("AIzaFixtureCredential"),denied.logs.join("\n"));
+  const blob=dc.Utilities.newBlob("pdf","application/pdf","fixture.pdf");
+  assert.throws(()=>dc.uploadFileToGemini(fakeKey,blob,3,"application/pdf"),/CREDENTIAL_SUSPENDED/);
+  assert.strictEqual(denied.fetches.length,before);
+
+  const preflightKey="AI"+"zaFixturePreflight12345678901234567890";
+  const preflight=createProductionHarness({quiet:true,properties:{GEMINI_API_KEY:preflightKey}});
+  const fc=preflight.context;
+  fc.initializeProviderBudget_(0,fc.providerMonthKey_());
+  fc.resetRequestAudit_();
+  preflight.setFetch(()=>response({error:{code:403,status:"PERMISSION_DENIED",details:[{reason:"CONSUMER_SUSPENDED"}]}},403));
+  const fileUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${preflightKey}`;
+  const filePayload={...opts,payload:JSON.stringify({contents:[{parts:[{file_data:{file_uri:"https://files.example/manual",mime_type:"application/pdf"}},{text:"test"}]}],generationConfig:{maxOutputTokens:64}})};
+  assert.throws(()=>fc.providerFetch_(fileUrl,filePayload),/CREDENTIAL_SUSPENDED/);
+  assert.strictEqual(preflight.fetches.length,1,"countTokens 403 後不得再送 generateContent");
+  assert.strictEqual(preflight.run("currentRequestAudit.estimatedCostTwd"),0);
+});
+
+test("Smart/Tizen平台、重設範圍與已確認型號共用證據",()=>{
+  const smart=createProductionHarness({quiet:true});
+  const sc=smart.context;
+  smart.run("IS_TEST_MODE=true");
+  assert.deepStrictEqual(Array.from(sc.extractNamedMonitorFamilyTokens_("Smart系列怎麼重設")),[]);
+  assert.deepStrictEqual(Array.from(sc.extractMonitorPlatformTokens_("Smart系列怎麼重設")),["SMART_TIZEN"]);
+  assert.deepStrictEqual(Array.from(sc.extractNamedMonitorFamilyTokens_("Smart Monitor怎麼重設")),["SMART_MONITOR"]);
+  assert.deepStrictEqual(Array.from(sc.extractNamedMonitorFamilyTokens_("Smart View怎麼用")),[]);
+  assert.deepStrictEqual(Array.from(sc.extractMonitorPlatformTokens_("SmartThings怎麼連")),[]);
+  assert(sc.shouldClarifyPlatformResetScope_("Smart怎麼重置",sc.resolveTurnProductIdentity_("Smart怎麼重置","")));
+  assert(!sc.shouldClarifyPlatformResetScope_("Smart系列如何恢復出廠設定",sc.resolveTurnProductIdentity_("Smart系列如何恢復出廠設定","")));
+  assert(sc.buildPlatformScopedManualOperationReply_("Smart系列如何恢復出廠設定").includes("一般與隱私權"));
+  assert.strictEqual(sc.findVerifiedManualChunk_("那要怎麼重設回出廠值","S32FM703UC").id,"manual-s32fm70x80x-factory-reset");
+  sc.rememberSourceProductModel_("SMART_RESET","S32FM703UC","fixture");
+  sc.handleMessage({type:"message",replyToken:"fixture",source:{type:"user",userId:"SMART_RESET"},message:{type:"text",text:"那要怎麼重設回出廠值"}});
+  const reply=smart.logs.filter(x=>x.includes("[Reply Audit]")).pop()||"";
+  assert(/一般與隱私權/.test(reply),reply);
+  assert(/第\s*171\s*頁/.test(reply),reply);
+  assert.strictEqual(smart.fetches.length,0);
+
+  const scope=createProductionHarness({quiet:true});
+  const pc=scope.context;
+  scope.run("IS_TEST_MODE=true");
+  pc.handleMessage({type:"message",replyToken:"scope-1",source:{type:"user",userId:"SMART_SCOPE"},message:{type:"text",text:"Smart怎麼重置"}});
+  const clarification=scope.logs.filter(x=>x.includes("[Reply Audit]")).pop()||"";
+  assert(/整台恢復出廠|Smart Hub|畫面/.test(clarification),clarification);
+  assert(!/M5.*M7.*M8.*M9/.test(clarification),clarification);
+  assert.strictEqual(scope.fetches.length,0);
+  pc.handleMessage({type:"message",replyToken:"scope-2",source:{type:"user",userId:"SMART_SCOPE"},message:{type:"text",text:"整台恢復出廠"}});
+  const resolved=scope.logs.filter(x=>x.includes("[Reply Audit]")).pop()||"";
+  assert(/一般與隱私權/.test(resolved),resolved);
+  assert(/第\s*171\s*頁/.test(resolved),resolved);
+  assert(!/請選擇型號|M5.*M7.*M8.*M9/.test(resolved),resolved);
+  assert.strictEqual(scope.fetches.length,0);
+});
+
 test("超過一元的實際API費用不可被商品價格遮罩改寫",()=>{
   p.resetRequestAudit_();
   g.run('currentRequestAudit.estimatedCostTwd=1.2295; currentRequestAudit.uncertainCostTwd=1.189; currentRequestAudit.billableModels=["models/gemini-2.5-flash"]');

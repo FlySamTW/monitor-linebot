@@ -113,6 +113,7 @@ const aliasVmSource = [
   extractFunction(linebot, "normalizeModelForDisplay"),
   extractFunction(linebot, "dedupDisplayModels"),
   extractFunction(linebot, "extractNamedMonitorFamilyTokens_"),
+  extractFunction(linebot, "extractMonitorPlatformTokens_"),
   extractFunction(linebot, "extractPartialModelPrefixTokens_"),
   extractFunction(linebot, "getPartialModelCandidatesFromClassRules_"),
   extractFunction(linebot, "getPartialModelSelectionModelsFromQuery_"),
@@ -162,6 +163,8 @@ const aliasVmSource = [
   `globalThis.__ellipticalFollowUp = isEllipticalEvidenceFollowUp_("要怎麼切？ (型號: S32HG806ES)");`,
   `globalThis.__standaloneFullModel = isEllipticalEvidenceFollowUp_("S32HG806ES 要怎麼切？");`,
   `globalThis.__smartFamily = extractNamedMonitorFamilyTokens_("Smart 如何開啟零售模式");`,
+  `globalThis.__smartPlatform = extractMonitorPlatformTokens_("Smart系列如何恢復出廠設定");`,
+  `globalThis.__smartMonitorFamily = extractNamedMonitorFamilyTokens_("Smart Monitor 如何重設");`,
   `globalThis.__smartDoesNotStealPronoun = extractNamedMonitorFamilyTokens_("這台有 Smart 功能嗎？");`,
   `globalThis.__smartOverridesOldG9 = resolveTurnProductIdentity_("Smart 如何開啟零售模式", "S49DG932SC");`,
   `globalThis.__m7KeepsCompatibleModel = resolveTurnProductIdentity_("M7 怎麼重設", "S32FM703UC");`,
@@ -209,6 +212,9 @@ const aliasVmContext = {
     },
   },
   writeLog() {},
+  getManualInterfaceVocabularyProfile_(model) {
+    return { usesTizen: /S32FM703UC/i.test(String(model || "")) };
+  },
 };
 vm.runInNewContext(aliasVmSource, aliasVmContext);
 assert(
@@ -306,15 +312,25 @@ assert.strictEqual(
 );
 assert.deepStrictEqual(
   Array.from(aliasVmContext.__smartFamily),
+  [],
+  "單說 Smart 是功能平台，不得硬判成 M5/M7/M8/M9 家族",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__smartPlatform),
+  ["SMART_TIZEN"],
+  "Smart 系列必須辨識為內建 Smart/Tizen 功能平台",
+);
+assert.deepStrictEqual(
+  Array.from(aliasVmContext.__smartMonitorFamily),
   ["SMART_MONITOR"],
-  "句首 Smart 必須辨識成 Smart Monitor 家族",
+  "明說 Smart Monitor 才辨識為產品家族",
 );
 assert.deepStrictEqual(
   Array.from(aliasVmContext.__smartDoesNotStealPronoun),
   [],
   "『這台有 Smart 功能嗎』是在問功能，不得誤判成切換產品家族",
 );
-assert.strictEqual(aliasVmContext.__smartOverridesOldG9.kind, "family");
+assert.strictEqual(aliasVmContext.__smartOverridesOldG9.kind, "platform");
 assert.strictEqual(
   aliasVmContext.__smartOverridesOldG9.model,
   "",

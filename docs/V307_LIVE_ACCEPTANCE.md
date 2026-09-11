@@ -1,5 +1,13 @@
 # v307–v311 Chrome TestUI 實測（本批結案）
 
+## 2026-09-11 v29.6.313 正式補充
+
+- 正式部署 @1494，health 讀回 `v29.6.313 [2026-09-11 10:38]`；static／contract／production-contract及20條離線旅程20 PASS／49事件。
+- 受保護 TestUI 維護入口實際執行 `redact_logs`：掃描1048列、遮蔽172筆命中內容、providerCalls=0，未刪除稽核列。
+- `provider_health` 實際回 `PROVIDER_CREDENTIAL_SUSPENDED`。Cloud申訴頁明載專案因疑似憑證外洩後遭第三方濫用而停權；這不是查無手冊或欠費。程式已熔斷同憑證並退款，不再連續送PDF／Web。
+- Smart／Tizen全handler與403路徑已用正式程式、模擬外部I/O做61項整合驗證；裸Smart重設只澄清一次，已鎖定M7的出廠重設直接取核實第171頁片段，均零供應商呼叫。
+- Chrome真人供應商路徑因外部專案停權不能完成；申訴尚未送出。不得把離線handler通過寫成 Gemini／手機LINE已驗收。
+
 最後另以Chrome直接讀Google Sheets `LOG`（gid174529670）最新60列，核對16:32:34的保存答案與Request Audit：H704第41頁、router1/PDF1/Web0、coverage=supported、約NT$0.0318，與TestUI一致；不是只看前端文字。結構化讀回見 `test_runner/results/v311_final_live_readback_20260908.json`。
 
 正式 v29.6.311 @1492（BUILD16:35／EvidenceV26-OperationPermission）：health／HEAD／readiness、static／contract／production-contract通過，版本容量36/200。worker真E2E及排程成功，82/82 active、137 models、49 indexes、missing=[]／pending=[]。20條離線旅程最終重跑20 PASS／49事件，5條保留題未改；Chrome代表性旅程另列，不宣告20條全live或手機LINE已測。J15修後通過；F612英文已實讀、M9 HTML入口已補，D392兩款與M703仍缺台灣適用範圍證據，屬外部資料界線而非程式TODO。最終共享驗收累計NT$3.54995296（約3.55，低於5元上限；含前批起點2.13517696，本批新增約1.414776），reserved=0；不再增加付費呼叫。
