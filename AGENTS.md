@@ -1,6 +1,6 @@
 # Samsung LINE Bot 開發規範
 
-正式 v29.6.319 @1501 已用新專案 standby 接替；啟用守門要求 3.1 Flash-Lite 與 3.7 Flash 皆須極小實呼叫成功才可切換。固定模型為 3.1 Flash-Lite（Fast／頁級 RAG／Polish）與 3.7 Flash（Router／整本 PDF／Web），不使用 latest。專用專案 `shining-sphinx-508304-f9` 已連結獨立運作中帳單帳戶、預付 NT$170 且專案月上限 NT$90；primary／standby 不自動 failover，避免同題雙重費用與兩把 key 同時受牽連。
+正式候選已完成 JEV Router 遷移；最終發布以當次 health 為準。生成模型固定為 3.1 Flash-Lite（Fast／頁級 RAG／Polish）與 3.7 Flash（整本 PDF／Web）；條件式 Semantic Router 固定 `typesafe/jev-1.13`，只走 OpenRouter Decisions API，不使用 latest、不回答產品事實。Gemini 專用專案 `shining-sphinx-508304-f9` 維持既有帳單與月停止線；Gemini primary／standby 不自動 failover。OpenRouter key 只存在 ScriptProperties，禁止進 repo／URL／LOG。
 
 一律台灣繁體中文，客觀、不得附和式開場。現行唯一契約：[Developer_Manual.md](Developer_Manual.md)；快速索引：[AI_CONTEXT.md](AI_CONTEXT.md)。[完整歷史快照](docs/history/v29.6.302/AGENTS.md) 的舊額度、技術限制及旁路不得套回正式系統。
 

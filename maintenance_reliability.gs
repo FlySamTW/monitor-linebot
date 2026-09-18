@@ -38,6 +38,21 @@ function configureGeminiStandbyFromTestUi(apiKey, token) {
   return readGeminiKeySlotStatus_();
 }
 
+function configureOpenRouterKeyFromTestUi(apiKey, token) {
+  assertEditorOnlyTestUiMaintenance_(token);
+  const key = String(apiKey || "").trim();
+  if (!/^sk-or-v1-[A-Za-z0-9_-]{20,}$/.test(key)) {
+    throw new Error("OPENROUTER_KEY_FORMAT_INVALID");
+  }
+  PropertiesService.getScriptProperties().setProperty("OPENROUTER_API_KEY", key);
+  return {
+    configured: true,
+    model: JEV_MODEL_ROUTER,
+    fingerprint: providerCredentialFingerprint_(key),
+    secretReturned: false,
+  };
+}
+
 function redactExistingProviderSecretsFromLog_() {
   const logSheet = ss && ss.getSheetByName(SHEET_NAMES.LOG);
   if (!logSheet) throw new Error("LOG_SHEET_NOT_FOUND");
@@ -117,7 +132,7 @@ function probeGeminiModelsForSlot_(slot) {
     .map(function (model) { return String(model.name || ""); })
     .filter(Boolean)
     .slice(0, 100);
-  const requiredModels = [GEMINI_MODEL_FAST, GEMINI_MODEL_WEB, GEMINI_MODEL_ROUTER];
+  const requiredModels = [GEMINI_MODEL_FAST, GEMINI_MODEL_WEB];
   const required = {};
   requiredModels.forEach(function (modelName) {
     required[modelName] = available.indexOf(modelName) >= 0;
@@ -144,11 +159,12 @@ function probeProviderCredentialSlot_(slot) {
   props.deleteProperty(stateKey);
   try {
     resetRequestAudit_();
+    // JEV Router uses an independent OpenRouter credential and is verified
+    // through the routed TestUI probe, not by Gemini standby activation.
     const requiredModels = Array.from(new Set([
       GEMINI_MODEL_FAST,
       GEMINI_MODEL_THINK,
       GEMINI_MODEL_WEB,
-      GEMINI_MODEL_ROUTER,
     ]));
     const verifiedModels = [];
     requiredModels.forEach(function (modelName) {

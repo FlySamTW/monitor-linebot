@@ -71,7 +71,7 @@ const context = {
   SEMANTIC_ROUTER_POLICY_VERSION: "GatePolicyV2",
   SEMANTIC_ROUTER_MODE_DEFAULT: "conditional",
   SEMANTIC_ROUTER_MAX_CLAIMS: 5,
-  GEMINI_MODEL_ROUTER: "models/gemini-3.7-flash",
+  JEV_MODEL_ROUTER: "typesafe/jev-1.13",
   stripInternalRoutingHints_: (value) => String(value || ""),
   normalizeModelForDisplay: (value) =>
     String(value || "").toUpperCase().replace(/^LS/, "S"),
@@ -621,34 +621,64 @@ runResult = context.runConditionalRouteAnalysis_(
 assert.strictEqual(runResult.attempted, false);
 
 const runnerSource = `${extractFunction(linebot, "runConditionalRouteAnalysis_")}\n${extractFunction(linebot, "callSemanticRouter_")}`;
-assert(
-  /GEMINI_MODEL_ROUTER/.test(runnerSource) &&
-    /models\/gemini-3\.7-flash/.test(linebot) &&
-    /PRICE_ROUTER_INPUT\s*=[^\n]*2027-01-01[^\n]*0\.75\s*:\s*1\.5/.test(linebot) &&
-    /PRICE_ROUTER_OUTPUT\s*=[^\n]*2027-01-01[^\n]*3\.75\s*:\s*7\.5/.test(linebot),
-  "Router 必須使用獨立 Gemini 3.7 Flash 模型常數，不得偷換 PDF／Web 模型",
+const providerGateway = fs.readFileSync(
+  path.join(root, "provider_cost_gateway.gs"),
+  "utf8",
 );
 assert(
-  /calculateGeminiUsageCost_\(\s*usage,\s*PRICE_ROUTER_INPUT,\s*PRICE_ROUTER_OUTPUT/s.test(
-    runnerSource,
-  ) && /routerCostTwd/.test(linebot),
-  "Router 必須使用自己的官方費率並獨立留下 routerCostTwd",
+  /const\s+JEV_MODEL_ROUTER\s*=\s*["\']typesafe\/jev-1\.13["\']/.test(linebot) &&
+    /const\s+JEV_DECISIONS_ENDPOINT\s*=\s*["\']https:\/\/openrouter\.ai\/api\/alpha\/decisions["\']/.test(linebot) &&
+    /PRICE_ROUTER_INPUT\s*=\s*0\.042/.test(linebot) &&
+    /PRICE_ROUTER_OUTPUT\s*=\s*0/.test(linebot) &&
+    !/const\s+GEMINI_MODEL_ROUTER\s*=/.test(linebot),
+  "正式 Semantic Router 必須固定使用 JEV 1.13 Decisions API，且不得保留 Gemini Router 模型常數",
 );
 assert(
-  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["']GatePolicyV3["']/.test(
+  /OPENROUTER_API_KEY/.test(runnerSource) &&
+    /providerFetch_\(JEV_DECISIONS_ENDPOINT/.test(runnerSource) &&
+    /openRouterApiKey:\s*apiKey/.test(runnerSource) &&
+    /routerCostTwd/.test(runnerSource),
+  "JEV Router 必須從 ScriptProperties 取秘密並走共用 provider/cost gateway 留下 routerCostTwd",
+);
+assert(
+  /function providerOpenRouterDecisionFetch_/.test(providerGateway) &&
+    /changeProviderBudget_\(reservation, null, false\)/.test(providerGateway) &&
+    /Authorization/.test(providerGateway) &&
+    /payload\.model[\s\S]{0,120}JEV_MODEL_ROUTER/.test(providerGateway) &&
+    /REDACTED_OPENROUTER_KEY/.test(providerGateway),
+  "JEV Decisions API 必須經月費預留／結算、Header 認證、模型白名單與 secret redaction",
+);
+assert(
+  !/JEV_BOOTSTRAP_SHA256|bootstrap_jev_key|isJevBootstrapAuthorized/.test(
+    linebot,
+  ),
+  "正式版不得保留一次性 JEV bootstrap 公開授權入口",
+);
+assert(
+  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["\']GatePolicyV4-JEV["\']/.test(
     linebot,
   ) &&
     /policyVersion:\s*SEMANTIC_ROUTER_POLICY_VERSION/.test(
       extractFunction(linebot, "buildSemanticRouterCacheKey_"),
     ) &&
-    /const\s+SEMANTIC_ROUTER_COST_ALERT_TWD\s*=\s*0\.1/.test(linebot) &&
-    /cost\.costTWD[\s\S]*SEMANTIC_ROUTER_COST_ALERT_TWD/.test(runnerSource),
-  "Router 語意政策變更必須汰換舊快取，並以實際 usage 超過 NT$0.10 記錄警示",
+    /const\s+SEMANTIC_ROUTER_COST_ALERT_TWD\s*=\s*0\.02/.test(linebot) &&
+    /SEMANTIC_ROUTER_COST_ALERT_TWD/.test(runnerSource),
+  "JEV Router 語意政策變更必須汰換舊快取，並保留實際成本警示",
 );
 assert(
-  /thinkingLevel\s*:\s*["']low["']/.test(runnerSource) &&
-    !/thinkingBudget\s*[:=]/.test(runnerSource),
-  "3.7 Router 必須使用 low thinkingLevel，不得沿用 2.5 thinkingBudget",
+  !/thinkingLevel|thinkingBudget|responseSchema|systemInstruction/.test(
+    extractFunction(linebot, "callSemanticRouter_"),
+  ),
+  "JEV Router 不得沿用 Gemini thinking／Structured Output 介面",
+);
+assert(
+  /possibleFollowUp=true/.test(
+    extractFunction(linebot, "getJevSemanticRouterQuestions_"),
+  ) &&
+    /input\.possibleFollowUp[\s\S]{0,160}input\.previousTopic[\s\S]{0,160}topicRelation === "new"[\s\S]{0,120}topicRelation = "followup"/.test(
+      extractFunction(linebot, "buildRouteAnalysisFromJev_"),
+    ),
+  "應用程式已確認的省略追問不得被 JEV 誤判 new 而丟失上一題主詞",
 );
 assert(
   !/google_search|googleSearch|grounding|FileSearch|file_data/i.test(runnerSource),
@@ -791,6 +821,12 @@ assert(
     !/refundDailyQuestionUsage_\(/.test(semanticHandoffBlock),
   "handle 只能把一般題 charge 交給 advanced executor；不得在型號解析與免費本機證據完成前直接退款",
 );
+assert(
+  /規劃器未達接管門檻[\s\S]{0,900}executeAutomaticManualFallback_\([\s\S]{0,500}analysis:\s*semanticRouteResult\.valid\s*&&\s*semanticRouteResult\.analysis/s.test(
+    handleSource,
+  ),
+  "有效但中等信心的 JEV 計畫只能降級來源決策，不能丟掉已補完整的追問 claim",
+);
 const automaticWebSource = extractFunction(linebot, "executeAutomaticWebFallback_");
 assert(
   /executeAdvancedSourceQuery_\(/.test(automaticWebSource) &&
@@ -901,12 +937,19 @@ assert.strictEqual(
   "本輪明講新系列時不得偷借上一型號，應由既有系列選型守門處理",
 );
 const routeSchemaSource = extractFunction(linebot, "getRouteAnalysisSchema_");
+const jevQuestionSource = extractFunction(
+  linebot,
+  "getJevSemanticRouterQuestions_",
+);
 assert(
   !/additionalProperties/.test(routeSchemaSource) &&
-    /responseSchema: getRouteAnalysisSchema_\(\)/.test(
-      extractFunction(linebot, "callSemanticRouter_"),
-    ),
-  "Router 必須使用 Gemini responseSchema 支援的子集；額外欄位改由應用端 validator 拒絕",
+    /topic_relation/.test(jevQuestionSource) &&
+    /multi_claim/.test(jevQuestionSource) &&
+    /needs_manual/.test(jevQuestionSource) &&
+    /needs_web/.test(jevQuestionSource) &&
+    /dominant_intent/.test(jevQuestionSource) &&
+    /needs_clarification/.test(jevQuestionSource),
+  "RouteAnalysisV1 保留應用端驗證契約；JEV 只能以 typed decisions 提供語意分類",
 );
 assert(
   (linebot.match(/deferLocalEvidenceForSemanticFollowUp/g) || []).length >= 8 &&

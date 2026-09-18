@@ -965,8 +965,22 @@ assert(
 );
 assert(
     llmText.includes("sourceGrant: advancedGrant") &&
-    fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("reserveAdvancedSourceUsage_(grant)") <
-      fs.readFileSync(path.join(root, "provider_cost_gateway.gs"), "utf8").indexOf("const response = UrlFetchApp.fetch(target, options)"),
+    (() => {
+      const gatewaySource = fs.readFileSync(
+        path.join(root, "provider_cost_gateway.gs"),
+        "utf8",
+      );
+      const generationGateway = extractFunction(
+        gatewaySource,
+        "providerFetch_",
+      );
+      return (
+        generationGateway.indexOf("reserveAdvancedSourceUsage_(grant)") <
+        generationGateway.indexOf(
+          "const response = UrlFetchApp.fetch(target, options)",
+        )
+      );
+    })(),
   "配額必須在 generateContent 前原子保留",
 );
 assert(

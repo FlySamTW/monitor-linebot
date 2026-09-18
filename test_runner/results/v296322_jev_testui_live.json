@@ -1,0 +1,60 @@
+{
+  "at": "2026-09-18T09:29:55.624Z",
+  "target": "formal @1504 v29.6.322 bootstrap candidate",
+  "headless": true,
+  "routerMode": "conditional",
+  "checks": {
+    "qaAnswer": true,
+    "qaNoRouter": true,
+    "manualAnswer": false,
+    "manualNoRouter": true,
+    "followupJev": true,
+    "followupSafe": false,
+    "followupNoWeb": true
+  },
+  "allPass": false,
+  "results": [
+    {
+      "q": "S32FM703UC有幾個HDMI？",
+      "reply": "S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。\n\n資料來源：三星官方規格\n\n本次約 NT$0.0000｜未使用模型｜直接問 9/10",
+      "newLogs": [
+        "[17:29:23.917] [General] [Request Audit v29.6.095] {\"stage\":\"deterministic\",\"model\":\"none\",\"billableModels\":[],\"attemptedCalls\":0,\"billableCalls\":0,\"paidCalls\":0,\"routerCalls\":0,\"routerCacheHits\":0,\"plannerLatencyMs\":0,\"routerCostTwd\":0,\"routePlanValid\":false,\"routePlan\":null,\"claimRoutes\":[],\"selectedModel\":\"\",\"pdfCalls\":0,\"webCalls\":0,\"inputTokens\":0,\"outputTokens\":0,\"thoughtTokens\":0,\"billedOutputTokens\":0,\"estimatedCostTwd\":0,\"uncertainCostTwd\":0,\"providerOutcome\":\"\",\"providerFailureCode\":\"\",\"finalCoverage\":\"supported\",\"sources\":[\"官方規格庫\"]}",
+        "[17:29:23.918] [General] [Reply Audit] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。",
+        "[17:29:23.923] [General] [Reply] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。"
+      ]
+    },
+    {
+      "q": "S27H704EAC怎麼自我診斷？",
+      "reply": "這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。\n\n本次費用待確認｜未使用模型｜直接問 9/10",
+      "newLogs": [
+        "[17:29:36.117] [General] [Exact Operation Guard v29.6.260] S27H704EAC 精準 QA／RULE 未完成，零 Fast 直接進免費手冊片段或完整 PDF",
+        "[17:29:41.239] [General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+        "[17:29:41.657] [General] [Reply Audit Guard v29.6.067] 已補上缺漏的費用",
+        "[17:29:41.659] [General] [Reply Audit Guard v29.6.067] LLM 已呼叫但缺少 token/cost metadata，回覆改標未知費用",
+        "[17:29:41.663] [General] [Request Audit v29.6.095] {\"stage\":\"pdf\",\"model\":\"models/gemini-3.1-flash-lite\",\"billableModels\":[],\"attemptedCalls\":0,\"billableCalls\":0,\"paidCalls\":0,\"routerCalls\":0,\"routerCacheHits\":0,\"plannerLatencyMs\":0,\"routerCostTwd\":0,\"routePlanValid\":false,\"routePlan\":null,\"claimRoutes\":[],\"selectedModel\":\"S27H704EAC\",\"pdfCalls\":0,\"webCalls\":0,\"inputTokens\":0,\"outputTokens\":0,\"thoughtTokens\":0,\"billedOutputTokens\":0,\"estimatedCostTwd\":0,\"uncertainCostTwd\":0,\"providerOutcome\":\"\",\"providerFailureCode\":\"\",\"finalCoverage\":\"unsupported\",\"sources\":[]}",
+        "[17:29:41.665] [General] [Reply Audit] 這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。",
+        "[17:29:41.670] [General] [Reply Audit Guard v29.6.067] LLM 已呼叫但缺少 token/cost metadata，回覆改標未知費用",
+        "[17:29:41.674] [General] [Reply] 這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。"
+      ]
+    },
+    {
+      "q": "那測試時能切換輸入嗎？",
+      "reply": "這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。\n\n本次約 NT$0.0019｜模型：typesafe/jev-1.13｜直接問 9/10",
+      "newLogs": [
+        "[17:29:49.490] [General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那測試時能切換輸入嗎? (型號: S27H704EAC)",
+        "[17:29:49.574] [General] [Direct Search] 命中直通車關鍵字: S27H704EAC，先走 Fast Mode (QA/Rules 優先，不強制 PDF)",
+        "[17:29:49.642] [General] [DirectDeep v29.5.131] 型號 S27H704EAC 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊",
+        "[17:29:50.407] [General] [Provider Cost] provider=OpenRouter model=typesafe/jev-1.13 costTwd=0.001863 status=usage_reported rateDate=2026-09-18",
+        "[17:29:50.503] [General] [Semantic Router JEV] model=typesafe/jev-1.13-20260917 valid=true relation=followup claims=1",
+        "[17:29:50.525] [General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=639ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"medium\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
+        "[17:29:50.808] [General] [Semantic Router v29.6.280] 規劃器未達接管門檻；已鎖定型號操作題改走安全手冊 fallback model=S27H704EAC",
+        "[17:29:52.910] [General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+        "[17:29:53.097] [General] [Reply Audit Guard v29.6.067] 已補上缺漏的費用",
+        "[17:29:53.099] [General] [Request Audit v29.6.095] {\"stage\":\"router+pdf\",\"model\":\"models/gemini-3.1-flash-lite\",\"billableModels\":[\"typesafe/jev-1.13\"],\"attemptedCalls\":1,\"billableCalls\":1,\"paidCalls\":1,\"routerCalls\":1,\"routerCacheHits\":0,\"plannerLatencyMs\":639,\"routerCostTwd\":0.0019,\"routePlanValid\":true,\"routePlan\":{\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"claimRoutes\":[\"claim_1:manual_model_specific\"],\"confidence\":\"medium\",\"reasonCode\":\"elliptical_followup\"},\"claimRoutes\":[\"claim_1:manual_model_specific\"],\"selectedModel\":\"S27H704EAC\",\"pdfCalls\":0,\"webCalls\":0,\"inputTokens\":1386,\"outputTokens\":186,\"thoughtTokens\":0,\"billedOutputTokens\":186,\"estimatedCostTwd\":0.0019,\"uncertainCostTwd\":0,\"providerOutcome\":\"success\",\"providerFailureCode\":\"\",\"finalCoverage\":\"unsupported\",\"sources\":[]}",
+        "[17:29:53.101] [General] [Reply Audit] 這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。",
+        "[17:29:53.109] [General] [Reply] 這次進階查詢暫時無法啟動，沒有送出或扣次。已確認的規格和常見問答仍可以查，其他部分請找 Sam 幫忙確認。"
+      ]
+    }
+  ],
+  "consoleErrors": []
+}

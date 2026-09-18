@@ -1,0 +1,61 @@
+{
+  "at": "2026-09-18T09:11:14.977Z",
+  "target": "formal @1503 v29.6.321 bootstrap candidate",
+  "headless": true,
+  "routerMode": "conditional",
+  "checks": {
+    "qaAnswer": true,
+    "qaNoRouter": true,
+    "manualAnswer": true,
+    "manualNoRouter": true,
+    "followupJev": true,
+    "followupSafe": false,
+    "followupNoWeb": true
+  },
+  "allPass": false,
+  "results": [
+    {
+      "q": "S32FM703UC有幾個HDMI？",
+      "reply": "S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。\n\n資料來源：三星官方規格\n\n本次約 NT$0.0000｜未使用模型｜直接問 9/10",
+      "newLogs": [
+        "[17:10:26.476] [General] [Request Audit v29.6.095] {\"stage\":\"deterministic\",\"model\":\"none\",\"billableModels\":[],\"attemptedCalls\":0,\"billableCalls\":0,\"paidCalls\":0,\"routerCalls\":0,\"routerCacheHits\":0,\"plannerLatencyMs\":0,\"routerCostTwd\":0,\"routePlanValid\":false,\"routePlan\":null,\"claimRoutes\":[],\"selectedModel\":\"\",\"pdfCalls\":0,\"webCalls\":0,\"inputTokens\":0,\"outputTokens\":0,\"thoughtTokens\":0,\"billedOutputTokens\":0,\"estimatedCostTwd\":0,\"uncertainCostTwd\":0,\"providerOutcome\":\"\",\"providerFailureCode\":\"\",\"finalCoverage\":\"supported\",\"sources\":[\"官方規格庫\"]}",
+        "[17:10:26.478] [General] [Reply Audit] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。",
+        "[17:10:26.483] [General] [Reply] S32FM703UC 這款有 2 個 HDMI 2.0 連接埠。"
+      ]
+    },
+    {
+      "q": "S27H704EAC怎麼自我診斷？",
+      "reply": "你可以透過「Support → Self Diagnosis」執行自我診斷。在執行期間，請勿關閉電源、變更輸入來源或中斷測試。\n\n資料來源：三星官方手冊（第41頁）\n\n本次約 NT$0.0129｜模型：Gemini 3.1 Flash-Lite｜手冊 1/2",
+      "newLogs": [
+        "[17:10:39.308] [General] [Exact Operation Guard v29.6.260] S27H704EAC 精準 QA／RULE 未完成，零 Fast 直接進免費手冊片段或完整 PDF",
+        "[17:10:46.380] [General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
+        "[17:10:48.913] [General] [Source Audit] 官方手冊來源 PDF: S27H704,S27H802,S32H704,S32H802,S40H850.pdf",
+        "[17:10:49.260] [General] [Reply Audit Guard v29.6.067] 已補上缺漏的費用",
+        "[17:10:49.263] [General] [Request Audit v29.6.095] {\"stage\":\"pdf\",\"model\":\"models/gemini-3.1-flash-lite\",\"billableModels\":[\"models/gemini-3.1-flash-lite\"],\"attemptedCalls\":1,\"billableCalls\":1,\"paidCalls\":1,\"routerCalls\":0,\"routerCacheHits\":0,\"plannerLatencyMs\":0,\"routerCostTwd\":0,\"routePlanValid\":false,\"routePlan\":null,\"claimRoutes\":[],\"selectedModel\":\"S27H704EAC\",\"pdfCalls\":1,\"webCalls\":0,\"inputTokens\":1030,\"outputTokens\":97,\"thoughtTokens\":0,\"billedOutputTokens\":97,\"estimatedCostTwd\":0.0129,\"uncertainCostTwd\":0,\"providerOutcome\":\"success\",\"providerFailureCode\":\"\",\"finalCoverage\":\"supported\",\"sources\":[\"官方手冊\"]}",
+        "[17:10:49.265] [General] [Reply Audit] 你可以透過「Support → Self Diagnosis」執行自我診斷。在執行期間，請勿關閉電源、變更輸入來源或中斷測試。",
+        "[17:10:49.269] [General] [Reply] 你可以透過「Support → Self Diagnosis」執行自我診斷。在執行期間，請勿關閉電源、變更輸入來源或中斷測試。"
+      ]
+    },
+    {
+      "q": "那測試時能切換輸入嗎？",
+      "reply": "S27H704EAC：關於「那測試時能切換輸入嗎?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n本次約 NT$0.0189｜模型：typesafe/jev-1.13＋Gemini 3.1 Flash-Lite｜手冊 0/2",
+      "newLogs": [
+        "[17:11:00.752] [General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那測試時能切換輸入嗎? (型號: S27H704EAC)",
+        "[17:11:01.022] [General] [Direct Search] 命中直通車關鍵字: S27H704EAC，先走 Fast Mode (QA/Rules 優先，不強制 PDF)",
+        "[17:11:01.137] [General] [DirectDeep v29.5.131] 型號 S27H704EAC 有 PDF，保留 Fast Mode；可由 #查手冊 或 [AUTO_SEARCH_PDF] 進入手冊",
+        "[17:11:02.839] [General] [Semantic Router JEV] model=typesafe/jev-1.13-20260917 valid=true relation=followup claims=1",
+        "[17:11:02.889] [General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=877ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"medium\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.321\"}}",
+        "[17:11:03.778] [General] [Semantic Router v29.6.280] 規劃器未達接管門檻；已鎖定型號操作題改走安全手冊 fallback model=S27H704EAC",
+        "[17:11:08.532] [General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=query_time",
+        "[17:11:10.662] [General] [Source Audit] 官方手冊來源 PDF: S27H704,S27H802,S32H704,S32H802,S40H850.pdf",
+        "[17:11:11.983] [General] [KB Load] AttachPDFs: false, isRetry: false, Files: 0",
+        "[17:11:12.698] [General] [Reply Audit Guard v29.6.067] 已補上缺漏的費用",
+        "[17:11:12.700] [General] [Request Audit v29.6.095] {\"stage\":\"router+pdf+web\",\"model\":\"models/gemini-3.7-flash\",\"billableModels\":[\"typesafe/jev-1.13\",\"models/gemini-3.1-flash-lite\"],\"attemptedCalls\":2,\"billableCalls\":2,\"paidCalls\":2,\"routerCalls\":1,\"routerCacheHits\":0,\"plannerLatencyMs\":877,\"routerCostTwd\":0.0019,\"routePlanValid\":true,\"routePlan\":{\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"claimRoutes\":[\"claim_1:manual_model_specific\"],\"confidence\":\"medium\",\"reasonCode\":\"elliptical_followup\"},\"claimRoutes\":[\"claim_1:manual_model_specific\"],\"selectedModel\":\"S27H704EAC\",\"pdfCalls\":1,\"webCalls\":0,\"inputTokens\":2764,\"outputTokens\":312,\"thoughtTokens\":0,\"billedOutputTokens\":312,\"estimatedCostTwd\":0.0189,\"uncertainCostTwd\":0,\"providerOutcome\":\"success\",\"providerFailureCode\":\"\",\"finalCoverage\":\"unsupported\",\"sources\":[]}",
+        "[17:11:12.701] [General] [Reply Audit] S27H704EAC：關於「那測試時能切換輸入嗎?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+        "[17:11:12.703] [General] [Reply] S27H704EAC：關於「那測試時能切換輸入嗎?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。",
+        "[17:11:12.703] [General] [Reply] 使用顯式 Quick Reply: 1 個選項 (🔗 到這款官網)"
+      ]
+    }
+  ],
+  "consoleErrors": []
+}

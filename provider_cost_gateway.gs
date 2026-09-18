@@ -110,9 +110,10 @@ function recordUncertainProviderCost_(amount, modelName) {
 function redactProviderSecrets_(value) {
   return String(value === null || value === undefined ? "" : value)
     .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_API_KEY]")
+    .replace(/sk-or-v1-[0-9a-f]{20,}/gi, "[REDACTED_OPENROUTER_KEY]")
     .replace(/([?&](?:key|api_key)=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(Authorization\s*[:=]\s*Bearer\s+)[^\s,"']+/gi, "$1[REDACTED]")
-    .replace(/((?:GEMINI_API_KEY|GOOGLE_API_KEY|apiKey|api_key)\s*[=:]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]");
+    .replace(/((?:GEMINI_API_KEY|GOOGLE_API_KEY|OPENROUTER_API_KEY|apiKey|api_key)\s*[=:]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]");
 }
 
 function providerCredentialFingerprint_(apiKey) {
@@ -306,11 +307,156 @@ function refundProviderSourceGrant_(grant, reason) {
   }
 }
 
+function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
+  const options = Object.assign({}, rawOptions || {});
+  const key = String(apiKey || "");
+  if (!key) throw new Error("MISSING_OPENROUTER_API_KEY");
+  if (String(target || "") !== JEV_DECISIONS_ENDPOINT) {
+    throw new Error("PROVIDER_DECISION_ENDPOINT_NOT_APPROVED");
+  }
+  const payloadText = String(options.payload || "{}");
+  let payload = {};
+  try {
+    payload = JSON.parse(payloadText);
+  } catch (error) {
+    throw new Error("PROVIDER_DECISION_PAYLOAD_INVALID");
+  }
+  if (String(payload.model || "") !== JEV_MODEL_ROUTER) {
+    throw new Error("PROVIDER_MODEL_NOT_APPROVED");
+  }
+
+  const inputReserveTokens = Math.max(
+    1,
+    Utilities.newBlob(payloadText).getBytes().length,
+  );
+  const reservation = {
+    month: providerMonthKey_(),
+    amount:
+      ((inputReserveTokens * PRICE_ROUTER_INPUT) / 1000000) * EXCHANGE_RATE,
+    sent: false,
+    verification:
+      typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE === true,
+  };
+  try {
+    changeProviderBudget_(reservation, null, false);
+  } catch (error) {
+    if (pendingProviderAttempt_ && currentRequestAudit) {
+      currentRequestAudit.attemptedCalls = Math.max(
+        0,
+        currentRequestAudit.attemptedCalls - 1,
+      );
+      if (Object.prototype.hasOwnProperty.call(currentRequestAudit, "routerCalls")) {
+        currentRequestAudit.routerCalls = Math.max(
+          0,
+          currentRequestAudit.routerCalls - 1,
+        );
+      }
+    }
+    pendingProviderAttempt_ = null;
+    throw error;
+  }
+
+  let settled = false;
+  let costRecorded = false;
+  try {
+    if (!pendingProviderAttempt_) {
+      markGenerationAttempt_("router", JEV_MODEL_ROUTER);
+    }
+    pendingProviderAttempt_ = null;
+    options.headers = Object.assign({}, options.headers || {}, {
+      Authorization: `Bearer ${key}`,
+      "HTTP-Referer": "https://script.google.com/",
+      "X-Title": "Samsung Monitor LineBot Semantic Router",
+    });
+    reservation.sent = true;
+    const response = UrlFetchApp.fetch(target, options);
+    const code = Number(response.getResponseCode());
+    const responseText = String(response.getContentText() || "");
+    let body = {};
+    try {
+      body = JSON.parse(responseText || "{}");
+    } catch (_) {}
+
+    if (code < 200 || code >= 300) {
+      const uncertain = code >= 500;
+      const failedCost = uncertain ? reservation.amount : 0;
+      if (failedCost > 0) {
+        recordUncertainProviderCost_(failedCost, JEV_MODEL_ROUTER);
+      }
+      changeProviderBudget_(reservation, failedCost, uncertain);
+      settled = true;
+      costRecorded = true;
+      const errorMessage = redactProviderSecrets_(
+        body && body.error && body.error.message
+          ? body.error.message
+          : `HTTP_${code}`,
+      ).substring(0, 160);
+      markProviderOutcome_({
+        kind:
+          code === 401 || code === 403
+            ? "credential_denied"
+            : uncertain
+              ? "server_error"
+              : "client_rejected",
+        reason: errorMessage,
+        httpStatus: code,
+        costTwd: failedCost,
+      });
+      writeLog(
+        `[Provider Outcome] provider=OpenRouter model=${JEV_MODEL_ROUTER} http=${code} costTwd=${failedCost.toFixed(6)}`,
+      );
+      return response;
+    }
+
+    const usage = body && body.usage ? body.usage : {};
+    const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
+    const reportedCostUsd = Number(usage.cost);
+    const exactCostUsd =
+      Number.isFinite(reportedCostUsd) && reportedCostUsd >= 0
+        ? reportedCostUsd
+        : inputTokens > 0
+          ? (inputTokens * PRICE_ROUTER_INPUT) / 1000000
+          : null;
+    const costTwd =
+      exactCostUsd === null ? reservation.amount : exactCostUsd * EXCHANGE_RATE;
+    const uncertain = exactCostUsd === null;
+    if (uncertain) {
+      recordUncertainProviderCost_(costTwd, JEV_MODEL_ROUTER);
+    }
+    changeProviderBudget_(reservation, costTwd, uncertain);
+    settled = true;
+    costRecorded = true;
+    markProviderOutcome_({
+      kind: "success",
+      reason: "",
+      httpStatus: code,
+      costTwd: costTwd,
+    });
+    writeLog(
+      `[Provider Cost] provider=OpenRouter model=${JEV_MODEL_ROUTER} costTwd=${costTwd.toFixed(6)} status=${uncertain ? "usage_pending" : "usage_reported"} rateDate=2026-09-18`,
+    );
+    return response;
+  } finally {
+    if (!settled) {
+      if (reservation.sent && !costRecorded) {
+        recordUncertainProviderCost_(reservation.amount, JEV_MODEL_ROUTER);
+      }
+      changeProviderBudget_(
+        reservation,
+        reservation.sent ? reservation.amount : 0,
+        reservation.sent,
+      );
+    }
+  }
+}
+
 function providerFetch_(url, rawOptions) {
   let target = String(url || "");
   const options = Object.assign({}, rawOptions || {});
   let apiKey = String(options.geminiApiKey || "");
+  const openRouterApiKey = String(options.openRouterApiKey || "");
   delete options.geminiApiKey;
+  delete options.openRouterApiKey;
   const legacyApiKeyMatch = target.match(/[?&]key=([^&]+)/i);
   if (!apiKey && legacyApiKeyMatch) {
     apiKey = decodeURIComponent(legacyApiKeyMatch[1]);
@@ -326,6 +472,9 @@ function providerFetch_(url, rawOptions) {
     options.headers = Object.assign({}, options.headers || {}, {
       "x-goog-api-key": apiKey,
     });
+  }
+  if (/openrouter\.ai\/api\/alpha\/decisions/i.test(target)) {
+    return providerOpenRouterDecisionFetch_(target, options, openRouterApiKey);
   }
   if (/openrouter\.ai\/api\/v1\/chat\/completions/i.test(target)) {
     throw new Error("PROVIDER_MODEL_NOT_APPROVED");

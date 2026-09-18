@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.319"; // 備援啟用前實測完整正式模型組合
-const BUILD_TIMESTAMP = "2026-09-11 14:02";
+const GAS_VERSION = "v29.6.323"; // JEV typed Router final; temporary bootstrap removed
+const BUILD_TIMESTAMP = "2026-09-18 17:35";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -30,12 +30,11 @@ const SEMANTIC_ROUTER_VERSION = "RouteAnalysisV1";
 const SEMANTIC_ROUTER_MODE_DEFAULT = "conditional";
 const SEMANTIC_ROUTER_CACHE_TTL_SECONDS = 600;
 const SEMANTIC_ROUTER_MAX_CLAIMS = 5;
-const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV3";
-// 384 是五個 claims 的 JSON 結構安全空間，不是 NT$0.01 的成本保證。
-// 以 3.7 Flash 現價與目標 800–1,500 input／50–100 output 估算，
-// 常見約 NT$0.025–0.048；實際一律以 usageMetadata 為準。
-const SEMANTIC_ROUTER_MAX_OUTPUT_TOKENS = 384;
-const SEMANTIC_ROUTER_COST_ALERT_TWD = 0.1;
+const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV4-JEV";
+const JEV_ROUTER_MIN_CHOICE_CONFIDENCE = 0.65;
+const JEV_ROUTER_CLARIFY_THRESHOLD = 0.85;
+// JEV 只做 typed decision；產品答案、型號真值、來源內容仍由程式與既有證據守門決定。
+const SEMANTIC_ROUTER_COST_ALERT_TWD = 0.02;
 
 /**
  * Apps Script 編輯器限定的一鍵維護入口。
@@ -78,12 +77,12 @@ const GEMINI_MODEL_WEB = "models/gemini-3.7-flash";
 const PRICE_WEB_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
 const PRICE_WEB_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
 
-// 只有模糊、複合或省略式追問才使用較強的語意規劃器。它只拆主張與選來源，
-// 不回答產品事實、不掛 PDF／Web 工具；精準 QA／RULE 仍維持零 Router。
-// 2026-09-04 Google 官方穩定型號與限時標準價（至 2026-12-31）。
-const GEMINI_MODEL_ROUTER = "models/gemini-3.7-flash";
-const PRICE_ROUTER_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
-const PRICE_ROUTER_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
+// 只有模糊、複合或省略式追問才進 typed Semantic Router。
+// JEV 只回傳機率／分類；claim 文字、產品身分與來源執行由既有程式確定性建立。
+const JEV_MODEL_ROUTER = "typesafe/jev-1.13";
+const JEV_DECISIONS_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
+const PRICE_ROUTER_INPUT = 0.042; // OpenRouter / TypeSafe Jev 1.13，2026-09-18
+const PRICE_ROUTER_OUTPUT = 0;
 
 // 🅱️ 若上方選擇 'OpenRouter' (需填寫 OPENROUTER_API_KEY)，則使用以下設定：
 const OPENROUTER_MODEL = "qwen/qwen-2.5-7b-instruct";
@@ -3061,7 +3060,7 @@ function shouldRunSemanticRouter_(options) {
       question,
     );
   // 已知完整型號且來源明確時，程式直接走既有 QA/RULE→PDF 或 Web 政策；
-  // 3.7 Router 只處理真正的語意歧義，不可變成每題必經的付費關卡。
+  // JEV Router 只處理真正的語意歧義，不可變成每題必經的付費關卡。
   const deterministicManualRoute = Boolean(
     input.confirmedModel &&
       manualVerification &&
@@ -3157,76 +3156,452 @@ function recordSemanticRouterAudit_(result) {
   LAST_SEMANTIC_ROUTE_ANALYSIS = analysis;
 }
 
+function getJevSemanticRouterQuestions_() {
+  return {
+    topic_relation: {
+      type: "choice",
+      instructions:
+        "只依 state 判斷目前 question 與 previousTopic 的關係；不要回答產品問題。possibleFollowUp=true 表示應用程式文法守門已確認目前問句省略了上一題主詞，除非 state 有明確矛盾，應判為 followup。",
+      criteria: {
+        new:
+          "新主題，不能合理承接 previousTopic；previousTopic 空白通常是 new。",
+        followup:
+          "question 有省略，但結合 previousTopic 後可明確知道在追問同一產品主題。",
+        ambiguous:
+          "即使看 previousTopic 仍不能可靠判斷是否同一主題。",
+      },
+    },
+    multi_claim: {
+      type: "noul",
+      instructions:
+        "question 是否包含兩個以上可以分開查證，而且可能需要不同證據的主張？",
+      criteria: {
+        true: "至少兩個可獨立查證主張。",
+        false: "只有單一主張。",
+      },
+    },
+    needs_manual: {
+      type: "noul",
+      instructions:
+        "可靠回答 question 是否至少有一個主張需要型號特定官方手冊、操作頁或產品能力證據？localCoverage=partial 表示本機資料只覆蓋一部分。產品模式/功能是什麼、怎麼用、限制、設定、故障，而 localCoverage 不是 full，通常需要手冊；零售模式、使用模式等產品功能名稱也屬此類。純價格、庫存、活動等 current info 若沒有操作/能力主張則不需要手冊。",
+      criteria: {
+        true:
+          "至少一個產品模式、能力、規格、操作或故障主張需要型號特定證據。",
+        false:
+          "純時效資訊、一般推理，或本機資料已完整覆蓋而不需手冊。",
+      },
+    },
+    needs_web: {
+      type: "noul",
+      instructions:
+        "可靠回答 question 是否至少有一個主張需要目前網路資訊？包含現在價格、庫存、活動、上市狀態、業者服務、第三方 App/相容服務現況。",
+      criteria: {
+        true: "至少一個主張需要時效網路證據。",
+        false: "不需要目前網路資訊。",
+      },
+    },
+    dominant_intent: {
+      type: "choice",
+      instructions:
+        "判斷主要問題類型；多主張時選最需要進階查證的類型，不回答產品事實。",
+      criteria: {
+        spec: "產品規格、支援能力、數值或有沒有。",
+        operation: "怎麼設定、在哪個選單、如何使用。",
+        troubleshoot: "故障、異常、不能用、排除問題。",
+        comparison: "比較兩個以上產品、介面或方案差異。",
+        current_info: "現在價格、庫存、活動、上市、業者或服務現況。",
+        general_reasoning: "不新增產品事實的一般推理。",
+      },
+    },
+    needs_clarification: {
+      type: "noul",
+      instructions:
+        "除了補完整型號以外，question 的意思是否仍模糊到必須先問使用者？若 previousTopic 可明確補回省略內容，就不需要澄清。",
+      criteria: {
+        true: "即使利用 state 仍有兩種以上合理解讀。",
+        false: "問題意圖已足夠明確。",
+      },
+    },
+  };
+}
+
+function getJevChoiceAnswer_(answers, key, allowed, fallback) {
+  const item = answers && answers[key] ? answers[key] : {};
+  const choice = String(item.choice || "");
+  return allowed.indexOf(choice) >= 0 ? choice : fallback;
+}
+
+function getJevChoiceConfidence_(answers, key) {
+  const item = answers && answers[key] ? answers[key] : {};
+  const value = Number(item.confidence);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
+
+function getJevNoulProbability_(answers, key) {
+  const item = answers && answers[key] ? answers[key] : {};
+  const value = Number(item.noul);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+}
+
+function splitSemanticClaimsDeterministically_(question) {
+  const text = stripInternalRoutingHints_(question || "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!text) return [];
+  if (!isPotentialMultiClaimQuestion_(text)) return [text];
+  const parts = text
+    .split(
+      /\s*(?:[，,]\s*)?(?:而且|並且|以及|同時|還有|另外|再加上|也要|也可以)\s*/i,
+    )
+    .map(function (part) {
+      return part.replace(/^[，,、；;\s]+|[，,；;\s]+$/g, "").trim();
+    })
+    .filter(function (part) {
+      return part.length >= 2;
+    });
+  return (parts.length > 1 ? parts : [text]).slice(
+    0,
+    SEMANTIC_ROUTER_MAX_CLAIMS,
+  );
+}
+
+function classifySemanticClaimIntent_(question, dominantIntent) {
+  const text = String(question || "");
+  if (
+    /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|上市|業者|第三方|APP\s*現況|服務現況)/i.test(
+      text,
+    )
+  ) {
+    return "current_info";
+  }
+  if (
+    /(?:故障|異常|沒反應|無法使用|不能用|黑屏|閃爍|無畫面|沒畫面|無訊號|怎麼辦|排除)/i.test(
+      text,
+    )
+  ) {
+    return "troubleshoot";
+  }
+  if (
+    /(?:比較|差異|差別|差在哪|哪個好|哪一台|比一比|分別有什麼不同)/i.test(
+      text,
+    )
+  ) {
+    return "comparison";
+  }
+  if (isOperationOrTroubleshootQuery(text)) return "operation";
+  if (
+    isLikelyLocalSpecRuleQuestion_(text) ||
+    /(?:有沒有|是否有|有嗎|支援|能不能|可以嗎|多少|幾個|最高|最低|限制)/i.test(
+      text,
+    )
+  ) {
+    return "spec";
+  }
+  return [
+    "spec",
+    "operation",
+    "troubleshoot",
+    "comparison",
+    "current_info",
+    "general_reasoning",
+  ].indexOf(dominantIntent) >= 0
+    ? dominantIntent
+    : "general_reasoning";
+}
+
+function semanticAnswerShapeForIntent_(intent, question) {
+  if (intent === "troubleshoot") return "diagnosis";
+  if (intent === "comparison") return "comparison";
+  if (intent === "operation") {
+    return /(?:哪裡|在哪|選單|路徑|入口)/i.test(String(question || ""))
+      ? "menu_path"
+      : "steps";
+  }
+  return "fact";
+}
+
+function buildSemanticClaimQuestion_(part, input, topicRelation, selectedModel) {
+  let question = String(part || "").trim();
+  if (topicRelation === "followup" && input.previousTopic) {
+    question = resolvePersistentFollowupQuestion_(
+      question,
+      input.previousTopic,
+    );
+  }
+  const model = normalizeModelForDisplay(selectedModel || "");
+  if (
+    model &&
+    extractFullModelLikeTokens(question)
+      .map(normalizeModelForDisplay)
+      .indexOf(model) < 0
+  ) {
+    question = `${model} ${question}`.trim();
+  }
+  return question
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+function buildRouteAnalysisFromJev_(answersValue, inputValue) {
+  const input = buildSemanticRouterInput_(inputValue || {});
+  const answers =
+    answersValue && typeof answersValue === "object" ? answersValue : {};
+  const allowedIntents = [
+    "spec",
+    "operation",
+    "troubleshoot",
+    "comparison",
+    "current_info",
+    "general_reasoning",
+  ];
+  let topicRelation = getJevChoiceAnswer_(
+    answers,
+    "topic_relation",
+    ["new", "followup", "ambiguous"],
+    input.previousTopic ? "ambiguous" : "new",
+  );
+  // possibleFollowUp 是應用程式先以文法規則判定的省略追問；JEV 只在
+  // 真正 ambiguous 時可覆蓋。若它把已確認的省略追問誤判 new，應用端修正回 followup。
+  if (
+    input.possibleFollowUp &&
+    input.previousTopic &&
+    topicRelation === "new"
+  ) {
+    topicRelation = "followup";
+  }
+  const dominantIntent = getJevChoiceAnswer_(
+    answers,
+    "dominant_intent",
+    allowedIntents,
+    "general_reasoning",
+  );
+  const multiProbability = getJevNoulProbability_(answers, "multi_claim");
+  const manualProbability = getJevNoulProbability_(answers, "needs_manual");
+  const webProbability = getJevNoulProbability_(answers, "needs_web");
+  const clarificationProbability = getJevNoulProbability_(
+    answers,
+    "needs_clarification",
+  );
+  const multiClaim = Boolean(
+    isPotentialMultiClaimQuestion_(input.originalQuestion) ||
+      (multiProbability !== null && multiProbability >= 0.5),
+  );
+  const deterministicCurrentInfo =
+    /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|上市|業者|第三方|APP\s*現況|服務現況)/i.test(
+      input.originalQuestion,
+    );
+  const needsManualDecision = Boolean(
+    (manualProbability !== null && manualProbability >= 0.5) ||
+      (input.localCoverage !== "full" &&
+        isManualVerificationRequiredQuery(input.originalQuestion)),
+  );
+  const needsWebDecision = Boolean(
+    deterministicCurrentInfo ||
+      (webProbability !== null && webProbability >= 0.5),
+  );
+  const needsMeaningClarification = Boolean(
+    topicRelation === "ambiguous" ||
+      (clarificationProbability !== null &&
+        clarificationProbability >= JEV_ROUTER_CLARIFY_THRESHOLD),
+  );
+  if (needsMeaningClarification) topicRelation = "ambiguous";
+
+  let productAction = "none";
+  let candidateIndex = null;
+  if (input.confirmedModel) {
+    productAction = "keep_confirmed";
+  } else if (input.candidates.length === 1) {
+    productAction = "choose_candidate";
+    candidateIndex = 0;
+  } else if (input.candidates.length > 1) {
+    productAction = "choose_candidate";
+  }
+  const selectedModel =
+    input.confirmedModel ||
+    (candidateIndex !== null ? input.candidates[candidateIndex] : "");
+
+  const parts = splitSemanticClaimsDeterministically_(
+    input.originalQuestion,
+  );
+  const claims = (parts.length > 0 ? parts : [input.originalQuestion]).map(
+    function (part, index) {
+      const question = buildSemanticClaimQuestion_(
+        part,
+        input,
+        topicRelation === "ambiguous" && input.previousTopic
+          ? "followup"
+          : topicRelation,
+        selectedModel,
+      );
+      const intent = classifySemanticClaimIntent_(question, dominantIntent);
+      let evidenceNeed = "general_reasoning";
+      if (intent === "current_info") {
+        evidenceNeed = "web_current";
+      } else if (
+        intent === "operation" ||
+        intent === "troubleshoot" ||
+        isManualVerificationRequiredQuery(question)
+      ) {
+        evidenceNeed = "manual_model_specific";
+      } else if (
+        intent === "spec" ||
+        intent === "comparison" ||
+        isLikelyLocalSpecRuleQuestion_(question)
+      ) {
+        evidenceNeed = "local_stable";
+      }
+      return {
+        id: `claim_${index + 1}`,
+        question: question,
+        intent: intent,
+        evidenceNeed: evidenceNeed,
+        answerShape: semanticAnswerShapeForIntent_(intent, question),
+      };
+    },
+  );
+
+  if (
+    needsManualDecision &&
+    !claims.some(function (claim) {
+      return claim.evidenceNeed === "manual_model_specific";
+    })
+  ) {
+    const claimForManual =
+      claims.find(function (claim) {
+        return claim.evidenceNeed !== "web_current";
+      }) || claims[0];
+    if (claimForManual) {
+      claimForManual.evidenceNeed = "manual_model_specific";
+      if (claimForManual.intent === "general_reasoning") {
+        claimForManual.intent = "operation";
+        claimForManual.answerShape = semanticAnswerShapeForIntent_(
+          claimForManual.intent,
+          claimForManual.question,
+        );
+      }
+    }
+  }
+
+  if (
+    needsWebDecision &&
+    !claims.some(function (claim) {
+      return claim.evidenceNeed === "web_current";
+    })
+  ) {
+    const currentClaim = claims.find(function (claim) {
+      return /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|上市|業者|第三方|服務|APP)/i.test(
+        claim.question,
+      );
+    });
+    if (currentClaim) {
+      currentClaim.evidenceNeed = "web_current";
+      currentClaim.intent = "current_info";
+      currentClaim.answerShape = "fact";
+    }
+  }
+
+  let reasonCode = "other";
+  if (needsMeaningClarification) reasonCode = "intent_conflict";
+  else if (multiClaim) reasonCode = "multi_claim";
+  else if (topicRelation === "followup") reasonCode = "elliptical_followup";
+  else if (
+    !input.confirmedModel &&
+    (input.ambiguousAlias || input.candidates.length > 1)
+  ) {
+    reasonCode = "ambiguous_product";
+  } else if (input.localCoverage === "partial") reasonCode = "partial_local";
+  else if (needsWebDecision) reasonCode = "current_info";
+
+  const topicConfidence = getJevChoiceConfidence_(
+    answers,
+    "topic_relation",
+  );
+  const intentConfidence = getJevChoiceConfidence_(
+    answers,
+    "dominant_intent",
+  );
+  const decisionFieldsPresent = [
+    multiProbability,
+    manualProbability,
+    webProbability,
+    clarificationProbability,
+  ].every(function (value) {
+    return value !== null;
+  });
+  let confidence = "high";
+  if (
+    !decisionFieldsPresent ||
+    topicConfidence < JEV_ROUTER_MIN_CHOICE_CONFIDENCE ||
+    intentConfidence < JEV_ROUTER_MIN_CHOICE_CONFIDENCE
+  ) {
+    confidence = "medium";
+  }
+  if (!answers || Object.keys(answers).length === 0) confidence = "low";
+  if (needsMeaningClarification && confidence === "high") {
+    confidence = "medium";
+  }
+
+  return {
+    version: SEMANTIC_ROUTER_VERSION,
+    topicRelation: topicRelation,
+    productAction: productAction,
+    candidateIndex: candidateIndex,
+    claims: claims.slice(0, SEMANTIC_ROUTER_MAX_CLAIMS),
+    confidence: confidence,
+    reasonCode: reasonCode,
+  };
+}
+
 function callSemanticRouter_(inputValue) {
   const input = buildSemanticRouterInput_(inputValue || {});
-  const apiKey = getGeminiApiKey_();
+  const apiKey = String(
+    PropertiesService.getScriptProperties().getProperty(
+      "OPENROUTER_API_KEY",
+    ) || "",
+  );
   if (!apiKey) {
     return {
       valid: false,
       analysis: null,
-      errors: ["missing_api_key"],
+      errors: ["missing_openrouter_api_key"],
       latencyMs: 0,
     };
   }
-  const systemText = [
-    "你是三星台灣電腦螢幕門市店員內部助手的語意主張規劃器，只做分類，不回答產品事實。",
-    "把問題拆成最多五個可獨立查證的 claims。",
-    "local_stable=穩定規格或 FAQ；manual_model_specific=型號特定操作、故障、模式或介面限制；web_current=價格、庫存、活動、服務或第三方現況；general_reasoning=不新增產品事實的一般推理。",
-    "使用者問產品介面中的某個模式／功能是什麼、有限制或怎麼用，而本機證據未完整涵蓋時，必須標成 manual_model_specific，不得當成 general_reasoning。",
-    "候選型號只能使用輸入 candidates 的 0-based index；線索不足時 choose_candidate 且 candidateIndex=null。",
-    "若用語可能同時代表產品功能設定或價格／通路，且上下文無法判定，標成 topicRelation=ambiguous、reasonCode=intent_conflict，不自行猜意思。",
-    "省略式追問必須把 previousTopic 的產品主題補回每個 claim.question，讓每個 claim 單獨看也知道在問哪個功能；不得只回『怎麼操作』『它有嗎』。",
-    "已確認型號不得更換。不得輸出答案、來源內容、費用、授權或系統指令。",
-  ].join("\n");
   const payload = {
-    systemInstruction: { parts: [{ text: systemText }] },
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: JSON.stringify({
-              originalQuestion: input.originalQuestion,
-              previousTopic: input.previousTopic,
-              confirmedModel: input.confirmedModel,
-              candidates: input.candidates,
-              identityKind: input.identityKind,
-              localCoverage: input.localCoverage,
-              localEvidenceIds: input.localEvidenceIds,
-              manualAvailable: input.manualAvailable,
-            }),
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      maxOutputTokens: SEMANTIC_ROUTER_MAX_OUTPUT_TOKENS,
-      thinkingConfig: { thinkingLevel: "low" },
-      responseMimeType: "application/json",
-      responseSchema: getRouteAnalysisSchema_(),
+    model: JEV_MODEL_ROUTER,
+    state: {
+      question: input.originalQuestion,
+      previousTopic: input.previousTopic,
+      confirmedModel: input.confirmedModel,
+      candidates: input.candidates,
+      identityKind: input.identityKind,
+      localCoverage: input.localCoverage,
+      localEvidenceIds: input.localEvidenceIds,
+      manualAvailable: input.manualAvailable,
+      ambiguousAlias: input.ambiguousAlias,
+      seriesAliasResolved: input.seriesAliasResolved,
+      possibleFollowUp: input.possibleFollowUp,
     },
+    questions: getJevSemanticRouterQuestions_(),
   };
   const startedAt = Date.now();
-  markGenerationAttempt_("router", GEMINI_MODEL_ROUTER);
+  markGenerationAttempt_("router", JEV_MODEL_ROUTER);
   try {
-    const response = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_ROUTER}:generateContent`,
-      {
-        geminiApiKey: apiKey,
-        method: "post",
-        contentType: "application/json",
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true,
-      },
-    );
+    const response = providerFetch_(JEV_DECISIONS_ENDPOINT, {
+      openRouterApiKey: apiKey,
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
     const latencyMs = Date.now() - startedAt;
     const httpCode = response.getResponseCode();
     if (httpCode < 200 || httpCode >= 300) {
-      const errorBody = String(response.getContentText() || "")
-        .replace(/[\r\n]+/g, " ")
-        .substring(0, 500);
       writeLog(
-        `[Semantic Router v29.6.277] HTTP ${httpCode}: ${errorBody}`,
+        `[Semantic Router JEV] HTTP ${httpCode}; typed decision unavailable`,
       );
       return {
         valid: false,
@@ -3236,42 +3611,56 @@ function callSemanticRouter_(inputValue) {
       };
     }
     const body = JSON.parse(response.getContentText() || "{}");
-    const usage = body.usageMetadata || null;
+    const answers =
+      body && body.answers && typeof body.answers === "object"
+        ? body.answers
+        : {};
+    const rawAnalysis = buildRouteAnalysisFromJev_(answers, input);
+    const analysis = normalizeRouteAnalysis_(rawAnalysis, input);
+    const validation = validateRouteAnalysis_(analysis, input);
+
+    const usage = body && body.usage ? body.usage : null;
     if (usage) {
-      const cost = calculateGeminiUsageCost_(
-        usage,
-        PRICE_ROUTER_INPUT,
-        PRICE_ROUTER_OUTPUT,
+      const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
+      const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
+      const reportedCostUsd = Number(usage.cost);
+      const costUSD =
+        Number.isFinite(reportedCostUsd) && reportedCostUsd >= 0
+          ? reportedCostUsd
+          : (inputTokens * PRICE_ROUTER_INPUT +
+              outputTokens * PRICE_ROUTER_OUTPUT) /
+            1000000;
+      const costTWD = costUSD * EXCHANGE_RATE;
+      const auditUsage = {
+        promptTokenCount: inputTokens,
+        candidatesTokenCount: outputTokens,
+        thoughtsTokenCount: 0,
+        totalTokenCount: inputTokens + outputTokens,
+      };
+      addGenerationUsageToAudit_(
+        auditUsage,
+        costTWD,
+        JEV_MODEL_ROUTER,
       );
-      addGenerationUsageToAudit_(usage, cost.costTWD, GEMINI_MODEL_ROUTER);
-      currentRequestAudit.routerCostTwd += Number(cost.costTWD) || 0;
-      if (Number(cost.costTWD || 0) > SEMANTIC_ROUTER_COST_ALERT_TWD) {
+      currentRequestAudit.routerCostTwd += costTWD;
+      if (costTWD > SEMANTIC_ROUTER_COST_ALERT_TWD) {
         writeLog(
-          `[Semantic Router ${SEMANTIC_ROUTER_POLICY_VERSION}] 單次成本警示 NT$${Number(cost.costTWD).toFixed(4)}`,
+          `[Semantic Router ${SEMANTIC_ROUTER_POLICY_VERSION}] 單次成本警示 NT$${costTWD.toFixed(4)}`,
         );
       }
       lastTokenUsage = {
-        input: cost.input,
-        output: cost.output,
-        thoughts: cost.thoughts,
-        billedOutput: cost.billedOutput,
-        total: cost.total,
-        costUSD: cost.costUSD,
-        costTWD: cost.costTWD,
+        input: inputTokens,
+        output: outputTokens,
+        thoughts: 0,
+        billedOutput: outputTokens,
+        total: inputTokens + outputTokens,
+        costUSD: costUSD,
+        costTWD: costTWD,
       };
     }
-    const parts =
-      body && body.candidates && body.candidates[0] && body.candidates[0].content
-        ? body.candidates[0].content.parts || []
-        : [];
-    const rawText = parts
-      .map(function (part) {
-        return String((part && part.text) || "");
-      })
-      .join("")
-      .trim();
-    const analysis = normalizeRouteAnalysis_(rawText, input);
-    const validation = validateRouteAnalysis_(analysis, input);
+    writeLog(
+      `[Semantic Router JEV] model=${String(body.model || JEV_MODEL_ROUTER)} valid=${validation.valid} relation=${analysis.topicRelation} claims=${analysis.claims.length}`,
+    );
     return {
       valid: validation.valid,
       analysis: analysis,
@@ -3279,12 +3668,13 @@ function callSemanticRouter_(inputValue) {
       latencyMs: latencyMs,
     };
   } catch (error) {
+    const safeError = redactProviderSecrets_(
+      String(error && error.message ? error.message : error),
+    ).slice(0, 80);
     return {
       valid: false,
       analysis: null,
-      errors: [
-        `exception_${String(error && error.message ? error.message : error).slice(0, 80)}`,
-      ],
+      errors: [`exception_${safeError}`],
       latencyMs: Date.now() - startedAt,
     };
   }
@@ -26916,7 +27306,7 @@ function handleMessage(event) {
     const hasSelectedPdf = cachedDirectModels.length > 0; // 現在絕對安全
 
     // v29.6.277：只有 deterministic QA／RULE 已無法完整終止、且題目確實
-    // 模糊／複合／像追問時，才用一次 3.7 Flash（low thinking）拆主張。Router 不回答事實、
+    // 模糊／複合／像追問時，才用一次 JEV typed decision；Router 不回答事實、
     // 不掛 PDF／Web 工具，也不能自行扣額度；程式仍是唯一來源決策者。
     const semanticCandidates = dedupDisplayModels(
       cachedDirectModels
@@ -27112,7 +27502,13 @@ function handleMessage(event) {
         contextId,
         userId,
         replyToken,
-        { dailyQuestionCharge: fallbackDailyQuestionCharge },
+        {
+          analysis:
+            semanticRouteResult.valid && semanticRouteResult.analysis
+              ? semanticRouteResult.analysis
+              : null,
+          dailyQuestionCharge: fallbackDailyQuestionCharge,
+        },
       );
       return;
     }

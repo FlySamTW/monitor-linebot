@@ -397,9 +397,9 @@
         "selectedText": "PIP/PBP\n― ― 可用功能會隨產品機型而有差異。零件的色彩與形狀可能與所示不同。規格可能隨品質的提升而有所變更，恕不另行通知。\n― ― 若 PIP/PBP 功能正在使用中，且電腦螢幕上顯示的文字看起來模糊或毀損，請將電腦螢幕解析度變更為建議的解析度，以解決問題。\n― ― 玩遊戲時請勿任意變更 PIP/PBP 功能。否則，有些遊戲應用程式可能無法回應，造成畫面發生錯誤。\n第 2 第 3 說明\nPIP/PBP Mode 開啟或關閉 PIP/PBP 模式。\nMode Type 選擇子畫面的大小與長寬比。\n˙ ˙ / / /\nScreen Size 選擇子畫面大小。\n˙ ˙ /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nScreen Position 從可用的選項選擇子畫面的位置。\n˙ ˙ / / /\n― ― 此選項在 Mode Type 設定為 PIP 時可用。\nSource 選擇每個螢幕的訊號源。\n35"
       },
       {
-        "fixtureKind": "router-classification-only",
+        "fixtureKind": "jev-router-classification-only",
         "input": {
-          "originalQuestion": "那兩邊都能120Hz嗎?",
+          "question": "那兩邊都能120Hz嗎?",
           "previousTopic": "G932如何開啟PBP?",
           "confirmedModel": "S49DG932SC",
           "candidates": [
@@ -408,28 +408,50 @@
           "identityKind": "persisted",
           "localCoverage": "none",
           "localEvidenceIds": [],
-          "manualAvailable": true
+          "manualAvailable": true,
+          "ambiguousAlias": false,
+          "seriesAliasResolved": false,
+          "possibleFollowUp": true
         },
-        "result": {
-          "version": "RouteAnalysisV1",
-          "topicRelation": "followup",
-          "productAction": "keep_confirmed",
-          "candidateIndex": null,
-          "claims": [
-            {
-              "id": "C1",
-              "question": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
-              "intent": "operation",
-              "evidenceNeed": "manual_model_specific",
-              "answerShape": "steps"
-            }
-          ],
-          "confidence": "high",
-          "reasonCode": "elliptical_followup"
+        "answers": {
+          "topic_relation": {
+            "type": "choice",
+            "choice": "followup",
+            "probabilities": {
+              "new": 0.03,
+              "followup": 0.95,
+              "ambiguous": 0.02
+            },
+            "confidence": 0.93
+          },
+          "multi_claim": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "needs_manual": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "needs_web": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "dominant_intent": {
+            "type": "choice",
+            "choice": "spec",
+            "probabilities": {
+              "spec": 0.94
+            },
+            "confidence": 0.91
+          },
+          "needs_clarification": {
+            "type": "noul",
+            "noul": 0.05
+          }
         }
       },
       {
-        "question": "S49DG932SC G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+        "question": "S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?",
         "model": "S49DG932SC",
         "evidenceId": "E1",
         "page": 35,
@@ -443,7 +465,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG932SC G932如何開啟PBP?；那兩邊都能120HZ嗎? PBP CONNECTION.PBP 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG932SC G932如何開啟PBP?；那兩邊都能120Hz嗎? PBP connection.pbp 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120HZ嗎? PBP CONNECTION.PBP 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎? PBP connection.pbp 並排顯示多個輸入來源 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
               }
             ]
           }
@@ -455,7 +477,7 @@
         "input": "G932如何開啟PBP？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S49DG932SC",
@@ -501,9 +523,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -523,7 +545,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -549,14 +571,14 @@
         "input": "那兩邊都能120Hz嗎？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] S49DG932SC：目前沒有足夠可靠的資料直接回答「那兩邊都能120Hz嗎?」。\n我先不猜數字或功能結論，避免現場拿到錯答案。\n這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。\n\n[費用:NT$0.0134（合計 3 次生成請求）]"
+          "[General] [Reply Audit] S49DG932SC：目前沒有足夠可靠的資料直接回答「那兩邊都能120Hz嗎?」。\n我先不猜數字或功能結論，避免現場拿到錯答案。\n這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。\n\n[費用:NT$0.0149（合計 3 次生成請求）]"
         ],
         "model": {
           "model": "S49DG932SC",
           "lastSource": "manual",
           "topic": {
-            "canonicalQuestion": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
-            "canonicalClaimKey": "8ff860dea2bbbea2",
+            "canonicalQuestion": "G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?",
+            "canonicalClaimKey": "13f11255f8e5edc0",
             "lastQuestion": "那兩邊都能120Hz嗎?",
             "claims": [],
             "updatedAt": 1788847200000
@@ -564,14 +586,14 @@
           "advancedBySource": {
             "manual": {
               "status": "done",
-              "key": "SRC_OP_d21c60aa425cccf5d8216c73_56e12c8550fea1ab83122c7d",
+              "key": "SRC_OP_d21c60aa425cccf5d8216c73_a09eee4932d96d88ceccaec1",
               "contextId": "OFFLINE_J3",
               "source": "manual",
               "finalText": "S49DG932SC：目前沒有足夠可靠的資料直接回答「那兩邊都能120Hz嗎?」。\n我先不猜數字或功能結論，避免現場拿到錯答案。\n這題已記下來，請 Sam 補進常見問題庫後，下次就能直接回答。",
               "model": "S49DG932SC",
               "date": "2026-09-08",
-              "canonicalTopic": "G932開啟PBP兩邊都能120HZ嗎",
-              "canonicalQuery": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
+              "canonicalTopic": "G932開啟PBP追問兩邊都能120HZ嗎",
+              "canonicalQuery": "S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?",
               "knowledgeFingerprint": "PAGE_RAG_43661a34f40f4a21",
               "createdAt": 1788847200000,
               "expiresAt": 1788847800000
@@ -583,8 +605,8 @@
           "reason": "question"
         },
         "canonicalTopic": {
-          "canonicalQuestion": "G932如何開啟PBP?；那兩邊都能120Hz嗎?",
-          "canonicalClaimKey": "8ff860dea2bbbea2",
+          "canonicalQuestion": "G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?",
+          "canonicalClaimKey": "13f11255f8e5edc0",
           "lastQuestion": "那兩邊都能120Hz嗎?",
           "claims": [],
           "updatedAt": 1788847200000,
@@ -597,11 +619,11 @@
             "pdf",
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-3.7-flash",
-            "models/gemini-2.5-flash-lite",
-            "models/gemini-2.5-flash"
+            "typesafe/jev-1.13",
+            "models/gemini-3.1-flash-lite",
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 3,
           "billableCalls": 3,
@@ -609,19 +631,19 @@
           "routerCalls": 1,
           "routerCacheHits": 0,
           "plannerLatencyMs": 0,
-          "routerCostTwd": 0.007200000000000001,
+          "routerCostTwd": 0.0001344,
           "routePlanValid": true,
           "routePlan": {
             "topicRelation": "followup",
             "productAction": "keep_confirmed",
             "claimRoutes": [
-              "C1:manual_model_specific"
+              "claim_1:manual_model_specific"
             ],
             "confidence": "high",
             "reasonCode": "elliptical_followup"
           },
           "claimRoutes": [
-            "C1:manual_model_specific"
+            "claim_1:manual_model_specific"
           ],
           "selectedModel": "S49DG932SC",
           "finalCoverage": "unsupported",
@@ -631,7 +653,7 @@
           "outputTokens": 170,
           "thoughtTokens": 0,
           "billedOutputTokens": 170,
-          "estimatedCostTwd": 0.01344,
+          "estimatedCostTwd": 0.0149344,
           "sources": [],
           "providerOutcome": "success",
           "providerFailureCode": "",
@@ -639,12 +661,13 @@
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那兩邊都能120Hz嗎? (型號: S49DG932SC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"G932如何開啟PBP?；那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router JEV] model=typesafe/jev-1.13-20260917 valid=true relation=followup claims=1",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那兩邊都能120Hz嗎?\",\"previousTopic\":\"G932如何開啟PBP?\",\"confirmedModel\":\"S49DG932SC\",\"candidates\":[\"S49DG932SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG932SC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S49DG932SC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG932SC group=multi_view",
@@ -996,7 +1019,7 @@
         "input": "改接網路線呢？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] S32FM803UC：關於「改接網路線呢?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0067（合計 3 次生成請求）]"
+          "[General] [Reply Audit] S32FM803UC：關於「改接網路線呢?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0161（合計 3 次生成請求）]"
         ],
         "model": {
           "model": "S32FM803UC",
@@ -1044,10 +1067,10 @@
             "pdf",
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-2.5-flash-lite",
-            "models/gemini-2.5-flash"
+            "models/gemini-3.1-flash-lite",
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 3,
           "billableCalls": 3,
@@ -1067,7 +1090,7 @@
           "outputTokens": 140,
           "thoughtTokens": 0,
           "billedOutputTokens": 140,
-          "estimatedCostTwd": 0.006688,
+          "estimatedCostTwd": 0.01608,
           "sources": [],
           "providerOutcome": "success",
           "providerFailureCode": "",
@@ -1265,9 +1288,9 @@
         "selectedText": "變更虛擬瞄準點\n功能表 設定 所有設定 遊戲 虛擬瞄準點\n在螢幕中央顯示虛擬瞄準點。\n依型號而定，可能不支援此功能。\n設定Core Lighting\n功能表 設定 所有設定 遊戲 Core Lighting\n開啟或關閉產品正面和背面的 LED 照明。\n依型號而定，可能不支援此功能。\n使用AI Sound Booster\n功能表 設定 所有設定 遊戲 AI Sound Booster\nAI Sound Booster 會透過即時 AI 分析，提供具有最大化方向的 3D 音效。其生動地表達各種音效，提供更身歷其境的遊 戲體驗。\n依型號而定，可能不支援此功能。\n使用動態黑色等化器\n功能表 設定 所有設定 遊戲 動態黑色等化器 立即嘗試\n您可以透過提升黑暗場景中的可見度和物體細部，輕鬆偵測潛伏在黑暗角落的項目或隱藏的敵人，無需使場景變得較 明亮而降低色彩豔度和對比度。\n依型號而定，可能不支援此功能。\n- 115 -"
       },
       {
-        "fixtureKind": "router-classification-only",
+        "fixtureKind": "jev-router-classification-only",
         "input": {
-          "originalQuestion": "我要跟畫面同步。",
+          "question": "我要跟畫面同步。",
           "previousTopic": "後方那圈燈怎麼開?",
           "confirmedModel": "S49DG952SC",
           "candidates": [
@@ -1276,28 +1299,50 @@
           "identityKind": "persisted",
           "localCoverage": "none",
           "localEvidenceIds": [],
-          "manualAvailable": true
+          "manualAvailable": true,
+          "ambiguousAlias": false,
+          "seriesAliasResolved": false,
+          "possibleFollowUp": true
         },
-        "result": {
-          "version": "RouteAnalysisV1",
-          "topicRelation": "followup",
-          "productAction": "keep_confirmed",
-          "candidateIndex": null,
-          "claims": [
-            {
-              "id": "C1",
-              "question": "後方那圈燈怎麼開?；我要跟畫面同步。",
-              "intent": "operation",
-              "evidenceNeed": "manual_model_specific",
-              "answerShape": "steps"
-            }
-          ],
-          "confidence": "high",
-          "reasonCode": "elliptical_followup"
+        "answers": {
+          "topic_relation": {
+            "type": "choice",
+            "choice": "followup",
+            "probabilities": {
+              "new": 0.03,
+              "followup": 0.95,
+              "ambiguous": 0.02
+            },
+            "confidence": 0.93
+          },
+          "multi_claim": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "needs_manual": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "needs_web": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "dominant_intent": {
+            "type": "choice",
+            "choice": "spec",
+            "probabilities": {
+              "spec": 0.94
+            },
+            "confidence": 0.91
+          },
+          "needs_clarification": {
+            "type": "noul",
+            "noul": 0.05
+          }
         }
       },
       {
-        "question": "S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。",
+        "question": "S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。",
         "model": "S49DG952SC",
         "evidenceId": "E1",
         "page": 115,
@@ -1311,7 +1356,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
+                "text": "【請搜尋最新公開網頁與全球實務討論（可搜尋別名/通用型號：SAMSUNG 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -SITE:SAMSUNG.COM, G9, Smart Monitor G9, Odyssey G9）】請根據搜尋結果提供具體解決細節與實務步驟。若國外網頁有解答，請翻譯整理為繁體中文回覆。Samsung 電腦螢幕 S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。 台灣 非官方 公開網頁 實務解法 -site:samsung.com"
               }
             ]
           }
@@ -1366,7 +1411,7 @@
         "input": "#型號:S49DG952SC",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n官方手冊：第115頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n官方手冊：第115頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S49DG952SC",
@@ -1412,9 +1457,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -1434,7 +1479,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -1459,14 +1504,14 @@
         "input": "我要跟畫面同步。",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 手冊能確認：\n可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n\n官方手冊：第115頁\n\n至於「後方燈與畫面同步的設定仍未核實。。我接著補查一次公開網頁，不另扣網搜次數。」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。\n[來源:官方手冊]\n\n[費用:NT$0.0134（合計 3 次生成請求）]"
+          "[General] [Reply Audit] 手冊能確認：\n可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n\n官方手冊：第115頁\n\n至於「後方燈與畫面同步的設定仍未核實。。我接著補查一次公開網頁，不另扣網搜次數。」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。\n[來源:官方手冊]\n\n[費用:NT$0.0149（合計 3 次生成請求）]"
         ],
         "model": {
           "model": "S49DG952SC",
           "lastSource": "manual",
           "topic": {
-            "canonicalQuestion": "後方那圈燈怎麼開?；我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
-            "canonicalClaimKey": "ef71cc6f1bdd64d3",
+            "canonicalQuestion": "後方那圈燈怎麼開?；追問：我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
+            "canonicalClaimKey": "660bda0b7380deeb",
             "lastQuestion": "我要跟畫面同步。",
             "claims": [],
             "updatedAt": 1788847200000
@@ -1474,14 +1519,14 @@
           "advancedBySource": {
             "manual": {
               "status": "done",
-              "key": "SRC_OP_14e3065dd3a2469dee2e42ba_57ef71229a7154bf8e9da315",
+              "key": "SRC_OP_14e3065dd3a2469dee2e42ba_3bebf34dc5ddb7fc3f5c2816",
               "contextId": "OFFLINE_J7",
               "source": "manual",
               "finalText": "手冊能確認：\n可以先照這份手冊找找；部分選項依型號而異，若畫面沒有，就先別套用。\n設定 → 所有設定 → 遊戲 → Core Lighting，可開啟或關閉產品背面的 LED 照明。\n\n官方手冊：第115頁\n\n至於「後方燈與畫面同步的設定仍未核實。。我接著補查一次公開網頁，不另扣網搜次數。」，網路補充還無法核對到這款；可以請 Sam 一起確認，先別套用其他型號的資料。\n[來源:官方手冊]",
               "model": "S49DG952SC",
               "date": "2026-09-08",
-              "canonicalTopic": "機背圈燈開我要跟畫面同步",
-              "canonicalQuery": "後方那圈燈怎麼開?；我要跟畫面同步。",
+              "canonicalTopic": "機背圈燈開追問我要跟畫面同步",
+              "canonicalQuery": "S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。",
               "knowledgeFingerprint": "PAGE_RAG_c83f140e0c5bd7d7",
               "createdAt": 1788847200000,
               "expiresAt": 1788847800000
@@ -1493,8 +1538,8 @@
           "reason": "model_selection"
         },
         "canonicalTopic": {
-          "canonicalQuestion": "後方那圈燈怎麼開?；我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
-          "canonicalClaimKey": "ef71cc6f1bdd64d3",
+          "canonicalQuestion": "後方那圈燈怎麼開?；追問：我要跟畫面同步。；追問：我要跟畫面同步。；追問：我要跟畫面同步。",
+          "canonicalClaimKey": "660bda0b7380deeb",
           "lastQuestion": "我要跟畫面同步。",
           "claims": [],
           "updatedAt": 1788847200000,
@@ -1507,11 +1552,11 @@
             "pdf",
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-3.7-flash",
-            "models/gemini-2.5-flash-lite",
-            "models/gemini-2.5-flash"
+            "typesafe/jev-1.13",
+            "models/gemini-3.1-flash-lite",
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 3,
           "billableCalls": 3,
@@ -1519,19 +1564,19 @@
           "routerCalls": 1,
           "routerCacheHits": 0,
           "plannerLatencyMs": 0,
-          "routerCostTwd": 0.007200000000000001,
+          "routerCostTwd": 0.0001344,
           "routePlanValid": true,
           "routePlan": {
             "topicRelation": "followup",
             "productAction": "keep_confirmed",
             "claimRoutes": [
-              "C1:manual_model_specific"
+              "claim_1:manual_model_specific"
             ],
             "confidence": "high",
             "reasonCode": "elliptical_followup"
           },
           "claimRoutes": [
-            "C1:manual_model_specific"
+            "claim_1:manual_model_specific"
           ],
           "selectedModel": "S49DG952SC",
           "finalCoverage": "partial",
@@ -1541,7 +1586,7 @@
           "outputTokens": 170,
           "thoughtTokens": 0,
           "billedOutputTokens": 170,
-          "estimatedCostTwd": 0.01344,
+          "estimatedCostTwd": 0.0149344,
           "sources": [
             "官方手冊"
           ],
@@ -1551,12 +1596,13 @@
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 我要跟畫面同步。 (型號: S49DG952SC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"後方那圈燈怎麼開?；我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router JEV] model=typesafe/jev-1.13-20260917 valid=true relation=followup claims=1",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"我要跟畫面同步。\",\"previousTopic\":\"後方那圈燈怎麼開?\",\"confirmedModel\":\"S49DG952SC\",\"candidates\":[\"S49DG952SC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S49DG952SC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S49DG952SC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S49DG952SC group=rear_lighting",
@@ -1605,7 +1651,7 @@
         "input": "S32FM703UC HDMI怎麼切換？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第14頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第14頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S32FM703UC",
@@ -1651,9 +1697,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -1673,7 +1719,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -1699,7 +1745,7 @@
         "input": "改成S49DG952SC同功能呢？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第13頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 按左方向鍵，選擇已連接裝置，再在訊號源畫面選擇已連接的 HDMI 外部裝置。\n官方手冊：第13頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S49DG952SC",
@@ -1745,9 +1791,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -1767,7 +1813,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -1937,7 +1983,7 @@
         "input": "昨天那台怎麼開PBP？",
         "clockAdvanced": 86400000,
         "replies": [
-          "[General] [Reply Audit] S32DG802SC：關於「昨天那台怎麼開PBP?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0062（合計 2 次生成請求）]"
+          "[General] [Reply Audit] S32DG802SC：關於「昨天那台怎麼開PBP?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0148（合計 2 次生成請求）]"
         ],
         "model": {
           "model": "S32DG802SC",
@@ -1984,10 +2030,10 @@
             "pdf",
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-2.5-flash-lite",
-            "models/gemini-2.5-flash"
+            "models/gemini-3.1-flash-lite",
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 2,
           "billableCalls": 2,
@@ -2007,7 +2053,7 @@
           "outputTokens": 130,
           "thoughtTokens": 0,
           "billedOutputTokens": 130,
-          "estimatedCostTwd": 0.006240000000000001,
+          "estimatedCostTwd": 0.0148,
           "sources": [],
           "providerOutcome": "success",
           "providerFailureCode": "",
@@ -2240,7 +2286,7 @@
         "input": "S27D392GAC怎麼自我診斷？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0034（合計 1 次生成請求）]"
+          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n[費用:NT$0.0060（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S27D392GAC",
@@ -2286,9 +2332,9 @@
           "stages": [
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-2.5-flash"
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -2308,7 +2354,7 @@
           "outputTokens": 30,
           "thoughtTokens": 0,
           "billedOutputTokens": 30,
-          "estimatedCostTwd": 0.00336,
+          "estimatedCostTwd": 0.006,
           "sources": [],
           "providerOutcome": "success",
           "providerFailureCode": "",
@@ -2413,7 +2459,7 @@
         "input": "rm_action=select_source&source=web&v=2",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n也可以點「到這款官網」確認，或請 Sam 幫忙。\n\n[費用:NT$0.0034（合計 1 次生成請求）]"
+          "[General] [Reply Audit] S27D392GAC：關於「S27D392GAC怎麼自我診斷?」，目前沒有足夠證據可下結論。我先不套用其他型號的做法；可以用下方官網核對，或請 Sam 一起確認。\n\n也可以點「到這款官網」確認，或請 Sam 幫忙。\n\n[費用:NT$0.0060（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S27D392GAC",
@@ -2472,9 +2518,9 @@
           "stages": [
             "web"
           ],
-          "model": "models/gemini-2.5-flash",
+          "model": "models/gemini-3.7-flash",
           "billableModels": [
-            "models/gemini-2.5-flash"
+            "models/gemini-3.7-flash"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -2494,7 +2540,7 @@
           "outputTokens": 30,
           "thoughtTokens": 0,
           "billedOutputTokens": 30,
-          "estimatedCostTwd": 0.00336,
+          "estimatedCostTwd": 0.006,
           "sources": [],
           "providerOutcome": "success",
           "providerFailureCode": "",
@@ -2538,7 +2584,7 @@
         "input": "G932如何開啟PBP？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 進入 PIP/PBP → PIP/PBP Mode。PIP/PBP Mode 可開啟或關閉 PIP/PBP 模式。\n小提醒：玩遊戲時請勿任意變更 PIP/PBP 功能。\n官方手冊：第35頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S49DG932SC",
@@ -2584,9 +2630,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -2606,7 +2652,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -2738,7 +2784,7 @@
         "input": "S27H704EAC怎麼自我診斷？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S27H704EAC",
@@ -2784,9 +2830,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -2806,7 +2852,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -2831,7 +2877,7 @@
         "input": "再詳細一點",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 測試前，先把目前的工作告一段落。\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。\n\n[來源:官方手冊]\n\n[費用:NT$0.0010（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 測試前，先把目前的工作告一段落。\n\n📌 若你要查手冊，請在訊息內提供完整型號（例如：S27FG900XC）。\n\n[來源:官方手冊]\n\n[費用:NT$0.0032（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S27H704EAC",
@@ -2877,9 +2923,9 @@
           "stages": [
             "fast"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -2899,7 +2945,7 @@
           "outputTokens": 50,
           "thoughtTokens": 0,
           "billedOutputTokens": 50,
-          "estimatedCostTwd": 0.00096,
+          "estimatedCostTwd": 0.0032,
           "sources": [
             "官方手冊"
           ],
@@ -3107,9 +3153,9 @@
         "selectedText": "Support\nSelf Diagnosis Self Diagnosis 在顯示器的圖片發生問題時執行此測試。\n― 在自行診斷期間，切勿關閉電源，也不要變更輸入來源。如果可能，\n盡量不要中斷測試。"
       },
       {
-        "fixtureKind": "router-classification-only",
+        "fixtureKind": "jev-router-classification-only",
         "input": {
-          "originalQuestion": "那測試時能切換輸入嗎?",
+          "question": "那測試時能切換輸入嗎?",
           "previousTopic": "怎麼自我診斷?",
           "confirmedModel": "S27H704EAC",
           "candidates": [
@@ -3118,28 +3164,50 @@
           "identityKind": "persisted",
           "localCoverage": "none",
           "localEvidenceIds": [],
-          "manualAvailable": true
+          "manualAvailable": true,
+          "ambiguousAlias": false,
+          "seriesAliasResolved": false,
+          "possibleFollowUp": true
         },
-        "result": {
-          "version": "RouteAnalysisV1",
-          "topicRelation": "followup",
-          "productAction": "keep_confirmed",
-          "candidateIndex": null,
-          "claims": [
-            {
-              "id": "C1",
-              "question": "怎麼自我診斷?；那測試時能切換輸入嗎?",
-              "intent": "operation",
-              "evidenceNeed": "manual_model_specific",
-              "answerShape": "steps"
-            }
-          ],
-          "confidence": "high",
-          "reasonCode": "elliptical_followup"
+        "answers": {
+          "topic_relation": {
+            "type": "choice",
+            "choice": "followup",
+            "probabilities": {
+              "new": 0.03,
+              "followup": 0.95,
+              "ambiguous": 0.02
+            },
+            "confidence": 0.93
+          },
+          "multi_claim": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "needs_manual": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "needs_web": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "dominant_intent": {
+            "type": "choice",
+            "choice": "operation",
+            "probabilities": {
+              "operation": 0.94
+            },
+            "confidence": 0.91
+          },
+          "needs_clarification": {
+            "type": "noul",
+            "noul": 0.05
+          }
         }
       },
       {
-        "question": "S27H704EAC 怎麼自我診斷?；那測試時能切換輸入嗎?",
+        "question": "S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?",
         "model": "S27H704EAC",
         "evidenceId": "E1",
         "page": 41,
@@ -3152,7 +3220,7 @@
         "input": "S27H704EAC怎麼自我診斷？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "S27H704EAC",
@@ -3198,9 +3266,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -3220,7 +3288,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],
@@ -3245,14 +3313,14 @@
         "input": "那測試時能切換輸入嗎？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n小提醒：如果可能， 盡量不要中斷測試。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0101（合計 2 次生成請求）]"
+          "[General] [Reply Audit] 進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n小提醒：如果可能， 盡量不要中斷測試。\n官方手冊：第41頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0089（合計 2 次生成請求）]"
         ],
         "model": {
           "model": "S27H704EAC",
           "lastSource": "manual",
           "topic": {
-            "canonicalQuestion": "怎麼自我診斷?；那測試時能切換輸入嗎?",
-            "canonicalClaimKey": "462a16bf425a59fb",
+            "canonicalQuestion": "怎麼自我診斷?；追問：那測試時能切換輸入嗎?",
+            "canonicalClaimKey": "6340eab25302d147",
             "lastQuestion": "那測試時能切換輸入嗎?",
             "claims": [],
             "updatedAt": 1788847200000
@@ -3260,14 +3328,14 @@
           "advancedBySource": {
             "manual": {
               "status": "done",
-              "key": "SRC_OP_0143c6961a2886f21de1b0f0_48bdeaec1be9059781852590",
+              "key": "SRC_OP_0143c6961a2886f21de1b0f0_45482ec9898d13547b7756c1",
               "contextId": "OFFLINE_J15",
               "source": "manual",
               "finalText": "進入 Support → Self Diagnosis。在自行診斷期間，切勿關閉電源，也不要變更輸入來源。\n小提醒：如果可能， 盡量不要中斷測試。\n官方手冊：第41頁\n\n[來源:官方手冊]",
               "model": "S27H704EAC",
               "date": "2026-09-08",
-              "canonicalTopic": "自我診斷測試時能切換輸入嗎",
-              "canonicalQuery": "怎麼自我診斷?；那測試時能切換輸入嗎?",
+              "canonicalTopic": "自我診斷追問測試時能切換輸入嗎",
+              "canonicalQuery": "S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?",
               "knowledgeFingerprint": "PAGE_RAG_d35ead2e5ddeed72",
               "createdAt": 1788847200000,
               "expiresAt": 1788847800000
@@ -3279,8 +3347,8 @@
           "reason": "question"
         },
         "canonicalTopic": {
-          "canonicalQuestion": "怎麼自我診斷?；那測試時能切換輸入嗎?",
-          "canonicalClaimKey": "462a16bf425a59fb",
+          "canonicalQuestion": "怎麼自我診斷?；追問：那測試時能切換輸入嗎?",
+          "canonicalClaimKey": "6340eab25302d147",
           "lastQuestion": "那測試時能切換輸入嗎?",
           "claims": [],
           "updatedAt": 1788847200000,
@@ -3292,10 +3360,10 @@
             "router",
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-3.7-flash",
-            "models/gemini-2.5-flash-lite"
+            "typesafe/jev-1.13",
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 2,
           "billableCalls": 2,
@@ -3303,19 +3371,19 @@
           "routerCalls": 1,
           "routerCacheHits": 0,
           "plannerLatencyMs": 0,
-          "routerCostTwd": 0.007200000000000001,
+          "routerCostTwd": 0.0001344,
           "routePlanValid": true,
           "routePlan": {
             "topicRelation": "followup",
             "productAction": "keep_confirmed",
             "claimRoutes": [
-              "C1:manual_model_specific"
+              "claim_1:manual_model_specific"
             ],
             "confidence": "high",
             "reasonCode": "elliptical_followup"
           },
           "claimRoutes": [
-            "C1:manual_model_specific"
+            "claim_1:manual_model_specific"
           ],
           "selectedModel": "S27H704EAC",
           "finalCoverage": "supported",
@@ -3325,7 +3393,7 @@
           "outputTokens": 140,
           "thoughtTokens": 0,
           "billedOutputTokens": 140,
-          "estimatedCostTwd": 0.01008,
+          "estimatedCostTwd": 0.0089344,
           "sources": [
             "官方手冊"
           ],
@@ -3335,12 +3403,13 @@
         },
         "error": "",
         "fatal": [
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [History Sheet Error] ss.insertSheet is not a function"
         ],
         "evidenceTrace": [
           "[General] [Semantic Router v29.6.277] 省略式追問先判斷承接關係，禁止 QA／RULE 以整機規格搶答: 那測試時能切換輸入嗎? (型號: S27H704EAC)",
-          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"C1\",\"question\":\"怎麼自我診斷?；那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.315\"}}",
+          "[General] [Semantic Router JEV] model=typesafe/jev-1.13-20260917 valid=true relation=followup claims=1",
+          "[General] [Semantic Router v29.6.277] mode=conditional valid=true cache=false latency=0ms plan={\"version\":\"RouteAnalysisV1\",\"topicRelation\":\"followup\",\"productAction\":\"keep_confirmed\",\"candidateIndex\":null,\"claims\":[{\"id\":\"claim_1\",\"question\":\"S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?\",\"intent\":\"operation\",\"evidenceNeed\":\"manual_model_specific\",\"answerShape\":\"steps\",\"_unexpectedFields\":[]}],\"confidence\":\"high\",\"reasonCode\":\"elliptical_followup\",\"_parseError\":false,\"_candidateIndexInvalid\":false,\"_unexpectedFields\":[],\"_input\":{\"originalQuestion\":\"那測試時能切換輸入嗎?\",\"previousTopic\":\"怎麼自我診斷?\",\"confirmedModel\":\"S27H704EAC\",\"candidates\":[\"S27H704EAC\"],\"identityKind\":\"persisted\",\"localCoverage\":\"none\",\"localEvidenceIds\":[],\"manualAvailable\":true,\"explicitSource\":false,\"isElaboration\":false,\"unknownModel\":false,\"ambiguousAlias\":false,\"seriesAliasResolved\":false,\"possibleFollowUp\":true,\"priorRoutePlanAvailable\":false,\"multiClaim\":false,\"routeConflict\":false,\"kbVersion\":\"v29.6.322\"}}",
           "[General] [Automatic Manual Fallback v29.6.247] QA/RULE 不足，直接進官方手冊；model=S27H704EAC",
           "[General] [Manual Authorization v29.6.160] source=pending model=S27H704EAC，選型完成後直接執行",
           "[General] [Manual Page RAG] 命中頁級索引，跳過整本 PDF 選檔；model=S27H704EAC group=self_diagnosis",
@@ -3372,7 +3441,7 @@
         "input": "LF24T350FHC護眼模式怎麼開？",
         "clockAdvanced": 0,
         "replies": [
-          "[General] [Reply Audit] 進入 Picture → Eye Saver Mode。Eye Saver Mode 設定讓眼睛放鬆的最佳畫質。\n官方手冊：第18、20頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0029（合計 1 次生成請求）]"
+          "[General] [Reply Audit] 進入 Picture → Eye Saver Mode。Eye Saver Mode 設定讓眼睛放鬆的最佳畫質。\n官方手冊：第18、20頁\n\n[來源:官方手冊]\n\n[費用:NT$0.0088（合計 1 次生成請求）]"
         ],
         "model": {
           "model": "F24T350FHC",
@@ -3418,9 +3487,9 @@
           "stages": [
             "pdf"
           ],
-          "model": "models/gemini-2.5-flash-lite",
+          "model": "models/gemini-3.1-flash-lite",
           "billableModels": [
-            "models/gemini-2.5-flash-lite"
+            "models/gemini-3.1-flash-lite"
           ],
           "attemptedCalls": 1,
           "billableCalls": 1,
@@ -3440,7 +3509,7 @@
           "outputTokens": 100,
           "thoughtTokens": 0,
           "billedOutputTokens": 100,
-          "estimatedCostTwd": 0.00288,
+          "estimatedCostTwd": 0.0088,
           "sources": [
             "官方手冊"
           ],

@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-18T09:29:55.624Z",
+  "target": "formal @1504 v29.6.322 bootstrap candidate",
+  "headless": true,
+  "scope": "live route/evidence acceptance; provider generation separately budget-guarded",
+  "checks": {
+    "qa_direct_answer": true,
+    "qa_router0": true,
+    "manual_route_self_diagnosis": true,
+    "manual_router0": true,
+    "jev_real_call": true,
+    "jev_followup": true,
+    "claim_restored": true,
+    "followup_self_diagnosis": true,
+    "followup_web0": true,
+    "manual_generation_pre_send_blocked": true
+  },
+  "providerNote": "Gemini page-answer generation was stopped pre-send by existing PROVIDER_*BUDGET* guard; the live route/evidence target was still verified. Earlier v320 live TestUI proved the same page-RAG provider path can generate successfully before the shared verification ledger approached its cap.",
+  "routeAcceptancePass": true
+}

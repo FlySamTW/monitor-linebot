@@ -382,7 +382,7 @@ assert(
 assert(
   /DriveApp\.getFileById\(item\.driveFileId\)/.test(linebot) &&
     /if \(allWantedNamesAttempted\) break/.test(linebot) &&
-    /driveFileId: driveFileId[\s\S]{0,160}identity:/.test(linebot),
+    /driveFileId: driveFileId[\s\S]{0,260}identity:/.test(linebot),
   "本題 PDF 過期時先以 Drive ID 直接取檔，相容掃描找齊目標後立即停止",
 );
 assert(

@@ -1,6 +1,8 @@
-# AI_CONTEXT — v29.6.319 冷備援完整模型驗證
+# AI_CONTEXT — v29.6.323 JEV Semantic Router
 
-正式 v29.6.319 @1501（BUILD14:02）已切到 standby。啟用條件要求 `gemini-3.1-flash-lite` 與 `gemini-3.7-flash` 都做極小生成且全數成功，避免 models.list 或單一 Fast 健康誤判整條回答鏈可用。2026-09-11 TestUI 實測兩模型皆成功，2 calls／約 NT$0.000328。3.1 minimal、3.7 low；完整 QA／RULE 仍不叫模型，守門不擴散到每題。403 不自動轉移。Prompt／路由／Rich Menu／配額不變。
+v29.6.323 將條件式 Semantic Router 正式遷移為固定 `typesafe/jev-1.13` OpenRouter Decisions API；它只做 typed decisions，不回答產品事實、不生成 claim 文字、不選型號真值。精準 QA2／完整 RULE／明確單一手冊題仍 Router0；Fast／頁級 RAG／Polish 固定 `gemini-3.1-flash-lite`，整本 PDF／Web 固定 `gemini-3.7-flash`。JEV key 只在 ScriptProperties，Authorization 只在 provider gateway Header，費用仍走月預留／TestUI驗收帳本。
+
+v322 formal @1504 純 headless TestUI 已真實驗到：QA Router0；H704 明確手冊題 Router0 且 `self_diagnosis`；省略追問 JEV Router1、relation=followup、完整 claim、再次 `self_diagnosis`、Web0。後段 Gemini 頁級生成因既有 `PROVIDER_*BUDGET*` 預送出守門而未再花費（pdfCalls0）；不繞過共用驗收上限。v323 只移除一次性 bootstrap 並收斂文件／版本，回答鏈不再改動。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 
@@ -28,7 +30,7 @@ v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 F
 
 - QA 資料庫 → CLASS_RULES → 官方 PDF 手冊 → 網路搜尋/官方頁（官方頁僅保留連結）→ 誠實告知無資料並提供有用下一步。不可無證據猜規格。
 - 條件式守門不是每題必經。型號／系列能RULE解析就不叫模型；新限制不能因已有plan而丟失。
-- 一般10／手冊2／網路5，系統補救3。Fast／頁級2.5Lite，PDF／Web2.5Flash，條件式3.7Flash；不自行升級。
+- 一般10／手冊2／網路5，系統補救3。Fast／頁級／Polish＝3.1 Flash-Lite；整本 PDF／Web＝3.7 Flash；條件式 Router＝JEV 1.13 Decisions API；不自行升級或改用 latest。
 - **本批月費共同入口必須先讀Cloud当月費用並seed；未初始化禁止發布**，避免全部付費中斷。
 - 不Push、不改RichMenu、不做無關解析度；main、不開分支、不清歷史。
 

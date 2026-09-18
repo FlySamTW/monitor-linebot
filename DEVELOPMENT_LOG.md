@@ -1,5 +1,36 @@
 # 開發對話紀錄
 
+## v29.6.323 正式發布 @1505（2026-09-18）
+
+- 既有正式 Webhook 已更新至 @1505，health 讀回 `v29.6.323 [2026-09-18 17:35]`；沒有建立新 deployment，也沒有修改 Prompt!C3。
+- 發布前 `test:static` 全 PASS；`test:production-contract` 全 PASS，含 67 項正式可靠性契約與 30 項 worker 整合，providerCalls=0。
+- v323 僅做 JEV Router 安全收尾與移除一次性 bootstrap，回答鏈未再更動。最後一筆真實 JEV TestUI 驗收仍為 v322 @1504；本輪未重新完成 v323 瀏覽器 TestUI，因此不得把部署成功寫成新的真人 TestUI 通過。
+
+## v29.6.323 JEV Router 最終安全收尾（2026-09-18）
+
+- v322 formal @1504 的純 headless TestUI 已驗：精準 QA `routerCalls=0`；H704 明確手冊題 `routerCalls=0` 且 `self_diagnosis` 頁索引命中；省略追問真實 JEV `routerCalls=1`、relation=followup、完整 claim 保留、再次命中 `self_diagnosis`、`webCalls=0`。路由驗收報告：`test_runner/results/v296322_jev_route_acceptance.json`。
+- 本輪後段 Gemini 頁級整理被既有 `PROVIDER_*BUDGET*` 預送出守門攔下（`pdfCalls=0`），未重置或繞過共用 NT$5 驗收上限；較早 v320 live TestUI 已證明同一頁級 provider 路徑可正常生成。離線 J15 仍完整驗證第41頁「不要變更輸入來源」警語。
+- OpenRouter Key 已安全寫入 ScriptProperties。為無干擾 headless 驗收曾使用只存 SHA-256 的一次性 bootstrap；v323 已把 bootstrap 常數、doGet/doPost 授權與本機明文 token 全部移除，並新增正式契約禁止其回歸。Prompt!C3、Rich Menu、Drive、worker、LINE webhook deployment ID 均未改。
+
+## v29.6.322 JEV 中信心 fallback 保留 claim（2026-09-18）
+
+- v321 真實 headless TestUI 已把 JEV relation 校正為 followup，完整 claim 也正確形成，但 `confidence=medium` 的安全 fallback 分支仍把 analysis 丟掉，只拿原短句查手冊，因此頁級 RAG 落到 `query_time` 而非 `self_diagnosis`。
+- 通用修正：只要 JEV RouteAnalysis 已通過 validator，即使中等信心不允許它直接接管來源決策，仍將 analysis 傳入既有 `executeAutomaticManualFallback_()`，由原本 deterministic claim→manual query 流程使用；最終答案仍只能由官方手冊 Evidence 驗證，不擴張 JEV 權限。
+- 新增契約：中等信心降級不得丟失已補完整的追問 claim。待 headless TestUI 重驗第41頁警語。
+
+## v29.6.321 JEV 省略追問上下文修正（2026-09-18）
+
+- v320 headless TestUI 已證明 JEV Decisions API 真實上線、Router1、Web0、成本約 NT$0.0018；但 H704「那測試時能切換輸入嗎？」被 JEV 判成 new，deterministic query 未補回「自我診斷」，因此安全拒答而非命中第41頁。
+- 通用修正：既有 `isEllipticalEvidenceFollowUp_()` 已判定 `possibleFollowUp=true` 時，若 JEV 誤回 new，應用端修正成 followup；真正 ambiguous 仍保留 JEV 澄清權。claim query 改由 `resolvePersistentFollowupQuestion_()` 補回上一題主詞，不加 H704 單題特例。
+- 修正後 Semantic Router contract PASS，20條離線旅程再次 20 PASS／0 FAIL／0 BLOCKED；待 headless TestUI 真人供應商複驗。
+
+## v29.6.320 JEV Semantic Router 候選（2026-09-18）
+
+- 只替換條件式 Semantic Router：`gemini-3.7-flash` 改為固定 `typesafe/jev-1.13` 的 OpenRouter Decisions API。精準 QA2、CLASS_RULES、型號身分、手冊 Evidence、Web grounding、Prompt!C3、LINE Rich Menu 與一般／手冊／Web 配額不變。
+- JEV 只做 typed decisions（new/followup/ambiguous、multi-claim、manual/web need、intent、clarification），不回答產品事實、不生成 claim 文字、不選產品真值；省略式追問由既有 `resolvePersistentFollowupQuestion_()` 還原，多候選仍交原選型器。
+- OpenRouter 呼叫接入共用 provider 月 NT$90 停止線與 TestUI 驗收帳本；key 僅 ScriptProperties/Header，新增 `sk-or-v1-*` redaction。缺 key／HTTP／低信心時沿用安全 fallback，不允許產品事實旁路。
+- 初步離線回歸：Semantic Router contract PASS；20 條多輪旅程 20 PASS／0 FAIL／0 BLOCKED。正式 TestUI、guarded release 與部署後驗收尚未完成，因此此處不宣稱已上線。
+
 ## v29.6.319 備援全模型健康守門（2026-09-11）
 
 - v318 實際頁級查詢發現：3.1 健康探測成功不代表 3.7 可用；新專案未綁帳單時 3.7 回 429。已將專案連結另一個既有運作中帳單帳戶；原「我的帳單帳戶」因可啟用計費的專案數已達上限而無法綁定。

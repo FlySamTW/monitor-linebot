@@ -1,10 +1,20 @@
-# Samsung LINE Bot 開發手冊 — v29.6.319 冷備援完整模型驗證
+# Samsung LINE Bot 開發手冊 — v29.6.323 JEV Semantic Router
 
-正式 v29.6.319 @1501（BUILD14:02）已切到新專案 standby。因實測發現單驗 3.1 仍可能漏掉 3.7 的帳單／配額問題，啟用條件已補強為 Fast／頁級用 `gemini-3.1-flash-lite` 與 Router／整本 PDF／Web 用 `gemini-3.7-flash` 都做極小生成且全數成功。3.1 使用 minimal、3.7 使用 low；QA／RULE 仍零模型，條件式守門規則不變。Prompt、Rich Menu、路由、來源順序與配額不變。
+v29.6.320 候選把「只有真正模糊／複合／省略式追問才執行」的 Semantic Router 從 Gemini 3.7 Flash 改為 TypeSafe JEV 1.13 Decisions API。QA2、CLASS_RULES、型號身分、官方手冊 Evidence、Web grounding、額度與既有來源順序都不變；JEV 不回答產品事實、不生成產品答案，也不決定型號真值，只回 typed semantic decisions。正式部署狀態仍以當次 guarded release 與 health 讀回為準。
 
-接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程49事件全過與Chrome代表性驗收分開；F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
+接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程與 TestUI／正式 health 分開驗收；不得以離線結果冒充已部署。
 
-本批接手以本文件的v307 worker契約及 [AI_CONTEXT](AI_CONTEXT.md) 為準；[v306 交接清單](docs/V306_HANDOFF.md) 保留前版故障脈絡，其中「worker尚未實作」不是目前正式狀態。正式狀態依當次發布紀錄，以下v306／v305為歷史基線，不代表當次health。
+本文件是唯一回答與守門契約；[AI_CONTEXT](AI_CONTEXT.md) 為快速索引。歷史版本只保留事故與回復依據，不得把舊模型政策套回現行候選。
+
+## v29.6.320 JEV Semantic Router 契約
+
+- 固定 `typesafe/jev-1.13`，呼叫 OpenRouter `POST /api/alpha/decisions`；不使用 Chat Completions，也不使用浮動 latest 作正式版本。
+- `OPENROUTER_API_KEY` 只放 ScriptProperties；Authorization 只在共用 provider gateway 加入 Header，不得進 URL、repo、LOG 或 TestUI 回傳。
+- JEV 只判斷：新題／追問／歧義、是否複合主張、是否需要型號手冊、是否需要即時 Web、主要 intent、是否真的需要語意澄清。它不產生產品答案、不讀 PDF、不掛 Web、不選產品事實。
+- claim 文字由程式 deterministic 建立：省略式追問沿用 `resolvePersistentFollowupQuestion_()`；已確認完整型號是權威狀態，多候選由既有選型器處理。
+- 精準 QA2、完整 RULE、已確認型號的明確操作題與可判定 current-info 題仍在 Router 前零成本結束；JEV 不得變成每題必經服務。
+- JEV Decisions API 仍經共用月預算預留／結算與 TestUI 驗收帳本；OpenRouter usage.cost 優先作實際費用，缺 usage 時保守列待核對。
+- JEV 失敗、缺 key、HTTP 失敗或低信心時不得自行補產品事實；沿用既有安全 fallback／澄清／來源狀態機。
 
 ## v29.6.319 雙專案冷備援契約
 
@@ -67,7 +77,7 @@ v302 單一 PBP canary 與固定13類片段不等於整庫 RAG 驗收。v303 改
 | 已確認型號的單一明確操作、同操作省略重述 | 0次 |
 | 指涉不明、意圖衝突、複合題、新限制難解析 | 最多1次，短結構化分析 |
 
-Fast／頁級／Polish 固定3.1 Flash-Lite，整本PDF／Web與既有條件式守門固定3.7 Flash；不擴到每題。Router 無工具／無產品答案，只選候選 index、拆 claims；低信心、429、格式失敗不重試，回安全路徑。
+Fast／頁級／Polish 固定3.1 Flash-Lite，整本PDF／Web固定3.7 Flash；條件式 Semantic Router 固定 JEV 1.13，且不擴到每題。Router 無工具／無產品答案；候選型號與 claim 文字由程式決定，JEV 只回 typed decisions。低信心、HTTP 或格式失敗不重試產品事實，回既有安全路徑。
 
 ## v307 自動索引 worker 正式契約
 

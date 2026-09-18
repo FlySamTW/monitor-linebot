@@ -26,7 +26,7 @@ const fixtures = [
 function runJourney(spec, index, journeyOptions={}) {
   const ruleLines=fs.readFileSync(path.join(__dirname,'../CLASS_RULES.csv'),'utf8').split(/\r?\n/).filter(Boolean);
   const keywordMap=Object.fromEntries(ruleLines.map(line=>[line.split(',')[0],line]));
-  const h=createProductionHarness({quiet:true,now:'2026-09-08T06:00:00Z',properties:{GEMINI_API_KEY:'offline-fixture',keyword_map_v1:JSON.stringify(keywordMap)}}), c=h.context;
+  const h=createProductionHarness({quiet:true,now:'2026-09-08T06:00:00Z',properties:{GEMINI_API_KEY:'offline-fixture',OPENROUTER_API_KEY:'offline-openrouter-fixture',keyword_map_v1:JSON.stringify(keywordMap)}}), c=h.context;
   // CacheService TTL is I/O: expire on the fake clock, no clear-state shortcuts.
   const expires=new Map(), cacheApi={
     get:key=>{if(expires.has(key)&&h.run('Date.now()')>=expires.get(key)){h.cache.delete(key);expires.delete(key);}return h.cache.get(key)||null;},
@@ -47,8 +47,34 @@ function runJourney(spec, index, journeyOptions={}) {
   for (const record of pack.records) c.importManualIndexRecordFromTestUi(record,token);
   const unsupported=[], providerEvidence=[];
   h.setFetch((url, options)=>{
-    assert(url.startsWith('https://generativelanguage.googleapis.com/'),'unexpected external I/O: '+url);
+    const isJev=url==='https://openrouter.ai/api/alpha/decisions';
+    const isGemini=url.startsWith('https://generativelanguage.googleapis.com/');
+    assert(isJev||isGemini,'unexpected external I/O: '+url);
     const request=JSON.parse(options.payload||'{}');
+    if(isJev){
+      assert.equal(request.model,'typesafe/jev-1.13');
+      assert(options.headers&&/^Bearer\s+/.test(options.headers.Authorization||''),'JEV key must be header-only');
+      assert(!/sk-or|api_key|key=/.test(url),'JEV key leaked into URL');
+      const input=request.state||{};
+      const q=String(input.question||'');
+      const prev=String(input.previousTopic||'');
+      const followup=Boolean(prev&&(/^(?:那|這|它|兩|再|我要跟|可以跟|改接|改成)/.test(q)||/測試時|期間/.test(q)));
+      const multi=/(?:而且|並且|以及|同時|還有|也可以)/.test(q);
+      const web=/(?:目前|現在|最新|庫存|價格|售價|活動|促銷|上市|業者|第三方|APP\s*現況)/i.test(q);
+      const troubleshoot=/(?:故障|異常|沒反應|無法使用|不能用|黑屏|閃爍|無畫面|無訊號|怎麼辦)/i.test(q);
+      const operation=/(?:怎麼|如何|哪裡|在哪|切換|開啟|設定|操作|連|模式)/i.test(q);
+      const intent=web?'current_info':troubleshoot?'troubleshoot':operation?'operation':'spec';
+      const answers={
+        topic_relation:{type:'choice',choice:followup?'followup':'new',probabilities:{new:followup?0.03:0.95,followup:followup?0.95:0.03,ambiguous:0.02},confidence:0.93},
+        multi_claim:{type:'noul',noul:multi?0.95:0.05},
+        needs_manual:{type:'noul',noul:web&&!operation?0.08:0.94},
+        needs_web:{type:'noul',noul:web?0.95:0.05},
+        dominant_intent:{type:'choice',choice:intent,probabilities:{[intent]:0.94},confidence:0.91},
+        needs_clarification:{type:'noul',noul:0.05},
+      };
+      providerEvidence.push({fixtureKind:'jev-router-classification-only',input,answers});
+      return response({model:'typesafe/jev-1.13-20260917',answers,usage:{input_tokens:100,output_tokens:40,cost:0.0000042}});
+    }
     if(url.includes(':countTokens')) return response({totalTokens:500});
     let input;
     try {input=JSON.parse(request.contents[0].parts[0].text);} catch (_) {input={};}
@@ -68,33 +94,19 @@ function runJourney(spec, index, journeyOptions={}) {
       }
       return response({candidates:[{content:{parts:[{text:JSON.stringify(result)}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
     }
-    if (request.generationConfig&&request.generationConfig.responseSchema&&request.generationConfig.responseSchema.properties.version) {
-      assert.equal(request.generationConfig.responseSchema.properties.version.enum[0],'RouteAnalysisV1');
-      const followup=Boolean(input.previousTopic&&/^(那|這|它|兩|再|我要跟|可以跟)/.test(input.originalQuestion));
-      const result={version:'RouteAnalysisV1',topicRelation:followup?'followup':'new',
-        productAction:input.confirmedModel?'keep_confirmed':input.candidates.length?'choose_candidate':'none',candidateIndex:null,
-        claims:[{id:'C1',question:followup?input.previousTopic+'；'+input.originalQuestion:input.originalQuestion,
-          intent:'operation',evidenceNeed:'manual_model_specific',answerShape:'steps'}],confidence:'high',reasonCode:followup?'elliptical_followup':'partial_local'};
-      if(journeyOptions.routerAnalysis) Object.assign(result,journeyOptions.routerAnalysis(input,result));
-      providerEvidence.push({fixtureKind:'router-classification-only',input,result});
-      return response({candidates:[{content:{parts:[{text:JSON.stringify(result)}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:40}});
-    }
     if ((request.tools||[]).some(tool=>tool.google_search)) {
       providerEvidence.push({fixtureKind:'web-empty-grounding',question:request.contents});
       return response({candidates:[{content:{parts:[{text:'目前沒有可核對的公開網頁證據，無法確認這項操作或限制。'}]},groundingMetadata:{groundingChunks:[],groundingSupports:[]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:30}});
     }
-    if (/共同輸出規則/.test(JSON.stringify(request.systemInstruction||{})) && !request.tools && !request.generationConfig.responseSchema) {
+    if (/共同輸出規則/.test(JSON.stringify(request.systemInstruction||{})) && !request.tools && !request.generationConfig?.responseSchema) {
       const latest=request.contents[request.contents.length-1].parts.map(p=>p.text||'').join('\n');
       if(latest.includes('請只補一次真正有幫助的新資訊')&&latest.includes('切勿關閉電源')&&latest.includes('不要變更輸入來源')) {
         providerEvidence.push({fixtureKind:'elaboration-no-new-product-facts',question:latest});
         return response({candidates:[{content:{parts:[{text:journeyOptions.elaborationAnswer||'測試前，先把目前的工作告一段落。'}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:50}});
       }
-      // A valid insufficient-local-evidence response, not a fabricated product
-      // answer. The actual source router decides whether/how to continue.
       providerEvidence.push({fixtureKind:'local-insufficient-manual-required',question:request.contents,providedContext:request.systemInstruction});
       return response({candidates:[{content:{parts:[{text:'[AUTO_SEARCH_PDF]'}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:10}});
     }
-    // Unknown provider schema remains blocked rather than inventing an answer.
     unsupported.push('Unscripted provider request: '+url.split('?')[0]);
     providerEvidence.push({unmatchedProvider:{modelUrl:url.split('?')[0],schema:request.generationConfig&&request.generationConfig.responseSchema,
       tools:request.tools,content:request.contents,system:request.systemInstruction}});
