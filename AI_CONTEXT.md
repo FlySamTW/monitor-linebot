@@ -2,7 +2,7 @@
 
 v29.6.323 將條件式 Semantic Router 正式遷移為固定 `typesafe/jev-1.13` OpenRouter Decisions API；它只做 typed decisions，不回答產品事實、不生成 claim 文字、不選型號真值。精準 QA2／完整 RULE／明確單一手冊題仍 Router0；Fast／頁級 RAG／Polish 固定 `gemini-3.1-flash-lite`，整本 PDF／Web 固定 `gemini-3.7-flash`。JEV key 只在 ScriptProperties，Authorization 只在 provider gateway Header，費用仍走月預留／TestUI驗收帳本。
 
-v322 formal @1504 純 headless TestUI 已真實驗到：QA Router0；H704 明確手冊題 Router0 且 `self_diagnosis`；省略追問 JEV Router1、relation=followup、完整 claim、再次 `self_diagnosis`、Web0。後段 Gemini 頁級生成因既有 `PROVIDER_*BUDGET*` 預送出守門而未再花費（pdfCalls0）；不繞過共用驗收上限。v323 只移除一次性 bootstrap 並收斂文件／版本，回答鏈不再改動。
+v323 編輯者 `/dev?test=1` 已於 2026-09-18 21:31–21:32 真實實問：`S32FM703UC有幾個HDMI？` 直接回答 2 個 HDMI 2.0，`routerCalls=0/pdfCalls=0/webCalls=0`、NT$0；`S27H704EAC怎麼自我診斷？` 為 Router0 並命中 `self_diagnosis` 頁級索引，但後段 Gemini 因既有 TestUI 共用驗收預算守門未送出，所以最終回安全暫停文案；接續 `那測試時能切換輸入嗎？` 真實呼叫 `typesafe/jev-1.13` 成功，`relation=followup`、`routerCalls=1`、`webCalls=0`、再次命中 `self_diagnosis`，JEV 約 NT$0.0019。這證明 JEV Router 與來源承接可用；TestUI 手冊答案生成仍受既有驗收預算上限限制，不得把該限制誤寫成正式 LINE production 供應商失效。
 
 本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
 

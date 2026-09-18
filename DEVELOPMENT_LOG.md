@@ -4,7 +4,7 @@
 
 - 既有正式 Webhook 已更新至 @1505，health 讀回 `v29.6.323 [2026-09-18 17:35]`；沒有建立新 deployment，也沒有修改 Prompt!C3。
 - 發布前 `test:static` 全 PASS；`test:production-contract` 全 PASS，含 67 項正式可靠性契約與 30 項 worker 整合，providerCalls=0。
-- v323 僅做 JEV Router 安全收尾與移除一次性 bootstrap，回答鏈未再更動。最後一筆真實 JEV TestUI 驗收仍為 v322 @1504；本輪未重新完成 v323 瀏覽器 TestUI，因此不得把部署成功寫成新的真人 TestUI 通過。
+- v323 僅做 JEV Router 安全收尾與移除一次性 bootstrap，回答鏈未再更動。21:31–21:32 已以已登入編輯者 Chrome 開啟正確 HEAD `/dev?test=1` 真實實問三題：規格題 `S32FM703UC有幾個HDMI？` 正確回答 2 個 HDMI 2.0、Router0／PDF0／Web0／NT$0；`S27H704EAC怎麼自我診斷？` Router0 並命中 `self_diagnosis` 頁級索引；接續 `那測試時能切換輸入嗎？` 真實 JEV `routerCalls=1`、`relation=followup`、`webCalls=0`、再次命中 `self_diagnosis`，OpenRouter 回報成本約 NT$0.001863。後兩題的 Gemini 頁級答案生成因既有 TestUI 共用驗收預算守門未送出（`pdfCalls=0`），所以最終顯示安全暫停文案；這是 TestUI 驗收額度狀態，不可外推成正式 LINE production 供應商失效。
 
 ## v29.6.323 JEV Router 最終安全收尾（2026-09-18）
 
