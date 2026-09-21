@@ -1,0 +1,20 @@
+{
+  "version":"v29.6.324",
+  "build":"2026-09-19 16:02",
+  "surface":"Actual Chrome editor TestUI; LINE API skipped",
+  "costKind":"usage_estimate_not_invoice",
+  "batchCostTwd":1.539459392,
+  "monthCostTwd":21.345974208000005,
+  "batchReadbackPending":false,
+  "cases":[
+    {"id":"F24-before","status":"FAIL","build":"2026-09-19 15:43","question":"LF24T350FHC護眼模式怎麼開？","reason":"QA quotation validation / model normalization failure before PDF","costTwd":0.01636,"pdfCalls":0,"receiptId":"6c3d7329-e304-46f6-bae1-71a9b00862a5"},
+    {"id":"F24","status":"PASS","question":"LF24T350FHC護眼模式怎麼開？","answer":"螢幕開啟時按 JOG，依功能鍵導覽選 Eye Saver Mode。","source":"F24T350,F27T350.pdf page 13; independently read original local PDF text","transport":"custom_page_rag_text","pagesSent":[20,23,14,14,13],"acceptedPages":[13],"acceptedEvidence":1,"pdfCalls":1,"webCalls":0,"routerCalls":0,"costTwd":0.0434,"receipts":[{"purpose":"qa_semantic","costTwd":0.023384,"id":"450af80c-6883-447f-b5fe-7adb76a3a4eb"},{"purpose":"pdf","costTwd":0.019976,"id":"4ba2eed5-8e2b-49e1-bd38-f27e23e1bdc2"}]},
+    {"id":"H6","status":"PASS","question":"S32FM803UC 要跟藍牙遊戲控制器配對，從哪開始？","answer":"設定→所有設定→連線→藍牙，裝置配對模式、移近、選取；保留型號／地區／應用限制。","source":"existing verified manual chunk page 34","costTwd":0,"providerCalls":0},
+    {"id":"H7","status":"PASS","question":"換成有線 USB 裝置，內容要從哪裡開？","context":"H6 S32FM803UC","answer":"接上 USB，在已連接裝置選 USB，選擇相片／影片／音樂；保留格式與編碼限制。","evidenceId":"QA:manual-s32fm70x80x-usb-media","costTwd":0.035816,"providerCalls":1,"pdfCalls":0,"webCalls":0,"receiptId":"83ac719b-f8f3-45e8-a826-581e85db6d05"},
+    {"id":"H8","status":"FAIL","question":"USB-C 連接埠的瓦數，是代表每台筆電都會得到同樣功率嗎？","answer":"不同型號的按鍵和選單位置會不太一樣，請給我螢幕完整型號。","reason":"Operation keyword gate intercepted general concept before any model","costTwd":0,"providerCalls":0},
+    {"id":"H9","status":"PASS","question":"S77ZZ456ABC 想恢復預設設定，從哪進？","answer":"找不到這個型號，請核對背貼／外盒。","costTwd":0,"providerCalls":0},
+    {"id":"H10","status":"FAIL","question":"畫面分割與把視窗排在桌面上，是同一種功能嗎？","answer":"區分 PBP/PIP 和 Easy Setting Box，但將視窗排列綁定三星軟體。","reason":"Fast selected 0/51 QA and no RULE, yet emitted product software facts and marked supported with evidence=none","costTwd":0.01172,"providerCalls":1,"pdfCalls":0,"webCalls":0,"receiptId":"cdc80824-18af-47a7-b901-829366bc2d91"}
+  ],
+  "holdouts":{"frozenFile":"test_runner/v324_holdout_cases_second.json","PASS":3,"FAIL":2,"note":"After this run H8/H10 become regression cases; preserve failures and do not claim fresh holdout passes after tuning."},
+  "scopeFix":"Single existing Lite evidence decision also classifies general/model_specific/non_product; general gaps go directly to Web with no arbitrary PDF or unsupported Fast draft. No per-question production branches."
+}

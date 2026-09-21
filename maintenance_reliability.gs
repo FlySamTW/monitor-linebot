@@ -3,6 +3,13 @@
  * Uses existing editor authorization, without adding userinfo.email scope. */
 function runReliabilityMaintenanceFromTestUi(action, token) {
   assertEditorOnlyTestUiMaintenance_(token);
+  const previous=IS_TEST_MODE;IS_TEST_MODE=true;resetRequestAudit_();
+  try {return runReliabilityMaintenanceAction_(action);}
+  finally {IS_TEST_MODE=previous;flushLogs();}
+}
+function runReliabilityMaintenanceAction_(action) {
+  if(action==="cost_report")return readProviderCostReport_();
+  if(action==="lowcost_probe")return probeLowCostModels_();
   if (action === "library_report") return readManualLibraryActivationReport_();
   if (action === "indexes") {
     const lease = acquireManualMaintenanceLease_("PUBLISH_INDEXES", false);
@@ -89,7 +96,7 @@ function probeGeminiModelsForSlot_(slot) {
   const response = providerFetch_(
     "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
     {
-      geminiApiKey: apiKey,
+      geminiApiKey: apiKey, providerPurpose: "diagnostic",
       method: "get",
       muteHttpExceptions: true,
     },
@@ -172,7 +179,7 @@ function probeProviderCredentialSlot_(slot) {
       const response = providerFetch_(
         `${CONFIG.API_ENDPOINT}/${modelName}:generateContent`,
         {
-          geminiApiKey: apiKey,
+          geminiApiKey: apiKey, providerPurpose: "diagnostic",
           budgetInputTokens: 16,
           method: "post",
           contentType: "application/json",
@@ -406,7 +413,7 @@ function adminRunFileSearchComparisonV303_() {
       }
       resetRequestAudit_(); const t=Date.now();
       const response=providerFetch_(`${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:generateContent`, {
-        geminiApiKey:key,budgetInputTokens:state.fullTokens,method:"post",contentType:"application/json",muteHttpExceptions:true,
+        providerPurpose:"pdf",geminiApiKey:key,budgetInputTokens:state.fullTokens,method:"post",contentType:"application/json",muteHttpExceptions:true,
         payload:JSON.stringify({contents:[{parts:[{text:`只依這本 ${model} 官方手冊回答：${question}。請提供操作步驟、頁碼與限制，找不到就明說，勿借其他型號。`}]}],tools:[{fileSearch:{fileSearchStoreNames:[state.store]}}],generationConfig:{temperature:0,maxOutputTokens:700,thinkingConfig:providerThinkingConfigForModel_(GEMINI_MODEL_FAST)}}),
       });
       const body=JSON.parse(response.getContentText()||"{}");

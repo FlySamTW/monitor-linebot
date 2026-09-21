@@ -88,10 +88,15 @@ assertStep(
   /function isEditorOnlyDevelopmentWebApp_\(\)/.test(linebot) &&
     /ScriptApp\.getService\(\)\.getUrl\(\)/.test(linebot) &&
     /\/\\\/dev\(\?:\[\?#\]\.\*\)\?\$\//.test(linebot) &&
-    /!isDoGetMaintenanceAuthorized_\(e\)[\s\S]{0,120}!isEditorOnlyDevelopmentWebApp_\(\)/.test(
+    /Session\.getActiveUser\(\)\.getEmail\(\)/.test(linebot) &&
+    /DriveApp\.getFileById\(ScriptApp\.getScriptId\(\)\)/.test(linebot) &&
+    /getEditors\(\)/.test(linebot) &&
+    /Session\.getEffectiveUser\(\)\.getEmail\(\)/.test(linebot) &&
+    /const editorAccess = isEditorOnlyDevelopmentWebApp_\(\)/.test(linebot) &&
+    /!isDoGetMaintenanceAuthorized_\(e\)[\s\S]{0,180}!editorAccess/.test(
       linebot,
     ),
-  "editor-only /dev TestUI may issue a short token while public /exec remains secret-guarded",
+  "signed-in project editors may issue a short TestUI token while anonymous access remains secret-guarded",
 );
 
 assertStep(
@@ -105,7 +110,7 @@ assertStep(
 assertStep(
   (testUi.match(/<\?/g) || []).length === 3 &&
     /<\?!=\s*testUiAccessToken\s*\?>/.test(testUi) &&
-    /<\? if \(isEditorOnlyDevelopmentWebApp_\(\)\) \{ \?>[\s\S]*id="reliability-result"[\s\S]*<\? \} \?>/.test(testUi) &&
+    /<\? if \(testUiEditorAccess\) \{ \?>[\s\S]*id="reliability-result"[\s\S]*<\? \} \?>/.test(testUi) &&
     !/includes\(["']<\?["']\)/.test(testUi),
   "TestUI only contains the token and guarded editor-maintenance scriptlets",
 );

@@ -1,0 +1,27 @@
+{
+  "version": "v29.6.324",
+  "reviewedAt": "2026-09-21",
+  "generationModel": "models/gemini-3.1-flash-lite",
+  "jevModel": "typesafe/jev-1.13",
+  "inputUsdPerM": 0.25,
+  "outputUsdPerM": 1.5,
+  "routerInputUsdPerM": 0.042,
+  "routerOutputUsdPerM": 0,
+  "pdfLimitTwd": 0.35,
+  "monthLimitTwd": 90,
+  "verificationBatch": "v324-cost-remediation",
+  "authorizedCapTwd": 10,
+  "indexPolicy": "pages-v324-1",
+  "indexBuilderSha256": "22d73470750f4902d0c4e466d67a174de6c7f40529b59db8b2794d1bf0eaf823",
+  "lexiconSha256": "77228af3ec6633de7143112916e420bea38e1e0457a62a1f501c148cca7d82ed",
+  "baseline": {
+    "version": "v29.6.323",
+    "pdfWeb": "models/gemini-3.7-flash",
+    "input": 0.75,
+    "output": 3.75
+  },
+  "costComparison": "相同輸入/輸出 tokens，PDF/Web 輸入降 66.7%、輸出降 60%；實際總成本另計候選與查詢。",
+  "liveAccepted": false,
+  "liveReport": "test_runner/results/v324_live_acceptance.json",
+  "liveReportSha256": ""
+}

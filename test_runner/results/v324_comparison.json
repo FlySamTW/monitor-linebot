@@ -1,0 +1,86 @@
+{
+  "version": "v29.6.324",
+  "at": "2026-09-19T05:55:40Z",
+  "surface": "Actual Chrome editor TestUI; both providers called with identical evidence per question",
+  "selectedStrategy": "lite",
+  "selectedModel": "models/gemini-3.1-flash-lite",
+  "qualityAccepted": false,
+  "comparison": [
+    {
+      "question": "iPhone 17 換成 USB-C 線接 Smart Monitor，能不能把手機畫面輸出到螢幕？",
+      "jev": {
+        "complete": false,
+        "selectedEvidence": "QA:legacy-1zcbhc",
+        "confidence": 0.77,
+        "costTwd": 0.00223776,
+        "receiptId": "08347100-c23b-4e76-8ead-d9e7c0f4f11c",
+        "latencyMs": 2643
+      },
+      "lite": {
+        "complete": true,
+        "answer": "Apple 官方規格明載 iPhone 17 的 USB-C 支援 DisplayPort 輸出，最高可達 4K HDR；螢幕端仍須具備 USB-C 影像輸入。",
+        "costTwd": 0.014536,
+        "receiptId": "c2bdb0b7-dac9-4c0c-8d41-369dc76ddd1c",
+        "latencyMs": 2218
+      }
+    },
+    {
+      "question": "S32FM803UC 要拿去店頭長時間展示，怎樣開展示用的模式？",
+      "evidence": "QA:manual-s32fm70x80x-retail-mode",
+      "jev": {
+        "complete": true,
+        "confidence": 0.98,
+        "answer": "使用模式 → 零售模式；店內展示、部分功能停用且設定定時重設；一般使用家庭模式。",
+        "costTwd": 0.010199616,
+        "receiptId": "332e910a-dcb4-48ae-a34e-c0baec963aeb",
+        "latencyMs": 1798
+      },
+      "lite": {
+        "complete": true,
+        "answer": "設定 → 所有設定 → 一般與隱私權 → 使用模式 → 零售模式；部分功能停用且設定會定時自動重設。",
+        "costTwd": 0.031904,
+        "receiptId": "0c84027d-8a56-485c-94a9-017c336fa2e1",
+        "latencyMs": 2628
+      }
+    },
+    {
+      "question": "S32FM703UC 支援 H.265 檔案嗎？USB-C 最多能供電幾瓦？",
+      "evidence": [
+        "QA:manual-s32fm703-hevc",
+        "RULE:S32FM703UC"
+      ],
+      "jev": {
+        "complete": true,
+        "confidence": [
+          0.96,
+          0.99
+        ],
+        "answer": "HEVC H.265 Main/Main10，MKV/MP4/TS；USB-C 65W。",
+        "costTwd": 0.014554176,
+        "receiptId": "7db7015c-e069-485c-bc16-b657df0ee4f7",
+        "latencyMs": 1710
+      },
+      "lite": {
+        "complete": true,
+        "answer": "HEVC H.265 Main/Main10，MKV/MP4/TS；USB-C 65W。",
+        "costTwd": 0.034048,
+        "receiptId": "ada929d0-12e3-4c0e-9746-17a9ee261a29",
+        "latencyMs": 2775
+      }
+    }
+  ],
+  "comparisonCostTwd": 0.107479552,
+  "jevComplete": 2,
+  "liteComplete": 3,
+  "jevStageCostTwd": 0.026991552,
+  "liteStageCostTwd": 0.080488,
+  "scope": "Candidate decision comparison only; no downstream PDF or Web executed in this comparison",
+  "interpretation": "JEV can select QA and RULE, including two separate claims. One correct selection remained below 0.85 confidence. Three cases do not establish general production superiority. No confidence threshold changed to fit these cases.",
+  "hypotheticalHybrid": {
+    "costTwd": 0.041527552,
+    "note": "Arithmetic only: JEV for all three plus the first Lite result. Not an executed production chain or proof of full-answer cost superiority."
+  },
+  "batchSpentAfterComparisonTwd": 0.159739712,
+  "monthSpentAfterComparisonTwd": 19.966254528,
+  "oldUncertainTwd": 7.8799488
+}

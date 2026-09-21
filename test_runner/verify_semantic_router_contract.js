@@ -637,7 +637,7 @@ assert(
   /OPENROUTER_API_KEY/.test(runnerSource) &&
     /providerFetch_\(JEV_DECISIONS_ENDPOINT/.test(runnerSource) &&
     /openRouterApiKey:\s*apiKey/.test(runnerSource) &&
-    /routerCostTwd/.test(runnerSource),
+    /providerReceipts/.test(runnerSource) && /routerCostTwd/.test(providerGateway),
   "JEV Router 必須從 ScriptProperties 取秘密並走共用 provider/cost gateway 留下 routerCostTwd",
 );
 assert(
@@ -655,7 +655,7 @@ assert(
   "正式版不得保留一次性 JEV bootstrap 公開授權入口",
 );
 assert(
-  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["\']GatePolicyV4-JEV["\']/.test(
+  /const\s+SEMANTIC_ROUTER_POLICY_VERSION\s*=\s*["\']GatePolicyV5-JEV-CalibratedFields["\']/.test(
     linebot,
   ) &&
     /policyVersion:\s*SEMANTIC_ROUTER_POLICY_VERSION/.test(

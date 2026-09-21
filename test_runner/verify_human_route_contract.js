@@ -82,7 +82,7 @@ const customerReply = renderContext.renderCustomerFacingText_(
 );
 assert(!/您|\[費用|In:|\[AUTO_|\[來源|QA庫|QA資料庫|CLASS_RULES|規格庫/.test(customerReply), "客戶回覆仍外洩內部資訊");
 assert(/資料來源：三星官方手冊/.test(customerReply), "手冊來源沒有轉成自然頁尾");
-assert(/本次約 NT\$0\.1234｜未使用模型/.test(customerReply), "沒有模型呼叫時仍須顯示未使用模型");
+assert(/本次約 NT\$0\.1234\n模型：未使用模型/.test(customerReply), "沒有模型呼叫時仍須分行顯示未使用模型");
 
 renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
 renderContext.currentRequestAudit = {
@@ -95,7 +95,7 @@ const routedCustomerReply = renderContext.renderCustomerFacingText_(
   "已查到操作步驟。\n[費用:NT$0.2345（合計 2 次生成請求）]",
 );
 assert(
-  /本次約 NT\$0\.2345｜模型：Gemini 3\.7 Flash＋Gemini 3\.1 Flash-Lite/.test(
+  /本次約 NT\$0\.2345\n模型：Gemini 3\.7 Flash＋Gemini 3\.1 Flash-Lite/.test(
     routedCustomerReply,
   ),
   "Router 與回答模型必須依實際稽核一起顯示",
@@ -109,7 +109,7 @@ const multiBubbleReply = renderContext.renderCustomerFacingPayload_([
 ]);
 assert(
   !/本次約/.test(multiBubbleReply[0]) &&
-    /第二段答案[\s\S]*本次約 NT\$0\.0000｜未使用模型/.test(multiBubbleReply[1]),
+    /第二段答案[\s\S]*本次約 NT\$0\.0000\n模型：未使用模型/.test(multiBubbleReply[1]),
   "多泡泡回答的費用與模型必須放在最後一個文字泡泡",
 );
 renderContext.CURRENT_REPLY_FOOTER_APPENDED = false;
@@ -126,11 +126,11 @@ assert(
 );
 
 const cleanHistory = renderContext.sanitizeHistoryContent(
-  "請到設定頁操作。\n官方手冊：第154頁\n[來源:官方手冊]\n[費用:NT$0.1234（合計 1 次生成請求）]\n參考：example.com（非官方，請斟酌）\n本次約 NT$0.1234｜手冊 4/5",
+  "請到設定頁操作。\n官方手冊：第154頁\n[來源:官方手冊]\n[費用:NT$0.1234（合計 1 次生成請求）]\n參考：example.com（非官方，請斟酌）\n本次約 NT$0.1234\n模型：Gemini 3.1 Flash-Lite\n剩餘：手冊 4/5",
 );
 assert(/官方手冊：第154頁/.test(cleanHistory), "歷史清理誤刪答案或手冊頁碼");
 assert(
-  !/\[來源|\[費用|參考：|本次約/.test(cleanHistory),
+  !/\[來源|\[費用|參考：|本次約|模型：|剩餘：/.test(cleanHistory),
   "歷史仍夾帶來源、費用或搜尋頁尾，會增加下一輪 token 與重複",
 );
 assert(

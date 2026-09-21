@@ -83,21 +83,21 @@ assert(
   "Gemini 3.1 Flash-Lite Standard 成本常數符合官方現價",
 );
 assert(
-  /GEMINI_MODEL_WEB\s*=\s*"models\/gemini-3\.7-flash"/.test(linebot) &&
-    /PRICE_WEB_INPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
-    /PRICE_WEB_OUTPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
+  /GEMINI_MODEL_WEB\s*=\s*"models\/gemini-3\.1-flash-lite"/.test(linebot) &&
+    /PRICE_WEB_INPUT\s*=\s*0\.25/.test(linebot) &&
+    /PRICE_WEB_OUTPUT\s*=\s*1\.5/.test(linebot) &&
     /forceWebSearch[\s\S]{0,120}CONFIG\.MODEL_NAME_WEB/.test(linebot) &&
     /modelName === CONFIG\.MODEL_NAME_WEB[\s\S]{0,100}PRICE_WEB_INPUT/.test(
       linebot,
     ),
-  "Web grounding 必須獨立使用 Gemini 3.7 Flash 並依官方時段費率估算",
+  "Web grounding 必須獨立使用 Gemini 3.1 Flash-Lite 並依官方時段費率估算",
 );
 assert(
-  /GEMINI_MODEL_THINK\s*=\s*"models\/gemini-3\.7-flash"/.test(linebot) &&
-    /PRICE_THINK_INPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
-    /PRICE_THINK_OUTPUT\s*=\s*Date\.now\(\)/.test(linebot) &&
+  /GEMINI_MODEL_THINK\s*=\s*"models\/gemini-3\.1-flash-lite"/.test(linebot) &&
+    /PRICE_THINK_INPUT\s*=\s*0\.25/.test(linebot) &&
+    /PRICE_THINK_OUTPUT\s*=\s*1\.5/.test(linebot) &&
     /useThinkModel[\s\S]{0,180}CONFIG\.MODEL_NAME_THINK/.test(linebot),
-  "整本 PDF fallback 使用 Gemini 3.7 Flash 與官方時段費率；免費 Evidence 與一般 Fast 仍留在低成本路徑",
+  "整本 PDF fallback 使用 Gemini 3.1 Flash-Lite 與官方時段費率；免費 Evidence 與一般 Fast 仍留在低成本路徑",
 );
 assert(
   /if \(attachPDFs\)[\s\S]{0,700}thinkingConfig\s*=\s*providerThinkingConfigForModel_\(modelName\)/.test(linebot),
@@ -335,10 +335,10 @@ assert(
   "countTokens 與進階來源 429/5xx 只做一次受控退避重試",
 );
 assert(
-  /PDF Mode Retry v29\.6\.123/.test(linebot) &&
+  !/PDF Mode Retry v29\.6\.123/.test(linebot) &&
     /PDF Generate Refresh v29\.6\.123/.test(linebot) &&
     /pdfRefreshAttempted = false/.test(linebot),
-  "PDF 空答與生成階段過期 URI 都有單次自癒且禁止無限循環",
+  "PDF 空答不重送；過期 URI 僅受限恢復",
 );
 assert(
   /function buildBluetoothAudioManualSearchQuery_/.test(linebot) &&
@@ -418,10 +418,8 @@ assert(
   "新品只有在官方欄位與手冊第一頁交叉驗證後才可寫入 A 欄最小 RULE；未完成型號仍不得注入",
 );
 assert(
-  /function validateOfficialManualFirstPage_[\s\S]*?GEMINI_MODEL_FAST}:countTokens[\s\S]*?totalTokens > 250000[\s\S]*?requestFirstPageIdentity_\(GEMINI_MODEL_FAST\)[\s\S]*?GEMINI_MODEL_THINK !== GEMINI_MODEL_FAST[\s\S]*?requestFirstPageIdentity_\(GEMINI_MODEL_THINK\)/.test(
-    linebot,
-  ),
-  "新品第一頁型號驗證先用 Flash-Lite；只有失敗才允許 2.5 Flash 再核對一次，並受 250K token 上限保護",
+  /return queueManualIdentityInspection_/.test(linebot) && !/requestFirstPageIdentity_/.test(linebot),
+  "首頁核驗只排入本機抽取，不送整本 PDF 或升級模型",
 );
 assert(
   /Fast\/Web 歷史先裁減/.test(linebot) &&
@@ -433,20 +431,23 @@ assert(
 assert(
   !/無 groundingChunks\/groundingSupports，重試一次/.test(linebot) &&
     /buildTentativeWebFallback_/.test(linebot) &&
-    /保留安全過濾後的可能解法，不冒充有引用的網搜答案/.test(linebot),
-  "網搜缺引用時不重複付費，改以明確未證實的保守答案完成回覆",
+    /沒有可逐句綁定的 citation 時，模型全文一律視為未驗證草稿/.test(linebot) &&
+    /return buildSafeNoEvidenceNextStep_\(query, model\)/.test(
+      extractFunction(linebot, "buildTentativeWebFallback_"),
+    ),
+  "網搜缺引用時不重複付費，也不得從未驗證草稿抽出排查步驟",
 );
 assert(
   /if \(forceWebSearch\)\s*\{\s*genConfig\.thinkingConfig\s*=\s*providerThinkingConfigForModel_\(modelName\)/.test(
     linebot,
   ) &&
-    /maxOutputTokens:\s*forceWebSearch\s*\?\s*450/.test(linebot) &&
+    /maxOutputTokens:\s*forceWebSearch\s*\?\s*800/.test(linebot) &&
     /buildGroundedSupportedAnswer_\(/.test(linebot) &&
     /return buildSafeNoEvidenceNextStep_\(query, model\)/.test(
       extractFunction(linebot, "buildTentativeWebFallback_"),
     ) &&
     !/isMonitorUsbMediaWebQuestion_\([^)]*\)[\s\S]{0,240}finalText\s*=\s*buildSafeUsbMediaWebAnswer_/.test(linebot),
-  "Web 固定低思考並限制輸出；所有題型都只能使用 grounded 支持句，未驗證草稿不得冒充答案",
+  "Web 固定 minimal 思考與 800 tokens；所有題型都只能使用 grounded 支持句，未驗證草稿不得冒充答案",
 );
 assert(
   /--paid-live/.test(paidRunner) &&

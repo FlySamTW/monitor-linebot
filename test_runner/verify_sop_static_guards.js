@@ -149,8 +149,8 @@ const thinkModelMatch = linebot.match(
 );
 assertStep(thinkModelMatch, "GEMINI_MODEL_THINK must be defined");
 assertStep(
-  thinkModelMatch[1] === "models/gemini-3.7-flash",
-  "full-PDF fallback must use the reviewed stable models/gemini-3.7-flash model",
+  thinkModelMatch[1] === "models/gemini-3.1-flash-lite",
+  "full-PDF fallback must use the cost-reviewed models/gemini-3.1-flash-lite model",
 );
 
 const webModelMatch = linebot.match(
@@ -158,8 +158,8 @@ const webModelMatch = linebot.match(
 );
 assertStep(webModelMatch, "GEMINI_MODEL_WEB must be defined");
 assertStep(
-  webModelMatch[1] === "models/gemini-3.7-flash",
-  "Web grounding must use the reviewed stable models/gemini-3.7-flash model",
+  webModelMatch[1] === "models/gemini-3.1-flash-lite",
+  "Web grounding must use the cost-reviewed models/gemini-3.1-flash-lite model",
 );
 
 assertStep(
@@ -473,6 +473,18 @@ assertStep(
     /npm run check:webhook-version/.test(releaseExistingWebhook) &&
     /\[switch\]\$DryRun/.test(releaseExistingWebhook),
   "release_existing_webhook.ps1 must orchestrate static/whitespace guards, existing deployment update, readiness check, and formal version guard",
+);
+
+assertStep(
+  /\[int\]\$RollbackVersion\s*=\s*0/.test(releaseExistingWebhook) &&
+    /RollbackVersion and StageOnly are mutually exclusive/.test(releaseExistingWebhook) &&
+    /Read-VerifiedRollbackEvidence/.test(releaseExistingWebhook) &&
+    /deploymentId -ne \$Id/.test(releaseExistingWebhook) &&
+    /Invoke-ClaspCapture -Arguments @\("deploy", "-i", \$Id, "-V", \[string\]\$Version\)/.test(releaseExistingWebhook) &&
+    /Rollback readback mismatch/.test(releaseExistingWebhook) &&
+    /Rollback health mismatch/.test(releaseExistingWebhook) &&
+    /executing one verified rollback/.test(releaseExistingWebhook),
+  "release_existing_webhook.ps1 rollback must be evidence-bound, same-deployment, read-back verified, and single-attempt",
 );
 
 assertStep(
@@ -952,6 +964,8 @@ assertStep(
 );
 
 const manualDeflectionCode = [
+  extractFunction(linebot, "isManualEvidenceFailureReply_"),
+  extractFunction(linebot, "isApiFailureReply"),
   extractFunction(linebot, "sanitizeManualAnswerForQuestion_"),
   extractFunction(linebot, "sanitizeManualDeflection"),
   `
@@ -1269,8 +1283,12 @@ assertStep(
 );
 
 assertStep(
-  /t\.type === "text"[\s\S]{0,120}return String\(t\.text \|\| ""\)/.test(linebot),
-  "TestUI reply preview must display text objects in mixed text+Flex replies",
+  /function replyMessagePreview_\(message\)/.test(linebot) &&
+    /message\.type === "text"[\s\S]{0,100}String\(message\.text \|\| ""\)/.test(
+      extractFunction(linebot, "replyMessagePreview_"),
+    ) &&
+    /messages:\s*capturedMessages/.test(extractFunction(linebot, "testMessage")),
+  "TestUI must render mixed text/Flex replies from the same captured messages payload",
 );
 
 assertStep(
@@ -1795,7 +1813,7 @@ assertStep(
 
 assertStep(
   /QA First Router v29\.6\.116/.test(linebot) &&
-    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,3000}RULE Term Definition v29\.6\.280[\s\S]{0,1800}Alias Family Identity v29\.6\.275[\s\S]{0,2200}Alias Selection Gate v29\.6\.116[\s\S]{0,16000}freshOperationNeedsModel[\s\S]{0,2200}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
+    /aliasSelectionBeforeQa[\s\S]{0,500}findLocalMatchInQA\(routingQuestion, userId\)[\s\S]{0,500}doesQaMatchCoverQueryAliases_[\s\S]{0,3000}RULE Term Definition v29\.6\.280[\s\S]{0,1800}Alias Family Identity v29\.6\.275[\s\S]{0,2200}Alias Selection Gate v29\.6\.116[\s\S]{0,18000}freshOperationNeedsModel[\s\S]{0,3300}isCrossDeviceMonitorQuery\(routingQuestion\)/.test(
       extractFunction(linebot, "handleMessage"),
     ) &&
     /exactFastCrossDeviceQa[\s\S]{0,260}findLocalMatchInQA\(effectiveQuery, userId\)[\s\S]{0,500}hasTrustedFastCrossDeviceQa[\s\S]{0,1200}return "\[AUTO_SEARCH_PDF\]"/.test(

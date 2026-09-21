@@ -1,5 +1,6 @@
 """Zero-provider local PDF worker. Secret is supplied by environment, never printed."""
 from __future__ import annotations
+from contextlib import nullcontext
 import argparse
 import base64
 import gzip
@@ -15,6 +16,7 @@ import time
 import zipfile
 from urllib.parse import urlsplit
 import requests
+import fitz
 from build_manual_page_index import build_document, dump_json_bytes
 
 
@@ -25,21 +27,44 @@ def official_url(url: str) -> bool:
             not parsed.username and not parsed.password and parsed.port in (None, 443))
 
 
+class WorkerRequestError(RuntimeError):
+    def __init__(self, action: str, status: int = 0, code: str = 'WORKER_TRANSPORT'):
+        super().__init__(code)
+        self.action, self.status, self.code = action, status, code
+
+
+def error_receipt(error: Exception) -> dict:
+    if isinstance(error, WorkerRequestError):
+        return {'error': error.code, 'stage': error.action, 'httpStatus': error.status}
+    code = str(error) if re.fullmatch(r'WORKER_[A-Z_]+', str(error)) else type(error).__name__
+    return {'error': code, 'stage': 'local_build'}
+
+
 def request(endpoint: str, secret: str, action: str, payload: dict) -> dict:
     envelope = {'protocol': 'manual-index-worker-v1', 'timestamp': int(time.time() * 1000),
                 'nonce': secrets.token_hex(16), 'action': action,
                 'payload': json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}
     message = '\n'.join(str(envelope[key]) for key in ('protocol', 'timestamp', 'nonce', 'action', 'payload'))
     envelope['signature'] = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
-    response = requests.post(endpoint, json=envelope, timeout=240)
-    response.raise_for_status()
-    result = response.json()
+    try:
+        response = requests.post(endpoint, json=envelope, timeout=240)
+    except requests.RequestException:
+        raise WorkerRequestError(action) from None
+    if not response.ok:
+        raise WorkerRequestError(action, response.status_code, 'WORKER_HTTP')
+    try:
+        result = response.json()
+    except ValueError:
+        raise WorkerRequestError(action, response.status_code, 'WORKER_RESPONSE_FORMAT') from None
     if not result.get('ok'):
-        raise RuntimeError(result.get('error', 'WORKER_REMOTE_FAILED'))
+        code = str(result.get('error', 'WORKER_REMOTE_FAILED'))
+        raise WorkerRequestError(action, response.status_code, code if re.fullmatch(r'(?:WORKER|PROVIDER)_[A-Z_]+',code) else 'WORKER_REMOTE_FAILED')
     return result
 
 
 def download(url: str, destination: Path, expected_sha: str, *, archive: bool = False) -> None:
+    if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() == expected_sha:
+        return
     session = requests.Session()
     for _ in range(6):
         if not official_url(url):
@@ -50,7 +75,8 @@ def download(url: str, destination: Path, expected_sha: str, *, archive: bool = 
             url = urljoin(url, response.headers['Location'])
             response.close()
             continue
-        response.raise_for_status()
+        if not response.ok:
+            raise WorkerRequestError('download', response.status_code, 'WORKER_DOWNLOAD_HTTP')
         size = 0
         digest = hashlib.sha256()
         with destination.open('wb') as handle:
@@ -129,9 +155,76 @@ def reviewed_index_content(checksum: str) -> bytes:
     return content
 
 
-def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '') -> dict:
+def worker_directory(cache_root, sha, policy):
+    if cache_root is None:
+        return tempfile.TemporaryDirectory(prefix='samsung-manual-worker-')
+    if not re.fullmatch(r'[a-f0-9]{64}', sha) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', policy):
+        raise RuntimeError('WORKER_CACHE_BINDING')
+    directory = cache_root / policy / sha
+    directory.mkdir(parents=True, exist_ok=True)
+    return nullcontext(str(directory))
+
+
+WORKER_CONTRACT_VERSION = 2
+WORKER_PROTOCOL = 'manual-index-worker-v1'
+WORKER_INDEX_POLICY = 'pages-v324-1'
+WORKER_REQUIRED_CAPABILITIES = {'inspect', 'inspect_failure', 'index_failure', 'prepare', 'probe', 'probeOnly'}
+
+
+def validate_worker_contract(state: dict) -> None:
+    if not isinstance(state, dict) or state.get('ok') is not True:
+        raise RuntimeError('WORKER_CONTRACT')
+    if state.get('contractVersion') != WORKER_CONTRACT_VERSION or state.get('protocol') != WORKER_PROTOCOL:
+        raise RuntimeError('WORKER_CONTRACT')
+    if state.get('indexPolicy') != WORKER_INDEX_POLICY:
+        raise RuntimeError('WORKER_INDEX_POLICY')
+    if not isinstance(state.get('gasVersion'), str) or not state['gasVersion'].strip():
+        raise RuntimeError('WORKER_CONTRACT')
+    if not isinstance(state.get('build'), str) or not state['build'].strip():
+        raise RuntimeError('WORKER_CONTRACT')
+    capabilities = set(state.get('capabilities') or [])
+    if not WORKER_REQUIRED_CAPABILITIES.issubset(capabilities):
+        raise RuntimeError('WORKER_CAPABILITY')
+    if not isinstance(state.get('revision'), str) or not isinstance(state.get('pending'), list) or not isinstance(state.get('inspections'), list):
+        raise RuntimeError('WORKER_CONTRACT')
+    if any(item.get('indexPolicy') != WORKER_INDEX_POLICY for item in state['pending']):
+        raise RuntimeError('WORKER_INDEX_POLICY')
+
+
+def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', cache_root: Path | None = None) -> dict:
     state = request(endpoint, secret, 'list', {})
+    validate_worker_contract(state)
     completed, failed = [], []
+    # Unverified discovery may only extract page 1. It cannot submit an index.
+    # Sharing is content-addressed; every SKU is still verified independently in GAS.
+    covers = {}
+    for item in state.get('inspections', [])[:20]:
+      try:
+        sha = item['sourcePdfSha256']
+        if sha not in covers:
+          with worker_directory(cache_root, sha, 'pymupdf-page1-v1-cover-v324-1') as directory:
+            pdf_path = Path(directory) / 'source.pdf'
+            download(item['downloadUrl'], pdf_path, sha)
+            with fitz.open(pdf_path) as doc:
+              if doc.needs_pass or not len(doc):
+                raise RuntimeError('WORKER_COVER_UNREADABLE')
+              text = doc[0].get_text('text')[:12000]
+              cover = {'firstPageText': text, 'sourcePages': [1]}
+              if len(text.strip()) < 40:
+                png = doc[0].get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False).tobytes('png')
+                if len(png) > 650000:
+                    raise RuntimeError('WORKER_COVER_IMAGE_SIZE')
+                cover.update(firstPagePng=base64.b64encode(png).decode(), derivedSha256=hashlib.sha256(png).hexdigest())
+              else:
+                cover['derivedSha256'] = hashlib.sha256(text.encode()).hexdigest()
+              covers[sha] = cover
+        request(endpoint, secret, 'inspect', dict(covers[sha], inspectionKey=item['inspectionKey'], sourcePdfSha256=sha))
+      except Exception as error:
+        failed.append(dict(error_receipt(error), model=item.get('fullSku', '')))
+        if not isinstance(error, WorkerRequestError) or error.action == "download":
+            request(endpoint, secret, 'inspect_failure', dict(error_receipt(error), inspectionKey=item['inspectionKey'], sourcePdfSha256=item['sourcePdfSha256']))
+    if state.get('inspections'):
+        state = request(endpoint, secret, 'list', {})
     lexicon = json.loads(lexicon_path.read_text(encoding='utf-8'))
     pending = state['pending']
     # Persist a fair cursor in the sanitized local report: failed early items
@@ -143,7 +236,13 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '') -
     for item in pending[:20]:
       last_attempted = item['pendingKey']
       try:
-        with tempfile.TemporaryDirectory(prefix='samsung-manual-worker-') as directory:
+        if item.get('probeOnly'):
+            probe = request(endpoint, secret, 'probe', {'docKey': 'worker_' + item['models'][0]})
+            if not any(p['sourcePdfSha256'] == item['sourcePdfSha256'] and p['indexChecksum'] == item['activeIndexChecksum'] for p in probe.get('verified', [])):
+                raise RuntimeError('WORKER_CONTENT_READBACK')
+            completed.append({'model': item['fullSku'], 'revision': probe['revision'], 'stage': 'verified_ready', 'probeOnly': True})
+            continue
+        with worker_directory(cache_root, item['sourcePdfSha256'], item['indexPolicy']) as directory:
             root = Path(directory)
             if item.get('sourceFormat') == 'zip_entry_pdf':
                 download(item['downloadUrl'], root / 'source.zip', item['archiveSha256'], archive=True)
@@ -154,9 +253,16 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '') -
             if item.get('reviewedDocKey'):
                 content = reviewed_index_content(item['expectedIndexChecksum'])
             else:
-                built = build_document(document, root, root / 'index', lexicon, 40)
-                content = dump_json_bytes({'lex': built['lex'], 'pages': built['pages']})
-            package = {'pendingKey': item['pendingKey'], 'baseRevision': state['revision'],
+                cached = root / 'verified-index.json'
+                receipt_path = root / 'index-receipt.json'
+                receipt = json.loads(receipt_path.read_text(encoding='utf-8')) if receipt_path.exists() else {}
+                content = cached.read_bytes() if cached.exists() else b''
+                if not content or hashlib.sha256(content).hexdigest() != receipt.get('indexChecksum'):
+                    built = build_document(document, root, root / 'index', lexicon, 40)
+                    content = dump_json_bytes({'lex': built['lex'], 'pages': built['pages']})
+                    cached.write_bytes(content)
+                    receipt_path.write_text(json.dumps({'stage': 'index_built', 'sourcePdfSha256':item['sourcePdfSha256'], 'indexPolicy':item['indexPolicy'], 'indexChecksum':hashlib.sha256(content).hexdigest()}), encoding='utf-8')
+            package = {'pendingKey': item['pendingKey'], 'baseRevision': state['revision'], 'indexPolicy': item['indexPolicy'],
                        'sourcePdfSha256': item['sourcePdfSha256'],
                        'indexChecksum': hashlib.sha256(content).hexdigest(),
                        'gzip': base64.b64encode(gzip.compress(content, mtime=0)).decode('ascii')}
@@ -179,14 +285,15 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '') -
                 probe['verified'][0]['indexChecksum'] != package['indexChecksum']):
                 raise RuntimeError('WORKER_CONTENT_READBACK')
             state = readback
-            completed.append({'model': item['fullSku'], 'revision': result['revision']})
+            completed.append({'model': item['fullSku'], 'revision': result['revision'], 'stage': 'verified_ready',
+                              'sourcePdfSha256':item['sourcePdfSha256'], 'indexChecksum':package['indexChecksum']})
       except Exception as error:
-        code = str(error) if re.fullmatch(r'WORKER_[A-Z_]+', str(error)) else type(error).__name__
-        failed.append({'model': item.get('fullSku', ''), 'error': code})
+        failed.append(dict(error_receipt(error), model=item.get('fullSku', '')))
+        request(endpoint, secret, 'index_failure', dict(error_receipt(error), pendingKey=item['pendingKey'], sourcePdfSha256=item['sourcePdfSha256']))
         # Refresh the base after an uncertain response; never blindly overwrite.
         state = request(endpoint, secret, 'list', {})
     request(endpoint, secret, 'health', {'ok': not failed, 'completed': len(completed), 'failed': len(failed)})
-    return {'ok': not failed, 'completed': completed, 'failed': failed, 'providerCalls': 0,
+    return {'ok': not failed, 'completed': completed, 'failed': failed, 'indexProviderCalls': 0,
             'lastAttempted': last_attempted}
 
 
@@ -213,7 +320,7 @@ def main() -> int:
                 start_after = str(json.loads(args.report.read_text(encoding='utf-8')).get('lastAttempted', ''))
             except (ValueError, OSError):
                 pass
-        result = run(args.endpoint, secret, args.lexicon, start_after)
+        result = run(args.endpoint, secret, args.lexicon, start_after, args.report.parent / 'content-cache' if args.report else None)
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
             args.report.write_text(json.dumps(dict(result, finishedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())),ensure_ascii=False),encoding='utf-8')
@@ -221,11 +328,11 @@ def main() -> int:
         return 0 if result['ok'] else 1
     except Exception as error:
         # Avoid requests exceptions that could echo credential-bearing URLs/bodies.
-        code = str(error) if re.fullmatch(r'WORKER_[A-Z_]+', str(error)) else type(error).__name__
+        detail = error_receipt(error)
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(json.dumps({'ok':False,'error':code,'finishedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}),encoding='utf-8')
-        print(json.dumps({'ok': False, 'error': code, 'providerCalls': 0}))
+            args.report.write_text(json.dumps(dict(detail,ok=False,finishedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),lastAttempted=start_after)),encoding='utf-8')
+        print(json.dumps(dict(detail,ok=False,indexProviderCalls=0)))
         return 1
 
 

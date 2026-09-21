@@ -55,7 +55,7 @@ function readPendingManualIndexRevision_(fullSku, sha256) {
   try {
     const pending = JSON.parse(PropertiesService.getScriptProperties().getProperty(
       `MANUAL_PENDING_${String(fullSku || "").toUpperCase()}`) || "null");
-    return pending && /(?:^|_)PAGE_INDEX_BUILD_REQUIRED$/.test(pending.reason || "") &&
+    return pending && pending.candidate && pending.candidate.workerBinding &&
       String(pending.sourcePdfSha256).toLowerCase() === String(sha256).toLowerCase() ? pending : null;
   } catch (error) { return null; }
 }
@@ -100,6 +100,8 @@ function isReadyWorkerManualRevisionForCandidate_(candidate, sourceSha) {
   const key=keys[0],doc=bundle.documents[key],active=bundle.active[key];
   if(!active.pdfFileId||!active.indexFileId||String(active.sha256).toLowerCase()!==sha||
     String(doc.sourcePdfSha256).toLowerCase()!==sha) return false;
+  const receipt=readManualJson_("MANUAL_PROGRESS_"+normalizeModelForDisplay(candidate.fullSku));
+  if(!receipt || receipt.stage!=="verified_ready" || receipt.sourcePdfSha256!==sha || receipt.indexChecksum!==active.indexChecksum)return false;
   const revision=readManualRevision_(key,doc);
   return Boolean(revision && revision.sha256===sha && revision.indexChecksum===active.indexChecksum);
 }

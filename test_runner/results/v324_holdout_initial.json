@@ -1,0 +1,22 @@
+{
+  "version": "v29.6.324 14:03 candidate",
+  "frozenCases": "test_runner/v324_holdout_cases.json",
+  "interface": "Chrome editor TestUI; real providers; LINE API skipped",
+  "accepted": false,
+  "cases": [
+    {"id":"H1","accepted":true,"answerSummary":"兩台電腦可先連接，再選擇輸入；2 HDMI 2.0、USB-C。未宣稱同時顯示。","costTwd":0.0214,"routerCalls":0,"pdfCalls":0,"webCalls":0,"receipts":["b76ea47a-5779-40e2-812f-8406b1a3b575"]},
+    {"id":"H2","accepted":false,"failure":"LOCAL_EVIDENCE_VALIDATION_FAILED; paid but no usable final answer. No unsupported KVM capability was delivered.","costTwd":0.054008,"routerCalls":0,"pdfCalls":0,"webCalls":0,"receipts":["a8691e09-ff96-4cf2-9fcf-6a9f839ef511","d17dbb18-a5b7-48b4-9a12-2cfaa4396b97"],"authorizationExpiry":"Earlier UI attempt expired before provider calls; page refreshed without clearing topic."},
+    {"id":"H3","accepted":false,"failure":"LOCAL_EVIDENCE_VALIDATION_FAILED; paid but no usable final answer.","costTwd":0.052952,"routerCalls":0,"pdfCalls":0,"webCalls":0,"receipts":["1a2d9322-3d8b-4e13-95ed-4c881997707a","e6bf96ac-a829-4530-9274-7be1e9bf6ef2"]},
+    {"id":"H4","accepted":true,"answerSummary":"找不到 S88QQ123ABC，請核對背貼或外盒完整型號。","costTwd":0,"routerCalls":0,"pdfCalls":0,"webCalls":0,"receipts":[]},
+    {"id":"H5","accepted":false,"failure":"Two search queries were billed; supported general advice was discarded and replaced with a short fallback. Final coverage unsupported.","answerSummary":"確認靜音及正確音訊輸出；請 Sam 確認。","costTwd":0.94152,"searchCostTwd":0.896,"searchQueryCount":2,"routerCalls":0,"pdfCalls":0,"webCalls":1,"receipts":["15796ccd-2c21-4706-820d-8c82dc18a3f3","74fe6d8a-4f6a-4097-bdab-27ce0d32d76b","d8744ae6-7ac6-404b-88f6-f010b403713e"]}
+  ],
+  "diagnosticComparison": {
+    "H2":{"jev":"NONE, confidence 0.95","lite":"LOCAL_EVIDENCE_VALIDATION_FAILED","costTwd":0.035514176},
+    "H3":{"jev":"NONE, confidence 0.99","lite":"LOCAL_EVIDENCE_VALIDATION_FAILED","costTwd":0.014807936},
+    "receipts":["a14eee67-2cf9-431e-8157-e2b446280c2f","227cead9-fb39-498b-b8a8-785be68a7968","45d2a35b-52d9-4264-a10f-33bae263240b","4d75e1e0-7e98-43d2-8572-cc97c0f8cb38"]
+  },
+  "ledgerAt":"2026-09-19T06:47:53Z",
+  "totalBatchSpentTwd":1.359835392,
+  "monthSpentTwd":21.166350208,
+  "costMeaning":"Provider reported or usage estimated; not an invoice. Includes failures."
+}

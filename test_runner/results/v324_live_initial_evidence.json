@@ -1,0 +1,55 @@
+{
+  "version": "v29.6.324",
+  "source": "Actual Chrome TestUI and AI Studio on 2026-09-19; captured before candidate recall repair",
+  "probe": {
+    "at": "2026-09-19T05:31:28Z",
+    "models": [
+      {
+        "model": "gemini-2.5-flash-lite",
+        "httpStatus": 404,
+        "answered": false,
+        "costTwd": 0,
+        "receiptId": "619d1e53-4cc2-4165-983c-a2cd5f4d2c02"
+      },
+      {
+        "model": "gemini-2.5-flash",
+        "httpStatus": 404,
+        "answered": false,
+        "costTwd": 0,
+        "receiptId": "721e465e-2002-46ac-a31c-865b194e0ff6"
+      }
+    ]
+  },
+  "initialComparison": {
+    "accepted": false,
+    "reason": "Stored manual QA excluded from semantic candidates; no fair winner established",
+    "costTwd": 0.05226016,
+    "jevOneCallCostTwd": 0.00186816,
+    "liteCostsTwd": [
+      0.019504,
+      0.01352,
+      0.017368
+    ]
+  },
+  "baselineLedger": {
+    "spentTwd": 19.806514816,
+    "reservedTwd": 0,
+    "uncertainTwd": 7.8799488,
+    "requests": 154,
+    "oldBatchSpentTwd": 4.942849216
+  },
+  "afterInitialLedger": {
+    "spentTwd": 19.858774976,
+    "requests": 160
+  },
+  "cloud": {
+    "project": "shining-sphinx-508304-f9",
+    "capBeforeTwd": 90,
+    "capAfterTwd": 50,
+    "capReadback": "NT$50.00",
+    "prepaidCreditReadbackTwd": 167,
+    "autoReload": false,
+    "meaning": "Cloud UI readback, not program estimated ledger",
+    "authorization": "User granted permission after explicit NT$50 cap question"
+  }
+}

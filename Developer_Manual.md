@@ -1,10 +1,134 @@
-# Samsung LINE Bot 開發手冊 — v29.6.323 JEV Semantic Router
+# Samsung LINE Bot 開發手冊 — v29.6.324 費用與證據契約
 
-v29.6.320 候選把「只有真正模糊／複合／省略式追問才執行」的 Semantic Router 從 Gemini 3.7 Flash 改為 TypeSafe JEV 1.13 Decisions API。QA2、CLASS_RULES、型號身分、官方手冊 Evidence、Web grounding、額度與既有來源順序都不變；JEV 不回答產品事實、不生成產品答案，也不決定型號真值，只回 typed semantic decisions。正式部署狀態仍以當次 guarded release 與 health 讀回為準。
+目前狀態以 [AI_CONTEXT.md](AI_CONTEXT.md) 與當次正式 health 為準。本節為 v324 現行契約；下方舊版本段落保留歷史與回復依據，有衝突以本節為準。
 
-接手依 [V307_HANDOFF](docs/V307_HANDOFF.md)、[LIVE_ACCEPTANCE](docs/V307_LIVE_ACCEPTANCE.md) 與 [來源重查](docs/V307_OFFICIAL_GAPS.md)。離線20旅程與 TestUI／正式 health 分開驗收；不得以離線結果冒充已部署。
+## v324 費用、候選判讀與背景生命週期契約
 
-本文件是唯一回答與守門契約；[AI_CONTEXT](AI_CONTEXT.md) 為快速索引。歷史版本只保留事故與回復依據，不得把舊模型政策套回現行候選。
+QA／RULE → PDF → WEB 是證據優先順序。免費精準答案／有效快取先回覆；相關 QA 答案和 RULE 必須先進候選判讀，只有未解子題交給 PDF 或一次 Web。來源次數用完仍可完成 QA 候選判讀。一般 Fast 使用精準候選；尚未回答時，升來源前允許判讀較廣候選，但不得在相同候選、相同問題下重做判讀。JEV 仍僅在原本模糊追問條件做路由，候選選答只供編輯者 A/B；正式候選採 Lite，發布前須有實問比較證據。
+
+候選召回必須涵蓋已存 QA 手冊答案，暖快取不得漏項。相關性門檻與可直接作答門檻分開；一般系列問題不能借單一型號的 QA。語意判讀接收完整 canonical 問句及新條件，不能只收到省略追問。上一題已驗證手冊答案可重用，但必須核對相同型號、程式版本、當前資料指紋、完成狀態及有效期。來源標籤由引用證據種類決定，RULE 不等於活動資料。
+
+PDF 手冊回答是核心能力。主要路徑為自建頁級 RAG：索引免費召回已核實 PDF 原文，由 Gemini 整理並回填頁碼；無可靠頁級索引才使用受限的 Files API／inline PDF 直讀。managed Google File Search 尚未遷入正式流程。三者不可混稱，也不能用重用答案的零 PDF 呼叫取代實際手冊驗收。執行失敗狀態先於顯示格式保存，模型宣稱 full 但零證據通過時不能標 supported；清理器不得刪掉錯誤說明後只補官方來源。
+
+### 2026-09-21 RAG 現況與最新官方查核
+
+結論：既有頁級 RAG 可繼續改善與使用。使用者確認原始選擇 Files API／定期重傳的目的是避免儲存費，此要求持續有效。Files API 上傳與儲存免費，48小時到期刪除而非轉成付費；定期重傳是維持免費臨時附件可用的合理設計，不能只因重傳就判定有問題。保留續期及整本備援，改善重點為到期前覆蓋率、失敗接續、抽取與答案正確性；不可因減少上傳而導入付費快取或使手冊失效。
+
+- 當次 Chrome 唯讀 LOG：A1039=2026/9/21 04:21:00，B1039 顯示 daily 同步完成、執行版本 v324；A1044=2026/9/21 20:59:01，B1044=`refreshed=10/10, cursor=39, total=77`。這證明當天背景有實際續期，不證明所有77份皆可回答。
+- A853=2026/9/19 16:10:50，B853 的頁級 RAG 型號 F24T350FHC、pages=20,23,14,14,13、latencyMs=2362；B852 顯示 providerCoverage=full/validatedCoverage=full。這是既存雲端執行紀錄，不是本次新問答，也不是 LINE 收到訊息的證據。
+- `dailyKnowledgeRefresh` 每日04:00做增量同步並補一批 URI；`manualPdfRollingRefresh` 每4小時一批、最多10份。`refreshManualPdfUriBatch_` 目前依游標選檔後直接上傳，未按 URI 到期時間或索引需求略過；每天不是整庫重建，但持續輪流重傳。`publishCompiledManualIndexes_` 會跳過相同 PDF/index SHA，worker 也依內容 SHA 快取，不會因日期改變重做相同索引。
+- 以當次77份、每4小時10份計算，在批次都成功且文件集合穩定時，輪替最多8批／約32小時即可覆蓋一次，短於48小時；每日額外批次另提供餘裕。這是排程容量推算，單次10/10 LOG不證明每份皆及時續期。應先核對逐檔上傳時間、失敗與鎖略過再判斷需否調整，不能把免費上傳次數當生成費用，或把續期直接判為浪費。
+- 主查詢 `findIndexedManualPagePlan_` 是文字詞項／別名／BM25 類型召回，至多5個相關片段，再交生成模型整理；沒有用 Files API URI 充當持久索引。原 PDF SHA、索引 SHA、型號、角色及頁碼驗證仍必須保留。
+- `extract_pages` 使用 PyMuPDF 的 `get_text("blocks")` 與雙欄排序，沒有一般頁面 OCR／圖像語意抽取；`pageLabel` 尚為 null。圖示按鍵、掃描頁、複雜表格、印刷頁碼和PDF頁碼的差異仍是實際能力邊界，不能由「成功建索引」推定皆讀懂。
+- 結構驗證能擋錯型號、來源ID、數字與部分限制，不能單獨證明「切換訊號來源」支持「同時顯示兩路畫面」。本次新增 JEV 語意驗證候選，但只在明確 LINE 驗收視窗啟用，尚無本次真實品質／總成本勝出證據。
+
+官方資料（2026-09-21讀取）：[Files API](https://ai.google.dev/gemini-api/docs/files) 原始檔保存48小時且上傳儲存免費；這不等於模型讀取免費。[PDF文件理解](https://ai.google.dev/gemini-api/docs/document-processing) 支援 PDF 圖文，生成依實際用量計價。每日重新上傳不會讓模型永久記住內容。
+
+[File Search](https://ai.google.dev/gemini-api/docs/file-search) 的索引持續保存至刪除或模型淘汰；儲存與查詢embedding免費，匯入embedding與回答tokens收費。最新支援清單包含3.1 Flash-Lite，故不能再說一定要升貴模型才能採用；支援文字與embedding-2多模態，和 Files API 並非同一服務。File Search與Google Search不能在同一請求一起啟用，符合本案逐來源處理方式。
+
+「不必每48小時重傳」只適用已匯入 File Search 的持久索引或本機自建索引，不適用仍需提供模型讀取的過期 Files URI。[計價表](https://ai.google.dev/gemini-api/docs/pricing) 的 Context Caching 按時間儲存費是另一項產品，不能混稱 Files API 或 File Search 儲存費。若評估 File Search，應一次匯入、依內容變更更新，不把原本的每日續期照搬成每日付費重建embedding；比較完整費用及答案品質後才能決定。
+
+外部實作與經驗只作設計參考，不能代替本案驗收：
+
+- [Google官方File Search範例](https://github.com/google-gemini/cookbook/blob/main/quickstarts/File_Search.ipynb)：建立持久store、匯入完成後查詢，作隔離相容性比較的基準。
+- [PyMuPDF4LLM](https://github.com/pymupdf/pymupdf4llm)：頁級metadata、表格、圖片與Markdown；適合與本案既有PyMuPDF抽取作同文件比較，不應直接全庫換抽取器。
+- [Docling](https://github.com/docling-project/docling)：版面、表格、閱讀順序、OCR及provenance；可優先比較目前抽字不完整的手冊，需衡量本機資源和部署負擔。
+- [llmspy/gemini](https://github.com/llmspy/gemini)：示範 SHA 去重、來源metadata、背景匯入與遠端對帳；不照搬先刪舊檔的流程，本案更新失敗保留舊版。
+- [2026年社群討論](https://www.reddit.com/r/Rag/comments/1synetk/managed_rag_recommendations_googleopenai_file/) 建議先限制候選範圍、預先處理文件結構、量測延遲再換服務；屬使用者經驗，沒有本案效能保證。
+- [Google論壇2026-08-24重現](https://discuss.ai.google.dev/t/file-search-store-api-returns-503-for-all-file-sizes-files-upload-works-fine/121691/5) 報告同一大型PDF在embedding-2匯入503而001成功；[2026-04引用缺失回報](https://discuss.ai.google.dev/t/bug-large-system-prompts-6k-chars-cause-file-search-to-silently-drop-grounding-metadata/137331) 亦提醒須驗真正引用。這些是特定環境回報，不代表現行服務全面不可用。
+
+決策：保留自建頁級RAG及免費 Files API 輪替續期，改善抽取／召回／證據完整性；File Search列為同型號、同手冊、同模型、同問題的候選比較。歷史2026-09-05比較曾出現藍牙方向與頁碼錯誤，只證明當時方案未達本案標準，不能代替最新A/B。未取得新證據前不付費重建全庫、不新增服務、不宣稱已遷移或已完整驗收。
+
+候選判讀不要求模型重抄引文。Lite v2 以 `evidenceRefs` 指向完整來源，逐子題產生自然答案、條件及未解項目；程式核對來源／型號／數值與必要條件，且 `conditions` 必須呈現在最後答案，不可只留內部 JSON。JEV 選段對照才使用既有摘錄、程式回填原文；兩者契約不可混稱。型號在驗證入口統一表示法，不能因有無前綴 L 誤拒同一個已登錄型號，也不能放寬成相似型號可通用。
+
+### 編輯者模型比較與發布回復
+
+`cost_verification.gs` 的 `runProviderCostReadback` 只讀共用帳本；`runGenerationModelComparison` 使用獨立的 `/dev?diagnostics=1` 維護頁。Google 原生 `/dev` 限專案編輯者；伺服器核對執行 URL 後核發15分鐘、綁定 build 的診斷 token，公開 `/exec` 不核發，匿名／過期／舊 build 一律拒絕。此頁只讀帳或比較模型，不是 TestUI，也不模擬 LINE 對話。比較先探測 2.5 Flash／3.1 Flash-Lite，再以同題、同一份 QA/RULE 證據測試；不會將 2.5 Flash-Lite 混入。診斷使用原批 NT$10 與月帳，404 只記錄，不換模型重送。以鎖保護比較開始狀態，結果逐筆分包保存；同 build 再執行只讀回，包括未完成結果，避免瀏覽器記錄讀取失敗導致重付。可用性／答案品質／整題成本分開判斷，未取得兩款可用結果不宣稱完成同題 A/B。
+
+唯一入口 `tools/release_existing_webhook.ps1` 在上傳前保存正式版本／health 與雲端 HEAD 到 `output/release_state/head_<id>`；`clasp clone` 明確指定專案檔與輸出目錄，避免誤讀主要工作樹。回復同時還原既有 deployment 及備份 HEAD，再比對 health 與所有原始碼 SHA；不回復或清除 Properties、Sheet 或費用帳本。正式 health 必須同時匹配版本和 build。僅 StageOnly 會影響排程 HEAD，不等於正式 webhook 已更新。
+
+正式封存報告必須包含 LINE 可見回答、真實 eventId／reply SHA／provider receipt ID 與版本/build對齊，且20條核心旅程至少19條通過、關鍵失敗0。傳輸成功或 TestUI 不能冒充 LINE 實測。LINE 工具若遭政策拒絕，記錄阻礙，不得藉其他通道繞過或把 `liveAccepted` 改為 true。
+
+`-BeginLineAcceptance -LineReadinessReceipt <檔案>` 與 `-FinalizeLineAcceptance` 分別代表最多30分鐘候選及封存定版；ready receipt 必須包含實際 LINE 可操作、已設定 `LINE_ACCEPTANCE_V324` 的雲端讀回、actorHash、版本/build、batch/cap/spent/reserved、時窗和模型比較已審查。缺任何一項拒絕切正式。watchdog 以獨立隱藏 PowerShell 程序在期限到達時呼叫原入口回復，不另開 deployment；本機 mutex 阻擋發布／定版／回復並行。定版失敗立即回復；正式 health 不符也回復。流程已通過離線故障測試，尚無真實 LINE 候選／逾時實機驗證；電腦休眠或網路不可用仍可能延遲回復，watchdog錯誤保存在 release_state，不能宣稱供應商端硬期限保證。
+
+2026-09-21編輯器實跑讀帳入口在 `Session.getActiveUser` 被拒，缺 `userinfo.email`；未讀到帳本、未呼叫模型。已改用上述 Google 原生 editor-only `/dev` 與短效 token，移除新入口的 Email 讀取，不新增權限。既有 `cost_report`／`lowcost_probe` 維護能力仍須沿授權入口使用，不公開免驗證函式。依據：[Google Web Apps 測試部署權限](https://developers.google.com/apps-script/guides/web#test_a_web_app_deployment)。
+
+本輪Chrome實測診斷頁可讀帳並執行比較；1365×618視窗的按鈕、等待、結果狀態已實際檢視，沒有用此頁冒充LINE。2.5 Flash在本專案當次回404，3.1 Flash-Lite回200；三題候選判讀含一次格式修復，新增估算NT$0.087576，原批累計NT$3.937259392。這只能支持保留目前可用模型，不能宣稱兩模型完成同題A/B、全球模型停用或完整PDF/Web/LINE品質已通過。精確收據與答案見`test_runner/results/v324_generation_diagnostics_20260921.json`。
+
+尚無產品身分且免費直答未命中時，同一次候選判讀額外回傳 `questionScope=general|model_specific|non_product`。通論由原句語意判斷，不能用「連接」等片段推定操作題；個別產品缺身分才問型號。一般產品知識若仍有缺口，直接以既有共享判讀結果進一次 Web，不讀任意型號 PDF，也不先做無證據 Fast。分類不是事實證據，不能據此捏造答案；空候選仍可分類，但 schema 禁止選取答案片段。
+
+### PDF 成本與驗收歸因教訓（永久）
+
+2026-09-05 的 v29.6.298 曾以 2.5 Flash、medium 直接讀取整本 244 頁手冊，驗收紀錄顯示 PDF 階段約 NT$0.5155、約43秒、routerCalls=0，仍漏掉第101頁的答案。當時曾將單次 ceiling 放寬到0.60；這個做法沒有解決召回問題，後續已撤回0.35。原始版本紀錄保留於 `docs/history/v29.6.302/Developer_Manual.md` 的 v298/v299 節、Git `b6508a1`。這是當時保存的真人驗收估算，不是本次重跑，也不是供應商帳單。
+
+後續改為免費頁級檢索，送少量原文給模型整理；v301 同類旅程已有頁級生成約0.0038的紀錄，早於 JEV 導入。2026-09-19 本批兩次自我診斷頁級生成各約0.012896，另一次鍵鼠題0.023568，三次手冊分項合計0.04936。這些題目／文件與舊244頁測試不同，不能直接當成同題省費比例，也不能把成本改善歸功於 JEV。較低費用來自讀取範圍等因素，仍須核對當次模型、輸入、輸出與資料版本。
+
+本次曾只報某題成功追問約0.02045，而整批實際估算已1.359835392，造成使用者以為是否做了50題。當時是30次有費用模型呼叫，包含不同方案比較、失敗與重測；另2次404拒絕為零費。最大失敗項目是一般影音問題：一次Web生成包含2個搜尋query，搜尋保守估算0.896，加生成後整題0.94152，卻未交付合格答案。這證明「少量問題」不代表少量呼叫，「模型單次便宜」也不代表答案總成本低；失敗成本不能隱藏在批次合計，搜尋免費餘額未核實時不能把估算稱為實付。
+
+同批手冊驗收另發現兩條會白花錢的失敗路徑：一是模型宣稱完整，但型號適用性驗證全數失敗，舊文字清理器又刪掉失敗提示，只剩官方來源並誤標supported；二是QA候選要求模型重抄引文、型號表示未統一，使資料判讀先失敗，根本沒有進入PDF。修正須保留執行狀態、用程式回填引用原文、統一已登錄型號，不能以移除QA檢查、弱化手冊證據或追加Web付費掩蓋。
+
+後續保留題再找到兩種相反失敗：通論含「連接埠」被操作關鍵詞攔截，零模型就要求型號；另一題沒有召回任何 QA／RULE，Fast 仍回答品牌軟體並被標 supported。前者無論升級哪個模型都無法改善，後者須先補正資料與驗證流程。評估模型能力時必須保存模型實際收到的輸入範圍與證據，不能把檢索漏失、過早攔截或顯示清理錯誤統稱為便宜模型能力不足。只有相同問題與證據的實際比較，才能支持升級決定。
+
+16:34 實問另證實資料加工本身會製造碎片答案：術語描述拆段時刪掉名稱，模型只看到「用於…」「不是…」，最後照引文拼接也缺主詞。候選現保留每段 `subject`、以原始資料別名顯示主詞，相關定義召回由3筆增至5筆，再由同次語意判讀選取；不新增產品特例、不多叫一次模型。16:50同題0.010424的重測確認主詞保留，但仍只列相關軟體，完整比較未達標，故沒有通過品質發布。驗收必須看最終可讀答案，`complete=true`、引文存在或費用便宜都不能單獨當通過。
+
+後續修改一律遵守：
+
+- 分開記錄免費檢索、QA判讀、頁級生成、整本PDF、Web、答案重用與背景維護；使用者問手冊操作時仍須驗證實際手冊能力。
+- 單一階段成本不能當整題總價，成功個案不能當批次代表；整題含路由、QA、PDF、Web、必要修復，整批再含A/B與所有失敗重測。
+- 用量按模型當期每百萬tokens費率計算，再乘明示估算匯率；目前專案使用32 TWD/USD。缺usage不填0，日後改幣別／匯率／模型時須重核，不能沿用本文歷史數字當當期帳單。
+- 費用比較須同題、同文件、同證據／版本，並驗證答案與引用。跨題數字只可說明不同路徑的成本規模，不能宣稱全面節省多少。
+- 發布前保留「PDF證據全被拒絕仍不可空答或supported」、「已知答案不得重查」、「候選片段ID回填」、「新台幣計價及快取／思考費」測試；失敗先修本機與離線契約，再做最小必要實問，共用既有批次上限。
+- 使用者未要求交付報告時，相關MD與Git保存原因、證據及不變式，對使用者回覆完成事項；不要反覆交付大份報告，也不要把寫文件當成實作／真人驗收完成。
+
+### 模型與角色
+
+- Fast、頁級 RAG、整本 PDF、Web、QA 合併／修改／潤稿固定 gemini-3.1-flash-lite；不因 THINK 常數或錯誤自動轉 3.7。PDF／Web 降價後品質仍須真人驗收。
+- 2.5 Flash-Lite 與 2.5 Flash 是不同模型，只能經編輯者 lowcost_probe 檢查一次能否實際產生答案。2026-09-19 此專案兩者實際生成皆回 404，沒有取得答案；這不是全平台下架的證據。404 不重試，不自動換槽／換模型；可用後另做品質比較才能切換。
+- providerPurpose 明列 fast、pdf、web、router、qa_semantic、qa_candidate、各 QA/RULE 維護、history_summary、message_helper、diagnostic、manual_cover。共用 providerFetch_ 檢查用途／模型搭配，不能依模型名稱猜用途。
+- 每百萬 tokens 的 USD：2.5 Lite 0.10/0.40、2.5 Flash 0.30/2.50、3.1 Lite 0.25/1.50、3.7 Flash 0.75/3.75；輸出含思考。2026-09-19 核對，生效日期與模型分開記錄。此為估算費率，不是帳單實付。
+
+### 搜尋工具與多段回覆
+
+Google Search 工具啟用不代表模型一定執行搜尋。Web 提示要求先用一個精簡查詢查證，但這不是供應商查詢數硬限制。使用官方 `toolConfig.includeServerSideToolInvocations=true` 保存工具執行跡象，查詢數先採 `groundingMetadata.webSearchQueries`，缺漏時採官方 `toolCall.toolType=GOOGLE_SEARCH_WEB` 的 `args.queries`；兩者皆缺仍列未知、保守入帳，不得自動填零或盲目重送。工具 trace 只證明查詢，不代替答案的 groundingSupports／來源驗證。
+
+Gemini 回覆可含多個 parts；工具、思考或簽章可能在文字之前。答案須合併所有非 thought 文字，不能只取 parts[0].text。LOG／持久收據只保存 responseId、用量、查詢數與費用狀態，不記思考文字、簽章或完整工具回傳。[官方工具執行紀錄](https://ai.google.dev/gemini-api/docs/generate-content/tool-combination)
+
+16:20 候選通論實測已通過範圍判讀，但一次 Web 回傳缺搜尋 metadata；生成估算 NT$0.028392（含 QA 判讀），搜尋待核對預留 NT$1.344，合計 NT$1.372392。這是失敗及未知成本，不得當成已證實搜尋三次或實付 NT$1.344，也不得清帳重測。
+
+16:34 Web 回歸已實際觀察 `traceCalls=1`、`queryCount=2`，但仍無 groundingMetadata；總估算0.918432，答案不合格。此時不能再把無 metadata 說成「未搜尋」；工具執行與引用覆蓋是不同結果。AI Studio 同專案 GenerateContent storage 為關閉，沒有既有原始 response 可讀回；未擅自啟用全流量儲存。一般用量頁不提供本月搜尋 query 總量，因此仍不能核實共享免費餘額。
+
+若需後續排除傳輸介面問題，可用同模型、同題對照官方 Interactions API 的 typed steps／annotations／grounding 用量；官方列3.1 Flash-Lite可用，generateContent亦仍受支援。這是待驗證替代路徑，不是已解決，也不能自動切正式、改高價模型、清帳或縮小搜尋預留來硬塞測試。驗收需 `store=false` 保持既有不儲存行為，所有入口仍經共用費用守門。[官方介面及支援模型](https://ai.google.dev/gemini-api/docs/interactions-overview)
+
+### 首頁隔離與索引收據
+
+1. 雲端核對官方下載 URL、support page 與單一 SKU，下載檔案取得原始 SHA，只排入 MANUAL_INSPECT_<SKU>；未核實文件不能直接入庫。
+2. 簽章本機 worker 用 PyMuPDF 抽真正第一頁文字。足夠識別即零 LLM；必要時送首頁文字或單頁 PNG，禁止 PDF file URI。圖片 SHA 僅作衍生證據，不取代原 PDF SHA。
+3. 抽取結果鍵含原 PDF SHA、pymupdf-page1-v1 與 cover-v324-1。相同內容跨 SKU 共用抽取，但 SKU／地區／使用手冊角色各自驗證；Product Guide／快速入門不可冒充使用手冊。
+4. 抽取成功後寫獨立 receipt，SKU 通過才建 verified pending。單次付費嘗試先落盤，逾時／程序中斷也不得再次付費；後段失敗只接續未完成階段。
+5. 本機 content-cache 依 SHA／政策保存已下載 PDF、verified-index.json 與 index-receipt.json。重跑先重算檔案 SHA，通過才重用；抽字與建索引不叫 LLM。
+6. prepare 維持不可變 PDF/index、單一 MANUAL_WORKER_BUNDLE 原子切換；MANUAL_PROGRESS_<model> 先是 activated_pending_probe，實際 PDF 與 index 雙 SHA 讀回後才是 verified_ready。啟用後中斷可只 probe，不重新核驗或建索引。
+7. inspections 的 retry_wait、索引 index_retry_wait 皆至少隔一天，同 SHA／政策同階段最多三次；永久不適用或已送出但結果不明變 blocked。更改內容／政策或有明確修復證據才重開，不能每天洗掉失敗紀錄。
+8. worker 回傳失敗 stage、HTTP status、error code、nextRetryAt，不能只存 HTTPError。舊 compiled 文件被有效 worker 版本完整取代時不再算 stale；部分未覆蓋仍要查真正缺口。
+
+### 共用費用帳與錯誤分類
+
+- 月總帳沿用既有 seed、90 元停止線。2026-09-19 Chrome 讀回正確 Cloud 專案原為 90 元上限；使用者明確授權後已存成 50 元並讀回。當次預付餘額約 167 元、自動儲值關閉；舊文件的 391 元不可沿用。外部數字以當次帳單讀回為準，Cloud 限額存在處理延遲。任何新分類不能清掉既有花費。
+- manual_cover 預留每次最多 NT$0.05、每日 NT$0.10、每月 NT$1。2026-09-13～19 已有 LOG 估算 2.657128 元納入本月背景分類起始值，沒有再加到已含這些費用的月總帳；所以九月後續背景付費辨識暫停，免費抽取／索引仍可執行。
+- PDF 原本每次 0.35 元上限保留。同題所有模型最多五次、共用 2 元預留／結算，包含路由、候選、PDF、Web與修復；重試不重建預算。
+- 每次生成先持久保存 PROVIDER_ATTEMPT_<id> reserved，送出前 sent，結算後 settled；含用途、模型、輸入範圍、payload SHA、輸入／輸出上限、預留、cost status、查詢數。近 80 筆已結算保留 Properties，完整收據寫 LOG；未結算不自動過期／退款。
+- 本次使用者已將同一驗收批次 `v324-cost-remediation` 的累計上限授權為 NT$10；保留既有支出、verificationV303、其他批次與月總額，不重開帳。本次以真實 LINE 輸入／收訊驗收，不先跑 TestUI。候選 `LINE_ACCEPTANCE_V324` 只允許指定使用者雜湊、版本/build及最長30分鐘視窗套用同一批次；到期不得轉為一般流量逃過驗收上限。尚未設定或啟用任何正式驗收視窗。
+- reported 為供應商費用；estimated 為 token／工具費推算；unknown 為缺用量／結果不明。cost:null 不能變零；明確 4xx 拒絕與送出後逾時分開，後者保留保守費用。
+- 搜尋 2.5 按 grounded prompt（每日共享免費 1500）；3.x 按 query（每月共享免費 5000）；費率分別 USD 0.035、0.014。免費用量起始未由編輯者核實就保守計費，不能只因本程式計數小就當免費。一次生成可有多次搜尋，3.x 暫預留三個 query 不等於供應商硬封頂；依實際數量結算，超支限制後續呼叫。
+- 格式/schema/摘錄驗證錯誤、provider 失敗、預算不足為執行失敗，不是缺資料；不能重送整份 PDF 或自動 Web。只有可驗證的資料缺口能升來源。
+- 有效片段逐子題保留；共用手冊可用的條件式操作要保留限制，不因頁面有 caveat 就丟答案。通用網頁方法標明條件，不能證明特定型號能力；禁止數值關係或跨款類推。無可靠資料仍交付確認內容、限制與下一步。
+
+### 發布驗證
+
+唯一入口 release_existing_webhook.ps1 自動跑 static、contract、production-contract、diff。費用鐵律回歸必須覆蓋缺用途、貴模型、整本首頁、null cost、搜尋多查詢、未知費、重試上限、分階段接續、schema失敗、已確認部分保留。模型或費率超過基線時測試阻擋，必須更新比較證據；不能單以相容性修復略過。
+
+候選方案比較使用同一批 QA/RULE 候選；只在驗收雙跑。勝出看完整正確率、漏 QA、無效 PDF/Web、每個正確可用答案的總成本。20 核心旅程至少 19 可用；五題預先封存通論題見 test_runner/v324_holdout_cases.json，不能為保留題增添專用程式。本次依使用者要求以真實 LINE 輸入／可見回答驗收，不先跑 TestUI；worker、LOG、正式 health 與離線結果分列。LINE Reply API 接受送出仍須核對實際可見回答，不能冒充已收訊。JEV 新增證據判讀只在上述驗收視窗啟用，正式一般流量保持既有條件路由；未取得真實品質／總成本證據不得擴大。
+
+官方依據：[PDF FileData](https://ai.google.dev/api/generate-content#FileData)、[模型價格](https://ai.google.dev/gemini-api/docs/pricing)、[搜尋計費](https://ai.google.dev/gemini-api/docs/google-search)、[JEV Choice](https://docs.typesafe.ai/primitives/choice)、[Retrieve/Rerank](https://www.sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html)。
 
 ## v29.6.320 JEV Semantic Router 契約
 

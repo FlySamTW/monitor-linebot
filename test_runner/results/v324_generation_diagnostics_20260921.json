@@ -1,0 +1,70 @@
+{
+  "version": "v29.6.324",
+  "build": "2026-09-21 23:34",
+  "surface": "Chrome 原生 editor-only /dev 獨立診斷頁；真實供應商；未使用 TestUI 對話",
+  "startedAt": "2026-09-21T15:40:54.729Z",
+  "finishedAt": "2026-09-21T15:41:11.727Z",
+  "verificationBatch": "v324-cost-remediation",
+  "authorizedCapTwd": 10,
+  "batchBeforeTwd": 3.849683392,
+  "batchAfterTwd": 3.937259392,
+  "reservedTwd": 0,
+  "remainingTwd": 6.062740608,
+  "monthAfterTwd": 23.74377420800001,
+  "incrementTwd": 0.087576,
+  "questionCount": 3,
+  "availabilityProbeCount": 2,
+  "providerCallsSent": 6,
+  "successfulGenerationCalls": 5,
+  "formatRepairCalls": 1,
+  "searchQueries": 0,
+  "pdfCalls": 0,
+  "jevCalls": 0,
+  "lineDelivered": false,
+  "fullJourneyQualityAccepted": false,
+  "fullTwoModelComparisonCompleted": false,
+  "amountMeaning": "依供應商用量與既有費率估算，非帳單實付；包含格式修復，歷史失敗費用未清除",
+  "modelProbe": [
+    {"model":"models/gemini-2.5-flash","httpStatus":404,"outcome":"resource_not_found","answered":false,"receiptId":"a71c2542-9304-4012-a3d6-89687377cb5e","costTwd":0},
+    {"model":"models/gemini-3.1-flash-lite","httpStatus":200,"outcome":"success","answered":true,"receiptId":"a4613ab4-bd96-49e7-9771-9636a1301916","costTwd":0.000072,"inputTokens":3,"outputTokens":1}
+  ],
+  "results": [
+    {
+      "id":"H6",
+      "question":"S32FM803UC 要跟藍牙遊戲控制器配對，從哪開始？",
+      "evidenceSha256":"90ec3413c80f0391c3937a5a989d93d53137b2f290bd2a9ca327990b204f48b1",
+      "model":"models/gemini-3.1-flash-lite",
+      "answer":"請依序選擇「設定 → 所有設定 → 連線 → 藍牙」開始配對，並讓您的遊戲控制器進入配對模式後移近螢幕，再從清單中選取即可。\n適用條件：提醒你：部分應用程式、外部裝置、型號或地區可能不支援此功能。",
+      "evidenceIds":["QA:manual-s32fm70x80x-bluetooth-input"],
+      "complete":true,
+      "costTwd":0.032288,
+      "receipts":[{"id":"d0aaad1a-f09d-423a-a7ac-36b20b313e44","costTwd":0.032288,"inputTokens":2758,"outputTokens":213}],
+      "review":"已提供入口與配對步驟，必要限制出現在可見答案；這是既有 QA 證據，並非本次 PDF/RAG 呼叫。"
+    },
+    {
+      "id":"H8",
+      "question":"USB-C 連接埠的瓦數，是代表每台筆電都會得到同樣功率嗎？",
+      "evidenceSha256":"49ac583de4f490ded3d5f3cd4a63e81b05d7eefe35292205fc4f58823ad3e849",
+      "model":"models/gemini-3.1-flash-lite",
+      "answer":"不一定，USB-C 供電（USB-C Power Delivery）的實際瓦數與功能支援情況，必須視具體的產品型號而定。",
+      "evidenceIds":["RULE:row:253"],
+      "complete":true,
+      "costTwd":0.016376,
+      "receipts":[{"id":"21e77ffd-8350-4e88-980c-1af68f82ca4c","costTwd":0.016376,"inputTokens":901,"outputTokens":191}],
+      "review":"未再強制追問型號；回答了不一定，但未解釋功率協商與線材條件，不算完整技術說明或歷史 Web 失敗已修復。"
+    },
+    {
+      "id":"H10",
+      "question":"畫面分割與把視窗排在桌面上，是同一種功能嗎？",
+      "evidenceSha256":"a0cd2eb29dfc20ceb8d66c90ed2d77bd0acc88bcecb69119432afc98d2e1f1ca",
+      "model":"models/gemini-3.1-flash-lite",
+      "answer":"不是同一種功能。畫面分割（如 PBP）屬於多畫面模式，用於並排顯示多個輸入來源；而把視窗排在桌面上（如 Easy Setting Box）則是 Windows 視窗管理軟體，用於桌面視窗分割與排列，並非螢幕硬體 PIP/PBP 功能。\n適用條件：不得由 Multi View 推定型號支援",
+      "evidenceIds":["RULE:row:267","RULE:row:249"],
+      "complete":true,
+      "costTwd":0.03884,
+      "receipts":[{"id":"87ec2b72-08b8-44d8-879b-81b9b5e46eeb","costTwd":0.017232,"inputTokens":1014,"outputTokens":190},{"id":"f2c29fac-3798-49ce-9724-146f6b8a8aed","costTwd":0.021608,"inputTokens":1255,"outputTokens":241}],
+      "review":"已完整區分多來源顯示與桌面視窗排列；仍帶有內部限制語氣，首次格式修復成本保留。"
+    }
+  ],
+  "decision":"2.5 Flash 在本專案 API 當次回404，不宣稱全球停用或完成同題 A/B。保留可用的3.1 Flash-Lite；JEV不擴大正式用途。LINE/Web/PDF完整旅程仍須最後實測。"
+}

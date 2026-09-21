@@ -2,7 +2,7 @@
 let lastProviderReceipt_ = null;
 let pendingProviderAttempt_ = null;
 let lastProviderOutcome_ = null;
-const PROVIDER_PRICE_VERIFIED_AT = "2026-09-05";
+const PROVIDER_PRICE_VERIFIED_AT = "2026-09-19";
 const PROVIDER_MONTH_LIMIT_TWD = 90;
 // Read back in Chrome, 2026-09-05: Sam-Paid-Project / Gemini API gross TWD5.58,
 // spend cap TWD90 enforced. Round UP to TWD6; never seed an unrelated script.
@@ -67,10 +67,20 @@ function changeProviderBudget_(reservation, actualCost, uncertain) {
         throw new Error("PROVIDER_MONTH_BUDGET_EXHAUSTED");
       }
       if (reservation.verification) {
-        const testBudget = state.verificationV303 || {spent: 0, reserved: 0};
-        if (testBudget.spent + testBudget.reserved + reservation.amount > 5) throw new Error("PROVIDER_TEST_BUDGET_EXHAUSTED");
+        state.verifications = state.verifications || {};
+        const testBudget = state.verifications[reservation.verificationBatch || PROVIDER_VERIFICATION_BATCH] || {spent: 0, reserved: 0};
+        if (testBudget.spent + testBudget.reserved + reservation.amount > PROVIDER_VERIFICATION_CAP_TWD) throw new Error("PROVIDER_TEST_BUDGET_EXHAUSTED");
         testBudget.reserved += reservation.amount;
-        state.verificationV303 = testBudget;
+        state.verifications[reservation.verificationBatch || PROVIDER_VERIFICATION_BATCH] = testBudget;
+      }
+      if(reservation.purpose === "manual_cover") {
+        const day=Utilities.formatDate(new Date(),"Asia/Taipei","yyyy-MM-dd");
+        state.cover=state.cover||{spent:reservation.month==="PROVIDER_MONTH_2026-09"?2.657128:0,reserved:0,day:day,
+          daySpent:day==="2026-09-19"?1.040632:0,dayReserved:0,openingSource:"2026-09-19 LOG estimate; not invoice"};
+        if(state.cover.day!==day){state.cover.day=day;state.cover.daySpent=0;state.cover.dayReserved=0;}
+        if(state.cover.spent+state.cover.reserved+reservation.amount>1 || state.cover.daySpent+state.cover.dayReserved+reservation.amount>0.10)
+          throw new Error("PROVIDER_COVER_BUDGET_EXHAUSTED");
+        state.cover.reserved+=reservation.amount;state.cover.dayReserved+=reservation.amount;
       }
       state.reserved += reservation.amount;
     } else {
@@ -78,12 +88,21 @@ function changeProviderBudget_(reservation, actualCost, uncertain) {
       state.spent += Math.max(0, actualCost);
       if (uncertain) state.uncertain += Math.max(0, actualCost);
       state.requests += reservation.sent ? 1 : 0;
-      if (reservation.verification && state.verificationV303) {
-        state.verificationV303.reserved = Math.max(0, state.verificationV303.reserved - reservation.amount);
-        state.verificationV303.spent += Math.max(0, actualCost);
+      if(reservation.purpose === "manual_cover" && state.cover) {
+        state.cover.reserved=Math.max(0,state.cover.reserved-reservation.amount);
+        state.cover.dayReserved=Math.max(0,state.cover.dayReserved-reservation.amount);
+        state.cover.spent+=actualCost;state.cover.daySpent+=actualCost;
+      }
+      state.byPurpose=state.byPurpose||{};
+      const role=reservation.purpose||"legacy";
+      state.byPurpose[role]=(state.byPurpose[role]||0)+actualCost;
+      if (reservation.verification && state.verifications) {
+        const testBudget=state.verifications[reservation.verificationBatch || PROVIDER_VERIFICATION_BATCH];
+        if(testBudget){testBudget.reserved=Math.max(0,testBudget.reserved-reservation.amount);testBudget.spent+=Math.max(0,actualCost);}
       }
     }
     props.setProperty(key, JSON.stringify(state));
+    accountProviderCostScope_(reservation,actualCost,uncertain);
     return state;
   } finally { lock.releaseLock(); }
 }
@@ -314,6 +333,7 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
   if (String(target || "") !== JEV_DECISIONS_ENDPOINT) {
     throw new Error("PROVIDER_DECISION_ENDPOINT_NOT_APPROVED");
   }
+  const costScope=providerCostScope_(options,JEV_MODEL_ROUTER,false);
   const payloadText = String(options.payload || "{}");
   let payload = {};
   try {
@@ -333,10 +353,10 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
     month: providerMonthKey_(),
     amount:
       ((inputReserveTokens * PRICE_ROUTER_INPUT) / 1000000) * EXCHANGE_RATE,
-    sent: false,
-    verification:
-      typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE === true,
+    inputLimit:inputReserveTokens,outputLimit:0,sent: false,
+    verification: isProviderVerificationRequest_(),
   };
+  prepareProviderCostReservation_(reservation,costScope);
   try {
     changeProviderBudget_(reservation, null, false);
   } catch (error) {
@@ -345,10 +365,11 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
         0,
         currentRequestAudit.attemptedCalls - 1,
       );
-      if (Object.prototype.hasOwnProperty.call(currentRequestAudit, "routerCalls")) {
-        currentRequestAudit.routerCalls = Math.max(
+      const attemptField = pendingProviderAttempt_.stage + "Calls";
+      if (Object.prototype.hasOwnProperty.call(currentRequestAudit, attemptField)) {
+        currentRequestAudit[attemptField] = Math.max(
           0,
-          currentRequestAudit.routerCalls - 1,
+          currentRequestAudit[attemptField] - 1,
         );
       }
     }
@@ -360,7 +381,7 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
   let costRecorded = false;
   try {
     if (!pendingProviderAttempt_) {
-      markGenerationAttempt_("router", JEV_MODEL_ROUTER);
+      markGenerationAttempt_(costScope.purpose === "evidence_verify" ? "evidence_verify" : "router", JEV_MODEL_ROUTER);
     }
     pendingProviderAttempt_ = null;
     options.headers = Object.assign({}, options.headers || {}, {
@@ -369,6 +390,7 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
       "X-Title": "Samsung Monitor LineBot Semantic Router",
     });
     reservation.sent = true;
+    persistProviderAttemptReceipt_(reservation,"sent");
     const response = UrlFetchApp.fetch(target, options);
     const code = Number(response.getResponseCode());
     const responseText = String(response.getContentText() || "");
@@ -410,7 +432,7 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
 
     const usage = body && body.usage ? body.usage : {};
     const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
-    const reportedCostUsd = Number(usage.cost);
+    const reportedCostUsd = typeof usage.cost === "number" ? usage.cost : NaN;
     const exactCostUsd =
       Number.isFinite(reportedCostUsd) && reportedCostUsd >= 0
         ? reportedCostUsd
@@ -420,12 +442,25 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
     const costTwd =
       exactCostUsd === null ? reservation.amount : exactCostUsd * EXCHANGE_RATE;
     const uncertain = exactCostUsd === null;
+    reservation.costStatus=Number.isFinite(reportedCostUsd)&&reportedCostUsd>=0?"reported":(uncertain?"unknown":"estimated");
+    reservation.responseId=String(body.id||"");
+    reservation.usage=body.usage||null;
     if (uncertain) {
       recordUncertainProviderCost_(costTwd, JEV_MODEL_ROUTER);
     }
     changeProviderBudget_(reservation, costTwd, uncertain);
     settled = true;
     costRecorded = true;
+    if (!uncertain) {
+      const auditUsage={promptTokenCount:inputTokens,candidatesTokenCount:Math.max(0,Number(usage.output_tokens)||0),thoughtsTokenCount:0};
+      // A receipt identifies an attempt; identical token counts on separate calls are still billed separately.
+      lastProviderReceipt_={signature:providerUsageSignature_(auditUsage,JEV_MODEL_ROUTER),audited:false};
+      addGenerationUsageToAudit_(auditUsage,costTwd,JEV_MODEL_ROUTER);
+    }
+    if (currentRequestAudit) {
+      const field=costScope.purpose==="evidence_verify"?"evidenceVerifyCostTwd":"routerCostTwd";
+      currentRequestAudit[field]=(currentRequestAudit[field]||0)+costTwd;
+    }
     markProviderOutcome_({
       kind: "success",
       reason: "",
@@ -433,7 +468,7 @@ function providerOpenRouterDecisionFetch_(target, rawOptions, apiKey) {
       costTwd: costTwd,
     });
     writeLog(
-      `[Provider Cost] provider=OpenRouter model=${JEV_MODEL_ROUTER} costTwd=${costTwd.toFixed(6)} status=${uncertain ? "usage_pending" : "usage_reported"} rateDate=2026-09-18`,
+      `[Provider Cost] provider=OpenRouter model=${JEV_MODEL_ROUTER} costTwd=${costTwd.toFixed(6)} status=${reservation.costStatus} rateDate=2026-09-18`,
     );
     return response;
   } finally {
@@ -479,8 +514,23 @@ function providerFetch_(url, rawOptions) {
   if (/openrouter\.ai\/api\/v1\/chat\/completions/i.test(target)) {
     throw new Error("PROVIDER_MODEL_NOT_APPROVED");
   }
-  const match = target.match(/^https:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?\/models\/([^/:?]+):generateContent(?:\?|$)/);
-  if (!match) return UrlFetchApp.fetch(target, options);
+  const modelDiscovery = target === "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100";
+  if (modelDiscovery) {
+    if (String(options.providerPurpose || "") !== "diagnostic" || String(options.method || "get").toLowerCase() !== "get") {
+      throw new Error("PROVIDER_NON_GENERATION_CONTRACT");
+    }
+    delete options.providerPurpose;
+    delete options.providerJobId;
+    return UrlFetchApp.fetch(target, options);
+  }
+  const interaction = target === PROVIDER_INTERACTIONS_ENDPOINT;
+  let match = target.match(/^https:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?\/models\/([^/:?]+):generateContent(?:\?|$)/);
+  if(interaction){const native=JSON.parse(options.payload||"{}");match=[target,String(native.model||"").replace(/^models\//,"")];
+    if(native.store!==false||native.stream!==false||native.background!==false||options.providerPurpose!=="web")throw new Error("PROVIDER_INTERACTIONS_CONTRACT");}
+  if (!match) {
+    if (/generativelanguage\.googleapis\.com/i.test(target) && !/\/(?:upload\/)?v1(?:beta)?\/(?:files(?:\/|$|\?)|models\/[^/?]+:countTokens(?:\?|$))/.test(target))throw new Error("PROVIDER_ENDPOINT_NOT_APPROVED");
+    delete options.providerPurpose;delete options.providerJobId;return UrlFetchApp.fetch(target, options);
+  }
   const grant = options.sourceGrant;
   delete options.sourceGrant;
   let knownInput = Number(options.budgetInputTokens || 0);
@@ -503,12 +553,11 @@ function providerFetch_(url, rawOptions) {
   }
   const price = providerPrice_(model);
   const payload = JSON.parse(options.payload || "{}");
-  const generation = payload.generationConfig || {};
-  const outputLimit = Number(generation.maxOutputTokens || 2048);
-  if (!generation.maxOutputTokens) {
-    payload.generationConfig = Object.assign({}, generation, {maxOutputTokens: outputLimit});
-    options.payload = JSON.stringify(payload);
-  }
+  const generation = interaction ? {maxOutputTokens:payload.generation_config?.max_output_tokens} : payload.generationConfig || {};
+  const outputLimit=Number(generation.maxOutputTokens||2048);
+  if(interaction){if(outputLimit!==800)throw new Error("PROVIDER_INTERACTIONS_OUTPUT_LIMIT");}
+  else {if(!generation.thinkingConfig)generation.thinkingConfig=providerThinkingConfigForModel_(model);generation.maxOutputTokens=outputLimit;payload.generationConfig=generation;}
+  options.payload=JSON.stringify(payload);
   // Unicode byte count is an intentionally conservative reservation, not the
   // displayed bill. Attached PDFs use the free official countTokens result.
   if (!knownInput && /"(?:file_data|fileData|inline_data|inlineData)"/.test(options.payload)) {
@@ -537,13 +586,15 @@ function providerFetch_(url, rawOptions) {
     if (!knownInput) throw new Error("PROVIDER_INPUT_ESTIMATE_UNAVAILABLE");
   }
   const inputLimit = knownInput || Utilities.newBlob(options.payload).getBytes().length;
-  const search = (payload.tools || []).some(function (tool) { return Boolean(tool.google_search || tool.googleSearch); });
-  if (search && model !== "gemini-3.7-flash") throw new Error("PROVIDER_SEARCH_MODEL_NOT_APPROVED");
+  const search = (payload.tools || []).some(function (tool) { return Boolean(tool.google_search || tool.googleSearch || tool.type === "google_search"); });
+  if (search && ![GEMINI_MODEL_WEB.replace(/^models\//,""),"gemini-2.5-flash-lite","gemini-2.5-flash","gemini-3.1-flash-lite"].includes(model)) throw new Error("PROVIDER_SEARCH_MODEL_NOT_APPROVED");
+  const costScope=providerCostScope_(options,model,search);
   const reservation = {month: providerMonthKey_(), amount: ((inputLimit * price.input + outputLimit * price.output) / 1e6) * EXCHANGE_RATE, sent: false,
-    verification: typeof IS_TEST_MODE !== "undefined" && IS_TEST_MODE === true};
+    inputLimit:inputLimit,outputLimit:outputLimit,verification: isProviderVerificationRequest_()};
   // A shared free tier is not guaranteed to remain unused by other clients.
   // Reserve one potential 2.5 grounding charge; settle against the shared count.
-  if (search) reservation.amount += 0.035 * EXCHANGE_RATE;
+  if (search) reservation.amount += providerSearchPrice_(model).usd * (providerSearchPrice_(model).unit === "query" ? 3 : 1) * EXCHANGE_RATE;
+  prepareProviderCostReservation_(reservation,costScope);
   try { changeProviderBudget_(reservation, null, false); }
   catch (error) {
     if (pendingProviderAttempt_ && currentRequestAudit) {
@@ -558,10 +609,12 @@ function providerFetch_(url, rawOptions) {
   let costRecorded = false;
   try {
     if (grant) reserveAdvancedSourceUsage_(grant);
-    if (!pendingProviderAttempt_) markGenerationAttempt_(search ? "web" : model === "gemini-3.7-flash" ? "router" : "fast", modelName);
+    if (!pendingProviderAttempt_) markGenerationAttempt_(["pdf","web","router"].includes(costScope.purpose)?costScope.purpose:"fast", modelName);
     pendingProviderAttempt_ = null;
     reservation.sent = true;
-    const response = UrlFetchApp.fetch(target, options);
+    persistProviderAttemptReceipt_(reservation,"sent");
+    const rawResponse = UrlFetchApp.fetch(target, options);
+    const response = interaction ? adaptWebInteractionResponse_(rawResponse) : rawResponse;
     const responseText = response.getContentText() || "";
     const httpOutcome = classifyProviderHttpOutcome_(
       response.getResponseCode(),
@@ -589,29 +642,30 @@ function providerFetch_(url, rawOptions) {
     }
     let body = {};
     try { body = JSON.parse(responseText || "{}"); } catch (_) {}
+    reservation.responseId=/^[A-Za-z0-9_-]{1,200}$/.test(body.responseId||"")?body.responseId:"";
     const rawUsage = body.usageMetadata;
     const usage = rawUsage && Number.isFinite(rawUsage.promptTokenCount) && rawUsage.promptTokenCount >= 0 &&
       ["candidatesTokenCount", "thoughtsTokenCount", "cachedContentTokenCount"].every(function (field) {
         return rawUsage[field] === undefined || (Number.isFinite(rawUsage[field]) && rawUsage[field] >= 0);
       }) ? rawUsage : null;
     let cost = reservation.amount;
+    let searchUnknown = false;
     if (usage) {
+      reservation.usage={inputTokens:usage.promptTokenCount,cachedTokens:Number(usage.cachedContentTokenCount||0),
+        outputTokens:Number(usage.candidatesTokenCount||0),thoughtTokens:Number(usage.thoughtsTokenCount||0)};
       const cached = Math.min(Number(usage.cachedContentTokenCount || 0), Number(usage.promptTokenCount || 0));
       cost = ((Number(usage.promptTokenCount || 0) - cached) * price.input + cached * price.cached +
         (Number(usage.candidatesTokenCount || 0) + Number(usage.thoughtsTokenCount || 0)) * price.output) / 1e6 * EXCHANGE_RATE;
       if (search) {
-        const metadata = (((body.candidates || [])[0] || {}).groundingMetadata || {});
-        if ((metadata.webSearchQueries || []).length) {
-          const props = PropertiesService.getScriptProperties();
-          const key = "PROVIDER_SEARCH_" + Utilities.formatDate(new Date(), "America/Los_Angeles", "yyyy-MM-dd");
-          const lock = LockService.getScriptLock();
-          if (!lock.tryLock(5000)) throw new Error("SEARCH_LEDGER_LOCK_BUSY");
-          try {
-            const count = Number(props.getProperty(key) || 0) + 1;
-            props.setProperty(key, String(count));
-            if (count > 1500) cost += 0.035 * EXCHANGE_RATE;
-          } finally { lock.releaseLock(); }
-        }
+        const observedSearch=providerSearchMetadata_(body);
+        const result=settleProviderSearch_(model,observedSearch);
+        cost+=result.costTwd;reservation.queryCount=result.queryCount;searchUnknown=Boolean(result.unknown);
+        reservation.searchAllowanceKnown=result.allowanceKnown;
+        reservation.searchCostTwd=result.costTwd;
+        writeLog("[Search Execution Receipt] "+JSON.stringify({responseId:reservation.responseId,queryCount:result.queryCount,
+          traceCalls:(((body.candidates||[])[0]||{}).content?.parts||[]).filter(function(p){return p.toolCall;}).length,
+          groundingPresent:Boolean(((body.candidates||[])[0]||{}).groundingMetadata),costKnown:!result.unknown}));
+        if(searchUnknown && currentRequestAudit)currentRequestAudit.uncertainCostTwd=(currentRequestAudit.uncertainCostTwd||0)+result.costTwd;
       }
       lastProviderReceipt_ = {signature: providerUsageSignature_(usage, modelName), audited: false};
       addGenerationUsageToAudit_(usage, cost, modelName);
@@ -621,9 +675,10 @@ function providerFetch_(url, rawOptions) {
       markProviderOutcome_({kind: httpOutcome.kind, reason: httpOutcome.reason, httpStatus: response.getResponseCode(), costTwd: cost});
     }
     costRecorded = true;
-    changeProviderBudget_(reservation, cost, !usage);
+    reservation.costStatus=!usage||searchUnknown?"unknown":"estimated";
+    changeProviderBudget_(reservation, cost, !usage||searchUnknown);
     settled = true;
-    writeLog(`[Provider Cost] model=${model} costTwd=${cost.toFixed(6)} status=${usage ? "usage_estimated" : "usage_pending"} rateDate=${PROVIDER_PRICE_VERIFIED_AT}`);
+    writeLog(`[Provider Cost] model=${model} costTwd=${cost.toFixed(6)} status=${usage&&!searchUnknown ? "usage_estimated" : "usage_pending"} rateDate=${PROVIDER_PRICE_VERIFIED_AT}`);
     return response;
   } finally {
     if (!settled) {

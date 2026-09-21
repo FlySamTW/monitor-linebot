@@ -424,8 +424,10 @@ function publishCompiledManualIndexes_(maxWrites) {
       if (active.indexFileId && active.indexChecksum && active.sha256) reusable[`${active.sha256}:${active.indexChecksum}`] = active.indexFileId;
     } catch (error) { /* An invalid pointer is not a reusable artifact. */ }
   });
+  const effective=getEffectiveManualDocuments_();
   Object.keys(catalog.documents).forEach(function (docKey) {
-    const document = catalog.documents[docKey];
+    const document = effective[docKey];
+    if(!document) {result.active.push(docKey);return;}
     const revision = readManualRevision_(docKey, document);
     if (!revision) { result.failed.push(docKey); return; }
     try {

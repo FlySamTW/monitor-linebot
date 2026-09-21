@@ -119,8 +119,10 @@ function New-GasVersion {
 function Get-FormalHealth {
   param([string]$Id)
 
-  $url = "https://script.google.com/macros/s/$Id/exec?health=1"
-  return (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 60).Content.Trim()
+  $url = "https://script.google.com/macros/s/$Id/exec?health=1&releaseCheck=$([guid]::NewGuid().ToString('N'))"
+  $body = & curl.exe --silent --show-error --fail --location --max-time 25 $url
+  if ($LASTEXITCODE -ne 0) { throw 'Formal health request failed.' }
+  return ($body | Out-String).Trim()
 }
 
 Assert-CommandExists "clasp"
@@ -173,7 +175,7 @@ for ($i = 1; $i -le [Math]::Max(1, $HealthRetries); $i++) {
   try {
     $lastHealth = Get-FormalHealth -Id $DeploymentId
     Write-Host "Health check ${i}/${HealthRetries}: $lastHealth"
-    if ($lastHealth -match [regex]::Escape($build.Version)) {
+    if ($lastHealth -eq "OK - Current Version: $($build.Version) [$($build.Build)]") {
       Write-Host ""
       Write-Host "[DONE] Existing deployment is now serving $($build.Version)." -ForegroundColor Green
       Write-Host "[NOTE] Prompt was not modified. Runtime prompt remains Google Sheet Prompt!C3."

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="diagnostic-token" content="<?= diagnosticToken ?>">
+  <style>
+    body{margin:0;background:#f4f6fa;color:#182338;font:16px/1.6 system-ui,sans-serif}
+    main{max-width:960px;margin:32px auto;padding:24px;background:white;border-radius:12px}
+    h1{font-size:24px;margin-top:0}p{color:#46556d}
+    .actions{display:flex;gap:12px;flex-wrap:wrap}
+    button{padding:12px 16px;border:0;border-radius:8px;background:#174ea6;color:white;font:inherit;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f0f3f8;padding:16px;border-radius:8px;min-height:80px}
+    @media(max-width:700px){main{margin:12px;padding:16px}}
+  </style>
+</head>
+<body><main>
+  <h1>模型與費用診斷</h1>
+  <p>僅供專案編輯者維護。沿用既有驗收批次累計 NT$10 上限；讀取帳本不呼叫模型。同版本比較重開只讀回已保存結果。</p>
+  <div class="actions">
+    <button id="read">讀取目前費用</button>
+    <button id="compare">執行／讀回模型比較</button>
+  </div>
+  <p id="status" role="status" aria-live="polite">尚未執行。此頁結果不代表 LINE 驗收。</p>
+  <pre id="result" aria-label="診斷結果"></pre>
+</main>
+<script>
+  const token=document.querySelector('meta[name="diagnostic-token"]').content;
+  function run(compare){
+    document.querySelectorAll('button').forEach(b=>b.disabled=true);
+    document.getElementById('status').textContent=compare?'比較或讀回中，請勿重複送出。':'讀取帳本中…';
+    const done=(result,error)=>{
+      document.querySelectorAll('button').forEach(b=>b.disabled=false);
+      document.getElementById('status').textContent=error?'執行失敗，請依錯誤修正；未自動重試。':'已取得診斷結果；尚不代表 LINE 驗收通過。';
+      document.getElementById('result').textContent=error?String(error.message||error):JSON.stringify(result,null,2);
+    };
+    const request=google.script.run.withSuccessHandler(r=>done(r)).withFailureHandler(e=>done(null,e));
+    if(compare)request.runGenerationModelComparison(token);else request.runProviderCostReadback(token);
+  }
+  document.getElementById('read').addEventListener('click',()=>run(false));
+  document.getElementById('compare').addEventListener('click',()=>run(true));
+</script></body></html>

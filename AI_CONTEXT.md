@@ -1,72 +1,75 @@
-# AI_CONTEXT — v29.6.323 JEV Semantic Router
+# AI_CONTEXT — 唯一目前狀態入口
 
-v29.6.323 將條件式 Semantic Router 正式遷移為固定 `typesafe/jev-1.13` OpenRouter Decisions API；它只做 typed decisions，不回答產品事實、不生成 claim 文字、不選型號真值。精準 QA2／完整 RULE／明確單一手冊題仍 Router0；Fast／頁級 RAG／Polish 固定 `gemini-3.1-flash-lite`，整本 PDF／Web 固定 `gemini-3.7-flash`。JEV key 只在 ScriptProperties，Authorization 只在 provider gateway Header，費用仍走月預留／TestUI驗收帳本。
+- CONF-001 | Prompt!C3 | 正式來源；Prompt.csv 是本地鏡像/人工備份，部署流程不會自動把它上傳到 Google Sheet。
+- 證據優先序：QA 資料庫 → CLASS_RULES → 官方 PDF 手冊 → 網路搜尋/官方頁 → 誠實告知無資料。
+- 發布及 Prompt 維護鐵律：禁止只 `clasp push` 後宣稱完成；禁止新建 deployment ID；除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`。
 
-v323 編輯者 `/dev?test=1` 已於 2026-09-18 21:31–21:32 真實實問：`S32FM703UC有幾個HDMI？` 直接回答 2 個 HDMI 2.0，`routerCalls=0/pdfCalls=0/webCalls=0`、NT$0；`S27H704EAC怎麼自我診斷？` 為 Router0 並命中 `self_diagnosis` 頁級索引，但後段 Gemini 因既有 TestUI 共用驗收預算守門未送出，所以最終回安全暫停文案；接續 `那測試時能切換輸入嗎？` 真實呼叫 `typesafe/jev-1.13` 成功，`relation=followup`、`routerCalls=1`、`webCalls=0`、再次命中 `self_diagnosis`，JEV 約 NT$0.0019。這證明 JEV Router 與來源承接可用；TestUI 手冊答案生成仍受既有驗收預算上限限制，不得把該限制誤寫成正式 LINE production 供應商失效。
+## 此刻狀態（2026-09-21）
 
-本批入口：[交接](docs/V307_HANDOFF.md)、[當次驗收](docs/V307_LIVE_ACCEPTANCE.md)、[worker契約](Developer_Manual.md#v307-自動索引-worker-正式契約)、[來源重查](docs/V307_OFFICIAL_GAPS.md)。F612英文／M9 HTML已補，三款台灣適用證據缺口仍獨立列明。
+- 任務：接手 v324 半成品，完成費用／答案契約／JEV 評估，依使用者要求以真實 LINE 輸入及可見回答驗收；不先跑 TestUI。整體尚未完成，不能宣稱完美或正式發布成功。
+- 正式仍 v29.6.323 @1505 [2026-09-18 17:35]；本次實際由唯一工具回復同一 deployment 並核對數字版本及 health。接手基準為 e8c07213afe52999b3b9a8b916222aebf342afa0；當前main提交以Git HEAD為準。
+- 目前GAS HEAD已成功上傳22檔 v29.6.324 [2026-09-21 23:34]，Chrome診斷讀回build一致，正式webhook仍舊版。上輪23:03候選曾成功回復19檔HEAD至10:52並核SHA；本輪原HEAD備份為output/release_state/head_c6de9a9ee05744588ae2e01ac6848168。尚未建立GAS版本、未切正式候選，不能宣稱新版正式發布完成。排程執行HEAD，與正式webhook分開。
+- 分支整理已依使用者明確授權完成：刪除本機及遠端 backup-before-identity-refactor、copilot/check-copilot-usage-quota；前者已合併，後者只有不改檔的 Initial plan commit。本機／遠端只剩 main，一個主要 worktree，無 force-push。
+- 接手前快照：output/takeover_20260921/before_changes.zip 與 before_hashes.json。保留所有前手 dirty/untracked 及 deliverables/system_maps_20260909、v296275_global_rag_20_baseline.md；不可 clean/reset 或整批混入提交。
+- 生成固定 models/gemini-3.1-flash-lite；JEV 固定 typesafe/jev-1.13，只走 Decisions API。未改 Prompt!C3、Rich Menu、金鑰、正式來源次數或付費儲存設定。
 
-v29.6.313 新增鐵律：`Smart系列／Smart／Tizen` 是功能平台，不是 M5～M9 家族；只有明講 Smart Monitor／Smart螢幕且答案依款式不同才選系列。只有裸「重設」才問一次整台／Smart Hub／畫面音效，明講回出廠值直接用核實操作證據。Gemini `CONSUMER_SUSPENDED`／憑證拒絕是服務失敗，不是查無資料；同金鑰立刻熔斷 Router/PDF/Web/上傳、零元結算、退來源次數，健康檢查成功才解除。編輯者 TestUI 可執行一次健康檢查與既有 LOG 遮蔽；預留不可冒充實際費用。詳見 Developer_Manual 的 v29.6.313 節。
+## 當次授權與阻礙
 
-供應商接替最短單：專用新專案連結帳單並限制 key → TestUI 只儲存到 `GEMINI_API_KEY_STANDBY`（不啟用）→ 零生成 models.list 僅作診斷 → 全正式模型健康檢查 → 原子切換。`GEMINI_ACTIVE_KEY_SLOT` 才是唯一切換指標；不改 webhook、LINE Rich Menu、Drive 索引或 worker。健康檢查成本納入同一月費與驗收上限。
+- 同一驗收批次 v324-cost-remediation 累計上限已由使用者授權為 NT$10；runtime 與 config/provider_cost_review.json 一致，歷史失敗、既有支出、其他批次和月帳均保留。
+- LINE 擴充頁可在 Chrome 分頁清單看到，但 getTab 被工具明確拒絕：Browser URL policy blocks this action。不得改用 CDP、其他瀏覽器介面或間接控制繞過。未向 LINE 發送任何本次驗收題。
+- 使用者要求自行操作並搜尋解法；已查OpenAI官方來源政策說明、LINE官方Chrome說明及openai/codex #27160／#45990回報，未找到已證實適用本案的官方修復。一般HTTPS Apps Script可操作，不是Chrome整體斷線，也未證實是企業管理設定；不重問LINE授權、不改policy檔或換通道繞過。
+- CLI clasp run 未成功；原編輯器入口缺userinfo.email已修正，改用Google原生editor-only /dev?diagnostics=1及15分鐘build綁定token。Chrome實際讀帳及模型診斷成功，未新增Email權限、未使用TestUI對話。/exec不得核發token，缺失／舊build token均拒絕。
+- LINE_ACCEPTANCE_V324 僅新增本機支援：指定使用者雜湊、版本/build、同批額度及最長30分鐘視窗，真實 reply 路徑不開 IS_TEST_MODE。尚未設定 ScriptProperties 驗收視窗，也未取得可見回答證據。
+- 正式 liveAccepted 仍 false、liveReportSha256 空白。正式守門要求LINE可見回答／eventId／provider收據／版本build與20旅程門檻對齊；TestUI、API200、fixture皆不能替代。
+- 已加入同一入口 BeginLineAcceptance／FinalizeLineAcceptance：要求LINE可操作、雲端時窗讀回、模型比較審查與原批餘額，最多30分鐘；hidden watchdog呼叫原入口回復deployment及HEAD。離線故障測試通過，尚未啟動真候選時窗／watchdog，電腦或網路失效仍可能延遲回復；不能冒稱雲端硬期限保證。
+- 目前回復依據output/release_state/pre_release_formal.json指向head_c6de9a9ee05744588ae2e01ac6848168。上輪回復證據rollback_current.log保留；本輪22檔上傳與全套檢查證據stage_diagnostics.log，CLI回應較慢但最後exit0。Properties／Sheet／帳本未清除。
 
-備援專案帳單：`My Billing Account` 預付 NT$170、auto-reload 關閉；AI Studio 專案 spend cap 為每月 NT$90，另有程式端同額停止線。Google 約 10 分鐘的帳務延遲仍可能產生少量超額，不能描述成絕對零超支。
+## 已整合的候選內容
 
-v307離線證據：30項worker整合全過；20條多輪49事件、20 PASS／0 FAIL／0 BLOCKED，見[離線報告](test_runner/results/v307_20_journeys_offline.md)。載入真路由、只模擬外部I/O，不冒稱20條真人供應商通過。M7真PDF244頁與F612官方ZIP下載／SHA／精確entry核對通過，worker零生成呼叫；M7與F612於15:57:57完成正式prepare／activation／PDF與index SHA probe，零provider，見[正式worker實測](test_runner/results/v307_worker_live_20260908.json)。
+- 前手 v324：AnswerEnvelope v2、QA/RULE 候選語意範圍、保留主詞與已核實部分、頁級 RAG 與手冊追問重用、背景首頁隔離與有限重試、worker 按 SHA 快取、用途共用費用守門。這些不等於真人品質已過。
+- 本次 provider gateway 修正 JEV cost:null 不得轉零、費用只由收據結算一次、request audit 與批次／月帳一致；新增 evidence_verify 用途，未知搜尋費至少涵蓋已觀測查詢數。
+- 本次原生 Interactions adapter 核對 typed steps、URL citation、UTF-8 byte offsets、完成狀態、有效 usage 與單／多 query；無合法引用或未知費用不能假成功／假零費。
+- conditions回填可見答案；JEV Choice／Noul拒絕null、字串、越界及錯type，任一中間機率不得高信心接管，初始門檻0.85並更新GatePolicyV5快取。此值仍未以本批真實品質校準。
+- 模型比較限定2.5 Flash與3.1 Flash-Lite，同題／相同證據，先查可用性、404不重試、結果分包保存與重開只讀回。2026-09-21 23:41真實探測2.5 Flash回404、3.1 Flash-Lite回200。Lite完成H6/H8/H10三題候選判讀，H10包含一次格式修復；未完成兩模型同題A/B，不宣稱JEV降低總成本。
+- JEV 官方 citation-check 應用已評估並做驗收用候選 evidence_verifier.gs：接收原問題／完整片段／限制，逐主張支持度及完整性判斷，保留已支持子題；失敗不盲重送或轉 Web。
+- 新 JEV 證據判讀只限明確 LINE 驗收視窗，一般正式流量仍保持既有條件路由；不得把離線 fixture 當實際 JEV 品質或節省成本證據，不根據信心值宣稱實測正確率。
+- 正式程式只在 root .gs；.claspignore 排除 JS、tools、test_runner、output。新增檔名與測試見 git status，不遺漏尚未追蹤的 .gs。
 
-前版證據：9/8 v306 @1487曾實測17次文字／按鍵事件（含失敗及重測），59項離線整合通過；81登錄／136型號／47索引就緒，測試帳2.1352。這是歷史讀回，接手須重查正式health，不把其HEAD／local一致敘述套到v307候選。
+## RAG／免費儲存的當次判斷
 
-## 給後續模型的最短操作單
+- 使用者確認原始定期上傳是為避免儲存費。這項要求保留；本次沒有改動 URI 輪替排程，沒有遷移到 managed File Search 或啟用付費 Context Caching。
+- Files API 上傳與儲存免費、48小時到期刪除，不是到期轉收費；定期上傳維持免費臨時附件可用，不能只因重傳便判為問題。模型讀 PDF 的生成用量另計。
+- 自建頁級索引持續保存；主要問答召回至多5段原文，整本 Files/inline PDF 是備援。Files URI 不是 RAG 索引，每日同步也不是整庫重建。
+- Chrome LOG A1044=2026/9/21 20:59:01，B1044=refreshed=10/10, cursor=39, total=77；A1039=04:21:00，B1039=daily 同步完成／v324。當次確認續期執行，不能推定77份全數可回答。
+- 每4小時10份，77份理論最多8批／約32小時一輪；每日增量同步另補一批。須看逐檔期限／失敗／略過才評估到期覆蓋率，不能拿單次成功或排程存在當全庫健康。
+- Chrome LOG A853=2026/9/19 16:10:50，B853=F24T350FHC 頁級 RAG pages 20,23,14,14,13；B852=providerCoverage/validatedCoverage full。這是先前執行證據，不是本次真實 LINE 驗收。
+- 仍有實際能力邊界：抽字未做一般頁面 OCR／圖像語意、複雜表格與印刷頁碼待核對；關鍵詞召回和結構驗證不能單獨證明答案涵蓋問題／獲引用支持。
+- 最新 Google File Search 支援3.1 Flash-Lite，索引儲存免費且持久，匯入 embedding／回答 tokens 另收費；不必每48小時重傳僅指持久索引。不能把原每日續期照搬成每日付費重建。
+- 官方、GitHub PyMuPDF4LLM／Docling／Google cookbook、網友與 Google 論壇查核已寫 Developer_Manual.md「2026-09-21 RAG 現況」。維持本架構，候選只做同 PDF／模型／題目的受控比較，不直接全庫遷移。
 
-1. 先讀本頁和Developer_Manual的v307節；使用者報錯先Chrome讀雲端LOG／所有紀錄。保持main與未追蹤結果，不改Prompt!C3／模型／Rich Menu／額度。
-2. 檢查worker：`node test_runner/verify_manual_index_worker.js`，應核對當次輸出（本次30項）。`manual_index_worker.gs`是簽章入口與原子提交；`manual_worker_runtime.gs`負責同請求版本、catalog／manifest／附件；`tools/manual_index_worker.py`抽頁；`tools/run_manual_index_worker.ps1`是固定正式目標＋Local mutex入口。
-3. 秘密只由編輯者短token設定；設定檔在repo外並限制ACL。只回報布林、revision、SHA、去敏`last-run.json`。不得dump設定檔、token、環境變數，也不把它們傳外部AI。
-4. `workerHealth`只看最近回報，不等於索引ready。正式一次下載→build→prepare→probe雙SHA→Bot頁檢索／PDF備援讀回全部成功，才建立排程；再查LastTaskResult與報告時間。尚未提供這組雲端證據，勿替主責寫成已部署／已自動每日執行。
-5. 新SHA失敗保留舊完整版本；不要提前改manifest或鬆綁SHA。舊pending缺workerBinding須重驗；新文件只綁被官方核實的單一SKU，不借共用檔名整群範圍。
-6. F612官方英文38頁手冊印刷封面S27F61*完整匹配，索引SHA `1de245a1c37998a06a77160b381946333177dbfebeff7d867687ca79de7f7b4f`；透過reviewed queue原子換版，不先放寬舊manifest SHA。D392兩款／M703外區資料僅參考，非台灣適用證據；M9 HTML入口不等於PDF頁索引就緒。
-7. static／contract／diff／guarded DryRun通過後，由主責走唯一正式發布入口及Chrome TestUI；不要自行clasp push或建立deployment。真LINE手機證據另列。
+## 本次驗證與證據邊界
 
-現行唯一契約：[Developer_Manual.md](Developer_Manual.md)。正式版本當次讀health，不把候選當已發布。[完整舊脈絡](docs/history/v29.6.302/AI_CONTEXT.md) 僅供歷史。
+- test:static、test:contract、test:production-contract 均 PASS；40項費用回歸、6項v2與16項接手回歸。本輪經唯一發布工具完整重跑；真實供應商診斷另列，LINE收訊未驗。
+- 20核心旅程重跑20/20 PASS，程序exit0、真實provider0；結果 test_runner/results/v324_20_journeys_offline.json/.md，log為output/takeover_20260921/core_current.log。僅離線I/O fixture，不覆蓋歷史真人失敗。
+- test:release PASS：HEAD hash回復、竄改／越界拒絕、LINE可見證據／收據守門、時窗及預算阻擋、watchdog到期與定版取消。watchdog為離線測試；實際HEAD及deployment回復另有rollback_current.log。
+- git diff --check PASS；正式守門仍拒絕未驗候選。BeginLineAcceptance亦已用blocked receipt確認在上傳前拒絕，見line_gate_blocked.log。
+- 當次輸出：output/takeover_20260921/static.log、contract.log、production-contract.log、core_journeys.log、formal_gate.log。
+- 本機／本輪上傳候選runtimeManifestSha256=0dd9434413fd2f4b815a98ac4e613216998b5b0a1d14c8bdd93179614fea4471；policyChecksum=edf97a0b1aeb3d542de4166b632cae19ab5107f7596799fd2e036f815de7b550；dataChecksum=c8ca2cfb5f2af83d5c7d67a610e2fd21c1e920ba19c66836bb50ea800b054b27。此雜湊不代表正式webhook已更新。
 
-- QA 資料庫 → CLASS_RULES → 官方 PDF 手冊 → 網路搜尋/官方頁（官方頁僅保留連結）→ 誠實告知無資料並提供有用下一步。不可無證據猜規格。
-- 條件式守門不是每題必經。型號／系列能RULE解析就不叫模型；新限制不能因已有plan而丟失。
-- 一般10／手冊2／網路5，系統補救3。Fast／頁級／Polish＝3.1 Flash-Lite；整本 PDF／Web＝3.7 Flash；條件式 Router＝JEV 1.13 Decisions API；不自行升級或改用 latest。
-- **本批月費共同入口必須先讀Cloud当月費用並seed；未初始化禁止發布**，避免全部付費中斷。
-- 不Push、不改RichMenu、不做無關解析度；main、不開分支、不清歷史。
+## 費用與既有真人缺口
 
-## 設定來源
+- 本輪新增provider送出6次：2次可用性探測（1次404）、3題候選生成加1次格式修復；5次成功生成，新增估算NT$0.087576。搜尋query／PDF／JEV／LINE均0。完整逐題結果與收據見test_runner/results/v324_generation_diagnostics_20260921.json。
+- 2026-09-21 23:41 Chrome當次讀回本批spent=3.937259392、reserved=0、remaining=6.062740608，month=23.743774208；依用量估算不是帳單實付。起始3.849683392及所有舊失敗保留。H6已呈現必要限制；H8仍較簡略；H10已區分硬體多來源與桌面排列，但末尾仍含內部限制語氣，完整旅程品質尚未定版。
+- 上輪 H8／H5 Web 付費失敗（無有效引用）、H10 呈現不完整仍未真人重驗通過；H11–H15 等保留題尚無當次合格證據。adapter 或 fixture 修好不能把舊 FAIL 直接改 PASS。
+- PDF NT$0.35、程式月 NT$90、Cloud 既有 NT$50 封頂不放寬；Cloud 封頂非即時阻斷。舊預付餘額不當目前金額，背景必要辨識既有分類與月總帳不可重置。
+- 背景既有免費下載／抽字／建索引可繼續；已完成付費階段保留收據，永久不適用文件不可自動重付。先前兩件 worker 真實雙 SHA 讀回保留歷史證據，新修改涉及時須再驗。
 
-| ID | 正式來源 | 用途 |
-|---|---|---|
-| CONF-001 | Prompt!C3 | 正式 system prompt |
-| CONF-002 | ScriptProperties | 配額／月預留／手冊revision |
+## 下一步與接手索引
 
-`Prompt.csv` 為本地鏡像/人工備份；部署流程不會自動把它上傳到 Google Sheet。
-Prompt 維護鐵律：除非使用者明確要求，程式部署不得同步或覆蓋 `Prompt!C3`。本批不增加題型提示。
-
-## 歷史發布與事故背景（以下不是v307現況）
-
-v305已正式發布 **@1486 / v29.6.305 [2026-09-05 17:03]**；guarded release全部通過，local／HEAD／formal health及build一致，30/200版本。81登錄／136型號／47不同PDF索引已全部啟用且SHA讀回；非81本手冊。修復雙欄交錯、實際表格階層及跨頁引用、SCFU完整型號和唯一代號。Chrome實問G932 PBP、F24護眼、接續切H704自我診斷，均1次2.5Lite、零Router／Web、有核對頁碼。共同測試約NT$2.0622；詳見[本批紀錄](test_runner/results/v305_manual_library_20260905.md)。尚有5個官方來源適用性缺口，不冒充已取得完整手冊；未宣稱本批手機LINE／全案20旅程通過。
-
-歷史 v304：**@1485 / v29.6.304 [2026-09-05 16:15]**；guarded release全部通過，local／HEAD／formal health及build一致，29/200版本。v303手機已成功送達2個HDMI／65W，但LOG1499仍暴露短句展開誤吃內部型號提示；v304已收斂純換型號語法，任何新功能／限制都保留原題，50項完整來源整合及contract通過。
-
-M7簡稱新Chrome聊天室→點S32FM703UC→`那usb-c充電有幾瓦`已完整實問：選型不另扣，回答2個／65W，0模型／0費用，16:14:30雲端LOG1541不再改寫為HDMI。G8系列身分與S99ZZ999未知型號也0模型驗證通過。使用者最新明確要求「自己測不要叫我幫你測，有TestUI」：以AI真正Chrome TestUI＋正式health＋雲端LOG完成本批收尾，不再請使用者代測；手機v303已送達、v304未做手機，保持分列。不得把「使用者只說M7」當必須花LLM或要求自行輸入完整型號。
-
-歷史 v303：guarded release 曾更新既有 Webhook 至 **@1484 / v29.6.303 [2026-09-05 16:05]**，當時local／HEAD／formal health 的版本及 build 一致，版本容量28/200。沒有新增deployment、沒有刪舊版本；@1483保留作程式回復。正式Prompt!C3及Rich Menu未改。
-
-48項完整來源離線整合、static／contract／diff／DryRun通過。Chrome已實問：M7 HDMI→USB-C追問正確65W且零模型；M8 Netflix系列QA零模型；零售→App→睡眠最後一題Lite PDF；G9選型→115頁Core Lighting（保留依型號限制）→額度0時按手冊零費快取重播。選型轉手冊的一般題退款已有完整handler離線驗證，未冒稱手机驗收。
-
-費用讀回驗證合計 **NT$1.58951296，reserved0**（含File Search embedding保守估算0.606816）；後續接孔／Netflix複驗全部0模型。兩份2026官方PDF已更新、六份完整頁索引啟用；共用權限已解除，不要再索取。File Search 10題A/B相容但品質門檻未過，不遷移；實驗資源已清。
-
-v305延續授權完成可驗證全庫索引：81筆範圍登錄／136型號／47不同PDF，不是81本不同手冊。仍有5款外部來源缺口，不能用Product Guide、DRM非PDF或封面矛盾資料湊齊。索引啟用、逐題實測與發布狀態見本批報告；全案20條旅程／5條保留題及未來新PDF自動抽頁不可由覆蓋數冒充通過。「分批」不是自行停止點，不再詢問已授權事項。
-
-Chrome可直接以Google Sheet `/htmlview?gid=174529670` 讀LOG表格文字，無需視覺模型或連接器。先定位最新列再擷取，不dump整份表格。費用逐筆見test_runner/results/v303_live_reliability_20260905.md。
-
-先讀雲端 Spreadsheet `1RTjPac2aoURzlJKTVydapyJlLni4Y0VyQqeeIrHQOqQ` 的 LOG／所有紀錄，按時間串接原題、選型、答案、source/calls/cost，再決定最小重現。舊事件不代表最新版失敗；health綠不代表真人通過。
-登入資料只用本機Chrome，不用Connector，不輸出維護密碼或token。正式 `exec?test=1` 與編輯者 `dev?test=1` 共用router，不能Mock冒充真人。
-
-## 模組與發布
-
-linebot.gs：事件／狀態／證據／回覆。manual_index_runtime.gs：完整頁檢索與SHA。manual_revision_maintenance.gs：lease/pending。provider_cost_gateway.gs：生成共同預留／結算。config/manual_registry.json、tools/build_manual_page_index.py：可追溯索引。test_runner/production_harness.js：完整正式來源，只模擬I/O。
-禁止只 `clasp push` 後宣稱完成；禁止新建 deployment ID。唯一入口 tools\release_existing_webhook.ps1，先static/contract/diff/DryRun。正式ID `AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA`。
-月seed、Cloud Cap幣別／服務、資料SHA、正式health、AI親自Chrome TestUI與雲端LOG核對後commit/push；手機未測就寫未測，不再要求使用者代測。
+1. 先讀本頁、AGENTS.md、git status 與 e8c0721 以後差異。唯一當前狀態只維護本頁，不另建進度日誌。
+2. 由官方支援處理本次LINE來源政策，先確認可實際讀寫；診斷入口的既有授權相容性已實際修復，不新增email scope。之後才能啟用候選時窗，不用TestUI代替。
+3. 讀回當次總帳與既有批次，將剩餘受影響 LINE／Web／手冊旅程限定於同批 NT$10，記問題數、重測數、provider calls、query數、實際頁段、答案及估算／未知費用。
+4. 保留合格與失敗全部證據，完成品質與費用比較後產生 sealed live report，正式 guard 通過才由唯一發布入口定版。然後選擇性 stage 本次整合檔案、commit/push main。
+5. Developer_Manual.md 放架構／官方研究；REGRESSION_GUARDS.md 與 test_runner/package.json 放必要檢查；docs/V307_OFFICIAL_GAPS.md 放既有來源限制。
+6. 雲端 LOG：Google Sheet 1RTjPac2aoURzlJKTVydapyJlLni4Y0VyQqeeIrHQOqQ，gid174529670；唯讀登入只走本機 Chrome。正式 Prompt 只在 Prompt!C3，CLASS_RULES 維持 A欄 CSV大字串。
+7. 唯一部署入口 tools/release_existing_webhook.ps1；固定既有 deployment，不增加 deployment／長期分支／worktree。秘密不入repo／LOG／外部AI。

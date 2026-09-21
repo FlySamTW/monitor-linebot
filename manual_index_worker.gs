@@ -99,7 +99,7 @@ function handleManualWorkerRequest_(raw) {
     const e = JSON.parse(raw), props = PropertiesService.getScriptProperties(), secret = props.getProperty("MANUAL_WORKER_SECRET");
     if (!secret || !/^[a-f0-9]{64}$/i.test(secret) || e.protocol !== "manual-index-worker-v1" ||
         !Number.isSafeInteger(e.timestamp) || Math.abs(Date.now() - e.timestamp) > 300000 ||
-        !/^[a-f0-9]{32}$/.test(e.nonce || "") || !/^(list|prepare|probe|health)$/.test(e.action || "") ||
+        !/^[a-f0-9]{32}$/.test(e.nonce || "") || !/^(list|inspect|inspect_failure|index_failure|prepare|probe|health)$/.test(e.action || "") ||
         typeof e.payload !== "string" || !/^[a-f0-9]{64}$/.test(e.signature || "")) throw new Error("WORKER_AUTH");
     const message = [e.protocol, e.timestamp, e.nonce, e.action, e.payload].join("\n");
     const expected = bytesToHex_(Utilities.computeHmacSha256Signature(message, secret)).toLowerCase();
@@ -122,11 +122,34 @@ function handleManualWorkerRequest_(raw) {
     if (e.action === "list") {
       const bundle = readManualWorkerBundle_();
       const active = bundle ? bundle.active : {};
-      return { ok: true, revision: bundle ? bundle.revision : "compiled", pending: manualWorkerPending_().filter(function (p) {
+      const pending=manualWorkerPending_().map(function(p){
         const entry = active["worker_" + normalizeModelForDisplay(p.fullSku)];
-        return !entry || entry.sha256 !== p.sourcePdfSha256;
-      }) };
+        const receipt=readManualJson_("MANUAL_PROGRESS_"+normalizeModelForDisplay(p.fullSku));
+        if(receipt?.sourcePdfSha256===p.sourcePdfSha256 && receipt.indexPolicy===MANUAL_WORKER_INDEX_POLICY &&
+          (receipt.stage==="blocked"||Number(receipt.nextRetryAt||0)>Date.now())) return null;
+        const activePolicy=entry?.indexPolicy || MANUAL_WORKER_LEGACY_INDEX_POLICY;
+        if(entry && entry.sha256===p.sourcePdfSha256 && activePolicy===MANUAL_WORKER_INDEX_POLICY &&
+          receipt?.stage==="verified_ready" && receipt.sourcePdfSha256===p.sourcePdfSha256 && receipt.indexChecksum===entry.indexChecksum) return null;
+        return Object.assign({},p,{indexPolicy:MANUAL_WORKER_INDEX_POLICY,
+          probeOnly:Boolean(entry && entry.sha256===p.sourcePdfSha256 && activePolicy===MANUAL_WORKER_INDEX_POLICY),
+          activeIndexChecksum:entry?.indexChecksum || ""});
+      }).filter(Boolean);
+      return {
+        ok:true,
+        contractVersion:2,
+        protocol:"manual-index-worker-v1",
+        gasVersion:GAS_VERSION,
+        build:BUILD_TIMESTAMP,
+        indexPolicy:MANUAL_WORKER_INDEX_POLICY,
+        capabilities:["inspect","inspect_failure","index_failure","prepare","probe","probeOnly"],
+        revision:bundle?bundle.revision:"compiled",
+        pending:pending,
+        inspections:listManualIdentityInspections_()
+      };
     }
+    if (e.action === "inspect") return inspectManualWorkerCover_(payload);
+    if (e.action === "index_failure") return recordManualIndexFailure_(payload);
+    if (e.action === "inspect_failure") return failManualWorkerInspection_(payload);
     if (e.action === "probe") return probeManualWorkerRevision_(payload);
     return prepareManualWorkerRevision_(payload);
   } catch (error) {
@@ -141,9 +164,10 @@ function prepareManualWorkerRevision_(payload) {
   const pending = manualWorkerPending_().find(function (p) { return p.pendingKey === payload.pendingKey; });
   if (!pending || payload.sourcePdfSha256 !== pending.sourcePdfSha256) throw new Error("WORKER_PENDING_BINDING");
   if (pending.expectedIndexChecksum && payload.indexChecksum !== pending.expectedIndexChecksum) throw new Error('WORKER_REGISTERED_INDEX_CHECKSUM');
-  const revision = manualIndexDigest_(Utilities.newBlob(JSON.stringify([pending, payload.indexChecksum])).getBytes());
+  if(payload.indexPolicy!==MANUAL_WORKER_INDEX_POLICY) throw new Error("WORKER_INDEX_POLICY");
+  const revision = manualIndexDigest_(Utilities.newBlob(JSON.stringify([pending, payload.indexChecksum, payload.indexPolicy])).getBytes());
   const prior = readManualWorkerBundle_();
-  if (prior && prior.revision === revision) return { ok: true, revision: revision, reused: true };
+  if (prior && prior.revision === revision) return { ok: true, revision: revision, reused: true,docKey:"worker_"+normalizeModelForDisplay(pending.fullSku) };
   if (payload.baseRevision !== (prior ? prior.revision : "compiled")) throw new Error("WORKER_STALE_BASE");
   const bytes = Utilities.base64Decode(payload.gzip);
   // gzip ISIZE bounds the expansion before ungzip; reject absurd/unbounded packs.
@@ -207,7 +231,7 @@ function prepareManualWorkerRevision_(payload) {
     applicabilityNote:pending.applicabilityNote,groups: {},
     pageIndex: { schemaVersion: 2, revision: pending.sourcePdfSha256, encoding: "gzip-base64", sha256: payload.indexChecksum, storage: "drive" } };
   active[key] = { sha256: pending.sourcePdfSha256, indexChecksum: payload.indexChecksum, indexFileId: file.getId(),
-    pdfFileId: pdfFile.getId(), sourceUrl: pending.downloadUrl };
+    pdfFileId: pdfFile.getId(), sourceUrl: pending.downloadUrl,indexPolicy:payload.indexPolicy };
   const bundle = { schemaVersion: 1, revision: revision, previousRevision: payload.baseRevision, documents: catalog, active: active };
   // No page contents in bundle: compiled fallback data is obtained from compiled catalog.
   Object.keys(catalog).forEach(function (k) { if (catalog[k].pageIndex) delete catalog[k].pageIndex.data; });
@@ -223,6 +247,8 @@ function prepareManualWorkerRevision_(payload) {
     if (JSON.stringify(latest) !== JSON.stringify(pending)) throw new Error("WORKER_PENDING_CHANGED");
     // One pointer is the only activation commit. Prior pointer embedded for rollback.
     props.setProperty("MANUAL_WORKER_BUNDLE", JSON.stringify({revision: revision, fileId: bundleFile.getId(), sha256: checksum, previous: current ? {revision: current.revision, fileId: current.fileId, sha256: current.sha256} : null}));
+    saveManualJson_("MANUAL_PROGRESS_"+normalizeModelForDisplay(pending.fullSku),{stage:"activated_pending_probe",
+      sourcePdfSha256:pending.sourcePdfSha256,indexChecksum:payload.indexChecksum,indexPolicy:payload.indexPolicy,revision:revision});
   } finally { lock.releaseLock(); }
   return { ok: true, revision: revision, docKey: key, indexChecksum: payload.indexChecksum };
 }
@@ -249,6 +275,10 @@ function probeManualWorkerRevision_(payload) {
     const pdfSha = manualIndexDigest_(DriveApp.getFileById(active.pdfFileId).getBlob().getBytes());
     const indexSha = manualIndexDigest_(Utilities.ungzip(DriveApp.getFileById(active.indexFileId).getBlob()).getBytes());
     if (pdfSha !== active.sha256 || indexSha !== active.indexChecksum) throw new Error("WORKER_PROBE_READBACK");
+    (bundle.documents[key].models||[]).forEach(function(model){
+      saveManualJson_("MANUAL_PROGRESS_"+normalizeModelForDisplay(model),{stage:"verified_ready",sourcePdfSha256:pdfSha,
+        indexChecksum:indexSha,indexPolicy:active.indexPolicy||MANUAL_WORKER_LEGACY_INDEX_POLICY,revision:bundle.revision,verifiedAt:new Date().toISOString()});
+    });
     return { docKey: key, sourcePdfSha256: pdfSha, indexChecksum: indexSha };
   });
   return { ok: true, revision: bundle.revision, verified: verified };

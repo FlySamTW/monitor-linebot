@@ -462,28 +462,14 @@ assert.strictEqual(
   "",
   "過短家族 wildcard 必須 fail closed",
 );
-const firstPageValidationSource = extractFunction(
-  linebot,
-  "validateOfficialManualFirstPage_",
-);
-assert(
-  /page1Models\.length === 0[\s\S]*isOfficialSupportPageBoundManualCandidate_\(candidate\)/.test(
-    firstPageValidationSource,
-  ) &&
-    /modelBinding = "official_support_page"/.test(firstPageValidationSource) &&
-    /exactModelInDocument = false/.test(firstPageValidationSource),
-  "空白型號封面只可降級成 official_support_page 綁定，不得假裝型號出現在 PDF",
-);
-assert(
-  /buildOfficialSupportPageFamilyPatternFileName_\([\s\S]*?modelBinding = "official_support_page_family_pattern"[\s\S]*?exactModelInDocument = false/.test(
-    firstPageValidationSource,
-  ),
-  "family wildcard 只可降級成 official_support_page_family_pattern，不得假裝為精確封面型號",
-);
-assert(
-  /S24F33\*[\s\S]*?保留 \* 原樣輸出/.test(firstPageValidationSource),
-  "第一頁型號擷取必須保留官方 family wildcard",
-);
+const coverWorker = require('./production_harness').createProductionHarness({quiet:true}).context;
+const blankCover=coverWorker.evaluateManualCoverIdentity_({page1Readable:true,isSamsungMonitorManual:true,page1Models:[]}, familyPatternCandidate);
+assert.strictEqual(blankCover.modelBinding,'official_support_page');
+assert.strictEqual(blankCover.exactModelInDocument,false);
+const familyCover=coverWorker.evaluateManualCoverIdentity_({page1Readable:true,isSamsungMonitorManual:true,page1Models:['S24F33*']},familyPatternCandidate);
+assert.strictEqual(familyCover.modelBinding,'official_support_page_family_pattern');
+assert.strictEqual(familyCover.exactModelInDocument,false);
+assert(/逐字保留型號尾端 \*/.test(fs.readFileSync(path.join(root,'manual_identity_worker.gs'),'utf8')));
 
 let zipDownloadFetchCount = 0;
 const zipStageVm = {
@@ -804,7 +790,7 @@ assert(
 assert(
   /manual-coverage-badge/.test(testUi) &&
     /action\.type === "uri"/.test(testUi) &&
-    /res\.quickReplies/.test(testUi) &&
+    /message\.quickReply/.test(testUi) &&
     /control\.target = "_top"/.test(testUi) &&
     /report\.status !== "OK"[\s\S]{0,220}手冊覆蓋：待檢查/.test(testUi) &&
     /手冊自動重試/.test(testUi) &&

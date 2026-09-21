@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.323"; // JEV typed Router final; temporary bootstrap removed
-const BUILD_TIMESTAMP = "2026-09-18 17:35";
+const GAS_VERSION = "v29.6.324"; // JEV typed Router final; temporary bootstrap removed
+const BUILD_TIMESTAMP = "2026-09-21 23:34";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -22,7 +22,7 @@ const INLINE_PDF_FALLBACK_MAX_BYTES = 18 * 1024 * 1024;
 const SOURCE_PENDING_TTL_SECONDS = 600;
 const SOURCE_RECENT_QUESTION_TTL_SECONDS = 1800;
 const SOURCE_OPERATION_CACHE_TTL_SECONDS = 600;
-const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV26-OperationPermission";
+const ADVANCED_SOURCE_CACHE_SCHEMA = "EvidenceV27-ValidatedOutcome";
 const SOURCE_DAILY_LIMITS = { manual: 2, web: 5 };
 const SOURCE_DAILY_SYSTEM_WEB_RESCUE_LIMIT = 3;
 const USER_DAILY_QUESTION_LIMIT = 10;
@@ -30,8 +30,9 @@ const SEMANTIC_ROUTER_VERSION = "RouteAnalysisV1";
 const SEMANTIC_ROUTER_MODE_DEFAULT = "conditional";
 const SEMANTIC_ROUTER_CACHE_TTL_SECONDS = 600;
 const SEMANTIC_ROUTER_MAX_CLAIMS = 5;
-const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV4-JEV";
-const JEV_ROUTER_MIN_CHOICE_CONFIDENCE = 0.65;
+const SEMANTIC_ROUTER_POLICY_VERSION = "GatePolicyV5-JEV-CalibratedFields";
+const JEV_ROUTER_MIN_CHOICE_CONFIDENCE = 0.85;
+const JEV_ROUTER_DECISION_THRESHOLD = 0.85;
 const JEV_ROUTER_CLARIFY_THRESHOLD = 0.85;
 // JEV 只做 typed decision；產品答案、型號真值、來源內容仍由程式與既有證據守門決定。
 const SEMANTIC_ROUTER_COST_ALERT_TWD = 0.02;
@@ -73,9 +74,9 @@ const LLM_PROVIDER = "Gemini";
 const GEMINI_MODEL_FAST = "models/gemini-3.1-flash-lite";
 const PRICE_FAST_INPUT = 0.25; // $0.25 per 1M Input (Gemini 3.1 Flash-Lite Standard, 2026-09-11 官方價)
 const PRICE_FAST_OUTPUT = 1.5; // $1.50 per 1M Output (Gemini 3.1 Flash-Lite Standard, 2026-09-11 官方價)
-const GEMINI_MODEL_WEB = "models/gemini-3.7-flash";
-const PRICE_WEB_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
-const PRICE_WEB_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
+const GEMINI_MODEL_WEB = "models/gemini-3.1-flash-lite";
+const PRICE_WEB_INPUT = 0.25;
+const PRICE_WEB_OUTPUT = 1.5;
 
 // 只有模糊、複合或省略式追問才進 typed Semantic Router。
 // JEV 只回傳機率／分類；claim 文字、產品身分與來源執行由既有程式確定性建立。
@@ -93,9 +94,9 @@ const OPENROUTER_PRICE_OUT = 0.1; // $0.10 per 1M Output
 // 3. PDF 對話 (Think Mode) (強制 Gemini，為了穩定)
 // ════════════════════════════════════════════════════════════════
 // ⚠️ 注意：PDF 閱讀模式目前強制定錨在 Google Gemini
-const GEMINI_MODEL_THINK = "models/gemini-3.7-flash";
-const PRICE_THINK_INPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 0.75 : 1.5;
-const PRICE_THINK_OUTPUT = Date.now() < Date.parse("2027-01-01T00:00:00Z") ? 3.75 : 7.5;
+const GEMINI_MODEL_THINK = "models/gemini-3.1-flash-lite";
+const PRICE_THINK_INPUT = 0.25;
+const PRICE_THINK_OUTPUT = 1.5;
 
 // ════════════════════════════════════════════════════════════════
 // 4. QA/RULE 生成 (Polish Mode) (固定 Gemini 3.1 Flash-Lite)
@@ -137,6 +138,10 @@ var CURRENT_DAILY_QUESTION_REMAINING = null;
 var CURRENT_REPLY_FOOTER_APPENDED = false;
 var LAST_SOURCE_TEST_STATE = null;
 var LAST_TEST_QUICK_REPLY_ITEMS = [];
+var LAST_TEST_MESSAGES = [];
+var LAST_TEST_SEND_RESULT = "";
+var CURRENT_REPLY_USER_ID = "";
+var CURRENT_REPLY_CONTEXT_ID = "";
 var LAST_SEMANTIC_ROUTE_ANALYSIS = null;
 var FAST_POSTBACK_HANDLED = false;
 var LOADING_ANIMATION_SHOWN = false;
@@ -2133,7 +2138,7 @@ function buildPdfSourceLabelFromFiles(files, maxCount = 1) {
  * 統一來源標籤：先移除舊標籤，再補上真實 PDF 來源。
  */
 function isApiFailureReply(text) {
-  return /目前請求過於頻繁|已達配額限制|系統(?:暫時)?忙碌中?|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|手冊內容超過成本上限|無法完成手冊\s*token\s*計數|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
+  return /\[(?:PROVIDER_FAILED|MANUAL_(?:OUTPUT_FORMAT_ERROR|FORMAT_INVALID|EVIDENCE_VALIDATION_ERROR))\]|LOCAL_OUTPUT_INVALID|這次手冊查詢暫時未完成|資料判讀暫時無法完成|目前請求過於頻繁|已達配額限制|系統(?:暫時)?忙碌中?|這次查詢暫時無法處理|暫時無法處理|網路搜尋服務暫時無法連線|手冊內容超過成本上限|無法完成手冊\s*token\s*計數|API\s*錯誤|Google\s*伺服器暫時故障|請求參數有誤/i.test(
     String(text || ""),
   );
 }
@@ -2196,6 +2201,7 @@ function getAnswerEnvelopeKey_(contextId) {
 
 function normalizeAnswerEnvelope_(value) {
   const source = value && typeof value === "object" ? value : {};
+  if (source.schemaVersion === 2) return normalizeAnswerEnvelopeV2_(source);
   const status = ["supported", "partial", "unsupported"].includes(
     String(source.status || ""),
   )
@@ -2252,7 +2258,7 @@ function readAnswerEnvelope_(contextId) {
     const raw = cache.get(key) || "";
     if (!raw) return null;
     const parsed = normalizeAnswerEnvelope_(JSON.parse(raw));
-    if (parsed.version !== GAS_VERSION || parsed.expiresAt < Date.now()) {
+    if (parsed.schemaVersion !== 2 || parsed.evidencePolicyVersion !== ANSWER_EVIDENCE_POLICY || parsed.version !== GAS_VERSION || parsed.expiresAt < Date.now()) {
       cache.remove(key);
       return null;
     }
@@ -2404,6 +2410,26 @@ function buildFastAnswerEnvelope_(options) {
   const question = String(input.originalQuestion || "").trim();
   const answer = String(input.answerText || "").trim();
   const sourceTag = String(input.sourceTag || "");
+  if (
+    input.inheritedEnvelope &&
+    Number(input.inheritedEnvelope.schemaVersion) === 2
+  ) {
+    const inherited = normalizeAnswerEnvelopeV2_(input.inheritedEnvelope);
+    return normalizeAnswerEnvelopeV2_({
+      schemaVersion: 2,
+      version: GAS_VERSION,
+      topicId: computeReplyAnchor_(question || inherited.originalQuestion),
+      originalQuestion: question || inherited.originalQuestion,
+      model: input.model || inherited.model || "",
+      claims: inherited.claims,
+      execution: inherited.execution,
+      allowedActions:
+        inherited.status === "supported" ? ["elaborate"] : inherited.allowedActions,
+      expandable: inherited.status === "supported",
+      createdAt: inherited.createdAt,
+      expiresAt: inherited.expiresAt,
+    });
+  }
   const evidenceRefs = [
     ...getFastEvidenceRefs_(
       question,
@@ -2428,34 +2454,49 @@ function buildFastAnswerEnvelope_(options) {
   const hasUnverifiedExternalClaim = hasUnverifiedExternalClaim_(answer);
   const manualNeeded = Boolean(input.manualRecommended);
   const webNeeded = Boolean(input.webRecommended);
-  let status = "supported";
-  if (evidenceRequired && !hasTrustedEvidence) {
-    status = "unsupported";
-  } else if (
-    answerMissing ||
-    ((manualNeeded || webNeeded) && evidenceRequired) ||
-    hasUnverifiedExternalClaim
-  ) {
-    status = hasTrustedEvidence ? "partial" : "unsupported";
-  }
-
   const claims = [];
-  const unresolvedClaims = [];
   if (hasTrustedEvidence) {
-    claims.push({
-      id: "verified_evidence",
-      status: "supported",
-      source: sourceTag || getSourceTagFromEvidenceRefs_(evidenceRefs),
-    });
+    const verifiedAnswer = hasUnverifiedExternalClaim
+      ? sanitizeUnverifiedExternalClaims_(answer)
+      : answer;
+    if (verifiedAnswer) {
+      claims.push({
+        id: "verified_evidence",
+        question: question,
+        scope: input.model ? "model_specific" : "general",
+        state: "answered",
+        basis: "direct",
+        answer: verifiedAnswer,
+        evidenceRefs: evidenceRefs,
+        conditions: [],
+        assumptions: [],
+      });
+    }
   }
-  if (status !== "supported") {
+  const needsUnresolved =
+    !hasTrustedEvidence ||
+    answerMissing ||
+    manualNeeded ||
+    webNeeded ||
+    hasUnverifiedExternalClaim ||
+    evidenceRequired && !hasTrustedEvidence;
+  if (needsUnresolved) {
     if (
       isOperationOrTroubleshootQuery(question) ||
       isManualVerificationRequiredQuery(question) ||
       input.hasManual === true
     ) {
-      claims.push({ id: "manual_product_fact", status: "unresolved", source: "manual" });
-      unresolvedClaims.push("manual_product_fact");
+      claims.push({
+        id: "manual_product_fact",
+        question: question,
+        scope: input.model ? "model_specific" : "general",
+        state: "missing_evidence",
+        basis: "none",
+        answer: "",
+        evidenceRefs: [],
+        conditions: [],
+        assumptions: [],
+      });
     }
     if (
       webNeeded ||
@@ -2463,36 +2504,62 @@ function buildFastAnswerEnvelope_(options) {
       /(?:目前|最新|業者|服務|APP|應用程式|公開網頁|網路|庫存|活動)/i.test(
         `${question}\n${answer}`,
       ) ||
-      status === "unsupported"
+      !hasTrustedEvidence
     ) {
-      claims.push({ id: "public_web_fact", status: "unresolved", source: "web" });
-      unresolvedClaims.push("public_web_fact");
+      claims.push({
+        id: "public_web_fact",
+        question: question,
+        scope: input.model ? "model_specific" : "general",
+        state: "missing_evidence",
+        basis: "none",
+        answer: "",
+        evidenceRefs: [],
+        conditions: [],
+        assumptions: [],
+      });
     }
     if (claims.length === 0) {
-      claims.push({ id: "product_fact", status: "unresolved", source: "manual_or_web" });
-      unresolvedClaims.push("product_fact");
+      claims.push({
+        id: "product_fact",
+        question: question,
+        scope: input.model ? "model_specific" : "general",
+        state: "missing_evidence",
+        basis: "none",
+        answer: "",
+        evidenceRefs: [],
+        conditions: [],
+        assumptions: [],
+      });
     }
   }
-
-  const allowedActions = [];
-  if (status === "supported") {
-    allowedActions.push("elaborate");
-  } else {
-    if (input.hasManual === true || manualNeeded) allowedActions.push("manual");
-    allowedActions.push("web");
-  }
-
-  return normalizeAnswerEnvelope_({
+  const draft = normalizeAnswerEnvelopeV2_({
+    schemaVersion: 2,
     version: GAS_VERSION,
     topicId: computeReplyAnchor_(question),
     originalQuestion: question,
     model: input.model || "",
     claims: claims,
-    evidenceRefs: evidenceRefs,
-    status: status,
-    unresolvedClaims: unresolvedClaims,
+    execution: { state: "ok", code: "" },
+    allowedActions: [],
+    expandable: false,
+  });
+  const allowedActions = [];
+  if (draft.status === "supported") {
+    allowedActions.push("elaborate");
+  } else {
+    if (input.hasManual === true || manualNeeded) allowedActions.push("manual");
+    allowedActions.push("web");
+  }
+  return normalizeAnswerEnvelopeV2_({
+    schemaVersion: 2,
+    version: GAS_VERSION,
+    topicId: draft.topicId,
+    originalQuestion: draft.originalQuestion,
+    model: draft.model,
+    claims: draft.claims,
+    execution: draft.execution,
     allowedActions: allowedActions,
-    expandable: status === "supported",
+    expandable: draft.status === "supported",
   });
 }
 
@@ -3233,14 +3300,14 @@ function getJevChoiceAnswer_(answers, key, allowed, fallback) {
 
 function getJevChoiceConfidence_(answers, key) {
   const item = answers && answers[key] ? answers[key] : {};
-  const value = Number(item.confidence);
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+  const value = typeof item.confidence === "number" ? item.confidence : NaN;
+  return Number.isFinite(value) && value >= 0 && value <= 1 && (!item.type || item.type === "choice") ? value : 0;
 }
 
 function getJevNoulProbability_(answers, key) {
   const item = answers && answers[key] ? answers[key] : {};
-  const value = Number(item.noul);
-  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+  const value = typeof item.noul === "number" ? item.noul : NaN;
+  return Number.isFinite(value) && value >= 0 && value <= 1 && (!item.type || item.type === "noul") ? value : null;
 }
 
 function splitSemanticClaimsDeterministically_(question) {
@@ -3387,20 +3454,20 @@ function buildRouteAnalysisFromJev_(answersValue, inputValue) {
   );
   const multiClaim = Boolean(
     isPotentialMultiClaimQuestion_(input.originalQuestion) ||
-      (multiProbability !== null && multiProbability >= 0.5),
+      (multiProbability !== null && multiProbability >= JEV_ROUTER_DECISION_THRESHOLD),
   );
   const deterministicCurrentInfo =
     /(?:目前|現在|最新|近期|庫存|售價|價格|活動|促銷|上市|業者|第三方|APP\s*現況|服務現況)/i.test(
       input.originalQuestion,
     );
   const needsManualDecision = Boolean(
-    (manualProbability !== null && manualProbability >= 0.5) ||
+    (manualProbability !== null && manualProbability >= JEV_ROUTER_DECISION_THRESHOLD) ||
       (input.localCoverage !== "full" &&
         isManualVerificationRequiredQuery(input.originalQuestion)),
   );
   const needsWebDecision = Boolean(
     deterministicCurrentInfo ||
-      (webProbability !== null && webProbability >= 0.5),
+      (webProbability !== null && webProbability >= JEV_ROUTER_DECISION_THRESHOLD),
   );
   const needsMeaningClarification = Boolean(
     topicRelation === "ambiguous" ||
@@ -3529,11 +3596,13 @@ function buildRouteAnalysisFromJev_(answersValue, inputValue) {
     webProbability,
     clarificationProbability,
   ].every(function (value) {
-    return value !== null;
+    return value !== null && (value >= JEV_ROUTER_DECISION_THRESHOLD || value <= 1 - JEV_ROUTER_DECISION_THRESHOLD);
   });
   let confidence = "high";
   if (
     !decisionFieldsPresent ||
+    !["new", "followup", "ambiguous"].includes(answers.topic_relation?.choice) ||
+    !allowedIntents.includes(answers.dominant_intent?.choice) ||
     topicConfidence < JEV_ROUTER_MIN_CHOICE_CONFIDENCE ||
     intentConfidence < JEV_ROUTER_MIN_CHOICE_CONFIDENCE
   ) {
@@ -3623,26 +3692,10 @@ function callSemanticRouter_(inputValue) {
     if (usage) {
       const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
       const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
-      const reportedCostUsd = Number(usage.cost);
-      const costUSD =
-        Number.isFinite(reportedCostUsd) && reportedCostUsd >= 0
-          ? reportedCostUsd
-          : (inputTokens * PRICE_ROUTER_INPUT +
-              outputTokens * PRICE_ROUTER_OUTPUT) /
-            1000000;
-      const costTWD = costUSD * EXCHANGE_RATE;
-      const auditUsage = {
-        promptTokenCount: inputTokens,
-        candidatesTokenCount: outputTokens,
-        thoughtsTokenCount: 0,
-        totalTokenCount: inputTokens + outputTokens,
-      };
-      addGenerationUsageToAudit_(
-        auditUsage,
-        costTWD,
-        JEV_MODEL_ROUTER,
-      );
-      currentRequestAudit.routerCostTwd += costTWD;
+      // The gateway has already settled and audited this exact attempt, including null/unknown cost.
+      const receipt = currentRequestAudit.providerReceipts[currentRequestAudit.providerReceipts.length - 1];
+      const costTWD = receipt.costTwd;
+      const costUSD = costTWD / EXCHANGE_RATE;
       if (costTWD > SEMANTIC_ROUTER_COST_ALERT_TWD) {
         writeLog(
           `[Semantic Router ${SEMANTIC_ROUTER_POLICY_VERSION}] 單次成本警示 NT$${costTWD.toFixed(4)}`,
@@ -4196,7 +4249,9 @@ function buildAdvancedAnswerEnvelope_(
   finalText,
   outcome,
   searchSources,
+  options,
 ) {
+  const input = options || {};
   const normalizedOutcome = String(outcome || "");
   const succeeded = normalizedOutcome === "success" || normalizedOutcome === "rescued_web";
   const partial = normalizedOutcome === "partial";
@@ -4219,35 +4274,173 @@ function buildAdvancedAnswerEnvelope_(
       : finalText;
     refs.push(`WEB:${computeReplyAnchor_(sourceKey).substring(0, 16)}`);
   }
-  return normalizeAnswerEnvelope_({
-    version: GAS_VERSION,
-    topicId: computeReplyAnchor_(originalQuestion),
-    originalQuestion: originalQuestion,
-    model: model || "",
-    claims: partial
-      ? [
-          { id: `${effectiveSource}_evidence`, status: "supported", source: effectiveSource },
-          { id: "remaining_claim", status: "unresolved", source: "" },
-        ]
-      : succeeded
-        ? [{ id: `${effectiveSource}_evidence`, status: "supported", source: effectiveSource }]
-        : [{ id: `${effectiveSource}_evidence`, status: "unresolved", source: effectiveSource }],
-    evidenceRefs: refs,
-    status: partial ? "partial" : succeeded ? "supported" : "unsupported",
-    unresolvedClaims: partial
-      ? ["remaining_claim"]
-      : succeeded
-        ? []
-        : [`${effectiveSource}_evidence`],
-    allowedActions: succeeded ? ["elaborate"] : [],
-    expandable: succeeded,
+  const normalizedModel = normalizeModelForDisplay(model || "");
+  const topicId = computeReplyAnchor_(originalQuestion);
+  let base = input.baseEnvelope || null;
+  if (!base && input.contextId) base = readAnswerEnvelope_(input.contextId);
+  if (
+    base &&
+    Number(base.schemaVersion) === 2 &&
+    (
+      computeReplyAnchor_(base.originalQuestion || "") !== topicId ||
+      (base.model && normalizedModel && normalizeModelForDisplay(base.model) !== normalizedModel)
+    )
+  ) {
+    base = null;
+  }
+  if (!base || Number(base.schemaVersion) !== 2) {
+    const routeClaims = Array.isArray(input.routeClaims) ? input.routeClaims : [];
+    const seededClaims = routeClaims.length
+      ? routeClaims.map(function (claim, index) {
+          const evidenceNeed = String(claim && claim.evidenceNeed || "");
+          return {
+            id: String(claim && claim.id || `advanced_claim_${index + 1}`),
+            question: String(claim && claim.question || originalQuestion),
+            scope:
+              evidenceNeed === "general_reasoning" || !normalizedModel
+                ? "general"
+                : "model_specific",
+            state: "missing_evidence",
+            basis: "none",
+            answer: "",
+            evidenceRefs: [],
+            conditions: [],
+            assumptions: [],
+          };
+        })
+      : [{
+          id: `advanced_${computeReplyAnchor_(originalQuestion).substring(0, 16) || "claim"}`,
+          question: String(originalQuestion || ""),
+          scope: normalizedModel ? "model_specific" : "general",
+          state: "missing_evidence",
+          basis: "none",
+          answer: "",
+          evidenceRefs: [],
+          conditions: [],
+          assumptions: [],
+        }];
+    base = normalizeAnswerEnvelopeV2_({
+      schemaVersion: 2,
+      version: GAS_VERSION,
+      topicId: topicId,
+      originalQuestion: originalQuestion,
+      model: normalizedModel,
+      claims: seededClaims,
+      execution: { state: "ok", code: "" },
+      allowedActions: [],
+      expandable: false,
+    });
+  }
+  const unresolvedIds = base.claims
+    .filter(function (claim) { return claim.state !== "answered"; })
+    .map(function (claim) { return claim.id; });
+  const requestedIds = uniqueAnswerStrings_(
+    Array.isArray(input.targetClaimIds) && input.targetClaimIds.length
+      ? input.targetClaimIds
+      : unresolvedIds,
+  );
+  const availableIds = new Set(base.claims.map(function (claim) { return claim.id; }));
+  let targetIds = requestedIds.filter(function (id) {
+    return availableIds.has(id) && unresolvedIds.indexOf(id) >= 0;
   });
+  if (!targetIds.length && unresolvedIds.length) targetIds = unresolvedIds.slice();
+  const explicitResolvedIds = uniqueAnswerStrings_(input.resolvedClaimIds).filter(function (id) {
+    return targetIds.indexOf(id) >= 0;
+  });
+  const resolvedIds =
+    succeeded && refs.length > 0
+      ? (explicitResolvedIds.length ? explicitResolvedIds : targetIds)
+      : partial && explicitResolvedIds.length && refs.length > 0
+        ? explicitResolvedIds
+        : [];
+  const answerText = String(finalText || "")
+    .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
+    .replace(/\n{0,2}\[費用\s*[:：][^\]]+\]/gi, "")
+    .trim();
+  const answerById = {};
+  resolvedIds.forEach(function (id) { answerById[id] = answerText; });
+  const executionState = String(
+    input.executionState ||
+      (/^(?:error|service_unavailable)$/.test(normalizedOutcome)
+        ? "provider_error"
+        : normalizedOutcome === "budget_blocked"
+          ? "budget_blocked"
+          : "ok"),
+  );
+  const merged = mergeAdvancedAnswerEnvelopeV2_(base, {
+    version: GAS_VERSION,
+    topicId: topicId,
+    originalQuestion: originalQuestion,
+    model: normalizedModel,
+    resolvedClaimIds: resolvedIds,
+    failedClaimIds:
+      executionState === "ok" ? [] : targetIds,
+    evidenceRefs: refs,
+    answerById: answerById,
+    basis: "direct",
+    executionState: executionState,
+    executionCode: String(input.executionCode || ""),
+    allowedActions: [],
+    expandable: false,
+  });
+  const allowedActions = merged.status === "supported"
+    ? ["elaborate"]
+    : effectiveSource === "manual"
+      ? ["web"]
+      : normalizedModel
+        ? ["manual"]
+        : [];
+  return normalizeAnswerEnvelopeV2_({
+    schemaVersion: 2,
+    version: GAS_VERSION,
+    topicId: merged.topicId,
+    originalQuestion: merged.originalQuestion,
+    model: merged.model,
+    claims: merged.claims,
+    execution: merged.execution,
+    allowedActions: allowedActions,
+    expandable: merged.status === "supported",
+    createdAt: merged.createdAt,
+    expiresAt: merged.expiresAt,
+  });
+}
+
+function writeAdvancedExecutionEnvelope_(
+  contextId,
+  source,
+  originalQuestion,
+  model,
+  finalText,
+  pendingState,
+  executionState,
+  executionCode,
+) {
+  if (!contextId) return null;
+  return writeAnswerEnvelope_(
+    contextId,
+    buildAdvancedAnswerEnvelope_(
+      source,
+      originalQuestion,
+      model,
+      finalText,
+      executionState === "budget_blocked" ? "budget_blocked" : "error",
+      [],
+      {
+        contextId: contextId,
+        routeClaims: pendingState && pendingState.routeClaims,
+        targetClaimIds: pendingState && pendingState.unresolvedClaimIds,
+        executionState: executionState,
+        executionCode: executionCode,
+      },
+    ),
+  );
 }
 
 function appendPdfSourceTag(text, files, maxCount = 1) {
   let cleaned = String(text || "")
     .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
     .trim();
+  if (!cleaned || isManualEvidenceFailureReply_(cleaned)) return cleaned;
   if (isApiFailureReply(cleaned)) {
     return cleaned;
   }
@@ -4294,10 +4487,10 @@ function normalizeAllowedSourceTag_(sourceText, fullText) {
   if (/AI內建資料庫|AI內建|LLM內建|內建資料庫|一般知識|通用知識|常識/i.test(src)) {
     return "[來源:AI內建資料庫]";
   }
-  if (/官方活動庫|活動|促銷|RULE|登錄|抽獎|延長保固|贈品/i.test(src)) {
+  if (/官方活動庫|活動|促銷|登錄|抽獎|延長保固|贈品/i.test(src)) {
     return "[來源:官方活動庫]";
   }
-  if (/官方規格庫|規格庫|產品規格|規格表|CLASS_RULES/i.test(src)) {
+  if (/官方規格庫|規格庫|產品規格|規格表|CLASS_RULES|^RULE$/i.test(src)) {
     return isCampaignRuleReplyText_(fullText)
       ? "[來源:官方活動庫]"
       : "[來源:官方規格庫]";
@@ -8345,6 +8538,8 @@ function finishAdvancedSourceOperation_(operation, finalText, model, ttlSeconds)
     contextId: operation.contextId || "",
     source: String(operation.source || ""),
     finalText: String(finalText || ""),
+    codeVersion: GAS_VERSION,
+    sourceFingerprint: getAdvancedSourceKnowledgeFingerprint_(operation.source,model),
     model: normalizeModelForDisplay(model || ""),
     date: operation.date || getSourceDateKey_(),
     canonicalTopic: String(operation.canonicalTopic || ""),
@@ -8749,6 +8944,7 @@ function handleRichMenuPostback_(event) {
   lastTokenUsage = null;
   lastLlmCallAttempted = false;
   resetRequestAudit_();
+  bindLineAcceptanceEvent_(event);
   const params = parsePostbackData_(event.postback && event.postback.data);
   const action = String(params.rm_action || "");
   if (!action) return false;
@@ -8760,6 +8956,13 @@ function handleRichMenuPostback_(event) {
     : sourceInfo.userId;
   const userId = sourceInfo.userId || contextId;
   const replyToken = String(event.replyToken || "");
+  CURRENT_REPLY_USER_ID = String(userId || contextId || "");
+  CURRENT_REPLY_CONTEXT_ID = String(contextId || userId || "");
+
+  if (action === "reply_page") {
+    return handleReplyPagePostback_(params, userId, contextId, replyToken);
+  }
+  invalidateReplyContinuation_(CURRENT_REPLY_USER_ID, CURRENT_REPLY_CONTEXT_ID);
 
   if (action === "select_source") {
     return startSourceSelection_(
@@ -10563,6 +10766,7 @@ function tryManualFreeLocalAnswer_(
         verifiedReply,
         "success",
         [],
+        { contextId: contextId },
       ),
     );
     replyMessage(replyToken, verifiedReply);
@@ -10766,38 +10970,9 @@ function sanitizeTentativeWebActionLine_(rawLine) {
 
 function buildTentativeWebFallback_(rawResponse, query, model) {
   if (isUnscopedRuleTermDefinition_(query)) return "這個名詞目前還沒有取得可核對的說明，先別把相關功能當成同一件事；請 Sam 幫忙補上資料。";
-  // 找不到可逐句綁定的 grounding support 時，不能把全文當成已證實答案；
-  // 但只要本輪真的執行過 Google Search，可保留經安全過濾、且不含產品
-  // 能力／數值／購買／韌體／工程模式／推測的低風險動作，明示僅供排查。
-  // 型號特定的功能入口不可從未綁定 citation 的模型草稿抽步驟。
-  // 這類文字最容易把同系列其他代的 Mini DP、Micro HDMI 或舊選單套過來。
-  if (
-    normalizeModelForDisplay(model || "") &&
-    isManualActionPathQuestion_(query) &&
-    !isModelIndependentManualOperation_(query)
-  ) {
-    return buildSafeNoEvidenceNextStep_(query, model);
-  }
-  const raw = String(rawResponse || "")
-    .replace(/\s+(?=\d+[.、)]\s*)/g, "\n")
-    .replace(/\s+(?=[•*-]\s+)/g, "\n");
-  const actions = [];
-  const seen = {};
-  raw.split(/[\r\n]+/).forEach(function (line) {
-    const action = sanitizeTentativeWebActionLine_(line);
-    const key = String(action || "").replace(/\s+/g, "").toUpperCase();
-    if (action && !seen[key]) {
-      seen[key] = true;
-      actions.push(action);
-    }
-  });
-  if (actions.length > 0) {
-    return [
-      "以下是尚未確認適用這款的排查方向：",
-      actions.slice(0, 3).join("\n"),
-      "若機內找不到相同選單，先別硬套，可以請 Sam 幫忙確認。",
-    ].join("\n");
-  }
+  // v324：沒有可逐句綁定的 citation 時，模型全文一律視為未驗證草稿。
+  // 搜尋 trace 只能證明工具執行，不能把其中任何動作、能力、數值或選單
+  // 路徑抽出來當作回答；只回傳不新增產品事實的安全下一步。
   return buildSafeNoEvidenceNextStep_(query, model);
 }
 
@@ -11297,6 +11472,15 @@ function doesGroundedAnswerCompleteQuestion_(text, originalQuestion) {
   return true;
 }
 
+function isGroundedGeneralMethod_(text,question) {
+  const value=String(text||"");
+  if(isExactProductFactQuestion_(question)||extractFullModelLikeTokens(value).length)return false;
+  if(/(?:這台|此款|本機|該型號|此型號).{0,12}(?:支援|提供|具備|可以|能夠)|(?:SMART\s*MONITOR|ODYSSEY|VIEWFINITY)/i.test(value))return false;
+  if(/\d+\s*(?:Hz|W|瓦|赫茲)|(?:最高|最大|版本|孔數|選單路徑|出廠)/i.test(value))return false;
+  return /(?:先|再|然後|透過|使用|連接|接上|設定|確認)/.test(value) &&
+    !/(?:一定|保證|皆可|全部支援)/.test(value);
+}
+
 function buildGroundedSupportedAnswer_(
   segments,
   model,
@@ -11384,7 +11568,7 @@ function buildGroundedSupportedAnswer_(
         !segment ||
         (/(?:非官方)?推測|這(?:表示|暗示)|通常|有些|部分|可能|一般來說|多數|大多|類似|相近/i.test(
           segment,
-        ) && !lowRiskTroubleshooting)
+        ) && !lowRiskTroubleshooting && normalizedModel)
       ) {
         return;
       }
@@ -11420,7 +11604,7 @@ function buildGroundedSupportedAnswer_(
           /\bL?[SCF]\d{2}[A-Z0-9]{4,}\b|SMART\s*MONITOR|ODYSSEY|VIEWFINITY|智慧聯網螢幕|智慧顯示器/i.test(
             unique.join("\n"),
           );
-        lowRiskGeneric = lowRiskTroubleshooting && !mentionsNamedProduct;
+        lowRiskGeneric = (lowRiskTroubleshooting || isGroundedGeneralMethod_(unique.join("\n"),originalQuestion)) && !mentionsNamedProduct;
         if (!lowRiskGeneric) return reject("target_identity_missing");
       }
       lowRiskFamilyOperation = Boolean(
@@ -11442,7 +11626,7 @@ function buildGroundedSupportedAnswer_(
       const matchedFocus = focusTokens.filter(function (token) {
         return combined.indexOf(token.toUpperCase()) >= 0;
       });
-      const requiredMatches = lowRiskGeneric || lowRiskFamilyOperation
+      const requiredMatches = lowRiskGeneric || lowRiskFamilyOperation || !normalizedModel
         ? 1
         : focusTokens.length >= 3
           ? 2
@@ -11458,7 +11642,7 @@ function buildGroundedSupportedAnswer_(
       const identityLabel = profile.familyLabel
         ? `${normalizedModel}（${profile.familyLabel}）`
         : normalizedModel;
-      answer = `${identityLabel} 可先這樣排除：\n${answer}`;
+      answer = lowRiskTroubleshooting ? `${identityLabel} 可先這樣排除：\n${answer}` : `通用方法：請先確認設備具備下述連接或操作條件；這段資料尚不能證明 ${normalizedModel} 的個別功能。\n${answer}`;
     }
     const complete = doesGroundedAnswerCompleteQuestion_(
       answer,
@@ -11850,9 +12034,7 @@ function executeAutomaticManualFallback_(
     ["web_current"],
     [],
   );
-  const manualQuery = manualQuestions.length > 0
-    ? manualQuestions.join("\n")
-    : originalQuestion;
+  const manualQuery = manualQuestions.length > 0 ? manualQuestions.join("\n") : originalQuestion;
   const queryWithModel =
     selectedModel &&
     extractFullModelLikeTokens(manualQuery)
@@ -12255,7 +12437,7 @@ function executeAdvancedSourceQuery_(
   // 已確認完整型號後，先嘗試本機頁級索引。這是零 API 的檢索步驟；
   // 只有明確命中「型號 + 功能群組 + 官方原文頁面」才會接管，否則
   // 保留原本整份 PDF 路徑。守門 LLM 不參與這個確定性判斷。
-  const manualPageRagPlan = normalizedSource === "manual"
+  let manualPageRagPlan = normalizedSource === "manual"
     ? findManualPageRagPlan_(normalizedQuery, selectedModel)
     : null;
   refundTransferredDailyQuestion_(
@@ -12263,12 +12445,13 @@ function executeAdvancedSourceQuery_(
     pendingState,
     `semantic_router_to_${normalizedSource}`,
   );
-  const sourceKnowledgeFingerprint = manualPageRagPlan
+  let sourceKnowledgeFingerprint = manualPageRagPlan
     ? getManualPageRagKnowledgeFingerprint_(manualPageRagPlan)
     : getAdvancedSourceKnowledgeFingerprint_(
         normalizedSource,
         primaryModel || selectedModel,
       );
+  sourceKnowledgeFingerprint=computeReplyAnchor_(LOCAL_EVIDENCE_POLICY+sourceKnowledgeFingerprint+getAdvancedSourceKnowledgeFingerprint_(normalizedSource,selectedModel)+JSON.stringify(collectLocalAnswerEvidence_(normalizedQuery,selectedModel)));
   const sourceCacheQuery = buildAdvancedSourceCacheQuery_(
     normalizedSource,
     normalizedQuery,
@@ -12288,27 +12471,6 @@ function executeAdvancedSourceQuery_(
     pendingState && pendingState.routePlanHash,
     sourceKnowledgeFingerprint,
   );
-  if (!sourceOperation && remainingBefore <= 0) {
-    clearPendingSourceState_(contextId);
-    const exhaustedText = normalizedSource === "manual"
-      ? `今天的官方手冊 ${SOURCE_DAILY_LIMITS.manual} 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。`
-      : `今天的網路解答 ${SOURCE_DAILY_LIMITS.web} 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出網路查詢；明天 00:00 會自動恢復。`;
-    const exhaustedReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
-      knownRuleAnswer,
-      exhaustedText,
-    );
-    replyMessage(
-      replyToken,
-      exhaustedReply,
-      buildAdvancedSourceQuickReplies_(
-        normalizedSource,
-        primaryModel || selectedModel,
-        exhaustedReply,
-        { forceOfficial: true, skipSameSource: true },
-      ),
-    );
-    return true;
-  }
   if (!sourceOperation) {
     sourceOperation = beginAdvancedSourceOperation_(
       contextId,
@@ -12358,6 +12520,52 @@ function executeAdvancedSourceQuery_(
     return true;
   }
 
+  const localDecision=ensureLocalEvidenceDecision_(normalizedQuery,selectedModel,contextId);
+  if(localDecision.complete || localDecision.failure || localDecision.needsClarification) {
+    if(localDecision.complete) finishAdvancedSourceOperation_(sourceOperation,localDecision.answer+"\n"+(localDecision.sourceTags||[]).join("\n"),selectedModel);
+    else clearAdvancedSourceOperation_(sourceOperation);
+    replyLocalEvidenceDecision_(Object.assign({},localDecision,{answer:[knownRuleAnswer,localDecision.answer].filter(Boolean).join("\n")}),originalQuestion,selectedModel,contextId,userId,replyToken);
+    return true;
+  }
+  if(localDecision.answer) {
+    knownRuleAnswer=[knownRuleAnswer,localDecision.answer].filter(Boolean).join("\n");
+    normalizedQuery=localDecision.remainingQuestions.join("\n");
+    manualPageRagPlan=normalizedSource==="manual"?findManualPageRagPlan_(normalizedQuery,selectedModel):null;
+    if(pendingState)pendingState.knownRuleAnswer=knownRuleAnswer;
+  }
+
+  if (remainingBefore <= 0) {
+    clearPendingSourceState_(contextId);
+    clearAdvancedSourceOperation_(sourceOperation);
+    const exhaustedText = normalizedSource === "manual"
+      ? `今天的官方手冊 ${SOURCE_DAILY_LIMITS.manual} 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出 PDF 查詢；明天 00:00 會自動恢復。`
+      : `今天的網路解答 ${SOURCE_DAILY_LIMITS.web} 次已用完。這題在規格／FAQ 沒有完整答案，因此沒有送出網路查詢；明天 00:00 會自動恢復。`;
+    const exhaustedReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
+      knownRuleAnswer,
+      exhaustedText,
+    );
+    writeAdvancedExecutionEnvelope_(
+      contextId,
+      normalizedSource,
+      originalQuestion,
+      primaryModel || selectedModel,
+      exhaustedReply,
+      pendingState,
+      "budget_blocked",
+      "SOURCE_DAILY_LIMIT_EXHAUSTED",
+    );
+    replyMessage(
+      replyToken,
+      exhaustedReply,
+      buildAdvancedSourceQuickReplies_(
+        normalizedSource,
+        primaryModel || selectedModel,
+        exhaustedReply,
+        { forceOfficial: true, skipSameSource: true },
+      ),
+    );
+    return true;
+  }
   clearLegacyAdvancedRouteState_(cache, userId, contextId);
   if (normalizedSource === "manual") {
     if (manualPageRagPlan) {
@@ -12417,7 +12625,7 @@ function executeAdvancedSourceQuery_(
         {
           systemRescue: !plannedWebQuery,
           searchQuery: noManualRescueQuery || originalQuestion,
-          unresolvedQuestion: originalQuestion,
+          unresolvedQuestion: rescueQuery || normalizedQuery,
         },
       );
       const noManualReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
@@ -12447,6 +12655,11 @@ function executeAdvancedSourceQuery_(
           noManualReply,
           LAST_SOURCE_TEST_STATE.outcome,
           noManualRescue.sources,
+          {
+            contextId: contextId,
+            routeClaims: pendingState && pendingState.routeClaims,
+            targetClaimIds: pendingState && pendingState.unresolvedClaimIds,
+          },
         ),
       );
       replyMessage(
@@ -12547,6 +12760,16 @@ function executeAdvancedSourceQuery_(
       writeLog(
         `[Source Route] source=${normalizedSource} outcome=service_unavailable provider=${code}`,
       );
+      writeAdvancedExecutionEnvelope_(
+        contextId,
+        normalizedSource,
+        originalQuestion,
+        primaryModel || selectedModel,
+        serviceReply,
+        pendingState,
+        "provider_error",
+        code,
+      );
       replyMessage(
         replyToken,
         serviceReply,
@@ -12573,16 +12796,40 @@ function executeAdvancedSourceQuery_(
       return true;
     }
     if (/^PROVIDER_(?:MONTH_BUDGET|TEST_BUDGET|BUDGET_)/.test(code)) {
-      replyMessage(replyToken, providerBudgetReply_(code));
+      const budgetReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
+        knownRuleAnswer,
+        providerBudgetReply_(code),
+      );
+      writeAdvancedExecutionEnvelope_(
+        contextId,
+        normalizedSource,
+        originalQuestion,
+        primaryModel || selectedModel,
+        budgetReply,
+        pendingState,
+        "budget_blocked",
+        code,
+      );
+      replyMessage(replyToken, budgetReply);
       clearAdvancedSourceOperation_(sourceOperation);
       return true;
     }
     if (code.indexOf("SOURCE_QUOTA_EXHAUSTED_") === 0) {
       const exhaustedSourceReply =
         `今天的${normalizedSource === "manual" ? "官方手冊" : "網路解答"}額度已用完；這次沒有送出查詢。你仍可使用「規格＆FAQ」的每日提問額度。`;
+      writeAdvancedExecutionEnvelope_(
+        contextId,
+        normalizedSource,
+        originalQuestion,
+        primaryModel || selectedModel,
+        exhaustedSourceReply,
+        pendingState,
+        "budget_blocked",
+        code,
+      );
       replyMessage(
         replyToken,
-        exhaustedSourceReply,
+        mergeKnownRuleAnchorWithAdvancedAnswer_(knownRuleAnswer,exhaustedSourceReply),
         buildAdvancedSourceQuickReplies_(
           normalizedSource,
           primaryModel || selectedModel,
@@ -12595,16 +12842,13 @@ function executeAdvancedSourceQuery_(
     }
     writeLog(`[Source Route v29.6.106] ${normalizedSource} 失敗: ${code}`);
     if (normalizedSource === "manual") {
-      // 使用者已授權查手冊；供應商或執行錯誤也要進入同一個受控 Web 補救，
-      // 不能把我方錯誤丟回給使用者，也不能要求重按形成迴圈。
-      response =
-        "這次官方手冊查詢發生暫時錯誤，我會改用一次公開網頁補查。\n\n[AUTO_SEARCH_WEB]";
+      response = "[PROVIDER_FAILED] 這次手冊查詢暫時未完成，請稍後再試。";
     } else {
       const failedSourceModel = primaryModel || selectedModel;
       const failedSourcePage = getSamsungOfficialModelPage_(failedSourceModel);
-      const failedSourceReply = failedSourcePage
+      const failedSourceReply = mergeKnownRuleAnchorWithAdvancedAnswer_(knownRuleAnswer,failedSourcePage
         ? "這次網路搜尋暫時沒完成。下方可先到這款三星官網查看，稍後再試一次。"
-        : "這次網路搜尋暫時沒完成，稍後再試一次。";
+        : "這次網路搜尋暫時沒完成，稍後再試一次。");
       LAST_SOURCE_TEST_STATE = {
         source: normalizedSource,
         outcome: "error",
@@ -12615,6 +12859,16 @@ function executeAdvancedSourceQuery_(
           typeof grant.remaining === "number" ? grant.remaining : remainingBefore,
         refunded: false,
       };
+      writeAdvancedExecutionEnvelope_(
+        contextId,
+        normalizedSource,
+        originalQuestion,
+        failedSourceModel,
+        failedSourceReply,
+        pendingState,
+        "provider_error",
+        code,
+      );
       replyMessage(
         replyToken,
         failedSourceReply,
@@ -12638,7 +12892,21 @@ function executeAdvancedSourceQuery_(
   }
 
   if (response === providerBudgetReply_()) {
-    replyMessage(replyToken, response);
+    const blockedReply = mergeKnownRuleAnchorWithAdvancedAnswer_(
+      knownRuleAnswer,
+      response,
+    );
+    writeAdvancedExecutionEnvelope_(
+      contextId,
+      normalizedSource,
+      originalQuestion,
+      primaryModel || selectedModel,
+      blockedReply,
+      pendingState,
+      "budget_blocked",
+      "PROVIDER_BUDGET_BLOCKED",
+    );
+    replyMessage(replyToken, blockedReply);
     clearAdvancedSourceOperation_(sourceOperation);
     return true;
   }
@@ -12647,6 +12915,12 @@ function executeAdvancedSourceQuery_(
     /(?:手冊預檢沒有完成|手冊超出單次安全查詢範圍|預估費用仍超過單次)/.test(
       String(response || ""),
     );
+  // Keep execution status independently of display formatting. A removed
+  // sentence or a source label can never turn a rejected claim into evidence.
+  const manualExecutionFailed = normalizedSource === "manual" && (
+    manualPreflightStopped || response === "[KB_EXPIRED]" ||
+    /MANUAL_(?:OUTPUT_FORMAT_ERROR|FORMAT_INVALID|EVIDENCE_VALIDATION_ERROR)|PROVIDER_FAILED|BUDGET|API \d|系統暫時|系統連線|系統參數|付費查證目前暫停/.test(String(response || ""))
+  );
   const evidenceGuardedResponse =
     normalizedSource === "manual" &&
     response !== "[KB_EXPIRED]" &&
@@ -12680,28 +12954,26 @@ function executeAdvancedSourceQuery_(
       finalText =
         "系統偵測到手冊索引需要背景更新，已自動排入更新；這次不扣次。你可以先開啟下方這款三星官網，約 1 分鐘後再按「官方手冊」查證。";
     } else {
-      finalText = sanitizeManualDeflection(finalText, normalizedQuery);
+      if (!manualExecutionFailed) finalText = sanitizeManualDeflection(finalText, normalizedQuery);
       finalText = enforceManualUncertaintyGuard(finalText, normalizedQuery);
       if (isCrossDeviceMonitorQuery(normalizedQuery)) {
         finalText = removeCrossDeviceManualHeadingOnlyLines_(finalText);
       }
       finalText = enforceManualNumberedList(finalText);
-      if (!manualPreflightStopped && !isManualEvidenceFailureReply_(finalText)) {
+      if (!stripAnySourceTags(finalText).trim()) {
+        finalText = applyManualEvidenceGuard_("[MANUAL_EVIDENCE_VALIDATION_ERROR]", normalizedQuery);
+      }
+      if (!manualExecutionFailed && !isManualEvidenceFailureReply_(finalText)) {
         finalText = ensurePdfSourceTag(finalText, relevantFiles, 1);
       }
-      manualEvidenceFailed = isManualEvidenceFailureReply_(finalText);
+      manualEvidenceFailed = manualExecutionFailed || isManualEvidenceFailureReply_(finalText);
     }
     const plannedWebQuery = String(
       (pendingState && pendingState.plannedWebQuery) || "",
     ).trim();
-    const manualFailedBeforeWeb =
-      response === "[KB_EXPIRED]" ||
-      manualPreflightStopped ||
-      manualEvidenceNotFound ||
-      manualEvidenceFailed ||
-      recommendedWeb;
-    const needsAutomaticWebRescue =
-      manualFailedBeforeWeb || Boolean(plannedWebQuery);
+    const executionFailure = manualExecutionFailed;
+    const manualFailedBeforeWeb = !executionFailure && (manualEvidenceNotFound || manualEvidencePartial || recommendedWeb);
+    const needsAutomaticWebRescue = !executionFailure && (manualFailedBeforeWeb || Boolean(plannedWebQuery));
     if (needsAutomaticWebRescue) {
       writeLog(`[Manual Rescue Decision] ${JSON.stringify({expired:response === "[KB_EXPIRED]",
         preflight:manualPreflightStopped,notFound:manualEvidenceNotFound,partial:manualEvidencePartial,
@@ -12885,7 +13157,7 @@ function executeAdvancedSourceQuery_(
   );
   if (grant.refunded) {
     finalText += "\n\n這次屬系統因素，額度已退回。";
-  } else if (!grant.reserved) {
+  } else if (!grant.reserved && !currentRequestAudit?.providerReceipts?.some(function(r){return r.sent;})) {
     finalText += "\n\n這次未送出供應商請求，沒有扣除次數。";
   }
   finalText = enforceNiTone(finalText);
@@ -12902,6 +13174,8 @@ function executeAdvancedSourceQuery_(
           ? manualWebRescue.partial
             ? "partial"
             : "rescued_web"
+          : manualExecutionFailed
+          ? "error"
           : manualEvidencePartial
           ? "partial"
           : manualPreflightStopped || manualEvidenceFailed
@@ -12915,6 +13189,27 @@ function executeAdvancedSourceQuery_(
     refunded: Boolean(grant.refunded),
   };
 
+  const advancedExecutionState =
+    manualPreflightStopped || /BUDGET/.test(String(response || ""))
+      ? "budget_blocked"
+      : /MANUAL_(?:OUTPUT_FORMAT_ERROR|FORMAT_INVALID)/.test(String(response || ""))
+        ? "format_error"
+        : /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(String(response || ""))
+          ? "validation_error"
+          : manualExecutionFailed
+            ? "provider_error"
+            : "ok";
+  const advancedExecutionCode =
+    advancedExecutionState === "ok"
+      ? ""
+      : manualPreflightStopped
+        ? "MANUAL_PREFLIGHT_BLOCKED"
+        : response === "[KB_EXPIRED]"
+          ? "MANUAL_INDEX_EXPIRED"
+          : (String(response || "").match(
+              /(?:MANUAL_(?:OUTPUT_FORMAT_ERROR|FORMAT_INVALID|EVIDENCE_VALIDATION_ERROR)|PROVIDER_FAILED|BUDGET)/,
+            ) || ["ADVANCED_SOURCE_FAILED"])[0];
+
   writeAnswerEnvelope_(
     contextId,
     buildAdvancedAnswerEnvelope_(
@@ -12926,6 +13221,13 @@ function executeAdvancedSourceQuery_(
       manualWebRescue && (manualWebRescue.success || manualWebRescue.partial)
         ? manualWebRescue.sources
         : lastSearchSources,
+      {
+        contextId: contextId,
+        routeClaims: pendingState && pendingState.routeClaims,
+        targetClaimIds: pendingState && pendingState.unresolvedClaimIds,
+        executionState: advancedExecutionState,
+        executionCode: advancedExecutionCode,
+      },
     ),
   );
 
@@ -14166,6 +14468,9 @@ function sanitizeManualDeflection(text, queryText) {
     .replace(/根據(?:這份|該份|提供的)\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "根據官方手冊")
     .replace(/依照[你您]提供的\s*(?:產品\s*)?(?:PDF|手冊|文件|檔案|產品手冊)(?:\s*(?:文件|檔案|內容|手冊))?/gi, "依照官方手冊")
     .trim();
+  // System failures are user-visible outcomes, not instructions to look up a
+  // document. Preserve them through every later formatting pass as well.
+  if (isManualEvidenceFailureReply_(normalized) || isApiFailureReply(normalized)) return normalized;
   const lines = normalized.split(/\n+/);
   const filtered = lines.filter((line) => {
     const t = line.trim();
@@ -14178,7 +14483,7 @@ function sanitizeManualDeflection(text, queryText) {
       t,
     ) || /(三星官方|SAMSUNG\s*官方)/i.test(t);
     const hasDeflectVerb =
-      /(參考|查詢|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問|確認|求證)/i.test(
+      /(參考|查閱|自行|前往|到官網|建議|詢問|聯絡|聯繫|直接詢問|求證)/i.test(
         t,
       );
     const hasGenericDeflectionLead =
@@ -15330,8 +15635,9 @@ function normalizeManualStructuredResponse_(
     // without proving this unit has it. Keep that distinction in the answer;
     // never use it to establish support, numerical limits or equivalence.
     conditionalProcedure: Boolean(options.trustedPageIndex && item && item.documentBound &&
-      isManualActionPathQuestion_(questionText) && !isMultipleManualProcedureClaim_(questionText) &&
-      !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制|支援|有沒有|能不能/i.test(questionText)),
+      ((isManualActionPathQuestion_(questionText) && !isMultipleManualProcedureClaim_(questionText) &&
+      !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制|支援|有沒有|能不能/i.test(questionText)) ||
+      (manualEvidenceHasModelApplicabilityCaveat_(item.supportedAnswer) && /設定|選單|→/.test(item.supportedAnswer)))),
     capabilityBound: Boolean(options.trustedPageIndex && item && item.documentBound &&
       isManualActionPathQuestion_(questionText) && !isMultipleManualProcedureClaim_(questionText) &&
       !/\d+\s*(?:Hz|赫茲|W|瓦)|兩邊|同時|最高|最低|幾個|多少|限制/i.test(questionText) &&
@@ -15383,7 +15689,7 @@ function normalizeManualStructuredResponse_(
           item.supportedAnswer,
           item.excerpt,
           questionText,
-        ) || isVerifiedGenericSourceSelectionCoverage_(item.supportedAnswer, questionText, [item])) &&
+        ) || (coverage==="partial" && manualSupportedAnswerMatchesExcerpt_(item.supportedAnswer,item.excerpt,item.supportedAnswer)) || isVerifiedGenericSourceSelectionCoverage_(item.supportedAnswer, questionText, [item])) &&
         manualEvidenceAllowedByAttachmentProvenance_(
           item,
           targetModel,
@@ -15406,13 +15712,13 @@ function normalizeManualStructuredResponse_(
     });
   }
 
-  if (!found && normalizedEvidence.length > 0) {
+  if (!found && normalizedEvidence.length > 0 && validEvidence.length === 0) {
     writeLog(
       `[Manual Structured Output v29.6.267] found=false 卻帶有 evidence；視為格式錯誤，不得把矛盾輸出當成查無資料: total=${normalizedEvidence.length}`,
     );
     return "[MANUAL_OUTPUT_FORMAT_ERROR]";
   }
-  if (!found) {
+  if (!found && validEvidence.length === 0) {
     return `${notFoundReason || "官方手冊沒有找到能直接回答這題的段落。"}\n\n[MANUAL_EVIDENCE_NOT_FOUND]\n[手冊證據:未找到|範圍:未找到]`;
   }
   if (validEvidence.length === 0) {
@@ -15428,7 +15734,7 @@ function normalizeManualStructuredResponse_(
     );
   }
 
-  const selectedEvidence = selectManualEvidenceForQuestion_(
+  let selectedEvidence = selectManualEvidenceForQuestion_(
     validEvidence,
     questionText,
   );
@@ -15436,7 +15742,19 @@ function normalizeManualStructuredResponse_(
     writeLog(
       "[Manual Claim Coverage v29.6.275] 有相關證據但沒有直接回答使用者要求的入口／主張",
     );
-    return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
+    selectedEvidence=validEvidence.slice(0,2);
+  }
+  let semanticValidationFailed = false;
+  if (options.semanticFragments && shouldVerifyGeneratedEvidence_()) {
+    try {
+      const verification = verifyManualEvidenceSemantics_(selectedEvidence, options.semanticFragments, questionText, targetModel, unresolvedQuestion);
+      selectedEvidence = verification.selectedEvidence;
+      semanticValidationFailed = verification.failed;
+      if (!selectedEvidence.length) return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
+    } catch (error) {
+      writeLog("[Manual Semantic Verification] " + redactProviderSecrets_(String(error.message)));
+      return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
+    }
   }
   const seenPages = new Set();
   const pages = selectedEvidence
@@ -15474,13 +15792,8 @@ function normalizeManualStructuredResponse_(
     .join("\n")
     .trim();
   if (!safeAnswer) return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
-  if (!manualAnswerCoversQuestionFeatures_(safeAnswer, questionText) &&
-      !isVerifiedGenericSourceSelectionCoverage_(safeAnswer, questionText, validEvidence)) {
-    writeLog(
-      `[Manual Claim Coverage] 手冊摘錄有相關內容，但整理後答案未回答原題明說功能; question=${String(questionText).substring(0,160)}; answer=${safeAnswer.substring(0,260)}`,
-    );
-    return "[MANUAL_EVIDENCE_VALIDATION_ERROR]";
-  }
+  const answerMissingCoverage = !manualAnswerCoversQuestionFeatures_(safeAnswer, questionText) &&
+    !isVerifiedGenericSourceSelectionCoverage_(safeAnswer, questionText, validEvidence);
   const containsExplicitAlternative = selectedEvidence.some(function (item) {
     return isExplicitManualAlternativeAnswer_(item.supportedAnswer);
   });
@@ -15491,7 +15804,7 @@ function normalizeManualStructuredResponse_(
       !unresolvedQuestion,
   );
   const effectiveCoverage =
-    (containsExplicitAlternative && !ruleBackedAliasCompleted) ||
+    !found || answerMissingCoverage || (containsExplicitAlternative && !ruleBackedAliasCompleted) ||
     (coverage === "full" && validEvidence.length !== normalizedEvidence.length)
       ? "partial"
       : coverage;
@@ -15502,7 +15815,7 @@ function normalizeManualStructuredResponse_(
         ? "原題功能名稱未在手冊中直接出現；目前只確認到名稱不同的相近操作"
         : "部分主張未能由同一段手冊證據直接支持"
       : "");
-  const partialMarker = effectiveCoverage === "partial"
+  const partialMarker = semanticValidationFailed ? "\n[MANUAL_EVIDENCE_VALIDATION_ERROR]" : effectiveCoverage === "partial"
     ? `\n[MANUAL_EVIDENCE_PARTIAL:${effectiveUnresolvedQuestion || "仍有部分條件未由手冊直接回答"}]\n[AUTO_SEARCH_WEB]`
     : "";
   const conditionalNote = conditionalProcedure
@@ -15922,6 +16235,7 @@ function hydrateManualPageRagResponse_(
     {
       allowRuleBackedAliasCompletion: ruleBackedAliasCompletion,
       trustedPageIndex: Boolean(plan.retrievalPolicy && plan.revisionVerified),
+      semanticFragments: plan.fragments,
     },
   );
   const answer = ruleBackedAliasCompletion
@@ -16021,7 +16335,7 @@ function callManualPageRag_(
     );
     const status = response.getResponseCode();
     if (status < 200 || status >= 300) {
-      writeLog(`[Manual Page RAG] HTTP ${status}，改走 Web 補救`);
+      writeLog(`[Manual Page RAG] HTTP ${status}，停止後續付費`);
       return {
         handled: true,
         attempted: true,
@@ -16055,7 +16369,10 @@ function callManualPageRag_(
     );
     try {
       const coverageAudit = JSON.parse(joinedText);
-      writeLog(`[Manual Coverage] coverage=${coverageAudit.coverage} unresolved=${String(coverageAudit.unresolvedQuestion || "").slice(0, 240)}`);
+      const validationFailed = /\[MANUAL_(?:OUTPUT_FORMAT_ERROR|EVIDENCE_VALIDATION_ERROR)\]/.test(normalizedResponse);
+      const acceptedCoverage = validationFailed ? "validation_failed" : /\[MANUAL_EVIDENCE_NOT_FOUND\]/.test(normalizedResponse)
+        ? "none" : /\[MANUAL_EVIDENCE_PARTIAL:/.test(normalizedResponse) ? "partial" : "full";
+      writeLog(`[Manual Coverage] providerCoverage=${coverageAudit.coverage} validatedCoverage=${acceptedCoverage} unresolved=${String(coverageAudit.unresolvedQuestion || "").slice(0, 240)}`);
     } catch (error) { /* The normal structured validator records parse errors. */ }
     writeLog(
       `[Manual Page RAG] model=${plan.model} group=${plan.groupId} pages=${plan.fragments.map(function (fragment) { return fragment.pageNumber; }).join(",")} latencyMs=${Date.now() - startedAt}`,
@@ -16071,7 +16388,7 @@ function callManualPageRag_(
       throw error;
     }
     writeLog(
-      `[Manual Page RAG] 請求失敗，改走 Web 補救: ${String(error && error.message ? error.message : error)}`,
+      `[Manual Page RAG] 請求失敗，停止後續付費: ${String(error && error.message ? error.message : error)}`,
     );
     return {
       handled: true,
@@ -16084,11 +16401,12 @@ function callManualPageRag_(
 
 function applyManualEvidenceGuard_(text, queryText) {
   const raw = String(text || "");
+  if (/PROVIDER_FAILED|MANUAL_FORMAT_INVALID/.test(raw))return raw.replace(/\[(?:PROVIDER_FAILED|MANUAL_FORMAT_INVALID)\]/g,"").trim();
   if (/\[MANUAL_OUTPUT_FORMAT_ERROR\]/.test(raw)) {
-    return "官方手冊已送達模型，但這次回答格式沒有通過驗證。這是系統整理問題，不代表手冊沒有答案；我會接著補查一次公開網頁，不另扣你的網搜次數。";
+    return "官方手冊已送達模型，但這次回答格式沒有通過驗證。這是系統整理問題，不代表手冊沒有答案；請稍後再試。";
   }
   if (/\[MANUAL_EVIDENCE_VALIDATION_ERROR\]/.test(raw)) {
-    return "官方手冊已找到相關內容，但頁碼或證據摘錄沒有通過驗證。為避免把未核對內容當成手冊答案，我會接著補查一次公開網頁，不另扣你的網搜次數。";
+    return "官方手冊已找到相關內容，但頁碼或證據摘錄沒有通過驗證。目前無法確認這部分內容，請稍後再試。";
   }
   const evidence = parseManualEvidenceMarker_(text);
   const partialMatch = raw.match(
@@ -16119,7 +16437,7 @@ function applyManualEvidenceGuard_(text, queryText) {
     writeLog(
       `[Manual Evidence Guard v29.6.136] 手冊回答缺少可核對頁碼／摘錄／適用範圍: found=${evidence.found}, page=${evidence.page || "none"}, scope=${evidence.scope || "none"}, excerpt=${evidence.excerpt ? 1 : 0}`,
     );
-    return "官方手冊已有回應，但頁碼、摘錄或適用型號範圍沒有完整通過驗證。為避免把不可靠內容當成手冊答案，我會接著補查一次公開網頁，不另扣你的網搜次數。\n\n[AUTO_SEARCH_WEB]";
+    return "官方手冊已有回應，但頁碼、摘錄或適用型號範圍沒有完整通過驗證。為避免把不可靠內容當成手冊答案，這次先停止後續付費查詢，保留先前已核實的內容。";
   }
 
   let guarded = evidence.text;
@@ -16760,6 +17078,9 @@ let lastWebUnverifiedDraft = "";
 let currentRequestAudit = null;
 
 function resetRequestAudit_() {
+  if (typeof lineAcceptanceRequest_ !== "undefined") lineAcceptanceRequest_ = null;
+  providerTurnBudget_ = null;
+  localEvidenceDecision_ = null;
   currentRequestAudit = {
     stages: [],
     model: "",
@@ -16771,6 +17092,8 @@ function resetRequestAudit_() {
     routerCacheHits: 0,
     plannerLatencyMs: 0,
     routerCostTwd: 0,
+    evidence_verifyCalls: 0,
+    evidenceVerifyCostTwd: 0,
     routePlanValid: false,
     routePlan: null,
     claimRoutes: [],
@@ -16798,6 +17121,7 @@ function markGenerationAttempt_(stage, modelName) {
   currentRequestAudit.model = modelName || currentRequestAudit.model;
   currentRequestAudit.attemptedCalls++;
   if (stage === "router") currentRequestAudit.routerCalls++;
+  if (stage === "evidence_verify") currentRequestAudit.evidence_verifyCalls++;
   if (stage === "pdf") currentRequestAudit.pdfCalls++;
   if (stage === "web") currentRequestAudit.webCalls++;
   if (typeof pendingProviderAttempt_ !== "undefined") pendingProviderAttempt_ = {stage: stage, model: modelName};
@@ -16874,6 +17198,8 @@ function writeRequestAuditOnce_(visibleText) {
     routerCacheHits: currentRequestAudit.routerCacheHits,
     plannerLatencyMs: currentRequestAudit.plannerLatencyMs,
     routerCostTwd: Number(currentRequestAudit.routerCostTwd.toFixed(4)),
+    evidenceVerifyCalls: currentRequestAudit.evidence_verifyCalls,
+    evidenceVerifyCostTwd: Number(currentRequestAudit.evidenceVerifyCostTwd.toFixed(6)),
     routePlanValid: currentRequestAudit.routePlanValid,
     routePlan: currentRequestAudit.routePlan,
     claimRoutes: currentRequestAudit.claimRoutes,
@@ -19691,173 +20017,8 @@ function deleteTemporaryGeminiFile_(fileUri, apiKey) {
 }
 
 function validateOfficialManualFirstPage_(blob, candidate) {
-  const apiKey = getGeminiApiKey_();
-  if (!apiKey) return { valid: false, reason: "MISSING_GEMINI_API_KEY" };
-  const fileUri = uploadFileToGemini(
-    apiKey,
-    blob,
-    blob.getBytes().length,
-    "application/pdf",
-  );
-  if (!fileUri) return { valid: false, reason: "GEMINI_FILE_UPLOAD_FAILED" };
-  try {
-    const payload = {
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text:
-                "只讀這份三星螢幕官方 PDF 的第 1 頁。逐字擷取第 1 頁列出的所有完整螢幕型號；若出現 S24F33* 這類尾端星號家族模式，必須保留 * 原樣輸出。不要從檔名、其他頁或常識補型號。若第 1 頁無法辨識就回 page1Readable=false。",
-            },
-            {
-              fileData: {
-                mimeType: "application/pdf",
-                fileUri: fileUri,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 400,
-        thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_FAST),
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            page1Readable: { type: "BOOLEAN" },
-            isSamsungMonitorManual: { type: "BOOLEAN" },
-            page1Models: {
-              type: "ARRAY",
-              items: { type: "STRING" },
-            },
-          },
-          required: ["page1Readable", "isSamsungMonitorManual", "page1Models"],
-        },
-      },
-    };
-    const countResponse = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_FAST}:countTokens`,
-      {
-        method: "post",
-        geminiApiKey: apiKey,
-        contentType: "application/json",
-        payload: JSON.stringify({ contents: payload.contents }),
-        muteHttpExceptions: true,
-      },
-    );
-    if (countResponse.getResponseCode() !== 200) {
-      return { valid: false, reason: "FIRST_PAGE_COUNT_TOKENS_FAILED" };
-    }
-    const totalTokens = Number(
-      JSON.parse(countResponse.getContentText()).totalTokens || 0,
-    );
-    if (!totalTokens || totalTokens > 250000) {
-      return { valid: false, reason: "FIRST_PAGE_TOKEN_LIMIT" };
-    }
-    function requestFirstPageIdentity_(modelName) {
-      const response = providerFetch_(
-        `${CONFIG.API_ENDPOINT}/${modelName}:generateContent`,
-        {
-          method: "post",
-          geminiApiKey: apiKey,
-          contentType: "application/json",
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true,
-        },
-      );
-      if (response.getResponseCode() !== 200) {
-        return {
-          valid: false,
-          reason: `FIRST_PAGE_HTTP_${response.getResponseCode()}`,
-          modelName: modelName,
-        };
-      }
-      const json = JSON.parse(response.getContentText());
-      const resultText = String(
-        (((json.candidates || [])[0] || {}).content || {}).parts?.[0]?.text || "",
-      );
-      const result = JSON.parse(resultText);
-      let finalFileName = buildOfficialManualFinalFileName_(
-        result.page1Models,
-        candidate.fullSku,
-      );
-      let modelBinding = "pdf_first_page";
-      let exactModelInDocument = true;
-      const page1Models = Array.isArray(result.page1Models)
-        ? result.page1Models
-        : [];
-      if (
-        !finalFileName &&
-        result.page1Readable === true &&
-        result.isSamsungMonitorManual === true
-      ) {
-        finalFileName = buildOfficialSupportPageFamilyPatternFileName_(
-          page1Models,
-          candidate,
-        );
-        if (finalFileName) {
-          modelBinding = "official_support_page_family_pattern";
-          exactModelInDocument = false;
-        }
-      }
-      if (
-        !finalFileName &&
-        result.page1Readable === true &&
-        result.isSamsungMonitorManual === true &&
-        page1Models.length === 0 &&
-        isOfficialSupportPageBoundManualCandidate_(candidate)
-      ) {
-        finalFileName = buildOfficialManualFinalFileName_(
-          [normalizeModelForDisplay(candidate.fullSku)],
-          candidate.fullSku,
-        );
-        modelBinding = "official_support_page";
-        exactModelInDocument = false;
-      }
-      return {
-        valid:
-          result.page1Readable === true &&
-          result.isSamsungMonitorManual === true &&
-          Boolean(finalFileName),
-        reason: finalFileName
-          ? ""
-          : `FIRST_PAGE_IDENTITY_MISMATCH_${(result.page1Models || [])
-              .join("|")
-              .substring(0, 120)}`,
-        modelName: modelName,
-        finalFileName: finalFileName,
-        page1Models: page1Models,
-        modelBinding: modelBinding,
-        exactModelInDocument: exactModelInDocument,
-      };
-    }
-    let extraction = requestFirstPageIdentity_(GEMINI_MODEL_FAST);
-    if (!extraction.valid && GEMINI_MODEL_THINK !== GEMINI_MODEL_FAST) {
-      writeLog(
-        `[Manual Auto Import] ${candidate.fullSku} Flash-Lite 第一頁核對未通過，改由 3.7 Flash 再核對一次`,
-      );
-      extraction = requestFirstPageIdentity_(GEMINI_MODEL_THINK);
-    }
-    if (!extraction.valid) {
-      return { valid: false, reason: extraction.reason || "FIRST_PAGE_IDENTITY_MISMATCH" };
-    }
-    return {
-      valid: true,
-      finalFileName: extraction.finalFileName,
-      page1Models: extraction.page1Models,
-      modelBinding: extraction.modelBinding,
-      exactModelInDocument: extraction.exactModelInDocument,
-      inputTokens: totalTokens,
-      validationModel: extraction.modelName,
-    };
-  } catch (error) {
-    return { valid: false, reason: `FIRST_PAGE_PARSE_${error.message}` };
-  } finally {
-    deleteTemporaryGeminiFile_(fileUri, apiKey);
-  }
+  // Discovery may hash bytes, but never sends a whole manual to a model.
+  return queueManualIdentityInspection_(candidate, manualIndexDigest_(blob.getBytes()));
 }
 
 function readOfficialManualManifest_() {
@@ -20133,91 +20294,7 @@ function stageOfficialTwManualCandidate_(product, discoveredCandidate) {
     return Object.assign({}, candidate, { sha256: sha256, action: "INDEX_PENDING",
       manualStatus: "PENDING_PAGE_INDEX", validationReason: "PAGE_INDEX_BUILD_REQUIRED" });
   }
-  const validation = validateOfficialManualFirstPage_(blob, candidate);
-  if (validation.valid) {
-    const verifiedCandidate = Object.assign({}, candidate, {
-      modelBinding: validation.modelBinding || "pdf_first_page",
-      exactModelInDocument: validation.exactModelInDocument !== false,
-      workerBinding: {schemaVersion:1, sourcePdfSha256:sha256.toLowerCase(),
-        models:[normalizeModelForDisplay(candidate.fullSku)],documentRole:'manual',verifiedAt:new Date().toISOString()},
-    });
-    savePendingManualRevision_(verifiedCandidate, sha256, validation.finalFileName, 'PAGE_INDEX_BUILD_REQUIRED');
-    try {
-      const promotion = promoteOfficialManualToRoot_(
-        blob,
-        verifiedCandidate,
-        sha256,
-        validation.finalFileName,
-      );
-      if (promotion.success) {
-        return Object.assign({}, candidate, validation, promotion, {
-          sha256: sha256,
-          manualStatus: "ACTIVE_AUTO_VALIDATED",
-          stagedAt: new Date().toISOString(),
-        });
-      }
-    } catch (promotionError) {
-      validation.reason = `PROMOTION_EXCEPTION_${String(
-        promotionError && promotionError.message
-          ? promotionError.message
-          : promotionError,
-      ).substring(0, 160)}`;
-      writeLog(
-        `[Manual Auto Import] ${candidate.fullSku} 正式入庫失敗，已改存隔離區等下次自動重試: ${validation.reason}`,
-      );
-      try {
-        savePendingManualRevision_(verifiedCandidate, sha256, validation.finalFileName, validation.reason);
-        writeLog(
-          `[Manual Auto Import] ${candidate.fullSku} 新版本待入庫；保留正式 PDF 與 manifest，不以臨時 URI 覆蓋`,
-        );
-        return Object.assign({}, candidate, validation, {
-          sha256: sha256,
-          action: "PROMOTION_PENDING",
-          manualStatus: "PENDING_MANUAL_REVIEW",
-          stagedAt: new Date().toISOString(),
-        });
-      } catch (fallbackError) {
-        validation.reason += `_GEMINI_FALLBACK_${String(
-          fallbackError && fallbackError.message
-            ? fallbackError.message
-            : fallbackError,
-        ).substring(0, 120)}`;
-      }
-    }
-  }
-  const stagingName = "_PENDING_MANUAL_REVIEW";
-  const stagedFileName = `PENDING__${candidate.fullSku}__${candidate.fileId || sha256.slice(0, 12)}.pdf`;
-  let driveFileId = "";
-  try {
-    const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-    const stagingFolders = rootFolder.getFoldersByName(stagingName);
-    const stagingFolder = stagingFolders.hasNext()
-      ? stagingFolders.next()
-      : rootFolder.createFolder(stagingName);
-    const existing = stagingFolder.getFilesByName(stagedFileName);
-    if (existing.hasNext()) {
-      driveFileId = existing.next().getId();
-    } else {
-      driveFileId = stagingFolder
-        .createFile(blob.setName(stagedFileName))
-        .getId();
-    }
-  } catch (stagingError) {
-    validation.reason += `_STAGING_UNAVAILABLE_${String(
-      stagingError && stagingError.message ? stagingError.message : stagingError,
-    ).substring(0, 120)}`;
-    writeLog(
-      `[Manual Staging] ${candidate.fullSku} 隔離區不可寫；待重試狀態仍保存於 ScriptProperties`,
-    );
-  }
-  return Object.assign({}, candidate, {
-    sha256: sha256,
-    driveFileId: driveFileId,
-    stagedFileName: stagedFileName,
-    manualStatus: "AUTO_VALIDATION_RETRY",
-    validationReason: validation.reason || "PROMOTION_FAILED",
-    stagedAt: new Date().toISOString(),
-  });
+  return queueManualIdentityInspection_(candidate, sha256);
 }
 
 function sanitizeOfficialRuleField_(value) {
@@ -21683,7 +21760,7 @@ function constructLeanDynamicPromptV159_(
   targetModelName = null,
 ) {
   const userId = messages.length > 0 ? messages[0].userId : "unknown";
-  const modelLabel = targetModelName || "使用者正在詢問的三星螢幕";
+  const modelLabel = targetModelName || "未指定型號，依本題回答一般原理或操作，不代入任一機型";
   let dynamicPrompt = "";
 
   if (forceWebSearch) {
@@ -21694,11 +21771,12 @@ function constructLeanDynamicPromptV159_(
     );
     dynamicPrompt = `【WEB 模式｜${today}】
 使用者已同意搜尋公開網頁。請實際使用 google_search，只查可核對的非官方資料；不要搜尋或讀取 Samsung 官網，官方規格由系統 RULE／QA 提供，介面會另給官網連結。
+先以一個精簡查詢核對外部來源，再寫答案；即使已知道原理，也不可跳過查證。只需一次搜尋，不展開多個查詢。若未取得來源，只說明未能完成查證，不能以記憶答案冒充搜尋結果。
 查證對象：${modelLabel}
 問題：${query}
 
-直接給最可能解決問題的答案，最多 5 點、450 個中文字。非官方做法要清楚提醒「非官方，請斟酌參考」。只採搜尋證據直接支持的內容，不用內建知識補空白；沒有可核對結果就誠實說明，不要假裝搜到。
-【硬性隔離守衛】本機官方規格庫與 QA 優先級高於網路搜尋。嚴禁採納與官方規格衝突的外部農場文（例如 Smart Monitor M5 絕無原生 AirPlay 2，若外部網頁聲稱支援，必須以官方規格為準明確指正）。`;
+直接回答核心，最多 3 點、200 個中文字，保留適用條件並完整收尾。非官方做法要清楚提醒「非官方，請斟酌參考」。只採搜尋證據直接支持的內容，不用內建知識補空白；沒有指定型號時搜尋本題通用原理，不擅自加三星品牌。沒有可核對結果就誠實說明，不要假裝搜到。
+【硬性隔離守衛】本機官方規格庫與 QA 優先級高於網路搜尋。嚴禁採納與官方規格衝突的外部農場文；只有提供的官方資料明確記載不支援時才能下否定結論，資料未記載不能推成不支援。`;
   } else if (kbFiles.length > 0) {
     dynamicPrompt = `【PDF 模式】
 唯一資料來源是本輪掛載的三星官方手冊 PDF。
@@ -22551,7 +22629,7 @@ ${recentOfficialManualAnswer}
 
   const genConfig = {
     maxOutputTokens: forceWebSearch
-      ? 450
+      ? 800
       : attachPDFs
         ? CONFIG.MAX_PDF_OUTPUT_TOKENS
         : CONFIG.MAX_OUTPUT_TOKENS,
@@ -22652,6 +22730,7 @@ ${recentOfficialManualAnswer}
       { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }, // v29.5.72: Added new category
     ],
     tools: tools,
+    toolConfig: forceWebSearch ? {includeServerSideToolInvocations:true} : undefined,
   };
 
   // v29.6.031: Cached Content 暫時禁用 - 因為現有架構用 systemInstruction + tools
@@ -22853,13 +22932,14 @@ ${recentOfficialManualAnswer}
       const requestStage = attachPDFs ? "pdf" : forceWebSearch ? "web" : "fast";
       lastLlmCallAttempted = true;
       markGenerationAttempt_(requestStage, modelName);
-      const response = providerFetch_(url, {
+      const response = providerFetch_(forceWebSearch ? PROVIDER_INTERACTIONS_ENDPOINT : url, {
+        providerPurpose: requestStage,
         geminiApiKey: apiKey,
         sourceGrant: advancedGrant,
         budgetInputTokens: tokenPreflight.ok ? tokenPreflight.totalTokens : 0,
         method: "post",
         headers: { "Content-Type": "application/json" },
-        payload: JSON.stringify(payload),
+        payload: JSON.stringify(forceWebSearch ? buildWebInteractionsPayload_(payload) : payload),
         muteHttpExceptions: true,
         connectTimeout: 5000, // 5秒連接超時防掛起
         readTimeout: 10000    // 10秒讀取超時防掛起
@@ -22963,16 +23043,7 @@ ${recentOfficialManualAnswer}
               writeLog(
                 `[PDF Mode ERROR] 這通常表示 PDF 載入成功但 AI 無法生成完整回答，可能是 Gemini API 的安全阻擋或工具衝突`,
               );
-              if (retryCount === 0) {
-                retryCount++;
-                payload.generationConfig.temperature = 0.2;
-                writeLog(
-                  "[PDF Mode Retry v29.6.123] 異常空答，降低溫度後重試一次",
-                );
-                Utilities.sleep(500);
-                continue;
-              }
-              return "這次官方手冊沒有產生可用文字；系統已自動重試一次。請改按「網路解答」查證公開資料。";
+              return "[MANUAL_FORMAT_INVALID] 官方手冊這次未產生可用文字，請稍後再試。";
             }
           }
 
@@ -22985,18 +23056,11 @@ ${recentOfficialManualAnswer}
               )}`,
             );
           } else if (candidates[0].content && candidates[0].content.parts) {
-            const firstPart = candidates[0].content.parts[0];
-            if (!firstPart.text || firstPart.text.trim().length === 0) {
-              writeLog(
-                `[API Warning] 回應為空文本: parts=${JSON.stringify(
-                  candidates[0].content.parts,
-                ).substring(0, 300)}`,
-              );
-            }
+            const responseText = candidates[0].content.parts.filter(function(part){return typeof part.text === "string" && !part.thought;}).map(function(part){return part.text;}).join("");
+            if (!responseText.trim()) writeLog(`[API Warning] 回應沒有可用文字，parts=${candidates[0].content.parts.length}`);
 
             // v26.6.0: 記錄短回答（Out < 50 tokens）的實際內容
             if (usage && usage.candidatesTokenCount < 50) {
-              const responseText = firstPart.text || "";
               writeLog(
                 `[API Short Response] Out: ${
                   usage.candidatesTokenCount
@@ -23012,7 +23076,7 @@ ${recentOfficialManualAnswer}
             candidates[0].content.parts.length > 0
           ) {
             const firstPart = candidates[0].content.parts[0];
-            let text = (firstPart.text || "").trim();
+            let text = candidates[0].content.parts.filter(function(part){return typeof part.text === "string" && !part.thought;}).map(function(part){return part.text;}).join("").trim();
 
             if (attachPDFs) {
               text = normalizeManualStructuredResponse_(
@@ -23218,7 +23282,7 @@ ${recentOfficialManualAnswer}
               }
             } else if (forceWebSearch) {
               writeLog(
-                `[Grounding] ⚠️ forceWebSearch=true 但無 groundingMetadata，可能 API 未啟用搜尋`,
+                `[Grounding] 回覆未附 groundingMetadata；搜尋是否執行另見 Search Execution Receipt，不能用缺來源推定未搜尋`,
               );
             }
 
@@ -23422,28 +23486,6 @@ ${recentOfficialManualAnswer}
       }
       if (code === 404) {
         writeLog(`[API 404] 檔案不存在: ${text.substring(0, 200)}`);
-        if (attachPDFs && !pdfRefreshAttempted) {
-          const refreshedFiles = refreshStalePdfAttachmentsFromDrive_(filesToAttach);
-          if (refreshedFiles.length > 0) {
-            writeLog(
-              "[PDF Generate Refresh v29.6.123] 生成階段 404，已單檔更新並重試",
-            );
-            return callLLMWithRetry(
-              query,
-              messages,
-              refreshedFiles,
-              attachPDFs,
-              imageBlob,
-              true,
-              userId,
-              forceWebSearch,
-              targetModelName,
-              evidenceCorrectionAttempted,
-              webGroundingRetryAttempted,
-              true,
-            );
-          }
-        }
         // 標記需要重建，並返回特殊標記讓外層處理
         markPdfNamesForBackgroundRefresh_(filesToAttach);
         CacheService.getScriptCache().put("kb_need_rebuild", "true", 3600);
@@ -23491,12 +23533,7 @@ ${recentOfficialManualAnswer}
         return "系統暫時忙碌，這次查詢暫時無法處理，請稍後再試一次。";
       }
       if (code === 500 || code === 503) {
-        writeLog(`[API ${code}] Google 伺服器錯誤，重試中...`);
-        lastError = `Google 伺服器暫時故障`;
-        retryCount++;
-        if (retryCount >= 2) { writeLog('[API Fail] 伺服器連續 500，提早退出避免 Webhook 逾時'); break; }
-        Utilities.sleep(1000); // v29.6 BUG 防禦: 固定睡 1 秒
-        continue;
+        return "[PROVIDER_FAILED] 系統暫時無法完成這次查詢，請稍後再試。";
       }
 
       // 其他錯誤不重試；只有 429/5xx 符合退避條件。
@@ -23508,9 +23545,9 @@ ${recentOfficialManualAnswer}
       writeLog(`[API Exception] ${e.message}`);
       if (e.message === "PROVIDER_MONTH_BUDGET_EXHAUSTED") return providerBudgetReply_();
       if (/^PROVIDER_(?:CREDENTIAL_SUSPENDED|PERMISSION_DENIED)$/.test(e.message)) throw e;
-      if (/^PROVIDER_/.test(e.message)) return "付費查證目前暫停，已有的規格與常見問答仍可查。這題還缺的資料可以請 Sam 協助確認。";
+      if (/^PROVIDER_/.test(e.message)) return "[PROVIDER_FAILED] 付費查證目前暫停，已有的規格與常見問答仍可查。這題還缺的資料可以請 Sam 協助確認。";
       if (e.message.includes("token")) return e.message;
-      return "⚠️ 系統連線暫時異常，請稍後再試。";
+      return "[PROVIDER_FAILED] 系統連線暫時異常，請稍後再試。";
     }
   }
 
@@ -23736,7 +23773,7 @@ function getCustomerModelUsageLabel_() {
       String(audit.providerOutcome || ""),
     ) >= 0
   ) {
-    return "模型未完成（查詢服務拒絕）";
+    return "模型：未完成（查詢服務拒絕）";
   }
   let models = audit && Array.isArray(audit.billableModels)
     ? audit.billableModels.slice()
@@ -23751,7 +23788,7 @@ function getCustomerModelUsageLabel_() {
   ) {
     models = [String(audit.model).trim()];
   }
-  if (models.length === 0) return "未使用模型";
+  if (models.length === 0) return "模型：未使用模型";
 
   const labels = models.map(function (modelName) {
     const normalized = String(modelName || "")
@@ -23862,13 +23899,13 @@ function renderCustomerFacingText_(text) {
       const quotaStatus = LAST_SOURCE_TEST_STATE.refunded
         ? `${quotaLabel}未扣，仍 ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`
         : `${quotaLabel} ${advancedRemaining}/${SOURCE_DAILY_LIMITS[advancedSource]}`;
-      body = `${body}\n\n${costLabel}｜${modelLabel}｜${quotaStatus}`.trim();
+      body = `${body}\n\n${costLabel}\n${modelLabel}\n剩餘：${quotaStatus}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     } else if (typeof CURRENT_DAILY_QUESTION_REMAINING === "number") {
-      body = `${body}\n\n${costLabel}｜${modelLabel}｜直接問 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
+      body = `${body}\n\n${costLabel}\n${modelLabel}\n剩餘：直接問 ${CURRENT_DAILY_QUESTION_REMAINING}/${USER_DAILY_QUESTION_LIMIT}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     } else {
-      body = `${body}\n\n${costLabel}｜${modelLabel}`.trim();
+      body = `${body}\n\n${costLabel}\n${modelLabel}`.trim();
       CURRENT_REPLY_FOOTER_APPENDED = true;
     }
   }
@@ -24156,6 +24193,7 @@ function handleMessage(event) {
     LAST_SOURCE_TEST_STATE = null;
     CURRENT_DAILY_QUESTION_REMAINING = null;
     resetRequestAudit_();
+    bindLineAcceptanceEvent_(event);
 
     // 🔥 核心修正：直接讀取，若非字串則強制轉為空字串 (不要用 String() 包物件)
     let userMessage = event.message.text;
@@ -24182,6 +24220,9 @@ function handleMessage(event) {
     const contextId = isGroupContext
       ? event.source.groupId || event.source.roomId
       : userId;
+    CURRENT_REPLY_USER_ID = String(userId || contextId || "");
+    CURRENT_REPLY_CONTEXT_ID = String(contextId || userId || "");
+    invalidateReplyContinuation_(CURRENT_REPLY_USER_ID, CURRENT_REPLY_CONTEXT_ID);
     const cache = CacheService.getScriptCache();
     // v29.6.003: 智慧型圖片-文字併發衝突恢復機制 (Concurrently Pending Query Recovery)
     // Cancellation is always a control event, even without pending mode.
@@ -27068,20 +27109,32 @@ function handleMessage(event) {
       return;
     }
 
-    // 精準 QA 未命中後，無完整型號的操作／故障／相容性題先補型號。
-    // 不把泛用主機設定、線材或其他型號步驟送給 Fast 模型猜，也不浪費一次 LLM。
+    // 無型號不等於需要型號。先用同一次 QA/RULE 判讀區分通論與個別產品問題；
+    // 分類不能當事實證據。通論缺資料只查 Web，不讀不相干產品 PDF，也不先生成無證據草稿。
     const isExclusiveFeatureQuery = findExclusiveFeatureInQuery_(routingQuestion) !== null;
+    const unscopedLocalDecision = !incomingMessageWasElaboration &&
+      !deferLocalEvidenceForSemanticFollowUp && !isExclusiveFeatureQuery &&
+      !resolvedConversationModel && !primaryModel && !isSamsungHomeApplianceQuery(routingQuestion) &&
+      extractFullModelLikeTokens(routingQuestion).length === 0 &&
+      extractShortAliasModelTokens(routingQuestion).length === 0
+      ? ensureLocalEvidenceDecision_(routingQuestion,"",contextId,{classifyScope:true}) : null;
+    if(unscopedLocalDecision && (unscopedLocalDecision.complete || unscopedLocalDecision.failure || unscopedLocalDecision.needsClarification)) {
+      replyLocalEvidenceDecision_(unscopedLocalDecision,routingQuestion,"",contextId,userId,replyToken);
+      return;
+    }
     const freshOperationNeedsModel =
       !incomingMessageWasElaboration &&
       !deferLocalEvidenceForSemanticFollowUp &&
       !isExclusiveFeatureQuery &&
-      isOperationOrTroubleshootQuery(routingQuestion) &&
+      (unscopedLocalDecision ? unscopedLocalDecision.questionScope === "model_specific" :
+        isOperationOrTroubleshootQuery(routingQuestion)) &&
       extractFullModelLikeTokens(routingQuestion).length === 0 &&
       extractShortAliasModelTokens(routingQuestion).length === 0;
     if (freshOperationNeedsModel) {
-      const needModelReply = isSamsungHomeApplianceQuery(routingQuestion)
+      let needModelReply = isSamsungHomeApplianceQuery(routingQuestion)
         ? buildNeedApplianceModelForOperationReply()
         : buildNeedModelForOperationReply();
+      if(unscopedLocalDecision&&unscopedLocalDecision.answer)needModelReply=unscopedLocalDecision.answer+"\n"+(unscopedLocalDecision.sourceTags||[]).join("\n")+"\n\n"+needModelReply;
       markDailyQuestionModelSelectionHold_(userId);
       cache.put(`${userId}:pending_topic`, routingQuestion, 600);
       cache.put(`${userId}:model_select_mode`, "fast", 600);
@@ -27093,11 +27146,20 @@ function handleMessage(event) {
         modelSelectionMode: "fast",
       };
       writeLog(
-        "[Operation Guard v29.6.142] 精準 QA 未命中且沒有完整型號，零 LLM 直接請使用者補型號",
+        "[Operation Scope Guard v324] 個別產品問題缺完整型號，保留已確認內容並請使用者補型號",
       );
       replyMessage(replyToken, needModelReply);
       writeRecordDirectly(userId, msg, contextId, "user", "");
       writeRecordDirectly(userId, needModelReply, contextId, "assistant", "");
+      return;
+    }
+
+    if(unscopedLocalDecision && unscopedLocalDecision.questionScope === "general") {
+      const dailyQuestionCharge=dailyQuestionReservedThisMessage?"current":"";
+      dailyQuestionReservedThisMessage=false;
+      rememberRecentSourceQuestion_(contextId,routingQuestion,"");
+      writeLog("[General Evidence Route v324] QA/RULE 判讀仍有缺口；只查通論未解部分，不呼叫 PDF 或無證據 Fast");
+      executeAutomaticWebFallback_(routingQuestion,"",contextId,userId,replyToken,{dailyQuestionCharge:dailyQuestionCharge});
       return;
     }
 
@@ -27613,6 +27675,17 @@ function handleMessage(event) {
       }
     }
 
+    if(!incomingMessageWasElaboration) {
+      const evidenceModel=resolvedConversationModel||primaryModel||"";
+      const local=ensureLocalEvidenceDecision_(routingQuestion,evidenceModel,contextId,{classifyScope:!evidenceModel});
+      if(local.complete||local.failure||local.needsClarification){replyLocalEvidenceDecision_(local,routingQuestion,evidenceModel,contextId,userId,replyToken);return;}
+      const charge=dailyQuestionReservedThisMessage?"current":"";dailyQuestionReservedThisMessage=false;
+      const productMissing=!local.envelope||local.envelope.claims.some(c=>c.state!=="answered"&&c.scope==="model_specific");
+      const next=productMissing&&hasPdfForModel?executeAutomaticManualFallback_:executeAutomaticWebFallback_;
+      next(routingQuestion,evidenceModel,contextId,userId,replyToken,{dailyQuestionCharge:charge});
+      return;
+    }
+
     try {
       // v24.5.0: 每題都先走 Fast Mode（不帶 PDF），讓 QA/CLASS_RULES 先嘗試回答
       // 這樣規格問題（如「M8 有附鏡頭嗎」）可以秒答，不用浪費 PDF Token
@@ -27717,17 +27790,6 @@ function handleMessage(event) {
             "[Semantic Router v29.6.277] conditional 已接管來源；忽略 Fast 舊暗號",
           );
         }
-        // 🆕 v29.5.218: 實體交叉比對防謊器 (Fake-Source Validator)
-        // 若使用者詢問的是 6K/8K 等超前規格，但我們規格庫目前沒有，而 AI 卻自我幻覺瞎編，我們必須將其強行攔寫。
-        const isQueryAboutNewSpec = /6K|8K/i.test(userMessage);
-        if (isQueryAboutNewSpec) {
-          const hasSpecInResponse = /6K|8K|G90XH|G80HS/i.test(rawResponse);
-          if (hasSpecInResponse) {
-            writeLog("[Fake-Source Filter] 🛑 偵測到 AI 幻覺瞎編不存在的 6K/8K 螢幕規格，強行攔截改寫為誠實無資料回覆！");
-            rawResponse = "⚠️ 抱歉，目前台灣三星官方規格庫與 QA 資料庫中，尚未登記任何 6K 或 8K 螢幕的相關型號規格資訊。若有最新產品上市消息，請依台灣三星官網最新公告為準喔！";
-          }
-        }
-
         // v29.6.125: CLASS_RULES 明載的 Tizen + 藍牙能力是硬證據。
         // Fast 模型不得反向否定；操作題只提出手冊授權，並保留已鎖定型號。
         rawResponse = enforceBluetoothAudioRuleEvidence_(
@@ -28913,7 +28975,8 @@ function handleMessage(event) {
                       const topicCheckResponse = providerFetch_(
                         `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
                         {
-                          geminiApiKey: apiKey,
+                          providerPurpose: "message_helper",
+        geminiApiKey: apiKey,
                           method: "post",
                           contentType: "application/json",
                           muteHttpExceptions: true,
@@ -29312,6 +29375,10 @@ function handleMessage(event) {
             originalQuestion: routingQuestion,
             model: envelopeModel,
             answerText: replyText,
+            inheritedEnvelope:
+              incomingMessageWasElaboration && inheritedElaborationEnvelope
+                ? inheritedElaborationEnvelope
+                : null,
             sourceTag:
               (incomingMessageWasElaboration && inheritedElaborationEnvelope
                 ? getSourceTagFromEvidenceRefs_(
@@ -30737,6 +30804,7 @@ RULE_主題,規則類型,完整規則說明...
     const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent`,
       {
+        providerPurpose: "rule_polish",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -30809,6 +30877,7 @@ function callGeminiToModifyRule(currentText, instruction) {
     const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        providerPurpose: "rule_modify",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -31350,6 +31419,7 @@ function findSimilarQA(newContent, polishedQA) {
         CONFIG.MODEL_NAME_FAST +
         ":generateContent",
       {
+        providerPurpose: "qa_match",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -31480,7 +31550,8 @@ function callGeminiToMergeQA(existingQAs, newQA) {
   var payload = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
-      maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+      thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_POLISH),
+      maxOutputTokens: 1200, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
       temperature: 0.3,
     },
   };
@@ -31491,9 +31562,10 @@ function callGeminiToMergeQA(existingQAs, newQA) {
     var res = providerFetch_(
       CONFIG.API_ENDPOINT +
         "/" +
-        CONFIG.MODEL_NAME_THINK +
+        GEMINI_MODEL_POLISH +
         ":generateContent",
       {
+        providerPurpose: "qa_merge",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -31630,7 +31702,8 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
-      maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+      thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_POLISH),
+      maxOutputTokens: 1200, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
       temperature: 0.3,
     },
   };
@@ -31639,8 +31712,9 @@ function callGeminiToRefineQA(originalContent, currentQA, conversation) {
     // v24.2.3: 對話修改用 Think 模型
     lastLlmCallAttempted = true;
     const res = providerFetch_(
-      `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_THINK}:generateContent`,
+      `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent`,
       {
+        providerPurpose: "qa_refine",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -31769,7 +31843,8 @@ function callGeminiToPolish(input, userId = null) {
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
-      maxOutputTokens: 2000, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
+      thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_POLISH),
+      maxOutputTokens: 1200, // v27.8.8: 從 1000 提高到 2000，避免 thinking tokens 佔用過多配額導致輸出被截斷
       temperature: 0.3,
     },
   };
@@ -31780,6 +31855,7 @@ function callGeminiToPolish(input, userId = null) {
     let res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${GEMINI_MODEL_POLISH}:generateContent`,
       {
+        providerPurpose: "qa_polish",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -31788,34 +31864,7 @@ function callGeminiToPolish(input, userId = null) {
       },
     );
 
-    // v27.9.45: 模型回滾機制 (Model Fallback Strategy)
-    // 若 Preview 模型失效 (404 Not Found 或 400 Bad Request)，自動切換至穩定的 Fast Mode
-    // ⛔️ 禁止使用 Push Message! 改為在結果中附加警告訊息
-    var warningMsg = "";
-
-    if (res.getResponseCode() === 404 || res.getResponseCode() === 400) {
-      const errBody = res.getContentText();
-      writeLog(
-        `[Polish Warning] ${GEMINI_MODEL_POLISH} 失效 (${res.getResponseCode()})，嘗試回滾... Err: ${errBody}`,
-      );
-
-      // 準備警告文字，將隨返還內容一起顯示
-      warningMsg = `⚠️ [系統警告] Preview 模型 (${GEMINI_MODEL_POLISH}) 已失效，系統已自動切換至 ${CONFIG.MODEL_NAME_FAST} 繼續服務。請通知管理員更新程式設定。\n\n`;
-
-      // 2. 自動切換至 Fast Mode 重試
-      writeLog(`[Polish Fallback] Switching to ${CONFIG.MODEL_NAME_FAST}`);
-      lastLlmCallAttempted = true;
-      res = providerFetch_(
-        `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
-        {
-          geminiApiKey: apiKey,
-          method: "post",
-          headers: { "Content-Type": "application/json" },
-          payload: JSON.stringify(payload), // payload 通用
-          muteHttpExceptions: true,
-        },
-      );
-    }
+    const warningMsg = ""; // Invalid requests retain the local draft; no model fallback.
 
     const code = res.getResponseCode();
     const body = res.getContentText();
@@ -31942,6 +31991,7 @@ function callGeminiToModify(currentText, instruction) {
     const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        providerPurpose: "qa_modify",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -32253,6 +32303,7 @@ function handleAutoQA(u, cid) {
     const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        providerPurpose: "qa_auto",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -32685,6 +32736,9 @@ function sanitizeHistoryContent(content) {
   content = content.replace(/\n{0,2}\[費用\s*[:：][^\]]+\]/gi, "");
   content = content.replace(/^\s*資料來源\s*[:：][^\n]+$/gim, "");
   content = content.replace(/^\s*本次約\s+NT\$[^\n]+$/gim, "");
+  content = content.replace(/^\s*本次費用待確認[^\n]*$/gim, "");
+  content = content.replace(/^\s*模型\s*[:：][^\n]+$/gim, "");
+  content = content.replace(/^\s*剩餘\s*[:：][^\n]+$/gim, "");
   content = content.replace(/^\s*\(📊\s*已搜尋[^\n]+\)$/gim, "");
   content = content.replace(/^\s*參考\s*[:：][^\n]+非官方[^\n]*$/gim, "");
   content = content.replace(
@@ -32885,6 +32939,7 @@ function callGeminiToSummarize(messages) {
     const res = providerFetch_(
       `${CONFIG.API_ENDPOINT}/${CONFIG.MODEL_NAME_FAST}:generateContent`,
       {
+        providerPurpose: "history_summary",
         geminiApiKey: apiKey,
         method: "post",
         headers: { "Content-Type": "application/json" },
@@ -33775,6 +33830,454 @@ function getHistoryModels(userId) {
   }
 }
 
+const REPLY_SPLIT_TARGET_UTF16 = 1200;
+const REPLY_TEXT_MAX_UTF16 = 5000;
+const REPLY_PAGE_MAX_MESSAGES = 5;
+const REPLY_CONTINUATION_MAX_PAGES = 4;
+const REPLY_CONTINUATION_TTL_SECONDS = 1800;
+const REPLY_CONTINUATION_PAGE_MAX_BYTES = 80 * 1024;
+const REPLY_CONTINUATION_TOTAL_MAX_BYTES = 256 * 1024;
+
+function cloneReplyPayload_(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function replyUtf8Bytes_(value) {
+  return Utilities.newBlob(String(value || ""), "text/plain").getBytes().length;
+}
+
+function isReplyCombiningCodePoint_(char) {
+  if (!char) return false;
+  try {
+    return /\p{M}/u.test(char);
+  } catch (_) {
+    const cp = char.codePointAt(0);
+    return (cp >= 0x0300 && cp <= 0x036f) ||
+      (cp >= 0x1ab0 && cp <= 0x1aff) ||
+      (cp >= 0x1dc0 && cp <= 0x1dff) ||
+      (cp >= 0x20d0 && cp <= 0x20ff) ||
+      (cp >= 0xfe20 && cp <= 0xfe2f);
+  }
+}
+
+function replyGraphemeClusters_(text) {
+  const clusters = [];
+  let current = "";
+  let regionalCount = 0;
+  Array.from(String(text || "")).forEach(function (char) {
+    const cp = char.codePointAt(0);
+    const combining = isReplyCombiningCodePoint_(char) ||
+      cp === 0xfe0e || cp === 0xfe0f ||
+      (cp >= 0x1f3fb && cp <= 0x1f3ff);
+    const regional = cp >= 0x1f1e6 && cp <= 0x1f1ff;
+    if (!current) {
+      current = char;
+      regionalCount = regional ? 1 : 0;
+      return;
+    }
+    if (combining || char === "\u200d" || current.endsWith("\u200d") ||
+        (regional && regionalCount === 1)) {
+      current += char;
+      if (regional) regionalCount++;
+      return;
+    }
+    clusters.push(current);
+    current = char;
+    regionalCount = regional ? 1 : 0;
+  });
+  if (current) clusters.push(current);
+  return clusters;
+}
+
+function splitReplyTextForLine_(text) {
+  let remaining = String(text || "").trim();
+  if (!remaining) return [];
+  const chunks = [];
+  while (remaining.length > REPLY_SPLIT_TARGET_UTF16) {
+    const clusters = replyGraphemeClusters_(remaining);
+    let units = 0;
+    let targetEnd = 0;
+    for (let i = 0; i < clusters.length; i++) {
+      const next = units + clusters[i].length;
+      if (next > REPLY_SPLIT_TARGET_UTF16) break;
+      units = next;
+      targetEnd = units;
+    }
+    let end = targetEnd || Math.min(remaining.length, REPLY_SPLIT_TARGET_UTF16);
+    const minimumPreferred = Math.floor(REPLY_SPLIT_TARGET_UTF16 * 0.55);
+    const prefix = remaining.slice(0, end);
+    const candidates = [prefix.lastIndexOf("\n\n") + 2, prefix.lastIndexOf("\n") + 1];
+    const sentencePattern = /[。！？!?；;](?:\s|$)/g;
+    let sentenceMatch;
+    let lastSentenceEnd = 0;
+    while ((sentenceMatch = sentencePattern.exec(prefix))) lastSentenceEnd = sentenceMatch.index + sentenceMatch[0].length;
+    if (lastSentenceEnd) candidates.push(lastSentenceEnd);
+    const whitespace = Math.max(prefix.lastIndexOf(" "), prefix.lastIndexOf("\t"));
+    if (whitespace >= 0) candidates.push(whitespace + 1);
+    const preferred = candidates.filter(function (value) {
+      return value >= minimumPreferred && value <= end;
+    }).sort(function (a, b) { return b - a; })[0];
+    if (preferred) end = preferred;
+
+    const nextNewline = remaining.indexOf("\n", end);
+    const currentLineStart = remaining.lastIndexOf("\n", end - 1) + 1;
+    if (currentLineStart < end && nextNewline > end && nextNewline <= REPLY_TEXT_MAX_UTF16 &&
+        /^\s*(?:\d+[.、)]|[-•*])\s+/.test(remaining.slice(currentLineStart, nextNewline))) {
+      end = nextNewline;
+    }
+    const urlPattern = /https?:\/\/[^\s]+/g;
+    let match;
+    while ((match = urlPattern.exec(remaining))) {
+      const urlEnd = match.index + match[0].length;
+      if (match.index < end && urlEnd > end && urlEnd <= REPLY_TEXT_MAX_UTF16) {
+        end = urlEnd;
+        break;
+      }
+      if (match.index >= end) break;
+    }
+    const piece = remaining.slice(0, end).trim();
+    if (piece) chunks.push(piece);
+    remaining = remaining.slice(end).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks.filter(Boolean);
+}
+
+function stripReplyRuntimeFooter_(text, metadata) {
+  return String(text || "").split("\n").filter(function (line) {
+    const trimmed = line.trim();
+    if (/^(?:本次約\s+NT\$|本次費用待確認|模型\s*[:：]|剩餘\s*[:：])/.test(trimmed)) {
+      if (metadata.runtimeFooterLines.indexOf(trimmed) < 0) metadata.runtimeFooterLines.push(trimmed);
+      return false;
+    }
+    if (/^資料來源\s*[:：]/.test(trimmed)) {
+      if (metadata.sourceLines.indexOf(trimmed) < 0) metadata.sourceLines.push(trimmed);
+      return false;
+    }
+    return true;
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function normalizeReplyMessages_(payload, options, metadata) {
+  const result = [];
+  const items = Array.isArray(payload) ? payload : [payload];
+  items.forEach(function (item) {
+    if (item && typeof item === "object" && item.type && item.type !== "text") {
+      result.push(cloneReplyPayload_(item));
+      return;
+    }
+    const objectText = item && typeof item === "object" && item.type === "text";
+    const raw = objectText ? item.text : item;
+    const clean = stripReplyRuntimeFooter_(raw === null || raw === undefined ? "" : String(raw), metadata);
+    const pieces = splitReplyTextForLine_(clean);
+    pieces.forEach(function (piece, index) {
+      const message = objectText ? cloneReplyPayload_(item) : { type: "text" };
+      message.type = "text";
+      message.text = piece;
+      delete message.quickReply;
+      result.push(message);
+    });
+  });
+  if (options && options.sticker && options.sticker.packageId && options.sticker.stickerId) {
+    result.push({
+      type: "sticker",
+      packageId: String(options.sticker.packageId),
+      stickerId: String(options.sticker.stickerId),
+    });
+  }
+  return result;
+}
+
+function resolveReplyQuickReplyItems_(options) {
+  let items = [];
+  if (options && options.quickReply && Array.isArray(options.quickReply.items)) {
+    items = options.quickReply.items;
+  } else if (quickReplyOptions && quickReplyOptions.length) {
+    items = quickReplyOptions.map(function (opt) {
+      return {
+        type: "action",
+        action: {
+          type: "message",
+          label: String(opt.label || "").substring(0, 20),
+          text: opt.text || opt.label,
+        },
+      };
+    });
+    quickReplyOptions = [];
+  }
+  return cloneReplyPayload_(items.slice(0, 13)) || [];
+}
+
+function attachReplyQuickReply_(messages, items) {
+  if (!Array.isArray(messages) || !messages.length || !Array.isArray(items) || !items.length) return;
+  messages.forEach(function (message) {
+    if (message && typeof message === "object") delete message.quickReply;
+  });
+  messages[messages.length - 1].quickReply = { items: cloneReplyPayload_(items) };
+}
+
+function appendReplyPageMetadata_(messages, lines) {
+  const meta = (lines || []).filter(Boolean).join("\n");
+  if (!meta) return true;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message && message.type === "text") {
+      const next = String(message.text || "") + "\n\n" + meta;
+      if (next.length <= REPLY_TEXT_MAX_UTF16) {
+        message.text = next;
+        return true;
+      }
+    }
+  }
+  if (messages.length < REPLY_PAGE_MAX_MESSAGES && meta.length <= REPLY_TEXT_MAX_UTF16) {
+    messages.push({ type: "text", text: meta });
+    return true;
+  }
+  return false;
+}
+
+function getReplyContinuationNamespace_() {
+  return IS_TEST_MODE ? "TEST" : "PROD";
+}
+
+function getReplyContinuationBinding_(userId, contextId) {
+  return {
+    namespace: getReplyContinuationNamespace_(),
+    userHash: computeReplyAnchor_(String(userId || "anonymous")),
+    contextHash: computeReplyAnchor_(String(contextId || userId || "anonymous")),
+  };
+}
+
+function getReplyContinuationManifestKey_(binding) {
+  return "reply_page_manifest:v1:" + binding.namespace + ":" + binding.userHash + ":" + binding.contextHash;
+}
+
+function getReplyContinuationPageKey_(binding, answerId, page) {
+  return "reply_page:v1:" + binding.namespace + ":" + binding.userHash + ":" + binding.contextHash + ":" + answerId + ":" + page;
+}
+
+function invalidateReplyContinuation_(userId, contextId) {
+  if (!userId && !contextId) return;
+  const cache = CacheService.getScriptCache();
+  const binding = getReplyContinuationBinding_(userId, contextId);
+  const manifestKey = getReplyContinuationManifestKey_(binding);
+  try {
+    const raw = cache.get(manifestKey);
+    if (raw) {
+      const manifest = JSON.parse(raw);
+      (Array.isArray(manifest.keys) ? manifest.keys : []).forEach(function (key) {
+        cache.remove(key);
+      });
+    }
+  } catch (_) {}
+  cache.remove(manifestKey);
+}
+
+function buildReplyContinuationItem_(answerId, page) {
+  return {
+    type: "action",
+    action: {
+      type: "postback",
+      label: "續看原答案",
+      displayText: "續看原答案",
+      data: "rm_action=reply_page&answer_id=" + encodeURIComponent(answerId) + "&page=" + page + "&v=1",
+    },
+  };
+}
+
+function replyMessagesBytes_(messages) {
+  return replyUtf8Bytes_(JSON.stringify(messages || []));
+}
+
+function buildPartialDisplayMessages_(messages, metadata, reason) {
+  const visible = cloneReplyPayload_((messages || []).slice(0, REPLY_PAGE_MAX_MESSAGES)) || [];
+  const lines = [];
+  if (metadata && metadata.sourceLines && metadata.sourceLines.length) lines.push(metadata.sourceLines.join("\n"));
+  if (metadata && metadata.runtimeFooterLines && metadata.runtimeFooterLines.length) lines.push(metadata.runtimeFooterLines.join("\n"));
+  lines.push("答案內容超過可安全保存的續看容量，目前只顯示前段；本次未重新生成。");
+  if (!appendReplyPageMetadata_(visible, lines) && visible.length) {
+    const last = visible[visible.length - 1];
+    if (last && last.type === "text") {
+      last.text = String(last.text || "").slice(0, Math.max(0, REPLY_TEXT_MAX_UTF16 - 80)) +
+        "\n\n答案未完整顯示。";
+    }
+  }
+  writeLog("[PARTIAL_DISPLAY] " + String(reason || "capacity"));
+  return visible;
+}
+
+function persistReplyContinuationPages_(pages, answerId, binding) {
+  const cache = CacheService.getScriptCache();
+  const expiresAt = Date.now() + REPLY_CONTINUATION_TTL_SECONDS * 1000;
+  const keys = [];
+  let totalBytes = 0;
+  for (let index = 1; index < pages.length; index++) {
+    const pageNumber = index + 1;
+    const key = getReplyContinuationPageKey_(binding, answerId, pageNumber);
+    const envelope = {
+      v: 1,
+      answerId: answerId,
+      page: pageNumber,
+      totalPages: pages.length,
+      namespace: binding.namespace,
+      userHash: binding.userHash,
+      contextHash: binding.contextHash,
+      expiresAt: expiresAt,
+      messages: pages[index],
+    };
+    const json = JSON.stringify(envelope);
+    const bytes = replyUtf8Bytes_(json);
+    if (bytes > REPLY_CONTINUATION_PAGE_MAX_BYTES) throw new Error("REPLY_PAGE_TOO_LARGE");
+    totalBytes += bytes;
+    if (totalBytes > REPLY_CONTINUATION_TOTAL_MAX_BYTES) throw new Error("REPLY_ANSWER_TOO_LARGE");
+    cache.put(key, json, REPLY_CONTINUATION_TTL_SECONDS);
+    if (!cache.get(key)) throw new Error("REPLY_PAGE_READBACK_FAILED");
+    keys.push(key);
+  }
+  const manifest = { v: 1, answerId: answerId, keys: keys, expiresAt: expiresAt };
+  const manifestKey = getReplyContinuationManifestKey_(binding);
+  cache.put(manifestKey, JSON.stringify(manifest), REPLY_CONTINUATION_TTL_SECONDS);
+  if (!cache.get(manifestKey)) throw new Error("REPLY_MANIFEST_READBACK_FAILED");
+  return true;
+}
+
+function assembleReplyMessages_(payload, options) {
+  const metadata = { runtimeFooterLines: [], sourceLines: [] };
+  const messages = normalizeReplyMessages_(payload, options || {}, metadata);
+  const originalQuickReply = resolveReplyQuickReplyItems_(options || {});
+  if (!messages.length) return { messages: [{ type: "text", text: "目前沒有可顯示的回覆。" }], paginated: false };
+
+  if (messages.length <= REPLY_PAGE_MAX_MESSAGES) {
+    const meta = [];
+    if (metadata.sourceLines.length) meta.push(metadata.sourceLines.join("\n"));
+    if (metadata.runtimeFooterLines.length) meta.push(metadata.runtimeFooterLines.join("\n"));
+    appendReplyPageMetadata_(messages, meta);
+    attachReplyQuickReply_(messages, originalQuickReply);
+    return { messages: messages, paginated: false };
+  }
+
+  const pages = [];
+  for (let i = 0; i < messages.length; i += REPLY_PAGE_MAX_MESSAGES) {
+    pages.push(cloneReplyPayload_(messages.slice(i, i + REPLY_PAGE_MAX_MESSAGES)));
+  }
+  if (pages.length > REPLY_CONTINUATION_MAX_PAGES) {
+    return { messages: buildPartialDisplayMessages_(messages, metadata, "max_pages"), paginated: false, partial: true };
+  }
+  const answerBytes = pages.reduce(function (total, page) {
+    return total + replyMessagesBytes_(page);
+  }, 0);
+  if (answerBytes > REPLY_CONTINUATION_TOTAL_MAX_BYTES) {
+    return { messages: buildPartialDisplayMessages_(messages, metadata, "answer_bytes"), paginated: false, partial: true };
+  }
+
+  const answerId = Utilities.getUuid().replace(/-/g, "").slice(0, 20);
+  for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+    const meta = [];
+    if (metadata.sourceLines.length) meta.push(metadata.sourceLines.join("\n"));
+    meta.push("第 " + (pageIndex + 1) + "/" + pages.length + " 批");
+    if (pageIndex === 0) {
+      if (metadata.runtimeFooterLines.length) meta.push(metadata.runtimeFooterLines.join("\n"));
+    } else {
+      meta.push("續看既有答案：NT$0｜未呼叫模型｜未扣次");
+    }
+    if (!appendReplyPageMetadata_(pages[pageIndex], meta)) {
+      return { messages: buildPartialDisplayMessages_(messages, metadata, "page_metadata"), paginated: false, partial: true };
+    }
+    if (pageIndex < pages.length - 1) {
+      attachReplyQuickReply_(pages[pageIndex], [buildReplyContinuationItem_(answerId, pageIndex + 2)]);
+    } else {
+      attachReplyQuickReply_(pages[pageIndex], originalQuickReply);
+    }
+    if (replyMessagesBytes_(pages[pageIndex]) > REPLY_CONTINUATION_PAGE_MAX_BYTES) {
+      return { messages: buildPartialDisplayMessages_(messages, metadata, "page_bytes"), paginated: false, partial: true };
+    }
+  }
+  const binding = getReplyContinuationBinding_(CURRENT_REPLY_USER_ID, CURRENT_REPLY_CONTEXT_ID);
+  try {
+    invalidateReplyContinuation_(CURRENT_REPLY_USER_ID, CURRENT_REPLY_CONTEXT_ID);
+    persistReplyContinuationPages_(pages, answerId, binding);
+  } catch (error) {
+    invalidateReplyContinuation_(CURRENT_REPLY_USER_ID, CURRENT_REPLY_CONTEXT_ID);
+    return { messages: buildPartialDisplayMessages_(messages, metadata, String(error.message || error)), paginated: false, partial: true };
+  }
+  return { messages: pages[0], paginated: true, answerId: answerId, totalPages: pages.length };
+}
+
+function replyMessagePreview_(message) {
+  if (!message || typeof message !== "object") return String(message || "");
+  if (message.type === "text") return String(message.text || "");
+  if (message.type === "sticker") return "[貼圖: " + message.packageId + "/" + message.stickerId + "]";
+  return String(message.altText || "[Flex Message]");
+}
+
+function sendReplyMessages_(tk, messages) {
+  const safeMessages = cloneReplyPayload_(messages || []) || [];
+  if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN" || tk === "TEST_POSTBACK_REPLY_TOKEN") {
+    LAST_TEST_MESSAGES = safeMessages;
+    const last = safeMessages[safeMessages.length - 1] || {};
+    LAST_TEST_QUICK_REPLY_ITEMS = last.quickReply && Array.isArray(last.quickReply.items)
+      ? cloneReplyPayload_(last.quickReply.items) : [];
+    LAST_TEST_SEND_RESULT = "test_captured";
+    const testQuickReplyLabels = LAST_TEST_QUICK_REPLY_ITEMS.map(function (item) {
+      return item && item.action ? String(item.action.label || "") : "";
+    }).filter(Boolean);
+    if (testQuickReplyLabels.length) {
+      writeLog("[Reply] 使用顯式 Quick Reply: " + testQuickReplyLabels.length + " 個選項 (" + testQuickReplyLabels.join("、") + ")");
+    }
+    const preview = safeMessages.map(replyMessagePreview_).filter(Boolean).join("\n\n");
+    if (preview) writeLog("[Reply] " + preview);
+    writeLog("[Reply Delivery] test_captured");
+    return { state: "test_captured", messages: safeMessages };
+  }
+  try {
+    const lineToken = PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
+    const response = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "post",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + lineToken },
+      payload: JSON.stringify({ replyToken: tk, messages: safeMessages }),
+      muteHttpExceptions: true,
+    });
+    const code = Number(response.getResponseCode() || 0);
+    const state = code === 200 ? "accepted_by_line" : "failed";
+    writeLog("[Reply Delivery] " + state + " http=" + code);
+    recordLineAcceptanceDelivery_(tk, safeMessages, state, code);
+    if (code !== 200) writeLog("[Reply] LINE API 錯誤 " + code + ": " + String(response.getContentText() || "").slice(0, 500));
+    return { state: state, httpStatus: code, messages: safeMessages };
+  } catch (error) {
+    writeLog("[Reply Delivery] uncertain " + String(error && error.message || error));
+    recordLineAcceptanceDelivery_(tk, safeMessages, "uncertain", null);
+    return { state: "uncertain", messages: safeMessages };
+  }
+}
+
+function handleReplyPagePostback_(params, userId, contextId, replyToken) {
+  const answerId = String(params.answer_id || "");
+  const page = Number(params.page || 0);
+  if (!/^[A-Za-z0-9]{8,40}$/.test(answerId) || !Number.isInteger(page) || page < 2 || page > REPLY_CONTINUATION_MAX_PAGES) {
+    replyMessage(replyToken, "這份答案的續看資料已失效，本次未重新查詢、未扣次。");
+    return true;
+  }
+  const binding = getReplyContinuationBinding_(userId, contextId);
+  const cache = CacheService.getScriptCache();
+  const key = getReplyContinuationPageKey_(binding, answerId, page);
+  try {
+    const raw = cache.get(key);
+    const envelope = raw ? JSON.parse(raw) : null;
+    if (!envelope || envelope.v !== 1 || envelope.answerId !== answerId || envelope.page !== page ||
+        envelope.namespace !== binding.namespace || envelope.userHash !== binding.userHash ||
+        envelope.contextHash !== binding.contextHash || Number(envelope.expiresAt || 0) <= Date.now() ||
+        !Array.isArray(envelope.messages)) {
+      throw new Error("REPLY_PAGE_EXPIRED");
+    }
+    writeLog("[Reply Continuation] answer=" + answerId + " page=" + page + "/" + envelope.totalPages);
+    sendReplyMessages_(replyToken, envelope.messages);
+    return true;
+  } catch (_) {
+    replyMessage(replyToken, "這份答案的續看資料已失效，本次未重新查詢、未扣次。");
+    return true;
+  }
+}
+
 function replyMessage(tk, txt, options = {}) {
   txt = cleanReplyVisibleTextArtifacts_(txt);
   txt = enforceReplyAuditTrail_(txt);
@@ -33785,164 +34288,8 @@ function replyMessage(tk, txt, options = {}) {
   }
   CURRENT_REPLY_FOOTER_APPENDED = false;
   txt = renderCustomerFacingPayload_(txt);
-
-  // 🧪 TEST MODE: 不呼叫 LINE API (清除測試介面時請移除此判斷)
-  if (IS_TEST_MODE || tk === "TEST_REPLY_TOKEN") {
-    // v29.5.130: TestUI 依賴 testMessage() 從 Log 收集回覆；這裡補寫 [Reply] 讓前端能顯示
-    try {
-      let preview = "";
-      if (Array.isArray(txt)) {
-        preview = txt
-          .map((t) => {
-            if (typeof t === "string") return t;
-            if (t && typeof t === "object" && t.type === "text") {
-              return String(t.text || "");
-            }
-            if (t && typeof t === "object" && t.type === "sticker") {
-              return `[貼圖: ${t.packageId}/${t.stickerId}]`;
-            }
-            if (t && typeof t === "object")
-              return t.altText || "[Flex Message]";
-            return String(t || "");
-          })
-          .join("\n\n");
-      } else if (txt && typeof txt === "object" && txt.type === "sticker") {
-        preview = `[貼圖: ${txt.packageId}/${txt.stickerId}]`;
-      } else if (txt && typeof txt === "object" && txt.type) {
-        preview = txt.altText || "[Flex Message]";
-      } else {
-        preview = txt === null || txt === undefined ? "" : txt.toString();
-      }
-      if (options && options.sticker && options.sticker.packageId) {
-        preview += `\n\n[貼圖: ${options.sticker.packageId}/${options.sticker.stickerId}]`;
-      }
-
-      if (preview) {
-        writeLog(`[Reply] ${preview}`);
-      }
-      const testQuickReplyItems =
-        options && options.quickReply && Array.isArray(options.quickReply.items)
-          ? options.quickReply.items
-          : [];
-      LAST_TEST_QUICK_REPLY_ITEMS = testQuickReplyItems
-        .slice(0, 13)
-        .map(function (item) {
-          return JSON.parse(JSON.stringify(item));
-        });
-      if (testQuickReplyItems.length > 0) {
-        const testQuickReplyLabels = testQuickReplyItems
-          .map((item) =>
-            item && item.action ? String(item.action.label || "") : "",
-          )
-          .filter(Boolean);
-        writeLog(
-          `[Reply] 使用顯式 Quick Reply: ${testQuickReplyItems.length} 個選項 (${testQuickReplyLabels.join("、")})`,
-        );
-      }
-    } catch (e) {
-      // ignore
-    }
-    writeLog("[TEST MODE] 跳過 LINE API 呼叫");
-    return;
-  }
-
-  try {
-    const lineToken =
-      PropertiesService.getScriptProperties().getProperty("LINE_TOKEN");
-    // writeLog(`[Reply Debug] LINE_TOKEN 前10字: ${lineToken ? lineToken.substring(0, 10) : "NULL"}`);
-
-    // v29.3.21: 升級支援多訊息泡泡 (Array)
-    let messages = [];
-    if (Array.isArray(txt)) {
-      // 限制最多 5 個訊息 (LINE 回覆限制)
-      messages = txt.slice(0, 5).map((t) => {
-        if (typeof t === "object" && t.type) {
-          return t; // 已經是 Flex 或 Sticker 或其他格式
-        }
-        return {
-          type: "text",
-          text: t.toString().substring(0, 4000),
-        };
-      });
-    } else {
-      if (typeof txt === "object" && txt.type) {
-        messages = [txt];
-      } else {
-        messages = [{ type: "text", text: txt.toString().substring(0, 4000) }];
-      }
-    }
-
-    // 支援附加 LINE 官方貼圖 (例如問候、感謝或道別)
-    if (options && options.sticker && options.sticker.packageId && options.sticker.stickerId) {
-      if (messages.length < 5) {
-        messages.push({
-          type: "sticker",
-          packageId: String(options.sticker.packageId),
-          stickerId: String(options.sticker.stickerId),
-        });
-      }
-    }
-
-    // v29.3.36: 優先使用顯式傳遞的 options.quickReply，其次才是全域變數 (相容性)
-    let qrItems = null;
-
-    if (
-      options &&
-      options.quickReply &&
-      Array.isArray(options.quickReply.items) &&
-      options.quickReply.items.length > 0
-    ) {
-      qrItems = options.quickReply.items;
-      writeLog(`[Reply] 使用顯式 Quick Reply: ${qrItems.length} 個選項`);
-    } else if (quickReplyOptions && quickReplyOptions.length > 0) {
-      qrItems = quickReplyOptions.map((opt) => ({
-        type: "action",
-        action: {
-          type: "message",
-          label: opt.label.substring(0, 20),
-          text: opt.text || opt.label,
-        },
-      }));
-      writeLog(`[Reply] 使用全域 Quick Reply: ${qrItems.length} 個選項`);
-      quickReplyOptions = []; // Clear global
-    }
-
-    if (Array.isArray(qrItems) && qrItems.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      lastMsg.quickReply = { items: qrItems };
-    }
-
-    const response = UrlFetchApp.fetch(
-      "https://api.line.me/v2/bot/message/reply",
-      {
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + lineToken,
-        },
-        payload: JSON.stringify({
-          replyToken: tk,
-          messages: messages,
-        }),
-        muteHttpExceptions: true,
-      },
-    );
-
-    const code = response.getResponseCode();
-    // v29.5.109: 完整記錄 LINE 回覆內容
-    const logFull =
-      typeof txt === "string"
-        ? txt.replace(/\n/g, " ")
-        : txt.altText || "[Flex Message]";
-    if (code === 200) {
-      writeLog(`[Reply] ✅ LINE 回覆成功: ${logFull}`);
-    } else {
-      const errorBody = response.getContentText();
-      writeLog(`[Reply] ❌ LINE API 錯誤 ${code}: ${errorBody}`);
-    }
-  } catch (e) {
-    writeLog("[Reply Error] " + e);
-  }
+  const assembled = assembleReplyMessages_(txt, options || {});
+  return sendReplyMessages_(tk, assembled.messages);
 }
 
 /**
@@ -34156,7 +34503,8 @@ function verifySmartThingsClaimFromCloudPdf() {
   };
 
   const resp = providerFetch_(url, {
-    geminiApiKey: apiKey,
+    providerPurpose: "diagnostic",
+        geminiApiKey: apiKey,
     method: "post",
     contentType: "application/json",
     payload: JSON.stringify(payload),
@@ -34274,11 +34622,43 @@ function isDoGetMaintenanceAuthorized_(e) {
 }
 
 function isEditorOnlyDevelopmentWebApp_() {
+  // Apps Script 有些環境會直接回 /dev；這是 Google 原生 editor-only URL。
   try {
     const serviceUrl = String(ScriptApp.getService().getUrl() || "");
-    return /\/dev(?:[?#].*)?$/.test(serviceUrl);
+    if (/\/dev(?:[?#].*)?$/.test(serviceUrl)) return true;
   } catch (error) {
-    writeLog(`[TestUI Dev Auth] 無法判斷開發模式網址: ${error.message}`);
+    writeLog(`[TestUI Editor Auth] 無法讀取 service URL: ${error.message}`);
+  }
+  const activeEmail = String(Session.getActiveUser().getEmail() || "")
+    .trim()
+    .toLowerCase();
+  if (!activeEmail) return false;
+  try {
+    const projectFile = DriveApp.getFileById(ScriptApp.getScriptId());
+    const allowedEmails = [];
+    const owner = projectFile.getOwner();
+    if (owner && owner.getEmail()) {
+      allowedEmails.push(String(owner.getEmail()).trim().toLowerCase());
+    }
+    projectFile.getEditors().forEach(function (editor) {
+      const email = String(editor && editor.getEmail ? editor.getEmail() : "")
+        .trim()
+        .toLowerCase();
+      if (email) allowedEmails.push(email);
+    });
+    if (allowedEmails.indexOf(activeEmail) >= 0) return true;
+  } catch (error) {
+    writeLog(`[TestUI Editor Auth] 無法讀取專案編輯者清單: ${error.message}`);
+  }
+  // Web app 以部署者身分執行時，專案 owner 的 active/effective user
+  // 會相同。這個 fallback 只放行 owner；匿名與其他帳號皆 fail closed。
+  try {
+    const effectiveEmail = String(Session.getEffectiveUser().getEmail() || "")
+      .trim()
+      .toLowerCase();
+    return !!effectiveEmail && activeEmail === effectiveEmail;
+  } catch (error) {
+    writeLog(`[TestUI Editor Auth] 無法核對有效使用者: ${error.message}`);
     return false;
   }
 }
@@ -34304,9 +34684,13 @@ function buildUnauthorizedTestUiResponse_() {
   ).setTitle("TestUI 需要授權");
 }
 
-function issueTestUiAccessToken_() {
+function issueTestUiAccessToken_(editorAccess) {
   const token = Utilities.getUuid();
-  CacheService.getScriptCache().put(`test_ui_access_${token}`, "1", 900);
+  const cache = CacheService.getScriptCache();
+  cache.put(`test_ui_access_${token}`, "1", 900);
+  if (editorAccess === true) {
+    cache.put(`test_ui_editor_access_${token}`, "1", 900);
+  }
   return token;
 }
 
@@ -34323,7 +34707,11 @@ function assertTestUiAuthorized_(token) {
 
 function assertEditorOnlyTestUiMaintenance_(token) {
   assertTestUiAuthorized_(token);
-  if (!isEditorOnlyDevelopmentWebApp_()) {
+  const candidateEditorAccess =
+    CacheService.getScriptCache().get(
+      `test_ui_editor_access_${String(token || "")}`,
+    ) === "1";
+  if (!isEditorOnlyDevelopmentWebApp_() && !candidateEditorAccess) {
     throw new Error("手冊維護只允許 Apps Script 編輯者 /dev TestUI");
   }
 }
@@ -34655,16 +35043,23 @@ function syncReviewedEvidenceRowsFromTestUi(payload, testUiAccessToken) {
 // - 正式 /exec TestUI: 需 ?test=1&secret=MAINTENANCE_SECRET
 // - 編輯者 /dev TestUI: Google 已限制為專案編輯者，可直接取得短效 token
 function doGet(e) {
+  if (e && e.parameter && e.parameter.diagnostics === "1") {
+    return buildProviderDiagnosticsPage_();
+  }
   // 若有 test 參數，顯示 TestUI
   if (e && e.parameter && e.parameter.test === "1") {
+    const editorAccess = isEditorOnlyDevelopmentWebApp_();
     if (
       !isDoGetMaintenanceAuthorized_(e) &&
-      !isEditorOnlyDevelopmentWebApp_()
+      !editorAccess
     ) {
       return buildUnauthorizedTestUiResponse_();
     }
     const template = HtmlService.createTemplateFromFile("TestUI");
-    template.testUiAccessToken = issueTestUiAccessToken_();
+    template.testUiEditorAccess = editorAccess;
+    template.testUiAccessToken = issueTestUiAccessToken_(
+      template.testUiEditorAccess,
+    );
     return template
       .evaluate()
       .setTitle("LINE Bot 測試模擬器 v2.3")
@@ -34804,7 +35199,8 @@ function doGet(e) {
       const url = CONFIG.API_ENDPOINT + "/" + modelName + ":generateContent";
       try {
         const response = providerFetch_(url, {
-          geminiApiKey: apiKey,
+          providerPurpose: "diagnostic",
+        geminiApiKey: apiKey,
           method: "post",
           contentType: "application/json",
           payload: JSON.stringify({
@@ -34966,6 +35362,8 @@ function doGet(e) {
     TEST_LOGS = [];
     LAST_SOURCE_TEST_STATE = null;
     LAST_TEST_QUICK_REPLY_ITEMS = [];
+    LAST_TEST_MESSAGES = [];
+    LAST_TEST_SEND_RESULT = "";
     LAST_SEMANTIC_ROUTE_ANALYSIS = null;
     const fakeEvent = {
       replyToken: "TEST_REPLY_TOKEN",
@@ -35113,6 +35511,7 @@ function doGet(e) {
     const url = "https://generativelanguage.googleapis.com/v1beta/files?pageSize=100";
     try {
       const response = providerFetch_(url, {
+        providerPurpose: "diagnostic",
         geminiApiKey: apiKey,
         muteHttpExceptions: true,
       });
@@ -35153,6 +35552,8 @@ function testMessage(msg, userId, testUiAccessToken, semanticRouterMode) {
   IS_TEST_MODE = true;
   TEST_LOGS = [];
   LAST_TEST_QUICK_REPLY_ITEMS = [];
+  LAST_TEST_MESSAGES = [];
+  LAST_TEST_SEND_RESULT = "";
 
   if (msg === undefined || msg === null) msg = "";
   if (typeof msg === "object") {
@@ -35378,38 +35779,37 @@ function testMessage(msg, userId, testUiAccessToken, semanticRouterMode) {
   }
 
   botResponses = dedupeTestUiReplies(botResponses);
+  const capturedMessages = cloneReplyPayload_(LAST_TEST_MESSAGES) || [];
+  const capturedReplies = capturedMessages.map(replyMessagePreview_).filter(Boolean);
   IS_TEST_MODE = false;
 
   return {
     success: true,
-    replies: botResponses,
+    messages: capturedMessages,
+    replies: capturedReplies,
     logs: TEST_LOGS,
     sourceState: LAST_SOURCE_TEST_STATE,
     quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
+    deliveryState: LAST_TEST_SEND_RESULT || "test_captured",
     routeAnalysis: LAST_SEMANTIC_ROUTE_ANALYSIS,
   };
 }
 
-function testSourcePostback(action, source, userId, testUiAccessToken, model) {
+function testSourcePostbackData(postbackData, userId, testUiAccessToken) {
   assertTestUiAuthorized_(testUiAccessToken);
   IS_TEST_MODE = true;
   TEST_LOGS = [];
   LAST_SOURCE_TEST_STATE = null;
   LAST_TEST_QUICK_REPLY_ITEMS = [];
+  LAST_TEST_MESSAGES = [];
+  LAST_TEST_SEND_RESULT = "";
   userId = userId || "TEST_DEV_001";
-  const normalizedAction = String(action || "select_source");
-  const normalizedSource = String(source || "");
-  const dataParts = [`rm_action=${encodeURIComponent(normalizedAction)}`, "v=2"];
-  if (normalizedSource) {
-    dataParts.splice(1, 0, `source=${encodeURIComponent(normalizedSource)}`);
-  }
-  if (model) {
-    dataParts.splice(1, 0, `model=${encodeURIComponent(String(model))}`);
-  }
+  const data = String(postbackData || "");
+  if (!data || data.length > 1000 || data.indexOf("rm_action=") < 0) throw new Error("TEST_POSTBACK_DATA_INVALID");
   const fakeEvent = {
     replyToken: "TEST_POSTBACK_REPLY_TOKEN",
     source: { type: "user", userId: userId },
-    postback: { data: dataParts.join("&") },
+    postback: { data: data },
     webhookEventId: `TEST_POSTBACK_${Date.now()}`,
     type: "postback",
     timestamp: Date.now(),
@@ -35419,22 +35819,27 @@ function testSourcePostback(action, source, userId, testUiAccessToken, model) {
   } catch (error) {
     TEST_LOGS.push(`[Fatal] 系統崩潰: ${error}`);
   }
-  const replies = [];
-  TEST_LOGS.forEach(function (line) {
-    if (line.indexOf("[Reply]") < 0) return;
-    if (line.indexOf("[Reply] 使用顯式 Quick Reply:") >= 0) return;
-    const content = parseLogContent(line, "[Reply]");
-    if (content && replies.indexOf(content) < 0) replies.push(content);
-  });
+  const messages = cloneReplyPayload_(LAST_TEST_MESSAGES) || [];
   const result = {
     success: true,
-    replies: replies,
+    messages: messages,
+    replies: messages.map(replyMessagePreview_).filter(Boolean),
     logs: TEST_LOGS,
     sourceState: LAST_SOURCE_TEST_STATE,
     quickReplies: LAST_TEST_QUICK_REPLY_ITEMS,
+    deliveryState: LAST_TEST_SEND_RESULT || "test_captured",
   };
   IS_TEST_MODE = false;
   return result;
+}
+
+function testSourcePostback(action, source, userId, testUiAccessToken, model) {
+  const normalizedAction = String(action || "select_source");
+  const normalizedSource = String(source || "");
+  const dataParts = [`rm_action=${encodeURIComponent(normalizedAction)}`, "v=2"];
+  if (normalizedSource) dataParts.splice(1, 0, `source=${encodeURIComponent(normalizedSource)}`);
+  if (model) dataParts.splice(1, 0, `model=${encodeURIComponent(String(model))}`);
+  return testSourcePostbackData(dataParts.join("&"), userId, testUiAccessToken);
 }
 
 // 輔助: 清洗 Log 內容

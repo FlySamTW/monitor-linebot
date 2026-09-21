@@ -883,10 +883,11 @@ assert(
 assert(
   freshOperationGuardIndex > directQaIndex &&
     freshOperationGuardIndex < historyIndex &&
-    /freshOperationNeedsModel[\s\S]{0,900}markDailyQuestionModelSelectionHold_\(userId\)[\s\S]{0,900}replyMessage\(replyToken, needModelReply\)[\s\S]{0,400}return;/.test(
+    /unscopedLocalDecision[\s\S]{0,700}classifyScope:true/.test(generalRouterText) &&
+    /freshOperationNeedsModel[\s\S]{0,1600}questionScope === "model_specific"[\s\S]{0,1600}markDailyQuestionModelSelectionHold_\(userId\)[\s\S]{0,900}replyMessage\(replyToken, needModelReply\)[\s\S]{0,400}return;/.test(
       generalRouterText,
     ),
-  "精準 QA 未命中的無型號操作／跨裝置題必須在 Fast 前零 LLM 進入 ASK_MODEL",
+  "無型號題先用同一次 QA/RULE 語意判讀區分通論與個別產品；只有需要產品身分才 ASK_MODEL，禁止單憑操作關鍵詞攔截通論",
 );
 const aliasCandidateText = extractFunction(
   linebot,
@@ -977,7 +978,7 @@ assert(
       return (
         generationGateway.indexOf("reserveAdvancedSourceUsage_(grant)") <
         generationGateway.indexOf(
-          "const response = UrlFetchApp.fetch(target, options)",
+          "const rawResponse = UrlFetchApp.fetch(target, options)",
         )
       );
     })(),
@@ -1805,7 +1806,10 @@ assert(
     /groundedButNotTargeted/.test(
       extractFunction(linebot, "buildManualWebRescueReply_"),
     ) &&
-    /status:\s*partial\s*\?\s*"partial"/.test(
+    /partial\s*&&\s*explicitResolvedIds\.length/.test(
+      extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
+    ) &&
+    /unresolvedIds/.test(
       extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
     ) &&
     /webEvidencePartial/.test(advancedRouteText) &&
@@ -1836,6 +1840,7 @@ vm.runInContext(
    ${extractFunction(linebot, "getGroundedModelIdentityProfile_")}
    ${extractFunction(linebot, "matchGroundedModelIdentity_")}
    ${extractFunction(linebot, "isLowRiskGroundedTroubleshooting_")}
+   ${extractFunction(linebot, "isGroundedGeneralMethod_")}
    ${extractFunction(linebot, "isModelIndependentManualOperation_")}
    ${extractFunction(linebot, "expandGroundedSupportToCompleteLine_")}
    ${extractFunction(linebot, "isExactProductFactQuestion_")}
@@ -2182,10 +2187,10 @@ assert(
     /先不套用其他型號/.test(webFallbackContext.noEvidence) &&
     !/可能採免工具/.test(webFallbackContext.noEvidence) &&
     /沒有足夠證據/.test(webFallbackContext.noRelevantSupport) &&
-    /尚未確認適用這款的排查方向/.test(webFallbackContext.safeTerminal) &&
+    /沒有足夠證據/.test(webFallbackContext.safeTerminal) &&
+    /先不套用其他型號/.test(webFallbackContext.safeTerminal) &&
     !/逐句核對|grounding|；，/i.test(webFallbackContext.safeTerminal) &&
-    /使用數位機上盒|諮詢業者/.test(webFallbackContext.safeTerminal) &&
-    !/其他型號可能/.test(
+    !/使用數位機上盒|諮詢業者|其他型號可能/.test(
       webFallbackContext.safeTerminal,
     ) &&
     /沒有足夠證據/.test(webFallbackContext.noPurchase) &&
@@ -2377,10 +2382,12 @@ assert.deepStrictEqual(
   "沒有任何選項時必須完全省略 quickReply，禁止送 items=[] 給 LINE",
 );
 assert(
-  /Array\.isArray\(options\.quickReply\.items\)\s*&&\s*options\.quickReply\.items\.length > 0/.test(
-    linebot,
+  /Array\.isArray\(options\.quickReply\.items\)/.test(
+    extractFunction(linebot, "resolveReplyQuickReplyItems_"),
   ) &&
-    /Array\.isArray\(qrItems\) && qrItems\.length > 0/.test(linebot),
+    /!Array\.isArray\(items\) \|\| !items\.length/.test(
+      extractFunction(linebot, "attachReplyQuickReply_"),
+    ),
   "LINE 最後出口必須再次拒絕空 Quick Reply 陣列",
 );
 
@@ -2495,8 +2502,8 @@ assert(
     /Support → Self Diagnosis/.test(manualUiContext.structuredDeduped) &&
     !/第36、36、37頁/.test(manualUiContext.structuredDeduped) &&
     /AUTO_SEARCH_WEB/.test(manualUiContext.structuredNotFound) &&
-    /補查一次公開網頁/.test(manualUiContext.formatError) &&
-    /AUTO_SEARCH_WEB/.test(manualUiContext.weakScopeGuarded) &&
+    /請稍後再試/.test(manualUiContext.formatError) && !/補查一次公開網頁/.test(manualUiContext.formatError) &&
+    !/AUTO_SEARCH_WEB/.test(manualUiContext.weakScopeGuarded) &&
     manualUiContext.weakScopeFailureDetected === true &&
     /第14頁/.test(manualUiContext.genericM7HdmiSwitchAccepted) &&
     /HDMI 2/.test(manualUiContext.genericM7HdmiSwitchAccepted) &&
@@ -2582,7 +2589,7 @@ assert(
       manualUiContext.falseEquivalentMultiViewRejected,
     ) &&
     /MANUAL_OUTPUT_FORMAT_ERROR/.test(manualUiContext.contradictoryNotFound),
-  "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 與格式失敗都進受控 Web 補救",
+  "手冊 Evidence 摘錄只供程式驗證，客戶只看簡潔答案、單一操作路徑與頁碼；NOT_FOUND 可補查，格式失敗不可再收搜尋費",
 );
 assert(
   /MANUAL_EVIDENCE_VALIDATION_ERROR/.test(
@@ -2671,8 +2678,8 @@ assert(
 );
 assert(
   /const manualEvidenceNotFound =/.test(linebot) &&
-    /manualEvidenceNotFound \|\|\s*manualEvidenceFailed \|\|\s*recommendedWeb/.test(linebot),
-  "PDF NOT_FOUND、格式或證據驗證失敗都必須進同一次受控 Web 補救",
+    /!executionFailure && \(manualEvidenceNotFound \|\| manualEvidencePartial \|\| recommendedWeb/.test(linebot),
+  "PDF 只有缺口可補 Web，格式或驗證失敗停止付費",
 );
 const finalAdvancedQuickReplyStart = advancedRouteText.lastIndexOf(
   "buildAdvancedSourceQuickReplies_(",
@@ -2932,13 +2939,13 @@ assert(
     manualDiscoveryVm.singleName === "S27FG532.pdf" &&
     manualDiscoveryVm.hSeriesName === "S27H704,S27H802,S32H704,S32H802,S40H850.pdf" &&
     manualDiscoveryVm.mismatchName === "" &&
-    /savePendingManualRevision_/.test(
+    /queueManualIdentityInspection_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
-    /validateOfficialManualFirstPage_/.test(
+    /Utilities\.computeDigest/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
-    /promoteOfficialManualToRoot_/.test(
+    !/promoteOfficialManualToRoot_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
     /Drive\.Files\.update/.test(
@@ -2953,7 +2960,7 @@ assert(
     /selectedNewProducts = orderedNewProducts\.slice\(0, 2\)/.test(
       extractFunction(linebot, "scanOfficialWebsiteForNewMonitors"),
     ) &&
-    /PROMOTION_EXCEPTION_/.test(
+    /queueManualIdentityInspection_/.test(
       extractFunction(linebot, "stageOfficialTwManualCandidate_"),
     ) &&
     !/upsertManualPdfToGemini_/.test(

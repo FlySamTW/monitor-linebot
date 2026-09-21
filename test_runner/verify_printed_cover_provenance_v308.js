@@ -41,6 +41,8 @@ const pending=(model,sourceSha)=>JSON.stringify({reason:'PAGE_INDEX_BUILD_REQUIR
 h.properties.set('MANUAL_PENDING_COMPLETED',pending('LS27F612EACXZW',sha));
 h.properties.set('MANUAL_PENDING_NEW_SHA',pending('S27F612EAC','1'.repeat(64)));
 h.properties.set('MANUAL_PENDING_OTHER_MODEL',pending('S27D392GAC',sha));
+assert(!c.isReadyWorkerManualRevisionForCandidate_({fullSku:"LS27F612EACXZW"},sha),"active pointer alone is not completion");
+c.probeManualWorkerRevision_({docKey:workerKey});
 let pendingReport=c.readPendingManualIndexBuilds_();
 assert(c.isManualIndexPromotionReady_({fullSku:'LS27F612EACXZW'},sha));
 assert(!c.isReadyWorkerManualRevisionForCandidate_({fullSku:'LS27F612EACXZW'},'1'.repeat(64)));

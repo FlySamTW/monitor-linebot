@@ -1,0 +1,28 @@
+{
+  "version": "v29.6.324",
+  "build": "2026-09-19 14:54",
+  "testedAt": "2026-09-19T15:33:32+08:00",
+  "channel": "Chrome editor TestUI; LINE API skipped",
+  "question": "那兩台電腦的鍵盤滑鼠也會跟畫面一起換過去嗎？",
+  "contextModel": "S32FM703UC",
+  "status": "FAIL",
+  "actualReply": "資料來源：三星官方手冊\n\n本次約 NT$0.0724｜模型：Gemini 3.1 Flash-Lite｜手冊 1/2",
+  "manual": {
+    "transport": "custom_page_rag_text",
+    "pagesSent": [20, 34, 35, 84, 82],
+    "providerFound": true,
+    "providerCoverage": "full",
+    "acceptedEvidence": 0,
+    "proposedEvidence": 1,
+    "rejectedCheck": "model applicability",
+    "recordedCoverageIncorrectly": "supported"
+  },
+  "costKind": "usage_estimate_not_invoice",
+  "costTwd": 0.072368,
+  "receipts": [
+    {"purpose":"fast","model":"gemini-3.1-flash-lite","costTwd":0.02544,"id":"95263c62-4a0f-4ab1-945a-bd3b7f4fc529"},
+    {"purpose":"qa_semantic","model":"gemini-3.1-flash-lite","costTwd":0.02336,"id":"4f28e0b1-d164-4c1b-bc9b-f8f5c54cbfed"},
+    {"purpose":"pdf","model":"gemini-3.1-flash-lite","costTwd":0.023568,"id":"9fac86a2-10cf-4f0f-9d05-50872b3ee5c8"}
+  ],
+  "fix": "Preserve failure status before formatting; never attach a source to an empty body or declare all-rejected evidence supported. Applicability guards remain enforced."
+}

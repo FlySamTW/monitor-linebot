@@ -157,6 +157,17 @@
                   });
                 }, 250);
               },
+              testSourcePostbackData: function (data) {
+                setTimeout(() => {
+                  if (this.success) this.success({
+                    success: true,
+                    messages: [{ type: "text", text: "[Mock Postback] " + String(data || "") }],
+                    replies: ["[Mock Postback] " + String(data || "")],
+                    logs: ["[Mock Postback Data] " + String(data || "")],
+                    deliveryState: "test_captured",
+                  });
+                }, 250);
+              },
               clearTestSession: function () {
                 setTimeout(() => {
                   if (this.success) this.success({ success: true });
@@ -751,9 +762,14 @@
           </div>
         </div>
         <div id="log-box" class="log-box"></div>
-        <? if (isEditorOnlyDevelopmentWebApp_()) { ?>
+        <? if (testUiEditorAccess) { ?>
         <details style="padding:8px">
           <summary>編輯者維護／隔離驗證（共用 NT$5 上限）</summary>
+          <button class="btn" onclick="runReliabilityMaintenance('cost_report', this)">讀取本批與月費收據（零模型）</button>
+          <button class="btn" onclick="runReliabilityMaintenance('lowcost_probe', this)">檢查 2.5 模型能否實際回答</button>
+          <label for="local-evidence-cases">候選方案對照題（JSON，每次最多 5 題，計入本批 NT$5）</label>
+          <textarea id="local-evidence-cases" rows="4" style="width:100%;box-sizing:border-box" aria-label="候選方案對照題"></textarea>
+          <button class="btn" onclick="compareLocalEvidence(this)">同題比較 JEV 與便宜 LLM</button>
           <button class="btn" onclick="runReliabilityMaintenance('provider_status', this)">讀取 Gemini 主／備援狀態（零模型）</button>
           <button class="btn" onclick="runReliabilityMaintenance('provider_health_primary', this)">驗證主金鑰與正式模型</button>
           <button class="btn" onclick="runReliabilityMaintenance('provider_health_standby', this)">驗證備援金鑰與正式模型</button>
@@ -867,6 +883,14 @@
           output.textContent = String(error.message || error);
           button.disabled = false;
         }).syncReviewedEvidenceRowsFromTestUi({ruleRows:rows}, TEST_UI_ACCESS_TOKEN);
+      }
+      function compareLocalEvidence(button) {
+        const output=document.getElementById('reliability-result');let cases;
+        try {cases=JSON.parse(document.getElementById('local-evidence-cases').value);}
+        catch(error){output.textContent='請填入有效 JSON 題目陣列。';return;}
+        button.disabled=true;output.textContent='比較中，請勿重複送出。';
+        google.script.run.withSuccessHandler(function(result){button.disabled=false;output.textContent=JSON.stringify(result,null,2);})
+          .withFailureHandler(function(error){button.disabled=false;output.textContent=error.message;}).compareLocalEvidenceFromTestUi(cases,TEST_UI_ACCESS_TOKEN);
       }
       function runReliabilityMaintenance(action, button) {
         button.disabled = true;
@@ -1383,21 +1407,25 @@
       }
 
       function renderTestReplies(res, staggerMs) {
-        var replies = res && Array.isArray(res.replies) ? res.replies : [];
-        var quickReplies = res && Array.isArray(res.quickReplies)
-          ? res.quickReplies
-          : [];
-        if (replies.length === 0) {
+        var messages = res && Array.isArray(res.messages) ? res.messages : [];
+        if (messages.length === 0 && res && Array.isArray(res.replies)) {
+          messages = res.replies.map(function (text) { return { type: "text", text: String(text || "") }; });
+        }
+        if (messages.length === 0) {
           addMsg("bot", "(無回覆)");
           return;
         }
-        replies.forEach(function (reply, index) {
+        messages.forEach(function (message, index) {
           setTimeout(function () {
-            if (index === replies.length - 1 && quickReplies.length > 0) {
-              addMsgWithQuickReplies("bot", reply, quickReplies);
-            } else {
-              addMsg("bot", reply);
-            }
+            var reply = "";
+            if (message && message.type === "text") reply = String(message.text || "");
+            else if (message && message.type === "sticker") reply = "[貼圖: " + message.packageId + "/" + message.stickerId + "]";
+            else if (message && message.type) reply = String(message.altText || "[" + message.type + " Message]");
+            else reply = String(message || "");
+            var quickReplies = message && message.quickReply && Array.isArray(message.quickReply.items)
+              ? message.quickReply.items : [];
+            if (quickReplies.length > 0) addMsgWithQuickReplies("bot", reply, quickReplies);
+            else addMsg("bot", reply);
           }, index * (staggerMs || 0));
         });
       }
@@ -1431,6 +1459,29 @@
             TEST_UI_ACCESS_TOKEN,
             model || "",
           );
+      }
+
+      function runPostbackData(data) {
+        if (!ensureRouterModeReady_()) return;
+        if (isBotProcessing) return;
+        isBotProcessing = true;
+        updateLogs([`[${new Date().toLocaleTimeString()}] [HTML] Postback data: ${data}`]);
+        var loadingId = addMsg("bot", "Reading...");
+        google.script.run
+          .withSuccessHandler(function (res) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            if (res.logs && res.logs.length > 0) updateLogs(res.logs);
+            renderTestReplies(res, 0);
+            renderSourceActions(res.sourceState);
+            document.getElementById("msg-input").focus();
+          })
+          .withFailureHandler(function (err) {
+            isBotProcessing = false;
+            removeMsg(loadingId);
+            addMsg("bot", "❌ Error: " + err);
+          })
+          .testSourcePostbackData(String(data || ""), TEST_USER_ID, TEST_UI_ACCESS_TOKEN);
       }
 
       function selectSource(source) {
@@ -1578,7 +1629,7 @@
               if (res.logs && res.logs.length > 0) updateLogs(res.logs);
               renderSourceActions(res.sourceState);
 
-              if (res.replies && res.replies.length > 0) {
+              if (res.messages && res.messages.length > 0) {
                 renderTestReplies(res, 300);
               } else addMsg("bot", "(無回覆)");
               setTimeout(processQueue, 1000);
@@ -1681,12 +1732,7 @@
             control.type = "button";
             control.addEventListener("click", function () {
               if (action.type === "postback") {
-                var params = new URLSearchParams(action.data || "");
-                runSourcePostback(
-                  params.get("rm_action") || "select_source",
-                  params.get("source") || activeSource,
-                  params.get("model") || "",
-                );
+                runPostbackData(action.data || "");
               } else {
                 sendMessage_Direct(action.text || action.label);
               }

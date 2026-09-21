@@ -228,7 +228,7 @@ test("真實歷史讀取：新功能與新限制不可被免費舊片段搶答",
 const g=createProductionHarness({quiet:true,now:"2026-09-05T08:00:00Z"}), p=g.context;
 const url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 const usage={promptTokenCount:1000,candidatesTokenCount:100,thoughtsTokenCount:50,cachedContentTokenCount:200,totalTokenCount:1150};
-const opts={geminiApiKey:"fixture",method:"post",payload:JSON.stringify({contents:[{parts:[{text:"fixture"}]}],generationConfig:{maxOutputTokens:1000}})};
+const opts={providerPurpose:"diagnostic",geminiApiKey:"fixture",method:"post",payload:JSON.stringify({contents:[{parts:[{text:"fixture"}]}],generationConfig:{maxOutputTokens:1000}})};
 const response=(body,code=200)=>({getResponseCode:()=>code,getContentText:()=>JSON.stringify(body)});
 test("未初始化預算0付費呼叫",()=>assert.throws(()=>p.providerFetch_(url,opts),/NOT_INITIALIZED/));
 test("usage含thinking/cache只結算一次",()=>{
@@ -343,9 +343,9 @@ test("雙專案冷備援不自動偷跑，健康通過才切換且不暴露key",
   cold.setFetch(()=>response({candidates:[{content:{parts:[{text:"OK"}]}}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:1}},200));
   const activated=cc.activateGeminiKeySlot_("standby");
   assert.strictEqual(activated.activated,"standby");
-  assert.strictEqual(activated.probe.providerCalls,2,"啟用前必須實測兩種正式模型");
+  assert.strictEqual(activated.probe.providerCalls,1,"相同正式模型去重，只驗證一次");
   assert.deepStrictEqual(Array.from(activated.probe.verifiedModels),[
-    "models/gemini-3.1-flash-lite","models/gemini-3.7-flash"
+    "models/gemini-3.1-flash-lite"
   ]);
   assert.strictEqual(cc.getActiveGeminiKeySlot_(),"standby");
   assert.strictEqual(cc.getGeminiApiKey_(),standby);
@@ -468,6 +468,10 @@ test("完整handleMessage三輪：零售→App→睡眠，僅外部供應商替�
   jc.initializeProviderBudget_(0,jc.providerMonthKey_());
   journey.setFetch((target,options)=>{
     const request=JSON.parse(options.payload||"{}");
+      if (/QA／RULE 證據(?:判讀|回答)器/.test(JSON.stringify(request.systemInstruction||{}))) {
+        const parsed=JSON.parse(request.contents[0].parts[0].text), state=parsed&&parsed.task?parsed.task:parsed;
+        return response({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({claims:[{id:"C1",question:String(state.question||""),scope:"model_specific",state:"missing_evidence",basis:"none",answer:"",evidenceRefs:[],conditions:[],assumptions:[]}]})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:40}});
+      }
     let answer;
     if(target.includes("gemini-3.7-flash")) {
       answer={topicRelation:"new",productAction:"keep_confirmed",candidateIndex:0,claims:[{id:"c1",question:"睡眠計時器在哪裡設定？",intent:"operation",evidenceNeed:"manual_model_specific",answerShape:"menu_path"}],confidence:"high",reasonCode:"MODEL_SPECIFIC_OPERATION"};
@@ -490,7 +494,7 @@ test("完整handleMessage三輪：零售→App→睡眠，僅外部供應商替�
   assert(replies[2].includes("睡眠計時器")&&!replies[2].includes("Netflix"),replies[2]+journey.logs.join("\n"));
   assert(replies[2].includes("157"),replies[2]);
   assert.strictEqual(journey.fetches.filter(x=>x.url.includes("gemini-3.7-flash")).length,0,"已明講睡眠功能的追問不需再問Router");
-  assert.strictEqual(journey.fetches.filter(x=>x.url.includes(":generateContent")).length,1,"兩題免費、一題手冊；無多餘Web");
+  assert.strictEqual(journey.fetches.filter(x=>x.url.includes(":generateContent")).length,2,journey.logs.filter(x=>/Manual|Evidence|Rescue/.test(x)).join("\n"));
   assert(!journey.logs.some(x=>x.includes("[Fatal]")),journey.logs.join("\n"));
 });
 
@@ -501,7 +505,12 @@ test("完整來源入口：G9選型轉手冊退款，額度耗盡仍免費重播
   jc.initializeProviderBudget_(0,jc.providerMonthKey_());
   journey.setFetch((target,options)=>{
     assert(target.includes("gemini-3.1-flash-lite"),target);
-    const input=JSON.parse(JSON.parse(options.payload).contents[0].parts[0].text);
+    const request=JSON.parse(options.payload);
+      if (/QA／RULE 證據(?:判讀|回答)器/.test(JSON.stringify(request.systemInstruction||{}))) {
+        const parsed=JSON.parse(request.contents[0].parts[0].text), state=parsed&&parsed.task?parsed.task:parsed;
+        return response({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({claims:[{id:"C1",question:String(state.question||""),scope:"model_specific",state:"missing_evidence",basis:"none",answer:"",evidenceRefs:[],conditions:[],assumptions:[]}]})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:40}});
+      }
+    const input=JSON.parse(request.contents[0].parts[0].text);
     const fragment=input.evidenceCandidates.find(x=>x.pageNumber===115);
     assert(fragment);
     return response({candidates:[{content:{parts:[{text:JSON.stringify({found:true,coverage:"full",evidence:[{
@@ -512,7 +521,7 @@ test("完整來源入口：G9選型轉手冊退款，額度耗盡仍免費重播
     jc.handleMessage({type:"message",replyToken:"fixture",source:{type:"user",userId:cid},message:{type:"text",text:question}});
   }
   assert.strictEqual(jc.getDailyQuestionRemaining_(cid),10,"選型只是同一題，轉手冊後退款");
-  assert.strictEqual(journey.fetches.filter(x=>x.url.includes(":generateContent")).length,1);
+  assert.strictEqual(journey.fetches.filter(x=>x.url.includes(":generateContent")).length,2,journey.logs.filter(x=>/Manual|Evidence|Rescue/.test(x)).join("\n"));
   // Simulate the other daily manual slot already used; do not stub the router.
   const key=jc.getSourceQuotaKey_(cid,jc.getSourceDateKey_());
   const quota=jc.readSourceQuota_(cid);quota.manual=2;

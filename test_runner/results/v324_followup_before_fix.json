@@ -1,0 +1,19 @@
+{
+  "version": "v29.6.324 candidate before 14:03 fix",
+  "interface": "Chrome editor TestUI, real providers, LINE API skipped",
+  "at": "2026-09-19T05:58:36Z",
+  "previousQuestion": "S27H704EAC怎麼自我診斷？",
+  "previousAnswer": "Support → Self Diagnosis；執行期間請勿關閉電源、變更輸入來源或中斷測試。官方手冊第41頁。",
+  "question": "那測試時能切換輸入嗎？",
+  "answer": "自動來源切換 Auto Source Switch+；偵測新啟用輸入並自動切換來源。資料來源：三星官方活動資料。",
+  "accepted": false,
+  "failure": "JEV correctly retained self-diagnosis context, but local evidence gate received only the elliptical question and selected a general capability instead of the operating restriction. RULE source was also mislabeled as campaign.",
+  "routerCalls": 1,
+  "pdfCalls": 0,
+  "webCalls": 0,
+  "costTwd": 0.019398784,
+  "receipts": [
+    {"id":"5fb7a3f1-d394-4e63-a156-13f728877f9f","purpose":"router","model":"typesafe/jev-1.13","costTwd":0.001862784,"status":"reported"},
+    {"id":"ab582f53-02be-48e8-97cf-06ae9c0abac2","purpose":"qa_semantic","model":"gemini-3.1-flash-lite","costTwd":0.017536,"status":"estimated"}
+  ]
+}

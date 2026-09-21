@@ -898,15 +898,25 @@ function qaKnowledgePromptLine_(record) {
   ].filter(Boolean).join(" | ");
 }
 
-function qaKnowledgeSelectPromptContext_(query, injectedModels, isPdfMode) {
-  var modelList = qaKnowledgeNormalizeModels_(injectedModels || []);
+function qaKnowledgeSelectPromptContext_(query, injectedModels, isPdfMode, candidateRecall) {
+  var modelList = qaKnowledgeNormalizeModels_((injectedModels || []).concat(qaKnowledgeExtractModels_(query)));
   var enrichedQuery = String(query || "") + (modelList.length > 0 ? " " + modelList.join(" ") : "");
-  var result = qaKnowledgeRank_(enrichedQuery, { excludeManual: true });
+  // Semantic recall includes stored manual answers. The exact direct-answer gate stays separate.
+  // Use cached records so partial inverted-index hits cannot hide model-stem manual rows.
+  var allRecords = qaKnowledgeLoadAllRecords_();
+  var result = { totalCount: allRecords.length, fromCache: true, ranked: allRecords
+    .filter(function (record) {
+      var scopedModels = record.scope && record.scope.models || [];
+      return !scopedModels.length || modelList.some(function (model) {
+        return scopedModels.some(function (candidate) { return qaKnowledgeModelMatches_(candidate, model); });
+      });
+    })
+    .map(function (record) { return qaKnowledgeScoreRecord_(record, enrichedQuery, { model: modelList[0] || "" }); })
+    .filter(Boolean).sort(function (a,b) { return b.score-a.score; }) };
   var selected = result.ranked.filter(function (item) {
-    if (item.score < 18) return false;
-    // QA prompt 與直答使用同一 precision gate。產品身分只是 metadata
-    // filter，沒有實際題意詞命中時不得把同型號的其他 QA 塞給模型。
-    if (!item.strongSignal) return false;
+    if (item.score < 18 || (!candidateRecall && !item.strongSignal)) return false;
+    // Candidate recall is intentionally broader than zero-cost direct acceptance.
+    // The semantic gate checks scope and whole-question coverage before answering.
     if (
       isPdfMode &&
       typeof isExternalDeviceCompatibilityQa_ === "function" &&

@@ -5,6 +5,7 @@ const vm = require("vm");
 
 const root = path.resolve(__dirname, "..");
 const linebot = fs.readFileSync(path.join(root, "linebot.gs"), "utf8");
+const answerV2 = fs.readFileSync(path.join(root, "answer_contract_v2.gs"), "utf8");
 
 function extractFunction(source, name) {
   const marker = `function ${name}(`;
@@ -41,6 +42,12 @@ const context = {
   ANSWER_ENVELOPE_TTL_MS: 30 * 24 * 60 * 60 * 1000,
   Set,
   Date,
+  ANSWER_EVIDENCE_POLICY: "qa-rule-v324-7",
+  Utilities: {
+    newBlob: (text) => ({
+      getBytes: () => Array.from(Buffer.from(String(text || ""), "utf8")),
+    }),
+  },
   computeReplyAnchor_: (text) => String(text || "").toUpperCase(),
   normalizeModelForDisplay: (text) => String(text || "").toUpperCase(),
   extractFullModelLikeTokens: (text) =>
@@ -73,6 +80,14 @@ const context = {
 vm.createContext(context);
 vm.runInContext(
   [
+    extractFunction(answerV2, "uniqueAnswerStrings_"),
+    extractFunction(answerV2, "normalizeAnswerEnvelopeV2_"),
+    extractFunction(answerV2, "mergeAdvancedAnswerEnvelopeV2_"),
+  ].join("\n\n"),
+  context,
+);
+vm.runInContext(
+  [
     extractFunction(linebot, "normalizeAnswerEnvelope_"),
     extractFunction(linebot, "isGeneralComputingReasoningQuestion_"),
     extractFunction(linebot, "isFastEvidenceRequiredQuestion_"),
@@ -90,6 +105,7 @@ vm.runInContext(
     extractFunction(linebot, "getGroundedModelIdentityProfile_"),
     extractFunction(linebot, "matchGroundedModelIdentity_"),
     extractFunction(linebot, "isLowRiskGroundedTroubleshooting_"),
+    extractFunction(linebot, "isGroundedGeneralMethod_"),
     extractFunction(linebot, "isExactProductFactQuestion_"),
     extractFunction(linebot, "expandGroundedSupportToCompleteLine_"),
     extractFunction(linebot, "doesGroundedAnswerCompleteQuestion_"),
@@ -124,8 +140,12 @@ const generalReasoningClean = context.buildFastAnswerEnvelope_({
   manualRecommended: false,
   webRecommended: false,
 });
-assert.strictEqual(generalReasoningClean.status, "supported");
-assert.strictEqual(generalReasoningClean.expandable, true);
+assert.strictEqual(
+  generalReasoningClean.status,
+  "unsupported",
+  "scope=general 不是無證據生成許可；含產品 4K 事實而無 refs 必須 fail-closed",
+);
+assert.strictEqual(generalReasoningClean.expandable, false);
 
 const actions = context.buildEvidenceActionQuickReplies_(unsupported);
 assert.deepStrictEqual(
@@ -220,10 +240,10 @@ assert(
 );
 assert(!/action === "confirm_manual"/.test(linebot));
 assert(
-  /manualEvidenceNotFound \|\|\s*manualEvidenceFailed \|\|\s*recommendedWeb/.test(
+  /!executionFailure && \(manualEvidenceNotFound \|\| manualEvidencePartial \|\| recommendedWeb/.test(
     linebot,
   ),
-  "手冊無證據或格式驗證失敗必須進自動 Web 補救",
+  "只有手冊資料缺口可升 Web，格式或供應商失敗停止後續付費",
 );
 
 const groundedRaw = [

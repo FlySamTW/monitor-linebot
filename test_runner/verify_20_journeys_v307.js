@@ -6,6 +6,43 @@ const records = [];
 const msg = text => ({text});
 const button = source => ({postback:`rm_action=select_source&source=${source}&v=2`});
 const response = body => ({getResponseCode:()=>200,getContentText:()=>JSON.stringify(body)});
+function interactionAsLegacyRequest(request) {
+  return {
+    systemInstruction:{parts:[{text:String(request.system_instruction||'')}]},
+    contents:(request.input||[]).map(item=>({role:item.role,parts:(item.content||[]).filter(p=>p&&p.type==='text').map(p=>({text:String(p.text||'')}))})),
+    tools:(request.tools||[]).map(tool=>tool&&tool.type==='google_search'?{google_search:{}}:tool),
+    toolConfig:{includeServerSideToolInvocations:true},
+    generationConfig:{maxOutputTokens:request.generation_config&&request.generation_config.max_output_tokens,
+      thinkingConfig:{thinkingLevel:request.generation_config&&request.generation_config.thinking_level}},
+  };
+}
+function legacyWebFixtureToInteraction(body) {
+  const candidate=((body||{}).candidates||[])[0]||{}, grounding=candidate.groundingMetadata||{};
+  const text=((candidate.content||{}).parts||[]).filter(p=>p&&typeof p.text==='string'&&!p.thought).map(p=>p.text).join('');
+  const chunks=Array.isArray(grounding.groundingChunks)?grounding.groundingChunks:[];
+  const annotations=[];
+  (Array.isArray(grounding.groundingSupports)?grounding.groundingSupports:[]).forEach(support=>{
+    const segment=String(support&&support.segment&&support.segment.text||'');
+    const charStart=segment?text.indexOf(segment):-1;
+    const chunkIndex=Array.isArray(support&&support.groundingChunkIndices)?support.groundingChunkIndices[0]:null;
+    const web=Number.isInteger(chunkIndex)&&chunks[chunkIndex]&&chunks[chunkIndex].web;
+    if(charStart<0||!web||!/^https:\/\//i.test(String(web.uri||'')))return;
+    annotations.push({type:'url_citation',url:String(web.uri),title:String(web.title||web.uri),
+      start_index:Buffer.byteLength(text.slice(0,charStart),'utf8'),
+      end_index:Buffer.byteLength(text.slice(0,charStart+segment.length),'utf8')});
+  });
+  const queryParts=((candidate.content||{}).parts||[]).flatMap(p=>p&&p.toolCall&&p.toolCall.args&&Array.isArray(p.toolCall.args.queries)?p.toolCall.args.queries:[]);
+  const queries=(Array.isArray(grounding.webSearchQueries)?grounding.webSearchQueries:queryParts).filter(Boolean);
+  const steps=[];
+  if(queries.length)steps.push({type:'google_search_call',id:'fixture-search-1',queries});
+  steps.push({type:'model_output',content:[{type:'text',text,annotations}]});
+  const u=(body||{}).usageMetadata||{};
+  return {id:String((body||{}).responseId||'fixture-interaction-1'),status:'completed',steps,
+    usage:{total_input_tokens:Number(u.promptTokenCount||0),total_output_tokens:Number(u.candidatesTokenCount||0),
+      total_thought_tokens:Number(u.thoughtsTokenCount||0),total_cached_tokens:Number(u.cachedContentTokenCount||0),
+      total_tokens:Number(u.totalTokenCount||0)||Number(u.promptTokenCount||0)+Number(u.candidatesTokenCount||0)+Number(u.thoughtsTokenCount||0),
+      grounding_tool_count:queries.length?[{type:'google_search',count:queries.length}]:[]}};
+}
 // Curated fixtures use existing regression answers or the actual supplied
 // official evidence text. Missing support remains partial/none; no source or
 // validator is replaced. Router fixtures classify intent without product facts.
@@ -41,8 +78,13 @@ function runJourney(spec, index, journeyOptions={}) {
   // Simulated immutable Drive storage; the real importer checks each checksum.
   c.ScriptApp.getService=()=>({getUrl:()=> 'https://example.test/dev'});
   const files=new Map(); let serial=0;
+  const editorUser={getEmail:()=> 'fixture-editor@example.test'};
+  c.Session.getActiveUser=()=>editorUser;
+  c.Session.getEffectiveUser=()=>editorUser;
   c.Drive={Files:{get:()=>({mimeType:'application/vnd.google-apps.folder',capabilities:{canAddChildren:true}}),create:(_,blob)=>{const id='offline-'+(++serial);files.set(id,blob);return {id};}}};
-  c.DriveApp.getFileById=id=>({getBlob:()=>files.get(id)});
+  c.DriveApp.getFileById=id=>id==='fixture-script'
+    ? {getOwner:()=>editorUser,getEditors:()=>[]}
+    : {getBlob:()=>files.get(id)};
   const token=c.issueTestUiAccessToken_();
   for (const record of pack.records) c.importManualIndexRecordFromTestUi(record,token);
   const unsupported=[], providerEvidence=[];
@@ -76,13 +118,40 @@ function runJourney(spec, index, journeyOptions={}) {
       return response({model:'typesafe/jev-1.13-20260917',answers,usage:{input_tokens:100,output_tokens:40,cost:0.0000042}});
     }
     if(url.includes(':countTokens')) return response({totalTokens:500});
+    if(url==='https://generativelanguage.googleapis.com/v1beta/interactions') {
+      assert.equal(request.model,'gemini-3.1-flash-lite');
+      assert.equal(request.store,false);assert.equal(request.stream,false);assert.equal(request.background,false);
+      assert((request.tools||[]).some(tool=>tool&&tool.type==='google_search'));
+      assert.equal(request.generation_config&&request.generation_config.max_output_tokens,800);
+      assert.equal(request.generation_config&&request.generation_config.thinking_level,'minimal');
+      const legacyRequest=interactionAsLegacyRequest(request);
+      let fixtureBody;
+      if(journeyOptions.webProviderResponse) fixtureBody=journeyOptions.webProviderResponse(legacyRequest);
+      else {
+        providerEvidence.push({fixtureKind:'web-empty-grounding',question:legacyRequest.contents});
+        fixtureBody={candidates:[{content:{parts:[{text:'目前沒有可核對的公開網頁證據，無法確認這項操作或限制。'}]},groundingMetadata:{groundingChunks:[],groundingSupports:[]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:30}};
+      }
+      return response(legacyWebFixtureToInteraction(fixtureBody));
+    }
     let input;
     try {input=JSON.parse(request.contents[0].parts[0].text);} catch (_) {input={};}
+      if (/QA／RULE 證據(?:判讀|回答)器/.test(JSON.stringify(request.systemInstruction||{}))) {
+        const parsed=JSON.parse(request.contents[0].parts[0].text), state=parsed&&parsed.task?parsed.task:parsed;
+        let decision={complete:false,answers:[],remainingQuestions:[state.question],questionScope:'model_specific'};
+        if(journeyOptions.localEvidenceResponse)decision=journeyOptions.localEvidenceResponse(state,decision);
+        const scope=decision.questionScope;
+        const v2={claims:[{id:'C1',question:String(state.question||''),scope:scope==='general'||scope==='non_product'?'general':'model_specific',
+          state:'missing_evidence',basis:'none',answer:'',evidenceRefs:[],conditions:[],assumptions:[]}]};
+        if(scope!==null&&scope!==undefined)v2.questionScope=scope;
+        return response({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(v2)}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:40}});
+      }
     if (Array.isArray(input.evidenceCandidates)) {
       const fixture=fixtures.find(f=>f.question.test(input.question)&&input.evidenceCandidates.some(e=>f.evidence.test(e.officialManualText)));
       const evidence=fixture&&input.evidenceCandidates.find(e=>fixture.evidence.test(e.officialManualText));
       providerEvidence.push({question:input.question,model:input.model,evidenceId:evidence&&evidence.evidenceId,page:evidence&&evidence.pageNumber,fixture:!!fixture,selectedText:evidence&&evidence.officialManualText});
-      const result=fixture ? {found:true,coverage:fixture.coverage||'full',unresolvedQuestion:fixture.unresolved||'',evidence:[{evidenceId:evidence.evidenceId,supportedAnswer:fixture.answer}]} : {found:false,coverage:'none',evidence:[]};
+      let result=fixture ? {found:true,coverage:fixture.coverage||'full',unresolvedQuestion:fixture.unresolved||'',evidence:[{evidenceId:evidence.evidenceId,supportedAnswer:fixture.answer}]} : {found:false,coverage:'none',evidence:[]};
+      if(journeyOptions.manualProviderResponse) result=journeyOptions.manualProviderResponse(input,result);
+      if(fixture && /120Hz/.test(input.question) && !/120/i.test(fixture.answer)) {result.coverage='partial';result.unresolvedQuestion='分割後兩側能否使用 120Hz 尚無直接證據。';}
       if(fixture && /同步/.test(input.question) && /Core Lighting/.test(evidence.officialManualText) && !/Core Sync/.test(evidence.officialManualText)) {
         result.coverage='partial'; result.unresolvedQuestion='後方燈與畫面同步的設定仍未核實。';
       }
@@ -95,6 +164,7 @@ function runJourney(spec, index, journeyOptions={}) {
       return response({candidates:[{content:{parts:[{text:JSON.stringify(result)}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
     }
     if ((request.tools||[]).some(tool=>tool.google_search)) {
+      if(journeyOptions.webProviderResponse) return response(journeyOptions.webProviderResponse(request));
       providerEvidence.push({fixtureKind:'web-empty-grounding',question:request.contents});
       return response({candidates:[{content:{parts:[{text:'目前沒有可核對的公開網頁證據，無法確認這項操作或限制。'}]},groundingMetadata:{groundingChunks:[],groundingSupports:[]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:30}});
     }
@@ -128,14 +198,14 @@ function runJourney(spec, index, journeyOptions={}) {
   }
   let failure='';
   try {
-    assert(turns.length>=2);
+    assert(turns.length>=2 || (journeyOptions.singleTurn===true&&turns.length===1));
     assert(turns.every(t=>!t.error && t.replies.length), '每輪須有回覆且無未捕捉例外');
     spec.check(turns,c,id);
   } catch(e) {failure=e.message;}
   const status=unsupported.length?'BLOCKED_FIXTURE':failure?'FAIL':'PASS';
   const result={id:index,name:spec.name,status,failure,unsupported,providerEvidence,turns}; records.push(result);
-  if(journeyOptions.writeReport!==false) fs.writeFileSync(path.join(__dirname,'results/v307_20_journeys_offline.json'),JSON.stringify(records,null,2));
-  console.log(`${status} J${index} ${spec.name}${failure?' / '+failure:''}`);
+  if(journeyOptions.writeReport!==false) fs.writeFileSync(path.join(__dirname,'results/v324_20_journeys_offline.json'),JSON.stringify(records,null,2));
+  console.log(`${status} J${index} ${spec.name}${failure?' / '+failure:''}${unsupported.length?' / '+unsupported.join(' | '):''}`);
   return result;
 }
 const textOf=t=>t.replies.join('\n');
@@ -166,11 +236,11 @@ const specs=[
 module.exports={runJourney,specs};
 if(require.main===module) {
 specs.forEach((spec,i)=>{if(!process.env.JOURNEY_IDS || process.env.JOURNEY_IDS.split(',').map(Number).includes(i+1))runJourney(spec,i+1);});
-fs.writeFileSync(path.join(__dirname,'results/v307_20_journeys_offline.json'),JSON.stringify(records,null,2));
+fs.writeFileSync(path.join(__dirname,'results/v324_20_journeys_offline.json'),JSON.stringify(records,null,2));
 const counts=Object.fromEntries(['PASS','FAIL','BLOCKED_FIXTURE'].map(k=>[k,records.filter(r=>r.status===k).length]));
 if(records.length===20) {
-  const reportPath=path.join(__dirname,'results/v307_20_journeys_offline.md');
-  const current=fs.readFileSync(reportPath,'utf8');
+  const reportPath=path.join(__dirname,'results/v324_20_journeys_offline.md');
+  const current=fs.existsSync(reportPath)?fs.readFileSync(reportPath,'utf8'):'# v324 20 條核心旅程（離線 I/O fixture）\n\n最終執行：待執行\n';
   const ids=status=>records.filter(r=>r.status===status).map(r=>r.id).join('、')||'無';
   const summary=`最終執行：**20條／${records.reduce((n,r)=>n+r.turns.length,0)}個事件，${counts.PASS}條 PASS、${counts.FAIL}條 FAIL、${counts.BLOCKED_FIXTURE}條 BLOCKED_FIXTURE**，真實供應商0次。通過：${ids('PASS')}；失敗：${ids('FAIL')}；缺fixture：${ids('BLOCKED_FIXTURE')}。程序exit ${counts.FAIL||counts.BLOCKED_FIXTURE?1:0}。PASS僅代表本報告的離線路由及終點斷言，不代表live／手機驗收。${counts.PASS<19?'未達19/20門檻。':'達到本次離線19/20門檻，仍須分列真人證據。'}`;
   fs.writeFileSync(reportPath,current.replace(/最終執行：[^\n]*/,summary));
