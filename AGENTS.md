@@ -55,3 +55,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\release_existing_webho
 
 受控 LINE 候選只可用同一入口 `-BeginLineAcceptance -LineReadinessReceipt <已核對檔>`；要求真實 LINE 可操作、雲端時窗讀回、模型比較審查及同批餘額，最長30分鐘。`-FinalizeLineAcceptance` 須 sealed LINE 可見回答／事件／provider收據及20旅程門檻全部通過；不重新建版本。失敗／到期由同一入口 `-RollbackVersion` 回復正式 pin 與原 HEAD。背景 watchdog 須電腦與網路持續可用，其實機結果另列；不得以離線時鐘 fixture 冒稱已驗證雲端逾時回復。上傳前一律備份 HEAD，回復後核對全部檔案 SHA；不得清除 Properties、Sheet、月帳或歷史驗收費用。
 整合測試載入真正router／resolver／驗證器，只模擬I/O；關鍵安全全過、20旅程至少19正確終點。沒驗證不宣稱徹底完成。
+
+## 使用者指定先發布後 LINE 測試
+
+使用者明確要求先切既有正式入口再自行 LINE 測試時，使用唯一發布入口的 `-PublishForUserLineTest -UserLineTestAuthorization <JSON>`。紀錄原指示、當次版本/build/hash、診斷與未超額帳本，保留必要測試、正式與HEAD備份、health核對及失敗回復。只標示「已正式部署／LINE待驗」，不得偽造 liveAccepted 或真人報告；此模式與最長30分鐘的AI候選驗收分開。
+
+QA/RULE 候選格式失敗禁止自動再次付費修復；引用原文已具必要限制時由程式回填，仍驗證來源／型號／數字／捏造條件。節流不得刪除手冊能力、歸零未知費用或擴大一般流量的JEV用途。

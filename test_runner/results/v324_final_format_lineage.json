@@ -1,0 +1,11 @@
+{
+  "generationBuild": "2026-09-21 23:59",
+  "finalBuild": "2026-09-22 00:10",
+  "changedFiles": [
+    "answer_contract_v2.gs",
+    "linebot.gs"
+  ],
+  "snapshot": "D:\\00_程式\\20251125_GAS客服LineBot\\output\\release_state\\head_0208a40ebfc34d29bf5925663525ac3b",
+  "diff": "--- answer_contract_v2.gs before\n+++ answer_contract_v2.gs after\n@@ -125,7 +125,12 @@\n       const required=refs.flatMap(localEvidenceRequiredConditions_);\n       // The source already supplies these restrictions. Copy them deterministically\n       // instead of paying another generation to repeat text we already possess.\n-      c.conditions=uniqueAnswerStrings_(c.conditions.concat(required));\n+      const conditionKeys=new Set();\n+      c.conditions=uniqueAnswerStrings_(c.conditions.concat(required)).filter(function(condition){\n+        const key=condition.replace(/[。.!！?？；;，,\\s]+$/g,\"\");\n+        if(conditionKeys.has(key))return false;\n+        conditionKeys.add(key);return true;\n+      });\n       if(c.conditions.some(t=>!localEvidenceContains_(raw,t)))valid=false;\n       if(c.basis===\"derived\"&&(!c.assumptions.length||c.scope!==\"general\"))valid=false;\n     }\n\n--- linebot.gs before\n+++ linebot.gs after\n@@ -13,7 +13,7 @@\n // ════════════════════════════════════════════════════════════════\n // 更新版本號\n const GAS_VERSION = \"v29.6.324\"; // JEV typed Router final; temporary bootstrap removed\n-const BUILD_TIMESTAMP = \"2026-09-21 23:59\";\n+const BUILD_TIMESTAMP = \"2026-09-22 00:10\";\n let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param\n const MAX_ELABORATE_PER_ANSWER = 1;\n const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;\n",
+  "meaning": "生成後僅句尾標點等價的條件去重及build標記；未更改模型、prompt、payload、路由或費率。"
+}

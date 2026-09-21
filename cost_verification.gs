@@ -71,7 +71,13 @@ function runGenerationModelComparison(token) {
   };
   save();
   try {
-    comparison.modelProbe=probeLowCostModels_().results;save();
+    const priorProbe=JSON.parse(props.getProperty("LOW_COST_MODEL_PROBE_V324")||"null");
+    const probeAge=priorProbe ? Date.now()-Date.parse(priorProbe.at) : Infinity;
+    if(probeAge>=0&&probeAge<60*60*1000&&Array.isArray(priorProbe.results)&&
+      ["models/gemini-2.5-flash","models/gemini-3.1-flash-lite"].every(m=>priorProbe.results.some(p=>p.model===m))) {
+      comparison.modelProbe=priorProbe.results;comparison.modelProbeReusedFrom=priorProbe.at;
+    } else comparison.modelProbe=probeLowCostModels_().results;
+    save();
     const models=comparison.modelProbe.filter(r=>r.httpStatus===200&&r.answered).map(r=>r.model);
     const cases=[
       {id:"H6",question:"S32FM803UC 要跟藍牙遊戲控制器配對，從哪開始？",model:"S32FM803UC"},

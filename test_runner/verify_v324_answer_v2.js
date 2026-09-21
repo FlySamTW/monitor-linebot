@@ -13,6 +13,26 @@ test('完整由逐項計算，不信任complete',()=>{
  const r=c.validateLocalClaims_({complete:true,claims:[claim(),claim({id:'C2',question:'未知事項？',state:'missing_evidence',basis:'none',answer:'',evidenceRefs:[],conditions:[]})]},evidence,'如何連接？未知事項？','');
  assert(!r.complete);assert.deepEqual(Array.from(r.envelope.unresolvedClaims),['C2']);
 });
+
+test('遺漏來源條件以原文零模型補回，不犧牲來源驗證',()=>{
+ const before=h.fetches.length;
+ const r=c.validateLocalClaims_({claims:[claim({conditions:[]})]},evidence,'如何連接？','');
+ assert(r.complete);assert(r.answer.includes('連接前須先關閉電源'));assert.equal(h.fetches.length,before);
+ const duplicate=c.validateLocalClaims_({claims:[claim({conditions:['連接前須先關閉電源。','連接前須先關閉電源']})]},evidence,'如何連接？','');
+ assert.equal(duplicate.envelope.claims[0].conditions.length,1,'句尾標點不同不可重複顯示來源限制');
+ assert.throws(()=>c.validateLocalClaims_({claims:[claim({conditions:['憑空捏造條件']})]},evidence,'如何連接？',''),/VALIDATION/);
+ assert.throws(()=>c.validateLocalClaims_({claims:[claim({conditions:[],answer:'可接999個裝置'})]},evidence,'如何連接？',''),/VALIDATION/);
+});
+
+test('格式或來源失敗最多一次付費候選判讀，不自動修復重付',()=>{
+ const x=createProductionHarness({quiet:true,properties:{GEMINI_API_KEY:'fixture'}}),api=x.context;
+ api.initializeProviderBudget_(0,api.providerMonthKey_());
+ api.collectLocalAnswerEvidence_=()=>evidence;
+ let calls=0;
+ x.setFetch(()=>{calls++;return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({candidates:[{content:{parts:[{text:'{broken'}]},finishReason:'STOP'}],usageMetadata:{promptTokenCount:20,candidatesTokenCount:4}})};});
+ assert.throws(()=>api.decideLocalEvidence_('如何連接？','','','lite'));
+ assert.equal(calls,1);
+});
 test('錯來源保留合法部分並停止來源升級',()=>{
  let error;try{c.validateLocalClaims_({claims:[claim(),claim({id:'C2',evidenceRefs:['invented']})]},evidence,'兩個問題','');}catch(e){error=e;}
  assert(error&&error.partialResult);assert(error.partialResult.answer.includes('關閉電源'));assert.equal(error.partialResult.envelope.execution.state,'validation_error');

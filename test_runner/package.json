@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "verify_linebot.js",
   "scripts": {
-    "test:release": "node verify_live_line_evidence.js && powershell -NoProfile -ExecutionPolicy Bypass -File verify_release_snapshot.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File verify_release_line_window.ps1",
+    "test:release": "node verify_user_line_publication.js && node verify_live_line_evidence.js && powershell -NoProfile -ExecutionPolicy Bypass -File verify_release_snapshot.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File verify_release_line_window.ps1",
     "check:webhook-version": "node ensure_formal_version_current.js",
     "test:current": "node run_current_test.js verify_route_testset_17_single.js",
     "test:m7": "node run_current_test.js verify_m7_exact_issue.js",

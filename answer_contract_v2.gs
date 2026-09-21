@@ -1,5 +1,5 @@
 /** One shared answer contract. Validation is structural, not a semantic proof. */
-const ANSWER_EVIDENCE_POLICY = "qa-rule-v324-8";
+const ANSWER_EVIDENCE_POLICY = "qa-rule-v324-9";
 function uniqueAnswerStrings_(values) {
   return Array.from(
     new Set(
@@ -123,7 +123,14 @@ function validateLocalClaims_(output,evidence,question,model) {
       if((prose.match(/\d+(?:\.\d+)?/g)||[]).some(n=>!raw.includes(n)))valid=false;
       if(models.some(m=>model ? normalizeModelForDisplay(m)!==normalizeModelForDisplay(model) : !raw.includes(m)))valid=false;
       const required=refs.flatMap(localEvidenceRequiredConditions_);
-      if(required.some(r=>!c.conditions.some(t=>localEvidenceContains_(t,r)||localEvidenceContains_(r,t)&&t.length>=r.length)))valid=false;
+      // The source already supplies these restrictions. Copy them deterministically
+      // instead of paying another generation to repeat text we already possess.
+      const conditionKeys=new Set();
+      c.conditions=uniqueAnswerStrings_(c.conditions.concat(required)).filter(function(condition){
+        const key=condition.replace(/[。.!！?？；;，,\s]+$/g,"");
+        if(conditionKeys.has(key))return false;
+        conditionKeys.add(key);return true;
+      });
       if(c.conditions.some(t=>!localEvidenceContains_(raw,t)))valid=false;
       if(c.basis==="derived"&&(!c.assumptions.length||c.scope!=="general"))valid=false;
     }

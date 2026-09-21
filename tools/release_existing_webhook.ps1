@@ -6,6 +6,8 @@ param(
   [switch]$SkipWebhookVersionCheck,
   [switch]$DryRun,
   [switch]$StageOnly,
+  [switch]$PublishForUserLineTest,
+  [string]$UserLineTestAuthorization = '',
   [switch]$BeginLineAcceptance,
   [switch]$FinalizeLineAcceptance,
   [string]$LineReadinessReceipt = '',
@@ -145,6 +147,8 @@ Assert-CommandExists "clasp"
 Assert-CommandExists "curl.exe"
 
 if ($WatchLineAcceptance) { Watch-LineReleaseWindow -Id $WatchLineAcceptance; exit 0 }
+if ($PublishForUserLineTest -and ($StageOnly -or $BeginLineAcceptance -or $FinalizeLineAcceptance -or $RollbackVersion -or $SkipReadinessCheck -or $SkipWebhookVersionCheck)) { throw 'User LINE test publication cannot combine modes or skip cloud health checks.' }
+if ($PublishForUserLineTest -and -not $UserLineTestAuthorization) { throw 'Explicit user instruction to publish before LINE acceptance is required.' }
 $releaseMutex = New-Object Threading.Mutex($false, 'Local\SamsungLineBotExistingWebhookRelease')
 try { $releaseLockTaken = $releaseMutex.WaitOne(30000) } catch [Threading.AbandonedMutexException] { $releaseLockTaken = $true }
 if (-not $releaseLockTaken) { throw 'Another release holds the project write lock.' }
@@ -267,10 +271,15 @@ Invoke-Step "2/5 Git whitespace guard" {
 $preReleaseRollbackEvidence = $null
 if (-not $DryRun) {
   $gateArgs = @((Join-Path $testRunner "verify_cost_policy_release.js"))
-  if (-not $StageOnly -and -not $BeginLineAcceptance) { $gateArgs += '--formal' }
+  if ($PublishForUserLineTest) { $gateArgs += @('--user-line-test', $UserLineTestAuthorization) }
+  elseif (-not $StageOnly -and -not $BeginLineAcceptance) { $gateArgs += '--formal' }
   & node @gateArgs
   if ($LASTEXITCODE -ne 0) { throw "Live model/cost evidence guard failed." }
   $preReleaseRollbackEvidence = Save-PreReleaseRollbackEvidence -Id $DeploymentId
+  if ($PublishForUserLineTest) {
+    Copy-Item -LiteralPath $UserLineTestAuthorization -Destination (Join-Path $preReleaseRollbackEvidence.cloudHead.directory 'user_line_test_authorization.json')
+    Write-Host '[USER DIRECTED] Publish existing webhook for the user to test in LINE. Live acceptance remains false.'
+  }
   Write-Host "Saved rollback evidence: @$($preReleaseRollbackEvidence.version) / $($preReleaseRollbackEvidence.gasVersion) [$($preReleaseRollbackEvidence.build)]"
   if ($BeginLineAcceptance) {
     $lineReadiness = Assert-LineCandidateReady $LineReadinessReceipt
@@ -377,7 +386,14 @@ Write-Host ""
 if ($DryRun) {
   Write-Host "[DONE] Dry run completed. No GAS code, deployment, or Prompt!C3 changes were made." -ForegroundColor Green
 } else {
-  if ($BeginLineAcceptance) {
+  if ($PublishForUserLineTest) {
+    $health = Parse-ExistingDeploymentHealth (Get-ExistingDeploymentHealth -Id $DeploymentId)
+    [pscustomobject]@{status='published_pending_user_line_test';deploymentId=$DeploymentId;
+      gasVersion=$health.GasVersion;build=$health.Build;version=(Get-ExistingDeploymentVersion -Id $DeploymentId);
+      priorVersion=$preReleaseRollbackEvidence.version;liveAccepted=$false;recordedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')} |
+      ConvertTo-Json | Set-Content -LiteralPath (Join-Path $repoRoot 'output/release_state/published_pending_line.json') -Encoding UTF8
+    Write-Host '[PUBLISHED / LINE PENDING] Existing webhook is updated for user testing. This does not mark live acceptance complete.' -ForegroundColor Green
+  } elseif ($BeginLineAcceptance) {
     Write-Host '[CANDIDATE ONLY] Existing LINE webhook updated for bounded acceptance. Finalize before deadline or watchdog restores deployment and HEAD.' -ForegroundColor Yellow
   } else {
     Write-Host "[DONE] GAS code was pushed, the existing deployment was updated, and Prompt!C3 was not modified." -ForegroundColor Green

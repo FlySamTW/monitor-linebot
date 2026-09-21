@@ -50,7 +50,7 @@ function normalizeWebInteraction_(body) {
   const occurrences=calls.flatMap(c=>c.queries),unique=Array.from(new Set(occurrences));
   const groundingCounts=(Array.isArray(raw?.grounding_tool_count)?raw.grounding_tool_count:[]).filter(c=>c&&c.type==="google_search").map(c=>c.count);
   const groundingCount=groundingCounts.length&&groundingCounts.every(validCount)?groundingCounts.reduce((a,b)=>a+b,0):null;
-  const ambiguousCounts=calls.length!==1||calls.some(c=>!c.queriesKnown)||
+  const ambiguousCounts=calls.length!==1||occurrences.length!==unique.length||calls.some(c=>!c.queriesKnown)||
     (groundingCounts.length>0&&groundingCount===null)||groundingCount!==null&&groundingCount!==unique.length;
   const metadata=body.status==="completed"&&chunks.length&&supports.length?{groundingChunks:chunks,groundingSupports:supports}:null;
   if(metadata&&calls.length&&!ambiguousCounts)metadata.webSearchQueries=unique;

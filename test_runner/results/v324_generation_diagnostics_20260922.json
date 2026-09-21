@@ -1,0 +1,42 @@
+{
+  "version": "v29.6.324",
+  "build": "2026-09-22 00:10",
+  "readbackAt": "2026-09-21T16:13:45.022228+00:00",
+  "surface": "Chrome 原生 editor-only /dev 診斷頁，最終build只讀帳；不新增付費生成",
+  "verificationBatch": "v324-cost-remediation",
+  "authorizedCapTwd": 10,
+  "batchAfterTwd": 4.005123392000001,
+  "reservedTwd": 0,
+  "remainingTwd": 5.994876607999999,
+  "monthAfterTwd": 23.81163820800001,
+  "providerLedgerRequests": 209,
+  "modelProbe": [
+    {
+      "model": "models/gemini-2.5-flash",
+      "httpStatus": 404,
+      "outcome": "resource_not_found",
+      "answered": false,
+      "receiptId": "a71c2542-9304-4012-a3d6-89687377cb5e",
+      "costTwd": 0
+    },
+    {
+      "model": "models/gemini-3.1-flash-lite",
+      "httpStatus": 200,
+      "outcome": "success",
+      "answered": true,
+      "receiptId": "a4613ab4-bd96-49e7-9771-9636a1301916",
+      "costTwd": 7.2e-05,
+      "inputTokens": 3,
+      "outputTokens": 1
+    }
+  ],
+  "modelProbeReusedFrom": "2026-09-21T15:40:57.483Z",
+  "generationBuild": "2026-09-21 23:59",
+  "generationEvidence": "test_runner/results/v324_generation_retest_20260922.json",
+  "formatChangeProof": "test_runner/results/v324_final_format_lineage.json",
+  "finalBuildNewProviderCalls": 0,
+  "lineDelivered": false,
+  "fullJourneyQualityAccepted": false,
+  "review": "最後只修正生成後的條件句去重，cloud HEAD差異僅answer_contract_v2.gs及build時間；原三題答案及成本完整保留，不宣稱final build重新生成過三題。必要來源／數字／捏造條件與單次呼叫回歸通過。",
+  "amountMeaning": "依用量估算，非帳單實付；保留全部歷史失敗及不確定費用"
+}

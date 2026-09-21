@@ -101,7 +101,7 @@ test('個別產品缺型號只澄清，語意格式失敗不能當資料缺口�
   for(const scope of ['model_specific',null]){
     const result=runJourney({name:'範圍澄清與失敗隔離',steps:[{text:'我的螢幕應該從哪個選單開啟這個模式？'}],check(turns){
       const t=turns[0];assert.equal(t.audit.pdfCalls,0);assert.equal(t.audit.webCalls,0);
-      assert.equal(t.audit.paidCalls,scope?1:2,'格式無效時只允許原判讀＋最多一次便宜修復');
+      assert.equal(t.audit.paidCalls,1,'格式無效時不得自動增加付費修復或升來源');
       assert((scope?/完整型號/:/資料判讀暫時無法完成/).test(t.replies.join('\n')));
     }},'SCOPE',{writeReport:false,singleTurn:true,localEvidenceResponse:(state,result)=>({...result,questionScope:scope})});
     assert.equal(result.status,'PASS',result.failure);

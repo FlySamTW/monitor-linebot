@@ -571,8 +571,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "7b59d4f6-3876-4c2e-8590-9a453ee2d1dc",
-              "turnId": "a16331cf-89f1-4089-ab52-3380d079057f",
+              "id": "a326d53a-69cb-49d6-873c-a89d70682da7",
+              "turnId": "ab129863-173f-479a-a9dd-eeff4c612f2b",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -597,8 +597,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "7cbf6ec7-0bba-4409-9770-295cc0334eaa",
-              "turnId": "a16331cf-89f1-4089-ab52-3380d079057f",
+              "id": "f0ececf5-e878-4977-b21e-929990af3e35",
+              "turnId": "ab129863-173f-479a-a9dd-eeff4c612f2b",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -626,7 +626,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S49DG932SC G932如何開啟PBP?",
@@ -783,8 +783,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "88584f61-5f14-4f7f-a1f2-09f2ddc69555",
-              "turnId": "25266f16-982d-4caf-837f-acfeaa17a903",
+              "id": "72d25bf6-0d26-4d3d-9ba3-8d17d5ba74d0",
+              "turnId": "d5ac3a1b-21b0-4aca-b35b-14ddd2315a28",
               "jobId": "",
               "purpose": "router",
               "model": "typesafe/jev-1.13",
@@ -808,8 +808,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "e2a77da2-4107-4516-9bc3-f7b9ebf56f37",
-              "turnId": "25266f16-982d-4caf-837f-acfeaa17a903",
+              "id": "d5adcb42-8122-4434-b29c-9145cd0baf81",
+              "turnId": "d5ac3a1b-21b0-4aca-b35b-14ddd2315a28",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -834,8 +834,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "014e7b7c-ab20-44ca-b494-7471936e5b17",
-              "turnId": "25266f16-982d-4caf-837f-acfeaa17a903",
+              "id": "9e7df559-84f8-478d-8b0f-53da1027b11d",
+              "turnId": "d5ac3a1b-21b0-4aca-b35b-14ddd2315a28",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -860,8 +860,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "49cdf2b6-fa0f-4e30-a78b-7585f02b4b21",
-              "turnId": "25266f16-982d-4caf-837f-acfeaa17a903",
+              "id": "8ca8a40a-a6e7-45ed-8ff4-4080e83c4b1d",
+              "turnId": "d5ac3a1b-21b0-4aca-b35b-14ddd2315a28",
               "jobId": "",
               "purpose": "web",
               "model": "gemini-3.1-flash-lite",
@@ -889,7 +889,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S49DG932SC G932如何開啟PBP?；追問：那兩邊都能120Hz嗎?",
@@ -1330,8 +1330,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "88578e11-0773-432c-8aa7-cd39c328f58e",
-              "turnId": "43005909-c532-49af-91c3-3f268a0de2a8",
+              "id": "fdc9f6e5-940a-4595-960c-63a547bd0e13",
+              "turnId": "2b46eee8-8fcf-404b-9172-51b74e5407ec",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -1356,8 +1356,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "4edff3c0-5e43-4b87-bb29-c369dfd2bc78",
-              "turnId": "43005909-c532-49af-91c3-3f268a0de2a8",
+              "id": "1c3ce4fc-2ef4-415f-b8ba-027053d40ccb",
+              "turnId": "2b46eee8-8fcf-404b-9172-51b74e5407ec",
               "jobId": "",
               "purpose": "web",
               "model": "gemini-3.1-flash-lite",
@@ -1385,7 +1385,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "改接網路線呢? (型號: S32FM803UC)",
@@ -1817,8 +1817,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "cef6bc7b-a342-4be2-964e-3a3bac6385d1",
-              "turnId": "b4037ed4-b338-4bee-b72f-ee876a4f9fe7",
+              "id": "740fc14d-d19b-4a8c-892d-8b22410ff0e9",
+              "turnId": "7ff4fad1-815b-448e-af7b-07c85d9f4701",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -1843,8 +1843,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "4b184d76-9708-4cc8-8d9b-d0f257012137",
-              "turnId": "b4037ed4-b338-4bee-b72f-ee876a4f9fe7",
+              "id": "37db130f-37ac-42f0-84ff-6084348af639",
+              "turnId": "7ff4fad1-815b-448e-af7b-07c85d9f4701",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -1872,7 +1872,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S49DG952SC 後方那圈燈怎麼開?",
@@ -2028,8 +2028,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "c0260821-cb5a-429f-8945-11f5f1e1790b",
-              "turnId": "e60fcf3d-70e1-46c4-b819-892f077971d9",
+              "id": "cbaa12bb-a466-4d63-aa78-7895b9aa50d9",
+              "turnId": "b1c2791c-7c2b-474f-9f7e-ef669968314d",
               "jobId": "",
               "purpose": "router",
               "model": "typesafe/jev-1.13",
@@ -2053,8 +2053,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "71c12419-0c1c-477c-87d4-795ffcd862c1",
-              "turnId": "e60fcf3d-70e1-46c4-b819-892f077971d9",
+              "id": "9e324145-667d-4073-a71e-14325ef43744",
+              "turnId": "b1c2791c-7c2b-474f-9f7e-ef669968314d",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -2079,8 +2079,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "27f92b7f-3a98-4ee4-b564-f58f6dc0c702",
-              "turnId": "e60fcf3d-70e1-46c4-b819-892f077971d9",
+              "id": "0ca953c4-0bef-4e55-ba9a-2e08fe1cbef4",
+              "turnId": "b1c2791c-7c2b-474f-9f7e-ef669968314d",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -2105,8 +2105,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "f7cd2c81-3ba4-4b6e-9ad6-66767571f8a2",
-              "turnId": "e60fcf3d-70e1-46c4-b819-892f077971d9",
+              "id": "d212aad8-47c0-4064-8e98-5d4202a9460f",
+              "turnId": "b1c2791c-7c2b-474f-9f7e-ef669968314d",
               "jobId": "",
               "purpose": "web",
               "model": "gemini-3.1-flash-lite",
@@ -2134,7 +2134,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S49DG952SC 後方那圈燈怎麼開?；追問：我要跟畫面同步。",
@@ -2312,8 +2312,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "91797f7e-c616-47ba-b5aa-26f803c9e3e9",
-              "turnId": "a69597dd-7117-478f-8c11-c51f20be58ba",
+              "id": "78916f3e-db70-4d88-9df4-ef2a17af52d0",
+              "turnId": "b9793b40-31a6-4745-a60d-dfa234fdb124",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -2338,8 +2338,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "fe8d821d-0316-44bd-b0ea-3c18f439cb2e",
-              "turnId": "a69597dd-7117-478f-8c11-c51f20be58ba",
+              "id": "93d0a732-501e-42be-be50-c7e8a46c0176",
+              "turnId": "b9793b40-31a6-4745-a60d-dfa234fdb124",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -2367,7 +2367,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S32FM703UC HDMI怎麼切換?",
@@ -2511,8 +2511,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "fcf50f7c-f37f-4a2a-b4a3-30d355e5fa4a",
-              "turnId": "efd3b982-777a-4d39-9166-12cf84da048f",
+              "id": "a223d7c3-9196-4381-b9bf-4ad94d236074",
+              "turnId": "61866016-3cda-4afb-ac89-d1be0ae6c193",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -2537,8 +2537,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "6f2483e9-e380-4b5e-8e85-5cbca43c013d",
-              "turnId": "efd3b982-777a-4d39-9166-12cf84da048f",
+              "id": "16d18423-ce44-4444-95f4-8cbbf01d7e40",
+              "turnId": "61866016-3cda-4afb-ac89-d1be0ae6c193",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -2566,7 +2566,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "HDMI怎麼切換?（這次對象改為 S49DG952SC）",
@@ -2859,8 +2859,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "eef01766-e8b3-451a-8157-6cc0a780b175",
-              "turnId": "d9b211c5-20bf-4846-a633-afea40b5774a",
+              "id": "dbf90d29-3b50-4f4d-895e-30a6efb1f65b",
+              "turnId": "d720b9de-b1e4-4ece-a505-6d265bdfcb48",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -2885,8 +2885,8 @@
               "at": "2026-09-09T06:00:00.000Z"
             },
             {
-              "id": "216c8b39-f586-4dd3-81f7-6f990d317a00",
-              "turnId": "d9b211c5-20bf-4846-a633-afea40b5774a",
+              "id": "37c6db98-b436-4eb5-b5d9-117a858b168d",
+              "turnId": "d720b9de-b1e4-4ece-a505-6d265bdfcb48",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -2911,8 +2911,8 @@
               "at": "2026-09-09T06:00:00.000Z"
             },
             {
-              "id": "555d3314-4158-4597-b85f-cfe0ec443b75",
-              "turnId": "d9b211c5-20bf-4846-a633-afea40b5774a",
+              "id": "e24ab9c1-af1b-4762-b65c-b16e89a82620",
+              "turnId": "d720b9de-b1e4-4ece-a505-6d265bdfcb48",
               "jobId": "",
               "purpose": "web",
               "model": "gemini-3.1-flash-lite",
@@ -2940,7 +2940,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S32DG802SC 昨天那台怎麼開PBP?",
@@ -3261,8 +3261,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "d61b4100-0660-4897-9771-0f3c489e7a76",
-              "turnId": "dbc8d348-5956-461d-a223-cec836b63c2f",
+              "id": "d9f8afd3-a541-4c4e-a769-32bb4bc3737f",
+              "turnId": "6d783eee-429d-4ced-8caa-b1cfc3a44491",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -3290,7 +3290,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S27D392GAC怎麼自我診斷?",
@@ -3496,8 +3496,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "d602ceb9-504c-49a8-9daf-dec2a6b28fc9",
-              "turnId": "99e93c04-c517-4d62-9021-dfd2518dd3da",
+              "id": "03d37f9b-7cc0-4322-b479-8c4a313e930e",
+              "turnId": "436325c2-4119-4f2f-b079-8fce3e76b4a5",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -3522,8 +3522,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "55bf4c34-98d3-44ff-80e3-2a6b6e8b42c7",
-              "turnId": "99e93c04-c517-4d62-9021-dfd2518dd3da",
+              "id": "1822ec64-3866-4d90-9748-db5f5b063282",
+              "turnId": "436325c2-4119-4f2f-b079-8fce3e76b4a5",
               "jobId": "",
               "purpose": "web",
               "model": "gemini-3.1-flash-lite",
@@ -3551,7 +3551,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "Samsung 電腦螢幕 S27D392GAC 怎麼自我診斷? 台灣 非官方 公開網頁 實務解法 -site:samsung.com",
@@ -3710,8 +3710,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "90c0c048-2fe2-4369-beac-54d0cf90bcd4",
-              "turnId": "642c3200-20ef-4788-95be-5edf31535401",
+              "id": "798448a4-07c5-4a89-8782-72189887e89c",
+              "turnId": "15b78a99-0e6f-4785-8c03-ef1afbd3a91b",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -3736,8 +3736,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "c4f7ac31-39c1-48a1-b7e6-810584432d90",
-              "turnId": "642c3200-20ef-4788-95be-5edf31535401",
+              "id": "d2b9799f-41e7-495b-adba-1bd12589ef55",
+              "turnId": "15b78a99-0e6f-4785-8c03-ef1afbd3a91b",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -3765,7 +3765,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S49DG932SC G932如何開啟PBP?",
@@ -4019,8 +4019,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "67960da2-4b66-45ed-8c0e-ce5db5d38a1b",
-              "turnId": "242a7d3c-757f-47a6-85b9-ee9657f1a3e9",
+              "id": "2b71ce90-bd06-4ddb-a6da-dafd3e44106f",
+              "turnId": "48b6fff1-54ff-42ec-b5a5-9173eea60c38",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -4045,8 +4045,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "6ff8bb28-c2c7-46ef-8f8d-b68efa61d8d7",
-              "turnId": "242a7d3c-757f-47a6-85b9-ee9657f1a3e9",
+              "id": "65d7ec1b-1414-4155-928f-6845748d313e",
+              "turnId": "48b6fff1-54ff-42ec-b5a5-9173eea60c38",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -4074,7 +4074,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S27H704EAC怎麼自我診斷?",
@@ -4216,8 +4216,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "712bed4a-a176-43ae-98d0-d07757049d44",
-              "turnId": "5c40e640-7cdf-4c34-9909-e9fd789b0b27",
+              "id": "2c5e8341-1130-49ec-b7cd-6cdfb16a4fbf",
+              "turnId": "224dbc9c-8f3c-46a3-b193-14c69a528888",
               "jobId": "",
               "purpose": "fast",
               "model": "gemini-3.1-flash-lite",
@@ -4600,8 +4600,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "12c04b48-7292-48cf-922d-b23811931b23",
-              "turnId": "2d5d303c-a661-446c-ba64-c9ab4b43268f",
+              "id": "d65bdeb2-36f6-4a6b-bb78-98cfd8289411",
+              "turnId": "89a8c262-d959-45b5-9fd4-84f21faeeb5d",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -4626,8 +4626,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "c36253db-0737-413f-af96-9d86ffd6ad7c",
-              "turnId": "2d5d303c-a661-446c-ba64-c9ab4b43268f",
+              "id": "e6076e84-0e7d-4222-9505-7db7eccb646c",
+              "turnId": "89a8c262-d959-45b5-9fd4-84f21faeeb5d",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -4655,7 +4655,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S27H704EAC怎麼自我診斷?",
@@ -4810,8 +4810,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "7e5ff07d-65ca-46eb-902d-f39e7a45c152",
-              "turnId": "f8e6ed1a-c696-4a1a-8552-58140f2ecf36",
+              "id": "e3837b59-4cfc-4e7a-83c1-abd4c0ca7976",
+              "turnId": "e6ec5a93-0b52-4439-9612-afd8f92769ea",
               "jobId": "",
               "purpose": "router",
               "model": "typesafe/jev-1.13",
@@ -4835,8 +4835,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "c67d957b-bee4-47b3-b4b3-c52371856a66",
-              "turnId": "f8e6ed1a-c696-4a1a-8552-58140f2ecf36",
+              "id": "b6e973f4-363c-4dfc-85cf-030c1180f06c",
+              "turnId": "e6ec5a93-0b52-4439-9612-afd8f92769ea",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -4861,8 +4861,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "3d51c826-4c8b-4a7a-8dad-c84fb3cc66e6",
-              "turnId": "f8e6ed1a-c696-4a1a-8552-58140f2ecf36",
+              "id": "da4222ec-59be-4307-9caf-2dcbfb6bc70e",
+              "turnId": "e6ec5a93-0b52-4439-9612-afd8f92769ea",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -4890,7 +4890,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "S27H704EAC 怎麼自我診斷?；追問：那測試時能切換輸入嗎?",
@@ -5056,8 +5056,8 @@
           "logged": true,
           "providerReceipts": [
             {
-              "id": "fa994299-c773-40b7-b69a-9b6f584c89b1",
-              "turnId": "f3cd6d62-ee86-4e69-9e0f-e3fdc99467c7",
+              "id": "7c47ab86-a246-4c5e-be29-62991a56a905",
+              "turnId": "ce9cd987-c2e8-4437-baad-1e2cc7fef456",
               "jobId": "",
               "purpose": "qa_semantic",
               "model": "gemini-3.1-flash-lite",
@@ -5082,8 +5082,8 @@
               "at": "2026-09-08T06:00:00.000Z"
             },
             {
-              "id": "22580c8c-c233-41b0-a392-b2afb201b5b3",
-              "turnId": "f3cd6d62-ee86-4e69-9e0f-e3fdc99467c7",
+              "id": "348a4407-46db-438d-87ba-49e95c4f3751",
+              "turnId": "ce9cd987-c2e8-4437-baad-1e2cc7fef456",
               "jobId": "",
               "purpose": "pdf",
               "model": "gemini-3.1-flash-lite",
@@ -5111,7 +5111,7 @@
           "localEvidenceDecision": {
             "envelope": {
               "schemaVersion": 2,
-              "evidencePolicyVersion": "qa-rule-v324-8",
+              "evidencePolicyVersion": "qa-rule-v324-9",
               "version": "v29.6.324",
               "topicId": "",
               "originalQuestion": "LF24T350FHC護眼模式怎麼開?",

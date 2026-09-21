@@ -1,0 +1,40 @@
+{
+  "status": "published_pending_user_line_test",
+  "deploymentId": "AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA",
+  "gasVersion": "v29.6.324",
+  "build": "2026-09-22 00:10",
+  "version": 1506,
+  "priorVersion": 1505,
+  "liveAccepted": false,
+  "recordedAtUtc": "2026-09-21T16:18:18.2831190+00:00",
+  "authorization": {
+    "publishBeforeLineAcceptance": true,
+    "requestedTester": "user",
+    "userInstruction": "廢話趕快切換否則我要怎麼在LINE裡面士呢？",
+    "recordedAt": "2026-09-21T16:12:25.3448362+00:00",
+    "version": "v29.6.324",
+    "build": "2026-09-22 00:10",
+    "runtimeManifestSha256": "ff04f84255da91f495f055f7f45dc8d5eb19e26067da61f9d1dfaaa1c1304984",
+    "priorChecksPassed": true,
+    "acceptanceStatus": "pending",
+    "diagnosticReport": "test_runner/results/v324_generation_diagnostics_20260922.json",
+    "checksEvidence": [
+      "output/takeover_20260921/stage_final_cost.log",
+      "output/takeover_20260921/core_final_cost.log"
+    ]
+  },
+  "formalHealth": "OK - Current Version: v29.6.324 [2026-09-22 00:10]",
+  "checks": {
+    "static": "PASS",
+    "contract": "PASS",
+    "productionContract": "PASS",
+    "release": "PASS",
+    "coreJourneys": "20/20 PASS, realProviderCalls=0",
+    "cloudHead": "v29.6.324 [2026-09-22 00:10]",
+    "gitDiffCheck": "PASS",
+    "lineAcceptance": "PENDING"
+  },
+  "deploymentLog": "output/takeover_20260921/publish_final_cost.log",
+  "costReport": "test_runner/results/v324_generation_diagnostics_20260922.json",
+  "rollbackEvidence": "output/release_state/pre_release_formal.json"
+}

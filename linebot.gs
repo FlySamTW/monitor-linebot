@@ -13,7 +13,7 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
 const GAS_VERSION = "v29.6.324"; // JEV typed Router final; temporary bootstrap removed
-const BUILD_TIMESTAMP = "2026-09-21 23:34";
+const BUILD_TIMESTAMP = "2026-09-22 00:10";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;

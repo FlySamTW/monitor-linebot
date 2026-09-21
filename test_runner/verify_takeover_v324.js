@@ -114,6 +114,13 @@ test('負數或缺失 usage 不得變成零費；官方單 query 範例可辨識
   for(const value of [-1,null,undefined]){const body=nativeInteraction();body.usage.total_input_tokens=value;assert.equal(c.normalizeWebInteraction_(body).usageMetadata,null);}
   const body=nativeInteraction();body.steps[0].arguments={query:'PDF 使用條件'};assert.equal(c.normalizeWebInteraction_(body).webInteractionAudit.queryCount,1);
 });
+test('重複搜尋字串不可去重後低估費用',()=>{
+  const body=nativeInteraction();body.steps[0].arguments={queries:['same','same','same','same']};
+  delete body.usage.grounding_tool_count;
+  const out=c.normalizeWebInteraction_(body),cost=c.settleProviderSearch_('gemini-3.1-flash-lite',c.providerSearchMetadata_(out));
+  assert.equal(out.webInteractionAudit.queryCount,null);assert(cost.unknown);
+  assert.equal(out.webInteractionAudit.observedQueryCount,4);assert(Math.abs(cost.costTwd-1.792)<1e-9);
+});
 
 test('真實 LINE 不開 TEST_MODE，沿用原批費用及真實 reply API',()=>{
   const x=fixture(),api=x.context,props=api.PropertiesService.getScriptProperties();

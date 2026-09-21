@@ -169,8 +169,8 @@ function decideLocalEvidence_(question,model,contextId,strategy,options) {
     const instruction="你是 QA／RULE 證據回答器。一次完成逐子題理解與自然回答，不輸出片段堆疊。完整保留原問句每個對象、條件、比較及操作要求。逐項產生唯一 id、question、scope(general或model_specific)、state(answered/missing_evidence/needs_clarification)、basis(direct/derived/none)、answer、evidenceRefs、conditions、assumptions。只使用 evidence 的 id；來源中的 requiredConditions 必須逐字保存在 conditions 並在答案保留。general只是問題範圍，不允許無證據生成；derived只限general、有證據前提及明列假設，不得推論型號未記載的能力、選單、數值或官方支援。缺資料時answer為空、basis=none並保留未解問題；缺必要型號或使用條件才澄清。術語不能證明型號能力；沒有記載不代表不支援。不要輸出全域complete。上一題只補主詞，不能丟本題新條件。回答第一句直接解答，接短說明或必要步驟；不得輸出費用或模型名稱。"+
       (classifyScope?"另填questionScope=general/model_specific/non_product；依整句需求判斷，不以操作詞要求型號。":"");
     const selectionState=Object.assign({},state,{evidence:evidence.map(e=>Object.assign({},e,{requiredConditions:localEvidenceRequiredConditions_(e)}))});
-    const request=function(repair){
-      const prompt=repair ? {task:selectionState,repair:{code:repair.code,invalidOutput:repair.text},instruction:"只修正格式及證據對應，不新增資料、不省略子題。"} : selectionState;
+    const request=function(){
+      const prompt=selectionState;
       const response=providerFetch_(`${CONFIG.API_ENDPOINT}/${generationModel}:generateContent`,{geminiApiKey:getGeminiApiKey_(),
         providerPurpose:comparisonModel?"diagnostic":"qa_semantic",method:"post",contentType:"application/json",muteHttpExceptions:true,
         payload:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents:[{role:"user",parts:[{text:JSON.stringify(prompt)}]}],
@@ -180,9 +180,7 @@ function decideLocalEvidence_(question,model,contextId,strategy,options) {
       if(candidate.finishReason&&candidate.finishReason!=="STOP")throw new Error("LOCAL_OUTPUT_INCOMPLETE");
       return (candidate.content?.parts||[]).filter(p=>p.text&&!p.thought).map(p=>p.text).join("");
     };
-    let text=request(null),result;
-    for(let attempt=0;attempt<2;attempt++) {
-      try {
+    const text=request();let result;
         output=JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g,""));
         result=validateLocalClaims_(output,evidence,question,model);
         if(classifyScope && !["general","model_specific","non_product"].includes(output.questionScope))throw new Error("LOCAL_SCOPE_INVALID");
@@ -190,11 +188,8 @@ function decideLocalEvidence_(question,model,contextId,strategy,options) {
         if(shouldVerifyGeneratedEvidence_())result=verifyLocalEvidenceSemantics_(result,evidence,question,model);
         if(contextId)writeAnswerEnvelope_(contextId,result.envelope);
         return result;
-      } catch(error) {
-        if(attempt || !(/LOCAL_(?:OUTPUT|EVIDENCE|SCOPE)|JSON|Unexpected/.test(String(error.message))))throw error;
-        try{text=request({code:String(error.message),text:text});}catch(repairError){if(error.partialResult)repairError.partialResult=error.partialResult;throw repairError;}
-      }
-    }
+    // Invalid output preserves the validator's partial result and stops. Never
+    // spend a second call (or escalate to PDF/Web) to repair the same generation.
   }
   const result=validateLocalEvidenceDecision_(output,evidence,question,model);
   writeLog("[Local Evidence Decision] "+JSON.stringify({strategy:strategy,complete:result.complete,questionScope:result.questionScope,evidenceIds:result.evidenceIds,remainingQuestions:result.remainingQuestions}));

@@ -41,11 +41,19 @@ PDF 手冊回答是核心能力。主要路徑為自建頁級 RAG：索引免費
 
 候選判讀不要求模型重抄引文。Lite v2 以 `evidenceRefs` 指向完整來源，逐子題產生自然答案、條件及未解項目；程式核對來源／型號／數值與必要條件，且 `conditions` 必須呈現在最後答案，不可只留內部 JSON。JEV 選段對照才使用既有摘錄、程式回填原文；兩者契約不可混稱。型號在驗證入口統一表示法，不能因有無前綴 L 誤拒同一個已登錄型號，也不能放寬成相似型號可通用。
 
+### 避免多付費的候選判讀
+
+QA/RULE 語意候選每次判讀最多一次生成。必要限制直接由引用來源回填至可見 conditions，仍拒絕錯型號、數字、無效來源與捏造條件；格式錯誤保留可驗證部分並停止，不自動再付一次修復，也不能因此轉 PDF/Web。這降低重試費，但真正無效輸出仍可能無法完成答案，不能宣稱品質完美。精準免費答案與快取優先；一般流量不新增 JEV 證據驗證。搜尋工具重複 query 不可直接去重當計費數，計數不確定須保存觀測次數並保守估算，不能當成實付。
+
+2026-09-22同題複驗：H6/H8/H10各一次，共NT$0.067864，前次同三題含修復NT$0.087504；H8由0.016376略增至0.016424，故不可宣稱每題都變便宜。差異主要是H10取消第二次修復，不能歸功於JEV。複驗發現H6同句限制因句尾標點不同而重複，最終以純程式去重修正，並以既有實際輸出及單元案例驗證，不為格式再呼叫模型。雲端生成證據build與最後格式修正版build分列。完整歷史與收據見`test_runner/results/v324_generation_retest_20260922.json`。
+
 ### 編輯者模型比較與發布回復
 
 `cost_verification.gs` 的 `runProviderCostReadback` 只讀共用帳本；`runGenerationModelComparison` 使用獨立的 `/dev?diagnostics=1` 維護頁。Google 原生 `/dev` 限專案編輯者；伺服器核對執行 URL 後核發15分鐘、綁定 build 的診斷 token，公開 `/exec` 不核發，匿名／過期／舊 build 一律拒絕。此頁只讀帳或比較模型，不是 TestUI，也不模擬 LINE 對話。比較先探測 2.5 Flash／3.1 Flash-Lite，再以同題、同一份 QA/RULE 證據測試；不會將 2.5 Flash-Lite 混入。診斷使用原批 NT$10 與月帳，404 只記錄，不換模型重送。以鎖保護比較開始狀態，結果逐筆分包保存；同 build 再執行只讀回，包括未完成結果，避免瀏覽器記錄讀取失敗導致重付。可用性／答案品質／整題成本分開判斷，未取得兩款可用結果不宣稱完成同題 A/B。
 
 唯一入口 `tools/release_existing_webhook.ps1` 在上傳前保存正式版本／health 與雲端 HEAD 到 `output/release_state/head_<id>`；`clasp clone` 明確指定專案檔與輸出目錄，避免誤讀主要工作樹。回復同時還原既有 deployment 及備份 HEAD，再比對 health 與所有原始碼 SHA；不回復或清除 Properties、Sheet 或費用帳本。正式 health 必須同時匹配版本和 build。僅 StageOnly 會影響排程 HEAD，不等於正式 webhook 已更新。
+
+使用者明確要求先切正式再自行 LINE 測試時，唯一入口支援 `-PublishForUserLineTest -UserLineTestAuthorization <JSON>`。授權紀錄保存實際指示、候選版本/build/hash、當次診斷報告路徑、未超額帳本及已通過核心旅程。此模式仍備份、檢查、更新既有 deployment、核對 health，失敗仍回復；成功僅標示 published_pending_user_line_test，`liveAccepted` 保持 false，不偽造真人封存，也不啟動 AI 30分鐘驗收視窗。預設正式定版守門不變。
 
 正式封存報告必須包含 LINE 可見回答、真實 eventId／reply SHA／provider receipt ID 與版本/build對齊，且20條核心旅程至少19條通過、關鍵失敗0。傳輸成功或 TestUI 不能冒充 LINE 實測。LINE 工具若遭政策拒絕，記錄阻礙，不得藉其他通道繞過或把 `liveAccepted` 改為 true。
 

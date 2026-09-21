@@ -29,3 +29,7 @@
 - 正式守門要求 LINE 可見答案、事件／版本／build／收據對齊與核心20條至少19條且關鍵失敗0；HTTP200、TestUI、離線 fixture 或空收據不能取代實際 LINE 證據。
 
 最小必要驗證：npm --prefix test_runner run test:static、test:contract、test:production-contract；20核心旅程（fixture 僅模擬 I/O）；本次以真實 LINE 對應受影響旅程、受影響 worker 實際兩 SHA、雲端費用收據。依使用者要求不先跑 TestUI。fixture 結果與真正供應商／LINE 證據分列；費用、引用和驗收時窗新增案例見 verify_takeover_v324.js。
+
+- 候選格式／範圍錯誤最多一次付費生成，必要條件由同一引用原文回填；禁止藉修復重送或改判資料缺口轉 Web。測試必查呼叫數、捏造條件與數字仍被拒絕。
+- 相同 query 重複出現不能去重少算，未知估算至少涵蓋觀測次數；一般正式流量不擴大 JEV 付費用途。
+- 使用者明確先發布後自行 LINE 測試時，須保存原指示及 runtime 綁定，仍檢查當次診斷、帳本、20旅程、cloud health；只能記「已發布／LINE待驗」，不得更改 liveAccepted。必要守門測試 verify_user_line_publication.js。
