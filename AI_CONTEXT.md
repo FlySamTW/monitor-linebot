@@ -10,6 +10,7 @@
 - 正式仍 v29.6.323 @1505 [2026-09-18 17:35]；本次實際由唯一工具回復同一 deployment 並核對數字版本及 health。接手基準為 e8c07213afe52999b3b9a8b916222aebf342afa0；當前main提交以Git HEAD為準。
 - 目前GAS HEAD已成功上傳22檔 v29.6.324 [2026-09-21 23:34]，Chrome診斷讀回build一致，正式webhook仍舊版。上輪23:03候選曾成功回復19檔HEAD至10:52並核SHA；本輪原HEAD備份為output/release_state/head_c6de9a9ee05744588ae2e01ac6848168。尚未建立GAS版本、未切正式候選，不能宣稱新版正式發布完成。排程執行HEAD，與正式webhook分開。
 - 分支整理已依使用者明確授權完成：刪除本機及遠端 backup-before-identity-refactor、copilot/check-copilot-usage-quota；前者已合併，後者只有不改檔的 Initial plan commit。本機／遠端只剩 main，一個主要 worktree，無 force-push。
+- v324整合修正與全部既有失敗證據已commit/push main：89c76c0。使用者最新要求加速發布；已詢問是否將原本「LINE通過才定版」改成「先正式發布、完整LINE/Web/PDF標示待驗」，尚未收到此標準變更的明確回覆。正式入口仍v323，沒有把liveAccepted改為true。
 - 接手前快照：output/takeover_20260921/before_changes.zip 與 before_hashes.json。保留所有前手 dirty/untracked 及 deliverables/system_maps_20260909、v296275_global_rag_20_baseline.md；不可 clean/reset 或整批混入提交。
 - 生成固定 models/gemini-3.1-flash-lite；JEV 固定 typesafe/jev-1.13，只走 Decisions API。未改 Prompt!C3、Rich Menu、金鑰、正式來源次數或付費儲存設定。
 
@@ -69,7 +70,7 @@
 1. 先讀本頁、AGENTS.md、git status 與 e8c0721 以後差異。唯一當前狀態只維護本頁，不另建進度日誌。
 2. 由官方支援處理本次LINE來源政策，先確認可實際讀寫；診斷入口的既有授權相容性已實際修復，不新增email scope。之後才能啟用候選時窗，不用TestUI代替。
 3. 讀回當次總帳與既有批次，將剩餘受影響 LINE／Web／手冊旅程限定於同批 NT$10，記問題數、重測數、provider calls、query數、實際頁段、答案及估算／未知費用。
-4. 保留合格與失敗全部證據，完成品質與費用比較後產生 sealed live report，正式 guard 通過才由唯一發布入口定版。然後選擇性 stage 本次整合檔案、commit/push main。
+4. 保留合格與失敗全部證據，完成品質與費用比較後產生 sealed live report，正式 guard 通過才由唯一發布入口定版。整合已推送main；正式發布後再更新當次狀態。若使用者明確更改交付標準，應分列「已正式部署」與「待驗項目」，不可偽造真人報告。
 5. Developer_Manual.md 放架構／官方研究；REGRESSION_GUARDS.md 與 test_runner/package.json 放必要檢查；docs/V307_OFFICIAL_GAPS.md 放既有來源限制。
 6. 雲端 LOG：Google Sheet 1RTjPac2aoURzlJKTVydapyJlLni4Y0VyQqeeIrHQOqQ，gid174529670；唯讀登入只走本機 Chrome。正式 Prompt 只在 Prompt!C3，CLASS_RULES 維持 A欄 CSV大字串。
 7. 唯一部署入口 tools/release_existing_webhook.ps1；固定既有 deployment，不增加 deployment／長期分支／worktree。秘密不入repo／LOG／外部AI。

@@ -87,9 +87,11 @@ function Get-RemoteHeadVersion {
 }
 
 function Get-DeployedHealth {
-  $url = "https://script.google.com/macros/s/$DeploymentId/exec?health=1"
+  $url = "https://script.google.com/macros/s/$DeploymentId/exec?health=1&releaseCheck=$([guid]::NewGuid().ToString('N'))"
   try {
-    return (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 60).Content.Trim()
+    $body = & curl.exe --silent --show-error --fail --location --max-time 25 $url
+    if ($LASTEXITCODE -ne 0) { throw 'Formal health request failed.' }
+    return ($body | Out-String).Trim()
   } catch {
     return "[ERROR] $($_.Exception.Message)"
   }
@@ -147,19 +149,19 @@ if ($versions.Count -ge 200) {
   exit 2
 }
 
-if ($remoteHead -and $remoteHead.Available -and $remoteHead.Version -ne $local.Version) {
+if ($remoteHead -and $remoteHead.Available -and ($remoteHead.Version -ne $local.Version -or $remoteHead.Build -ne $local.Build)) {
   Write-Host "[PENDING] Apps Script HEAD does not match local linebot.gs." -ForegroundColor Yellow
-  Write-Host "Run clasp push -f before deploying."
+  Write-Host "Use tools/release_existing_webhook.ps1 to upload and publish."
   exit 3
 }
 
 if ($remoteHead -and $remoteHead.Available -and $remoteHead.HasBadApiText) {
   Write-Host "[PENDING] Apps Script HEAD still contains old internal API failure wording." -ForegroundColor Yellow
-  Write-Host "Check linebot.gs and run clasp push -f again."
+  Write-Host "Check linebot.gs, then use tools/release_existing_webhook.ps1."
   exit 4
 }
 
-if ($health -notmatch [regex]::Escape($local.Version)) {
+if ($health -ne "OK - Current Version: $($local.Version) [$($local.Build)]") {
   Write-Host "[PENDING] Formal deployment does not match local version yet." -ForegroundColor Yellow
   Write-Host "Run deploy.bat to update the existing deployment."
   exit 1

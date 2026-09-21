@@ -8,7 +8,8 @@ const DEFAULT_HEALTH_URL =
 const source = fs.readFileSync(path.join(__dirname, "..", "linebot.gs"), "utf8");
 const localVersion = (source.match(/const GAS_VERSION = "([^"]+)"/) || [])[1];
 const localBuild = (source.match(/const BUILD_TIMESTAMP = "([^"]+)"/) || [])[1];
-const healthUrl = process.env.TESTUI_HEALTH_URL || DEFAULT_HEALTH_URL;
+const healthUrl = new URL(process.env.TESTUI_HEALTH_URL || DEFAULT_HEALTH_URL);
+healthUrl.searchParams.set("releaseCheck", require("crypto").randomUUID());
 
 function requestText(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
@@ -56,7 +57,7 @@ async function main() {
   console.log(`Local version : ${expected}`);
   console.log(`Formal health : ${health}`);
 
-  if (!health.includes(expected)) {
+  if (health !== `OK - Current Version: ${expected}`) {
     console.error("");
     console.error("[BLOCKED] Formal deployment is not running the exact local version and build.");
     console.error("Do not run online TestUI regression tests yet, because they would validate an old deployment.");

@@ -20,6 +20,7 @@
   "searchQueries": 0,
   "pdfCalls": 0,
   "jevCalls": 0,
+  "sameBuildReopenVerified": {"providerLedgerRequestsBefore":206,"providerLedgerRequestsAfter":206,"batchSpentUnchangedTwd":3.937259392},
   "lineDelivered": false,
   "fullJourneyQualityAccepted": false,
   "fullTwoModelComparisonCompleted": false,
