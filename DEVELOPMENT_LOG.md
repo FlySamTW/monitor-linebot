@@ -3247,3 +3247,14 @@ callLLMWithRetry(userMessage, [...history, userMsgObj], ...)
 # v29.6.306（2026-09-08，正式 @1487）
 
 更新SHA先擋下不相容／未讀回頁索引的promotion、保留舊完整版本；同SHA待建項去重避免每日重付驗證。操作回答保留同段必要警語、去重，明確否定不再無謂升Web；覆蓋報告納入已啟用頁索引並只讀一次manifest。真人測出Smart螢幕錯借H704、無pending取消會付費，已修通用身分／QA／控制入口。59項離線整合全過，17次Chrome事件及失敗重測完整列在test_runner/results/v306_live_20260908.md；新增NT$0.0729792。guarded正式@1487、local/HEAD/health一致，未換模型／未加生成層／未改Prompt!C3或RichMenu。完整自動索引、20條旅程及外部資料限制仍見docs/V306_HANDOFF.md，不以本批發布冒稱全案完成。
+
+## 2026-09-23 — v29.6.326 全面 PDF/RAG、回答完整性與共用官方手冊身分修復
+- v326 延續 v325 的 Worker UTF-8 HMAC、requestItems、精確數值/能力守門、request-aware page RAG 與逐檔 Files 到期續期。
+- 實機查核確認 S27FM500、S32FM500、S32FM501 的台灣 Samsung 支援頁皆提供同一份 User Manual，三份下載 bytes 的 SHA-256 完全一致；新增「既有 worker 雙 SHA 已 verified_ready + exact Samsung TW support-page 綁定 + same source SHA」才能重用手冊身分的守門。
+- 不同 SHA、非 User Manual、非台灣支援頁或未完成 verified_ready 一律維持 fail closed；舊 blocked inspection 僅在上述同 SHA 條件成立時由 signed worker list 重新排入。
+
+### v325 基礎改善
+- 修復 manual worker Unicode HMAC 認證；新增續跑保護與 UTF-8 回歸。
+- 新增 requestItems、精確數值/單位、能力擴張、必要條件與來源合併守門。
+- 頁級 RAG 改為 request-aware 證據分配；Files API 改逐檔到期優先續期。
+- 補 v325 integrity、PDF refresh、worker/retrieval 正式 gate；正式部署與 LINE 驗收狀態以 AI_CONTEXT.md/health 為準。

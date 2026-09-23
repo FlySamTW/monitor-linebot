@@ -1,0 +1,68 @@
+{
+  "status": "published_pending_user_line_test",
+  "deploymentId": "AKfycbz7qWb7th3y33e2fwv0YTZwc4elxIYf1Bh1iOfk5pENoM3rIwC0zth5oZjAnSf4MaYXQA",
+  "gasVersion": "v29.6.326",
+  "build": "2026-09-23 16:58",
+  "version": 1508,
+  "priorVersion": 1507,
+  "liveAccepted": false,
+  "recordedAtUtc": "2026-09-23T17:29:55.0509411+08:00",
+  "authorization": {
+    "publishBeforeLineAcceptance": true,
+    "requestedTester": "user",
+    "userInstruction": "你來完成這個全面改善提升計畫並佈署",
+    "runtimeManifestSha256": "5c521175e3864f3e0c6d20e53feb49ede41083305926c2af86c5f3daaaa41d67",
+    "priorChecksPassed": true,
+    "acceptanceStatus": "pending",
+    "diagnosticReport": "test_runner/results/v326_generation_diagnostics_20260923.json",
+    "journeysReport": "test_runner/results/v326_20_journeys_offline.json"
+  },
+  "worker": {
+    "authFixed": true,
+    "schedulerLastResult": 0,
+    "workerVersion": "manual-index-worker-v2",
+    "bundleProbeVerifiedCount": 9
+  },
+  "library": {
+    "registered": 88,
+    "active": 88,
+    "models": 137,
+    "uniqueIndexes": 50,
+    "missing": [],
+    "pendingIndexRevisions": [],
+    "workerHealthOk": true
+  },
+  "manualCoverage": {
+    "status": "OK",
+    "autoImportRetryCount": 0,
+    "pageIndexReadyM50F": [
+      "S27FM500EC",
+      "S27FM501EC",
+      "S32FM500EC",
+      "S32FM501EC"
+    ],
+    "knownCoverageGaps": [
+      "S27D392GA",
+      "S27F612EA",
+      "S32D392GA"
+    ]
+  },
+  "checks": {
+    "static": "PASS",
+    "contract": "PASS",
+    "productionContract": "PASS",
+    "release": "PASS",
+    "coreJourneys": "20/20 PASS, realProviderCalls=0",
+    "formalHealth": "OK - Current Version: v29.6.326 [2026-09-23 16:58]",
+    "gitDiffCheck": "PASS",
+    "lineAcceptance": "PENDING"
+  },
+  "cost": {
+    "verificationBatch": "v324-cost-remediation",
+    "authorizedCapTwd": 10.0,
+    "batchAfterTwd": 4.155059392000002,
+    "reservedTwd": 0,
+    "remainingTwd": 5.844940607999998,
+    "amountMeaning": "供應商回報或依用量估算；不是 Cloud 帳單實付"
+  }
+}

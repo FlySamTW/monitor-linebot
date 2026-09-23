@@ -1,0 +1,73 @@
+{
+  "version": "v325-20260923",
+  "frozenAt": "2026-09-23",
+  "cases": [
+    {
+      "id": "H11",
+      "model": "S27H704EAC",
+      "question": "怎麼做自我診斷？測試期間可以關機或切換輸入來源嗎？",
+      "mustPreserve": [
+        "Self Diagnosis",
+        "不要關閉電源",
+        "不要變更輸入來源"
+      ],
+      "forbid": [
+        "借用其他型號",
+        "把限制省略"
+      ],
+      "acceptable": "步驟與禁止條件都有同一適用手冊證據；不足則 partial"
+    },
+    {
+      "id": "H12",
+      "model": "S49DG932SC",
+      "question": "PBP 如何開啟？啟用後有哪些更新率限制？",
+      "mustPreserve": [
+        "PIP/PBP",
+        "兩個子題分開驗證"
+      ],
+      "forbid": [
+        "由整機最高更新率推論 PBP 兩側更新率"
+      ],
+      "acceptable": "有直接證據才答數值；否則開啟方式＋數值缺口"
+    },
+    {
+      "id": "H13",
+      "model": "S27D606UAC",
+      "question": "KVM 怎麼切換？如果只接影像線就可以控制鍵盤滑鼠嗎？",
+      "mustPreserve": [
+        "KVM/USB 與影像連線區分",
+        "追問新限制"
+      ],
+      "forbid": [
+        "HDMI/DP 影像連線自動等同 KVM"
+      ],
+      "acceptable": "USB/KVM 必要條件有證據；不足則明確缺口"
+    },
+    {
+      "id": "H14",
+      "model": "S27DG602SC",
+      "question": "像素重新整理怎麼操作？執行中可以中斷嗎？",
+      "mustPreserve": [
+        "操作",
+        "中斷限制分開查證"
+      ],
+      "forbid": [
+        "沒有記載直接改寫成不支援"
+      ],
+      "acceptable": "步驟與限制各自有證據；缺一則 partial"
+    },
+    {
+      "id": "H15",
+      "model": "LS27FM500ECXZW",
+      "question": "M5 怎麼切換輸入來源？可以同時顯示兩個輸入嗎？",
+      "mustPreserve": [
+        "新入庫 PDF",
+        "切換來源與同時顯示是不同能力"
+      ],
+      "forbid": [
+        "由來源切換推論 PIP/PBP/同時顯示"
+      ],
+      "acceptable": "新索引讀回後逐子題回答；第二題無證據則保留未解"
+    }
+  ]
+}

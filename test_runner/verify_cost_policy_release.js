@@ -72,9 +72,10 @@ if (process.argv.includes('--user-line-test')) {
   const authorizationPath=process.argv[process.argv.indexOf('--user-line-test')+1];
   assert(authorizationPath,'使用者先發布後LINE測試授權紀錄不存在');
   const authorization=JSON.parse(fs.readFileSync(authorizationPath,'utf8').replace(/^\uFEFF/,''));
+  const journeysReport=authorization.journeysReport||'test_runner/results/v324_20_journeys_offline.json';
   require('./verify_user_line_publication').validateUserLinePublication(authorization,manifest,review,
     JSON.parse(read(authorization.diagnosticReport||'test_runner/results/v324_generation_diagnostics_20260921.json')),
-    JSON.parse(read('test_runner/results/v324_20_journeys_offline.json')));
+    JSON.parse(read(journeysReport)));
   console.log('PASS 使用者明確要求先切正式供LINE測試；不偽造liveAccepted或真人報告');
 }
 

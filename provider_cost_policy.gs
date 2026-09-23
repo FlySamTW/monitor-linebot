@@ -52,7 +52,7 @@ function accountProviderCostScope_(reservation,actualCost,uncertain) {
       purpose:reservation.purpose,model:reservation.model,inputKind:reservation.inputKind,payloadSha:reservation.payloadSha,
       inputLimit:reservation.inputLimit,outputLimit:reservation.outputLimit,
       searchCostTwd:reservation.searchCostTwd??null,reservedTwd:reservation.amount,costTwd:actualCost,status:reservation.costStatus||(uncertain?"unknown":"estimated"),
-      sent:Boolean(reservation.sent),queryCount:reservation.queryCount??null,responseId:reservation.responseId||"",usage:reservation.usage||null,
+      sent:Boolean(reservation.sent),queryCount:reservation.queryCount??null,responseId:reservation.responseId||"",searchAudit:reservation.searchAudit||null,usage:reservation.usage||null,
       verificationBatch:reservation.verification?reservation.verificationBatch:"",at:new Date().toISOString()};
     if(typeof currentRequestAudit!=="undefined" && currentRequestAudit) {
       if(!currentRequestAudit.providerReceipts) currentRequestAudit.providerReceipts=[];
@@ -66,19 +66,37 @@ function providerSearchPrice_(model) {
     {unit:"query",period:"month",free:5000,usd:0.014};
 }
 function providerSearchMetadata_(body) {
-  if(body.webInteractionAudit){const audit=body.webInteractionAudit;return audit.queryCount===null?
-    {queryCountUnknown:true,observedQueryCount:audit.observedQueryCount||0}:{webSearchQueries:audit.uniqueQueries};}
+  if(body.webInteractionAudit){
+    const audit=body.webInteractionAudit;
+    const detail={providerApi:PROVIDER_WEB_API||"interactions",responseId:audit.responseId||body.responseId||"",providerStatus:audit.providerStatus||"",
+      toolCalls:audit.toolCalls||[],queryOccurrences:audit.queryOccurrences||[],uniqueQueries:audit.uniqueQueries||[],
+      observedQueryCount:Number(audit.observedQueryCount||0),providerGroundingCount:audit.providerGroundingCount??null,metadataComplete:audit.queryCount!==null};
+    return audit.queryCount===null?{queryCountUnknown:true,observedQueryCount:detail.observedQueryCount,searchAudit:detail}:
+      {webSearchQueries:audit.uniqueQueries,searchAudit:detail};
+  }
   const candidate=(body.candidates||[])[0]||{},metadata=candidate.groundingMetadata;
-  if(metadata&&Array.isArray(metadata.webSearchQueries))return metadata;
+  if(metadata&&Array.isArray(metadata.webSearchQueries)){
+    const queries=metadata.webSearchQueries.filter(function(q){return typeof q==="string"&&q.trim();}).map(function(q){return q.trim();});
+    return Object.assign({},metadata,{searchAudit:{providerApi:"generateContent",responseId:body.responseId||"",toolCalls:[],
+      queryOccurrences:queries.slice(),uniqueQueries:Array.from(new Set(queries)),observedQueryCount:queries.length,
+      providerGroundingCount:null,metadataComplete:true}});
+  }
   const calls=(candidate.content?.parts||[]).map(function(part){return part.toolCall;}).filter(function(call){
     return call&&/^GOOGLE_SEARCH(?:_WEB)?$/.test(call.toolType||"")&&Array.isArray(call.args?.queries);
   });
+  if(calls.length){
+    const details=calls.map(function(call,index){const queries=call.args.queries.filter(function(q){return typeof q==="string"&&q.trim();}).map(function(q){return q.trim();});
+      return {callId:String(call.id||`call_${index+1}`),queries:queries};});
+    const occurrences=details.flatMap(function(call){return call.queries;});
+    return {webSearchQueries:occurrences,searchAudit:{providerApi:"generateContent",responseId:body.responseId||"",toolCalls:details,
+      queryOccurrences:occurrences,uniqueQueries:Array.from(new Set(occurrences)),observedQueryCount:occurrences.length,providerGroundingCount:null,metadataComplete:true}};
+  }
   // Absence of metadata or trace is still unknown, never assumed to be zero queries.
-  return calls.length ? {webSearchQueries:calls.flatMap(function(call){return call.args.queries;})} : null;
+  return null;
 }
 function settleProviderSearch_(model,metadata) {
   if(!metadata || metadata.queryCountUnknown || !Array.isArray(metadata.webSearchQueries)) return {costTwd:providerSearchPrice_(model).usd*(providerSearchPrice_(model).unit==="query"?Math.max(3,Number(metadata?.observedQueryCount)||0):1)*EXCHANGE_RATE,
-    queryCount:null,allowanceKnown:false,unknown:true};
+    queryCount:null,allowanceKnown:false,unknown:true,searchAudit:metadata?.searchAudit||{metadataComplete:false,observedQueryCount:Number(metadata?.observedQueryCount)||0}};
   const rate=providerSearchPrice_(model),queries=Array.from(new Set((metadata?.webSearchQueries||[])
     .filter(function(q){return typeof q==="string"&&q.trim();}).map(function(q){return q.trim();})));
   const quantity=rate.unit==="query" ? queries.length : (queries.length?1:0);
@@ -91,7 +109,9 @@ function settleProviderSearch_(model,metadata) {
     // Only an editor-confirmed project-wide opening count authorizes free allowance.
     const known=props.getProperty(key+"_OPENING_VERIFIED")==="true";
     const billable=known ? Math.max(0,previous+quantity-rate.free)-Math.max(0,previous-rate.free) : quantity;
-    return {costTwd:billable*rate.usd*EXCHANGE_RATE,queryCount:queries.length,allowanceKnown:known};
+    return {costTwd:billable*rate.usd*EXCHANGE_RATE,queryCount:queries.length,allowanceKnown:known,unknown:false,
+      searchAudit:Object.assign({},metadata.searchAudit||{},{metadataComplete:true,queryOccurrences:(metadata.webSearchQueries||[]).slice(),
+        uniqueQueries:queries.slice(),observedQueryCount:(metadata.webSearchQueries||[]).length,billedQueryCount:quantity})};
   } finally {lock.releaseLock();}
 }
 
@@ -102,7 +122,7 @@ function persistProviderAttemptReceipt_(r,stage,cost,uncertain) {
   const receipt={id:r.receiptId,stage:stage,month:r.month,purpose:r.purpose,model:r.model,jobId:r.jobId||"",turnId:r.turnId||"",
     inputKind:r.inputKind,payloadSha:r.payloadSha,inputLimit:r.inputLimit,outputLimit:r.outputLimit,
     reservedTwd:r.amount,costTwd:cost===undefined||cost===null?null:cost,status:stage!=="settled"?"pending":(r.costStatus||(uncertain?"unknown":"estimated")),
-    queryCount:r.queryCount??null,responseId:r.responseId||"",usage:r.usage||null,sent:Boolean(r.sent),verificationBatch:r.verification?r.verificationBatch:"",at:new Date().toISOString()};
+    queryCount:r.queryCount??null,responseId:r.responseId||"",searchAudit:r.searchAudit||null,usage:r.usage||null,sent:Boolean(r.sent),verificationBatch:r.verification?r.verificationBatch:"",at:new Date().toISOString()};
   props.setProperty(key,JSON.stringify(receipt));
   if(stage==="settled") {
     const all=props.getProperties(),finalized=Object.keys(all).filter(k=>k.indexOf("PROVIDER_ATTEMPT_")===0).map(k=>{try{return {key:k,value:JSON.parse(all[k])};}catch(_){return null;}})

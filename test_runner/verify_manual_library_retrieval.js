@@ -72,6 +72,12 @@ for(const [model,question] of questions) {
   if(process.argv.includes('--inspect-h704') && model==='S27H704EAC') console.log(JSON.stringify(plan.fragments));
   console.log(JSON.stringify({model,question,docKey:plan.docKey,sha:plan.sourcePdfSha256,pages:plan.fragments.map(f=>f.pageNumber),heading:plan.fragments[0].pageHeading}));
 }
+const multiPlan=c.findManualPageRagPlan_('PBP要怎麼開啟？啟用後有哪些更新率限制？','S49DG932SC');
+assert(multiPlan && multiPlan.requestItems.length===2,'multi-question page RAG must preserve both request items');
+assert(multiPlan.fragments.every(f=>Array.isArray(f.requestItemIds)),'every retrieved fragment must declare request coverage');
+assert(Array.isArray(multiPlan.retrievalDroppedRequestItemIds) && typeof multiPlan.retrievalTruncated==='boolean');
+const manyPlan=c.findManualPageRagPlan_('PBP怎麼開？更新率限制？解析度限制？輸入來源限制？音訊限制？還有其他限制？','S49DG932SC');
+if(manyPlan&&manyPlan.requestItems.length>5) assert(manyPlan.retrievalTruncated || manyPlan.retrievalDroppedRequestItemIds.length>0,'bounded retrieval must record truncation instead of claiming full coverage');
 assert.strictEqual(h.fetches.length,0);
 const activeReport=c.readManualLibraryActivationReport_();
 assert.strictEqual(activeReport.active,82);
@@ -85,8 +91,14 @@ c.readReadyManualIndexModels_();
 assert.strictEqual(manifestReads,1,'coverage must not read remote manifest once per registered document');
 c.readOfficialManualManifest_=manifestReader;
 const sample=Object.values(c.MANUAL_PAGE_RAG_DATA_.documents)[0];
-const candidate={fullSku:sample.models[0],downloadUrl:'https://downloadcenter.samsung.com/test.pdf'};
+const candidate={fullSku:sample.models[0],downloadUrl:'https://downloadcenter.samsung.com/test.pdf',
+  supportUrl:'https://www.samsung.com/tw/support/model/TEST/', modelBinding:sample.modelBinding || 'pdf_first_page',
+  exactModelInDocument:true, workerBinding:{schemaVersion:1,sourcePdfSha256:sample.sourcePdfSha256,
+    models:[sample.models[0]],documentRole:'manual',verifiedAt:'fixture'}};
 assert.strictEqual(c.isManualIndexPromotionReady_(candidate,sample.sourcePdfSha256),true);
+const legacyCandidate=Object.assign({},candidate); delete legacyCandidate.workerBinding;
+c.savePendingManualRevision_(legacyCandidate,'d'.repeat(64),'legacy.pdf','PROMOTION_EXCEPTION_PAGE_INDEX_BUILD_REQUIRED');
+assert.strictEqual(c.readPendingManualIndexRevision_(legacyCandidate.fullSku,'d'.repeat(64)),null,'legacy pending without workerBinding must remain rejected');
 const sampleKey=Object.keys(c.MANUAL_PAGE_RAG_DATA_.documents)[0],pointerKey='MANUAL_ACTIVE::'+sampleKey;
 const savedPointer=h.properties.get(pointerKey);
 h.properties.delete(pointerKey);

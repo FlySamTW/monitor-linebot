@@ -55,13 +55,20 @@ test('authenticated list exposes v2 capability contract', () => {
   assert.equal(state.protocol, 'manual-index-worker-v1');
   assert.equal(state.indexPolicy, 'pages-v324-1');
   assert.ok(state.gasVersion && state.build);
-  for (const capability of ['inspect','inspect_failure','index_failure','prepare','probe','probeOnly']) {
+  for (const capability of ['inspect','inspect_failure','index_failure','prepare','probe','probeOnly','retrieve']) {
     assert.ok(state.capabilities.includes(capability), capability);
   }
 });
 test('bad signature rejected', () => {
   const e = envelope('list', {}); e.signature = '0'.repeat(64);
   assert.equal(c.handleManualWorkerRequest_(JSON.stringify(e)).error, 'WORKER_AUTH');
+});
+test('UTF-8 signed payload accepts Traditional Chinese newline emoji quotes and backslash', () => {
+  const payload = {text: '繁體中文\n全形：測試 😀 \"quote\" \\ slash'};
+  const e = envelope('inspect', payload);
+  const result = c.handleManualWorkerRequest_(JSON.stringify(e));
+  assert.notEqual(result.error, 'WORKER_AUTH', JSON.stringify(result));
+  assert.ok(/^WORKER_/.test(result.error || '') || result.ok === true);
 });
 test('expired request rejected', () => assert.equal(c.handleManualWorkerRequest_(JSON.stringify(envelope('list', {}, {timestamp: c.Date.now() - 300001}))).error, 'WORKER_AUTH'));
 test('persistent replay rejected', () => {
@@ -92,7 +99,45 @@ test('successful PDF/index/bundle readback then atomic activation', () => {
   assert.equal(driveWrites.filter(w => w.metadata.name.endsWith('.pdf')).length, 1);
   assert.equal(probe.ok, true); assert.equal(probe.verified[0].sourcePdfSha256, sha);
   assert.equal(probe.verified[0].indexChecksum, digest(content));
+  const retrieval=call('retrieve',{model:'S32TEST',question:'test'});
+  assert.equal(retrieval.ok,true);assert.equal(retrieval.found,true,JSON.stringify(retrieval));
+  assert.equal(retrieval.sourcePdfSha256,sha);assert.equal(retrieval.indexChecksum,digest(content));
+  assert.deepEqual(Array.from(retrieval.pages),[1]);assert.equal(retrieval.providerCalls,0);
   assert.equal(call('list', {}).pending.length, 0);
+});
+test('verified same-SHA official support binding reopens old blocked identity without another provider call', () => {
+  const fullSku='LS32FM500ECXZW', inspectionKey='MANUAL_INSPECT_'+fullSku;
+  const candidate={fullSku,
+    supportUrl:'https://www.samsung.com/tw/support/model/LS32FM500ECXZW/',
+    downloadUrl:'https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32FM500EC&CttFileID=1&CDCttType=UM',
+    modelBinding:'official_support_page',exactModelInDocument:false};
+  h.properties.set(inspectionKey,JSON.stringify({candidate,sourcePdfSha256:sha,policy:'cover-v324-1',
+    stage:'blocked',attempts:3,nextRetryAt:Date.now()+86400000,reason:'FIRST_PAGE_IDENTITY_NOT_VERIFIED'}));
+  const beforeFetches=h.fetches.length,listed=call('list',{});
+  assert.equal(listed.migratedInspections,1);
+  assert.ok(listed.inspections.some(item=>item.inspectionKey===inspectionKey));
+  const inspected=call('inspect',{inspectionKey,sourcePdfSha256:sha});
+  assert.equal(inspected.ok,true);assert.equal(inspected.reusedVerifiedSha,true);
+  const after=call('list',{});
+  assert.ok(after.pending.some(item=>item.fullSku===fullSku && item.sourcePdfSha256===sha));
+  assert.equal(h.fetches.length,beforeFetches,'same verified SHA identity reuse must not call a provider');
+  h.properties.delete(inspectionKey);
+  h.properties.delete('MANUAL_PENDING_'+fullSku);
+  h.properties.delete(c.manualIdentityKey_(sha));
+});
+test('different SHA cannot use verified same-SHA identity repair', () => {
+  const fullSku='LS32FM599ECXZW', inspectionKey='MANUAL_INSPECT_'+fullSku, otherSha='9'.repeat(64);
+  const candidate={fullSku,
+    supportUrl:'https://www.samsung.com/tw/support/model/LS32FM599ECXZW/',
+    downloadUrl:'https://org.downloadcenter.samsung.com/downloadfile/ContentsFile.aspx?CDSite=UNI_TW&OriginYN=N&ModelType=N&ModelName=S32FM599EC&CttFileID=2&CDCttType=UM',
+    modelBinding:'official_support_page',exactModelInDocument:false};
+  h.properties.set(inspectionKey,JSON.stringify({candidate,sourcePdfSha256:otherSha,policy:'cover-v324-1',
+    stage:'blocked',attempts:3,nextRetryAt:Date.now()+86400000,reason:'FIRST_PAGE_IDENTITY_NOT_VERIFIED'}));
+  const listed=call('list',{});
+  assert.equal(listed.migratedInspections,0);
+  assert.ok(!listed.inspections.some(item=>item.inspectionKey===inspectionKey));
+  assert.equal(h.properties.has('MANUAL_PENDING_'+fullSku),false);
+  h.properties.delete(inspectionKey);
 });
 test('same revision is idempotent despite old base', () => {
   assert.equal(call('prepare', payload).reused, true); assert.equal(files.size, 3);
@@ -246,12 +291,12 @@ test('unauthorized health cannot spoof successful scheduler status', () => {
   assert.equal(JSON.parse(h.properties.get('MANUAL_WORKER_HEALTH')).ok, false);
 });
 test('local CLI writes sanitized report and sends health after isolated download failures', () => {
-  const script = `import sys,os,json,tempfile\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nseen=[]\nitems=[{'pendingKey':'PENDING_A','fullSku':'A','downloadUrl':'https://invalid.test/a','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'},{'pendingKey':'PENDING_B','fullSku':'B','downloadUrl':'https://invalid.test/b','sourcePdfSha256':'1'*64,'indexPolicy':'pages-v324-1'}]\ndef io(endpoint,secret,action,payload):\n seen.append((action,payload))\n return {'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly'],'revision':'compiled','pending':items,'inspections':[]} if action=='list' else {'ok':True}\nw.request=io\nos.environ['WORKER_FIXTURE_SECRET']='ab'*32\nwith tempfile.TemporaryDirectory() as d:\n report=Path(d)/'last-run.json'\n sys.argv=['worker','--endpoint','https://script.google.com/macros/s/fixture/exec','--secret-env','WORKER_FIXTURE_SECRET','--report',str(report)]\n code=w.main()\n result=json.loads(report.read_text(encoding='utf-8'))\n assert code==1 and len(result['failed'])==2 and result['completed']==[]\n assert seen[-1][0]=='health' and seen[-1][1]['failed']==2\n assert 'abababab' not in report.read_text(encoding='utf-8')\n print('PYTHON_REPORT_PASS')\n`;
+  const script = `import sys,os,json,tempfile\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nseen=[]\nitems=[{'pendingKey':'PENDING_A','fullSku':'A','downloadUrl':'https://invalid.test/a','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'},{'pendingKey':'PENDING_B','fullSku':'B','downloadUrl':'https://invalid.test/b','sourcePdfSha256':'1'*64,'indexPolicy':'pages-v324-1'}]\ndef io(endpoint,secret,action,payload):\n seen.append((action,payload))\n return {'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly','retrieve'],'revision':'compiled','pending':items,'inspections':[]} if action=='list' else {'ok':True}\nw.request=io\nos.environ['WORKER_FIXTURE_SECRET']='ab'*32\nwith tempfile.TemporaryDirectory() as d:\n report=Path(d)/'last-run.json'\n sys.argv=['worker','--endpoint','https://script.google.com/macros/s/fixture/exec','--secret-env','WORKER_FIXTURE_SECRET','--report',str(report)]\n code=w.main()\n result=json.loads(report.read_text(encoding='utf-8'))\n assert code==1 and len(result['failed'])==2 and result['completed']==[]\n assert seen[-1][0]=='health' and seen[-1][1]['failed']==2\n assert 'abababab' not in report.read_text(encoding='utf-8')\n print('PYTHON_REPORT_PASS')\n`;
   const result = require('child_process').spawnSync('python', ['-c', script.replace('w.request=io', "for item in items: item['pendingKey']='PENDING_'+item['fullSku']\nw.request=io")], {cwd: require('path').resolve(__dirname, '..'), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr); assert.ok(result.stdout.includes('PYTHON_REPORT_PASS'));
 });
 test('incompatible worker contract stops before every download/build action', () => {
-  const script = `import sys\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nbase={'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly'],'revision':'compiled','pending':[{'pendingKey':'P','fullSku':'M','downloadUrl':'https://downloadcenter.samsung.com/x.pdf','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'}],'inspections':[]}\nfor state,expected in [({'ok':True,'revision':'compiled','pending':[],'inspections':[]},'WORKER_CONTRACT'),(dict(base,capabilities=['inspect']),'WORKER_CAPABILITY')]:\n seen=[]\n def io(endpoint,secret,action,payload): seen.append(action); return state\n w.request=io\n w.download=lambda *a,**k: (_ for _ in ()).throw(AssertionError('downloaded'))\n try: w.run('fixture','fixture',Path('config/manual_lexicon.json')); raise AssertionError('accepted')\n except RuntimeError as e: assert str(e)==expected\n assert seen==['list']\nprint('CONTRACT_PREFLIGHT_PASS')`;
+  const script = `import sys\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nbase={'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly','retrieve'],'revision':'compiled','pending':[{'pendingKey':'P','fullSku':'M','downloadUrl':'https://downloadcenter.samsung.com/x.pdf','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'}],'inspections':[]}\nfor state,expected in [({'ok':True,'revision':'compiled','pending':[],'inspections':[]},'WORKER_CONTRACT'),(dict(base,capabilities=['inspect']),'WORKER_CAPABILITY')]:\n seen=[]\n def io(endpoint,secret,action,payload): seen.append(action); return state\n w.request=io\n w.download=lambda *a,**k: (_ for _ in ()).throw(AssertionError('downloaded'))\n try: w.run('fixture','fixture',Path('config/manual_lexicon.json')); raise AssertionError('accepted')\n except RuntimeError as e: assert str(e)==expected\n assert seen==['list']\nprint('CONTRACT_PREFLIGHT_PASS')`;
   const result = require('child_process').spawnSync('python', ['-c', script], {cwd: require('path').resolve(__dirname, '..'), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr); assert.ok(result.stdout.includes('CONTRACT_PREFLIGHT_PASS'));
 });
@@ -279,7 +324,7 @@ test('true library recalls natural spatial phrasing without lighting equivalence
   assert.equal(lib.fetches.length, 0);
 });
 test('more than twenty failed candidates rotate so later entries are not starved', () => {
-  const script = `import sys\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nitems=[{'pendingKey':'PENDING_'+str(i),'fullSku':'MODEL_'+str(i),'downloadUrl':'https://invalid.test/manual','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'} for i in range(25)]\ndef io(endpoint,secret,action,payload):\n return {'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly'],'revision':'compiled','pending':items,'inspections':[]} if action=='list' else {'ok':True}\nw.request=io\nfirst=w.run('fixture','fixture',Path('config/manual_lexicon.json'))\nassert len(first['failed'])==20 and first['lastAttempted']=='PENDING_19'\nsecond=w.run('fixture','fixture',Path('config/manual_lexicon.json'),first['lastAttempted'])\nassert second['failed'][0]['model']=='MODEL_20'\nassert {x['model'] for x in first['failed']+second['failed']}=={x['fullSku'] for x in items}\nprint('ROTATION_PASS')\n`;
+  const script = `import sys\nfrom pathlib import Path\nsys.path.insert(0,'tools')\nimport manual_index_worker as w\nitems=[{'pendingKey':'PENDING_'+str(i),'fullSku':'MODEL_'+str(i),'downloadUrl':'https://invalid.test/manual','sourcePdfSha256':'0'*64,'indexPolicy':'pages-v324-1'} for i in range(25)]\ndef io(endpoint,secret,action,payload):\n return {'ok':True,'contractVersion':2,'protocol':'manual-index-worker-v1','gasVersion':'v29.6.324','build':'fixture','indexPolicy':'pages-v324-1','capabilities':['inspect','inspect_failure','index_failure','prepare','probe','probeOnly','retrieve'],'revision':'compiled','pending':items,'inspections':[]} if action=='list' else {'ok':True}\nw.request=io\nfirst=w.run('fixture','fixture',Path('config/manual_lexicon.json'))\nassert len(first['failed'])==20 and first['lastAttempted']=='PENDING_19'\nsecond=w.run('fixture','fixture',Path('config/manual_lexicon.json'),first['lastAttempted'])\nassert second['failed'][0]['model']=='MODEL_20'\nassert {x['model'] for x in first['failed']+second['failed']}=={x['fullSku'] for x in items}\nprint('ROTATION_PASS')\n`;
   const result = require('child_process').spawnSync('python', ['-c', script], {cwd: require('path').resolve(__dirname, '..'), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr); assert.ok(result.stdout.includes('ROTATION_PASS'));
 });

@@ -1,6 +1,6 @@
 /** Discovery is isolated from publication. Only the signed local worker extracts pages. */
 const MANUAL_COVER_EXTRACTOR = "pymupdf-page1-v1";
-const MANUAL_IDENTITY_POLICY = "cover-v324-1";
+const MANUAL_IDENTITY_POLICY = "cover-v326-1";
 const MANUAL_WORKER_INDEX_POLICY = "pages-v324-1";
 // v323 uses the same page extractor/lexicon; legacy active indexes need a probe, not a rebuild.
 const MANUAL_WORKER_LEGACY_INDEX_POLICY = "pages-v324-1";
@@ -16,6 +16,50 @@ function saveManualJson_(key, value) {
   const raw = JSON.stringify(value);
   if (Utilities.newBlob(raw).getBytes().length > 8500) throw new Error("WORKER_RECEIPT_SIZE");
   PropertiesService.getScriptProperties().setProperty(key, raw);
+}
+function hasVerifiedWorkerManualSourceSha_(sha) {
+  const sourceSha=String(sha||"").toLowerCase();
+  if(!/^[a-f0-9]{64}$/.test(sourceSha))return false;
+  const bundle=getManualWorkerSnapshot_();
+  if(!bundle)return false;
+  return Object.keys(bundle.active||{}).some(function(key){
+    const active=bundle.active[key],doc=(bundle.documents||{})[key];
+    if(!active||!doc||String(active.sha256||"").toLowerCase()!==sourceSha||
+      !["manual","user_manual"].includes(String(doc.documentRole||""))||
+      !active.pdfFileId||!active.indexFileId||!active.indexChecksum)return false;
+    return (doc.models||[]).some(function(model){
+      const progress=readManualJson_("MANUAL_PROGRESS_"+normalizeModelForDisplay(model));
+      return Boolean(progress&&progress.stage==="verified_ready"&&
+        String(progress.sourcePdfSha256||"").toLowerCase()===sourceSha&&
+        progress.indexChecksum===active.indexChecksum);
+    });
+  });
+}
+function migrateManualIdentityJobsForVerifiedSha_() {
+  const props=PropertiesService.getScriptProperties(),all=props.getProperties();
+  const keys=Object.keys(all).filter(function(key){return key.indexOf("MANUAL_INSPECT_")===0;});
+  if(!keys.length)return 0;
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(3000))throw new Error("WORKER_BUSY");
+  let migrated=0;
+  try {
+    keys.forEach(function(key){
+      let job;
+      try{job=JSON.parse(all[key]);}catch(_){return;}
+      if(!job||job.policy===MANUAL_IDENTITY_POLICY||!job.candidate||
+        !isOfficialSupportPageBoundManualCandidate_(job.candidate)||
+        !hasVerifiedWorkerManualSourceSha_(job.sourcePdfSha256))return;
+      job.policy=MANUAL_IDENTITY_POLICY;
+      job.stage="content_fetched";
+      job.attempts=0;
+      job.nextRetryAt=0;
+      job.reason="";
+      job.updatedAt=new Date().toISOString();
+      props.setProperty(key,JSON.stringify(job));
+      migrated++;
+    });
+  } finally {lock.releaseLock();}
+  return migrated;
 }
 function queueManualIdentityInspection_(candidate, sha) {
   sha = String(sha).toLowerCase();
@@ -97,6 +141,17 @@ function inspectManualWorkerCover_(payload) {
     throw new Error("WORKER_INSPECTION_BINDING");
   const receiptKey=manualIdentityKey_(job.sourcePdfSha256);
   let receipt=readManualJson_(receiptKey);
+  if(!receipt&&isOfficialSupportPageBoundManualCandidate_(job.candidate)&&
+      hasVerifiedWorkerManualSourceSha_(job.sourcePdfSha256)) {
+    receipt={policy:MANUAL_IDENTITY_POLICY,sourcePdfSha256:job.sourcePdfSha256,
+      sourcePages:[1],verifiedWorkerShaReuse:true,
+      result:{page1Readable:true,isSamsungMonitorManual:true,page1Models:[]},
+      finishedAt:new Date().toISOString()};
+    saveManualJson_(receiptKey,receipt);
+    applyManualIdentityReceipt_(payload.inspectionKey,job,receipt);
+    writeLog(`[Manual Identity] sha=${job.sourcePdfSha256} sku=${job.candidate.fullSku} stage=sku_verified reusedVerifiedSha=true`);
+    return {ok:true,stage:"sku_verified",reusedVerifiedSha:true};
+  }
   if(receipt && receipt.result) {applyManualIdentityReceipt_(payload.inspectionKey,job,receipt);return {ok:true,reused:true,stage:job.stage};}
   if(job.stage==="blocked" || Number(job.nextRetryAt||0)>Date.now() || Number(job.attempts||0)>=3)
     throw new Error("WORKER_INSPECTION_BLOCKED");

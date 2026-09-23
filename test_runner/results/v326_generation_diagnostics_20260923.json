@@ -1,0 +1,62 @@
+{
+  "version": "v29.6.326",
+  "build": "2026-09-23 16:58",
+  "verificationBatch": "v324-cost-remediation",
+  "authorizedCapTwd": 10.0,
+  "batchAfterTwd": 4.155059392000002,
+  "reservedTwd": 0,
+  "remainingTwd": 5.844940607999998,
+  "readbackAt": "2026-09-23T09:25:32.2495393Z",
+  "modelProbe": [
+    {
+      "model": "models/gemini-2.5-flash",
+      "httpStatus": 404,
+      "outcome": "resource_not_found",
+      "answered": false
+    },
+    {
+      "model": "models/gemini-3.1-flash-lite",
+      "costTwd": 7.2E-05,
+      "httpStatus": 200,
+      "outcome": "success",
+      "answered": true
+    }
+  ],
+  "comparison": {
+    "status": "model_unavailable",
+    "note": "2.5 Flash returned 404; selected 3.1 Flash-Lite probe succeeded on v326 HEAD. No general-traffic model change.",
+    "qualityAccepted": false,
+    "lineDelivered": false
+  },
+  "library": {
+    "registered": 88,
+    "active": 88,
+    "models": 137,
+    "uniqueIndexes": 50,
+    "missing": [],
+    "pendingIndexRevisions": [],
+    "workerHealthOk": true
+  },
+  "manualCoverage": {
+    "status": "OK",
+    "autoImportRetryCount": 0,
+    "pageIndexReadyM50F": [
+      "S27FM500EC",
+      "S27FM501EC",
+      "S32FM500EC",
+      "S32FM501EC"
+    ],
+    "knownCoverageGaps": [
+      "S27D392GA",
+      "S27F612EA",
+      "S32D392GA"
+    ]
+  },
+  "worker": {
+    "schedulerLastResult": 0,
+    "workerVersion": "manual-index-worker-v2",
+    "authFixed": true,
+    "bundleProbeVerifiedCount": 9
+  },
+  "amountMeaning": "供應商回報或依用量估算；不是 Cloud 帳單實付"
+}

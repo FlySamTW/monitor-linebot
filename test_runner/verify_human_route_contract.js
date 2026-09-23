@@ -308,6 +308,7 @@ vm.runInContext(
     extractFunction(linebot, "enrichPdfKbItemWithOfficialProvenance_"),
     extractFunction(linebot, "filterUnsafeLegacySharedManualCandidates_"),
     extractFunction(linebot, "buildDrivePdfIdentity_"),
+    extractFunction(linebot, "getManualPdfUriExpiryState_"),
     extractFunction(linebot, "isKbPdfUriFreshForDriveCandidate_"),
     extractFunction(linebot, "isPdfKbFile"),
     extractFunction(linebot, "extractPdfModelIndexFromKbList"),

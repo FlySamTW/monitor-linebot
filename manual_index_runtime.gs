@@ -220,9 +220,39 @@ function normalizeManualRetrievalQuery_(question) {
     .replace(/([前後左右上下]方|背面|背後|機背|底部|頂部|中央)\s*[這那](?:一)?[個圈條排顆片塊]\s*(?=[\u3400-\u9fff])/g, "$1");
 }
 
+function manualFragmentRequestItemIds_(text, heading, requestItems) {
+  const haystack=manualPageRagNormalizeText_([heading||"",text||""].join(" "));
+  return (Array.isArray(requestItems)?requestItems:[]).filter(function(item){
+    const terms=manualIndexTerms_(normalizeManualRetrievalQuery_(item.question));
+    if(!terms.length)return false;
+    const matched=terms.filter(function(term){return haystack.includes(term);});
+    const needed=terms.length<=2?1:Math.min(2,terms.length);
+    return matched.length>=needed;
+  }).map(function(item){return item.id;});
+}
+function selectManualFragmentsForRequests_(candidates, requestItems, maxFragments) {
+  const max=Math.max(1,Number(maxFragments)||5),selected=[],seen=new Set();
+  const add=function(fragment){
+    const key=[fragment.pageHash||"",fragment.pageHeading||"",normalizeManualRetrievalQuery_(fragment.evidenceText||"")].join("|");
+    if(seen.has(key)||selected.length>=max)return false;
+    seen.add(key);selected.push(fragment);return true;
+  };
+  (requestItems||[]).forEach(function(item){
+    const hit=(candidates||[]).find(function(fragment){return (fragment.requestItemIds||[]).includes(item.id)&&!selected.includes(fragment);});
+    if(hit)add(hit);
+  });
+  (candidates||[]).forEach(add);
+  selected.forEach(function(fragment,index){fragment.evidenceId=`E${index+1}`;});
+  const covered=new Set(selected.flatMap(function(fragment){return fragment.requestItemIds||[];}));
+  const dropped=(requestItems||[]).filter(function(item){return !covered.has(item.id);}).map(function(item){return item.id;});
+  return {fragments:selected,coveredRequestItemIds:Array.from(covered),retrievalDroppedRequestItemIds:dropped,
+    retrievalTruncated:(candidates||[]).length>selected.length||dropped.length>0,
+    droppedCandidateCount:Math.max(0,(candidates||[]).length-selected.length)};
+}
 function findIndexedManualPagePlan_(question, targetModel) {
   const catalog = Object.assign({}, MANUAL_PAGE_RAG_DATA_, {documents:getEffectiveManualDocuments_()});
   const model = normalizeManualEvidenceModel_(targetModel);
+  const requestItems = buildAnswerRequestItems_(question, model);
   const matches = Object.keys(catalog.documents || {}).filter(function (key) {
     return catalog.documents[key].models.some(function (candidate) {
       return manualEvidenceModelMatchesTarget_(candidate, model);
@@ -306,8 +336,8 @@ function findIndexedManualPagePlan_(question, targetModel) {
     });
   });
   const ranked = Object.keys(scores).map(Number).sort(function (a, b) { return scores[b] - scores[a] || a - b; });
-  const fragments = [];
-  for (let i = 0; i < ranked.length && fragments.length < 5; i++) {
+  const fragmentCandidates = [];
+  for (let i = 0; i < ranked.length && fragmentCandidates.length < 15; i++) {
     const page = pageMap[ranked[i]];
     if (!page) continue;
     const heading = (page.headings || [])[0] || "";
@@ -335,8 +365,12 @@ function findIndexedManualPagePlan_(question, targetModel) {
     const units = sectionUnits.length ? sectionUnits : [{ heading: heading, text: scopedBlocks.map(function (block) { return block.text; }).join("\n") }];
     let selectedOnPage = 0;
     units.forEach(function (unit) {
-      if (!manualSourceSwitchEvidenceMatches_(question,unit.text,unit.heading)) return;
-      if (fragments.length >= 5 || selectedOnPage >= 2) return;
+      const sourceMatchedRequestIds=requestItems.filter(function(item){
+        return manualSourceSwitchEvidenceMatches_(item.question,unit.text,unit.heading);
+      }).map(function(item){return item.id;});
+      if (requestItems.length && !sourceMatchedRequestIds.length) return;
+      if (!requestItems.length && !manualSourceSwitchEvidenceMatches_(question,unit.text,unit.heading)) return;
+      if (fragmentCandidates.length >= 15 || selectedOnPage >= 2) return;
       let text = unit.text;
       const unitTerms = manualIndexTerms_(text);
       // Related names expand recall, never model applicability or equivalence.
@@ -376,27 +410,33 @@ function findIndexedManualPagePlan_(question, targetModel) {
       const evidencePages = menuPath && printedParent && printedParent.pageNumber !== page.pdfPage
         ? [printedParent.pageNumber, page.pdfPage] : [page.pdfPage];
       if (evidencePages.length > 1) text = `【第${printedParent.pageNumber}頁的接續表格標題】\n${printedParent.text}\n【第${page.pdfPage}頁設定列】\n${text}`;
-      fragments.push({ evidenceId: `E${fragments.length + 1}`, pageNumber: page.pdfPage,
+      fragmentCandidates.push({ evidenceId: "", pageNumber: page.pdfPage,
         pageHeading: unit.heading, evidenceText: text, pageHash: page.pageHash,
         menuPath: menuPath,
         evidencePages: evidencePages,
+        requestItemIds: Array.from(new Set(manualFragmentRequestItemIds_(text, unit.heading, requestItems).concat(sourceMatchedRequestIds))),
         excludedFamilyBlocks: blocks.length - scopedBlocks.length });
       selectedOnPage++;
     });
   }
-  if (!fragments.length) return null;
+  if (!fragmentCandidates.length) return null;
   if (isManualActionPathQuestion_(query)) {
-    fragments.sort(function (a, b) {
+    fragmentCandidates.sort(function (a, b) {
       return Number(Boolean(b.menuPath)) - Number(Boolean(a.menuPath));
     });
   }
+  const selected=selectManualFragmentsForRequests_(fragmentCandidates,requestItems,5);
+  if(!selected.fragments.length)return null;
   return Object.assign({}, revision, {
     model: model, groupId: groups.map(function (group) { return group.id; }).join("+") || "query_time",
     retrievalPolicy: "QueryTimeV1", sourceFileName: document.sourceFileName,
     sourcePdfSha256: revision.sha256.toUpperCase(), modelBinding: document.modelBinding,
     language: document.language || "", sourceRegion: document.sourceRegion || "",
     exactModelInDocument: document.exactModelInDocument !== false,
-    aliases: aliases, allowRuleBackedAliasCompletion: false, fragments: fragments,
+    aliases: aliases, allowRuleBackedAliasCompletion: false, requestItems:requestItems,
+    fragments:selected.fragments,coveredRequestItemIds:selected.coveredRequestItemIds,
+    retrievalDroppedRequestItemIds:selected.retrievalDroppedRequestItemIds,retrievalTruncated:selected.retrievalTruncated,
+    droppedCandidateCount:selected.droppedCandidateCount,
   });
 }
 

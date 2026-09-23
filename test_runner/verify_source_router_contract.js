@@ -1806,7 +1806,7 @@ assert(
     /groundedButNotTargeted/.test(
       extractFunction(linebot, "buildManualWebRescueReply_"),
     ) &&
-    /partial\s*&&\s*explicitResolvedIds\.length/.test(
+    /partial\s*&&\s*(?:explicitResolvedIds|allExplicitResolvedIds)\.length/.test(
       extractFunction(linebot, "buildAdvancedAnswerEnvelope_"),
     ) &&
     /unresolvedIds/.test(

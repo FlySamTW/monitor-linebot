@@ -41,6 +41,8 @@ def error_receipt(error: Exception) -> dict:
 
 
 def request(endpoint: str, secret: str, action: str, payload: dict) -> dict:
+    # HMAC is defined over the decoded payload string in UTF-8.  The outer HTTP
+    # JSON may escape Unicode, but both sides sign this exact inner string.
     envelope = {'protocol': 'manual-index-worker-v1', 'timestamp': int(time.time() * 1000),
                 'nonce': secrets.token_hex(16), 'action': action,
                 'payload': json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}
@@ -60,6 +62,21 @@ def request(endpoint: str, secret: str, action: str, payload: dict) -> dict:
         code = str(result.get('error', 'WORKER_REMOTE_FAILED'))
         raise WorkerRequestError(action, response.status_code, code if re.fullmatch(r'(?:WORKER|PROVIDER)_[A-Z_]+',code) else 'WORKER_REMOTE_FAILED')
     return result
+
+
+INFRASTRUCTURE_ERRORS = {'WORKER_AUTH', 'WORKER_HTTP', 'WORKER_TRANSPORT',
+                         'WORKER_CONTRACT', 'WORKER_CAPABILITY', 'WORKER_INDEX_POLICY'}
+
+def safe_report(endpoint: str, secret: str, action: str, payload: dict) -> bool:
+    """Best-effort status reporting must never erase the original failure."""
+    try:
+        request(endpoint, secret, action, payload)
+        return True
+    except Exception:
+        return False
+
+def is_infrastructure_error(error: Exception) -> bool:
+    return isinstance(error, WorkerRequestError) and error.code in INFRASTRUCTURE_ERRORS
 
 
 def download(url: str, destination: Path, expected_sha: str, *, archive: bool = False) -> None:
@@ -168,7 +185,7 @@ def worker_directory(cache_root, sha, policy):
 WORKER_CONTRACT_VERSION = 2
 WORKER_PROTOCOL = 'manual-index-worker-v1'
 WORKER_INDEX_POLICY = 'pages-v324-1'
-WORKER_REQUIRED_CAPABILITIES = {'inspect', 'inspect_failure', 'index_failure', 'prepare', 'probe', 'probeOnly'}
+WORKER_REQUIRED_CAPABILITIES = {'inspect', 'inspect_failure', 'index_failure', 'prepare', 'probe', 'probeOnly', 'retrieve'}
 
 
 def validate_worker_contract(state: dict) -> None:
@@ -191,7 +208,7 @@ def validate_worker_contract(state: dict) -> None:
         raise RuntimeError('WORKER_INDEX_POLICY')
 
 
-def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', cache_root: Path | None = None) -> dict:
+def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', cache_root: Path | None = None, max_pending: int = 20) -> dict:
     state = request(endpoint, secret, 'list', {})
     validate_worker_contract(state)
     completed, failed = [], []
@@ -209,8 +226,14 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', c
               if doc.needs_pass or not len(doc):
                 raise RuntimeError('WORKER_COVER_UNREADABLE')
               text = doc[0].get_text('text')[:12000]
-              cover = {'firstPageText': text, 'sourcePages': [1]}
-              if len(text.strip()) < 40:
+              visible = ''.join(ch for ch in text if not ch.isspace())
+              replacement_count = visible.count('\ufffd')
+              # Some Samsung PDFs expose mojibake text with plenty of characters.
+              # Treat that as unreadable and send only the rendered first page so
+              # GAS validates the image hash instead of trusting corrupted text.
+              text_readable = len(visible) >= 40 and replacement_count < max(4, int(len(visible) * 0.08))
+              cover = {'firstPageText': text if text_readable else '', 'sourcePages': [1]}
+              if not text_readable:
                 png = doc[0].get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False).tobytes('png')
                 if len(png) > 650000:
                     raise RuntimeError('WORKER_COVER_IMAGE_SIZE')
@@ -220,9 +243,12 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', c
               covers[sha] = cover
         request(endpoint, secret, 'inspect', dict(covers[sha], inspectionKey=item['inspectionKey'], sourcePdfSha256=sha))
       except Exception as error:
-        failed.append(dict(error_receipt(error), model=item.get('fullSku', '')))
+        receipt = dict(error_receipt(error), model=item.get('fullSku', ''))
+        failed.append(receipt)
         if not isinstance(error, WorkerRequestError) or error.action == "download":
-            request(endpoint, secret, 'inspect_failure', dict(error_receipt(error), inspectionKey=item['inspectionKey'], sourcePdfSha256=item['sourcePdfSha256']))
+            safe_report(endpoint, secret, 'inspect_failure', dict(receipt, inspectionKey=item['inspectionKey'], sourcePdfSha256=item['sourcePdfSha256']))
+        if is_infrastructure_error(error):
+            break
     if state.get('inspections'):
         state = request(endpoint, secret, 'list', {})
     lexicon = json.loads(lexicon_path.read_text(encoding='utf-8'))
@@ -233,7 +259,7 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', c
     if previous >= 0:
         pending = pending[previous + 1:] + pending[:previous + 1]
     last_attempted = start_after
-    for item in pending[:20]:
+    for item in pending[:max(1, min(int(max_pending or 20), 20))]:
       last_attempted = item['pendingKey']
       try:
         if item.get('probeOnly'):
@@ -288,11 +314,18 @@ def run(endpoint: str, secret: str, lexicon_path: Path, start_after: str = '', c
             completed.append({'model': item['fullSku'], 'revision': result['revision'], 'stage': 'verified_ready',
                               'sourcePdfSha256':item['sourcePdfSha256'], 'indexChecksum':package['indexChecksum']})
       except Exception as error:
-        failed.append(dict(error_receipt(error), model=item.get('fullSku', '')))
-        request(endpoint, secret, 'index_failure', dict(error_receipt(error), pendingKey=item['pendingKey'], sourcePdfSha256=item['sourcePdfSha256']))
+        receipt = dict(error_receipt(error), model=item.get('fullSku', ''))
+        failed.append(receipt)
+        safe_report(endpoint, secret, 'index_failure', dict(receipt, pendingKey=item['pendingKey'], sourcePdfSha256=item['sourcePdfSha256']))
+        if is_infrastructure_error(error):
+            break
         # Refresh the base after an uncertain response; never blindly overwrite.
-        state = request(endpoint, secret, 'list', {})
-    request(endpoint, secret, 'health', {'ok': not failed, 'completed': len(completed), 'failed': len(failed)})
+        try:
+            state = request(endpoint, secret, 'list', {})
+        except Exception as refresh_error:
+            failed.append(dict(error_receipt(refresh_error), model=item.get('fullSku', '')))
+            break
+    safe_report(endpoint, secret, 'health', {'ok': not failed, 'completed': len(completed), 'failed': len(failed)})
     return {'ok': not failed, 'completed': completed, 'failed': failed, 'indexProviderCalls': 0,
             'lastAttempted': last_attempted}
 
@@ -304,6 +337,7 @@ def main() -> int:
     parser.add_argument('--secret-file', type=Path, help='Local restricted plaintext or JSON {secret: ...}; never logged')
     parser.add_argument('--report', type=Path, help='Sanitized local result; never contains secrets')
     parser.add_argument('--lexicon', type=Path, default=Path(__file__).resolve().parents[1] / 'config/manual_lexicon.json')
+    parser.add_argument('--max-pending', type=int, default=20, help='Bound pending index activations for staged acceptance; scheduler default remains 20')
     args = parser.parse_args()
     if not re.fullmatch(r'https://script\.google\.com/macros/s/[A-Za-z0-9_-]+/exec', args.endpoint):
         parser.error('Only the existing official GAS /exec endpoint is allowed')
@@ -320,7 +354,10 @@ def main() -> int:
                 start_after = str(json.loads(args.report.read_text(encoding='utf-8')).get('lastAttempted', ''))
             except (ValueError, OSError):
                 pass
-        result = run(args.endpoint, secret, args.lexicon, start_after, args.report.parent / 'content-cache' if args.report else None)
+        started_at = time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        run_id = secrets.token_hex(8)
+        result = run(args.endpoint, secret, args.lexicon, start_after, args.report.parent / 'content-cache' if args.report else None, args.max_pending)
+        result = dict(result, runId=run_id, workerVersion='manual-index-worker-v2', startedAt=started_at)
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
             args.report.write_text(json.dumps(dict(result, finishedAt=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())),ensure_ascii=False),encoding='utf-8')

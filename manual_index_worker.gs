@@ -99,10 +99,10 @@ function handleManualWorkerRequest_(raw) {
     const e = JSON.parse(raw), props = PropertiesService.getScriptProperties(), secret = props.getProperty("MANUAL_WORKER_SECRET");
     if (!secret || !/^[a-f0-9]{64}$/i.test(secret) || e.protocol !== "manual-index-worker-v1" ||
         !Number.isSafeInteger(e.timestamp) || Math.abs(Date.now() - e.timestamp) > 300000 ||
-        !/^[a-f0-9]{32}$/.test(e.nonce || "") || !/^(list|inspect|inspect_failure|index_failure|prepare|probe|health)$/.test(e.action || "") ||
+        !/^[a-f0-9]{32}$/.test(e.nonce || "") || !/^(list|inspect|inspect_failure|index_failure|prepare|probe|retrieve|health)$/.test(e.action || "") ||
         typeof e.payload !== "string" || !/^[a-f0-9]{64}$/.test(e.signature || "")) throw new Error("WORKER_AUTH");
     const message = [e.protocol, e.timestamp, e.nonce, e.action, e.payload].join("\n");
-    const expected = bytesToHex_(Utilities.computeHmacSha256Signature(message, secret)).toLowerCase();
+    const expected = bytesToHex_(Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8)).toLowerCase();
     if (!manualWorkerEqual_(expected, e.signature)) throw new Error("WORKER_AUTH");
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(3000)) throw new Error("WORKER_BUSY");
@@ -120,6 +120,7 @@ function handleManualWorkerRequest_(raw) {
       return {ok:true};
     }
     if (e.action === "list") {
+      const migratedInspections=migrateManualIdentityJobsForVerifiedSha_();
       const bundle = readManualWorkerBundle_();
       const active = bundle ? bundle.active : {};
       const pending=manualWorkerPending_().map(function(p){
@@ -141,16 +142,18 @@ function handleManualWorkerRequest_(raw) {
         gasVersion:GAS_VERSION,
         build:BUILD_TIMESTAMP,
         indexPolicy:MANUAL_WORKER_INDEX_POLICY,
-        capabilities:["inspect","inspect_failure","index_failure","prepare","probe","probeOnly"],
+        capabilities:["inspect","inspect_failure","index_failure","prepare","probe","probeOnly","retrieve"],
         revision:bundle?bundle.revision:"compiled",
         pending:pending,
-        inspections:listManualIdentityInspections_()
+        inspections:listManualIdentityInspections_(),
+        migratedInspections:migratedInspections
       };
     }
     if (e.action === "inspect") return inspectManualWorkerCover_(payload);
     if (e.action === "index_failure") return recordManualIndexFailure_(payload);
     if (e.action === "inspect_failure") return failManualWorkerInspection_(payload);
     if (e.action === "probe") return probeManualWorkerRevision_(payload);
+    if (e.action === "retrieve") return probeManualWorkerRetrieval_(payload);
     return prepareManualWorkerRevision_(payload);
   } catch (error) {
     // Never echo signed request bodies, URLs with credentials, or secret material.
@@ -282,6 +285,30 @@ function probeManualWorkerRevision_(payload) {
     return { docKey: key, sourcePdfSha256: pdfSha, indexChecksum: indexSha };
   });
   return { ok: true, revision: bundle.revision, verified: verified };
+}
+function probeManualWorkerRetrieval_(payload) {
+  const model=normalizeModelForDisplay(payload&&payload.model||"");
+  const question=String(payload&&payload.question||"").trim();
+  if(!model||!question||question.length>500)throw new Error("WORKER_RETRIEVAL_INPUT");
+  manualWorkerSnapshot_=undefined;
+  manualIndexRequestCache_={};
+  const bundle=getManualWorkerSnapshot_();
+  if(!bundle)throw new Error("WORKER_RETRIEVAL_SCOPE");
+  const workerKeys=Object.keys(bundle.active||{}).filter(function(key){
+    const doc=(bundle.documents||{})[key];
+    return doc&&(doc.models||[]).some(function(candidate){
+      return normalizeModelForDisplay(candidate)===model;
+    });
+  });
+  if(workerKeys.length!==1)throw new Error("WORKER_RETRIEVAL_SCOPE");
+  const key=workerKeys[0],active=bundle.active[key];
+  const plan=findManualPageRagPlan_(question,model);
+  if(!plan)return {ok:true,found:false,model:model,docKey:key,sourcePdfSha256:active.sha256,indexChecksum:active.indexChecksum,pages:[]};
+  if(String(plan.sourcePdfSha256||"").toLowerCase()!==String(active.sha256||"").toLowerCase()||
+      plan.indexChecksum!==active.indexChecksum)throw new Error("WORKER_RETRIEVAL_REVISION");
+  return {ok:true,found:true,model:model,docKey:key,sourcePdfSha256:active.sha256,indexChecksum:active.indexChecksum,
+    pages:(plan.fragments||[]).map(function(fragment){return fragment.pageNumber;}).slice(0,5),
+    retrievalTruncated:plan.retrievalTruncated===true,providerCalls:0};
 }
 function validateManualWorkerIndex_(index) {
   const fail = function () { throw new Error("WORKER_INDEX_SCHEMA"); };

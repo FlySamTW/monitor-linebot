@@ -1,6 +1,6 @@
 /** QA/RULE candidate recall precedes paid document retrieval. No case-specific routes. */
 const LOCAL_EVIDENCE_STRATEGY = "lite";
-const LOCAL_EVIDENCE_POLICY = "qa-rule-v324-8";
+const LOCAL_EVIDENCE_POLICY = ANSWER_EVIDENCE_POLICY;
 let localEvidenceDecision_ = null;
 function collectLocalAnswerEvidence_(question,model) {
   const qa=qaKnowledgeSelectPromptContext_(question,model?[model]:[],false,true);
@@ -135,7 +135,7 @@ function decideLocalEvidence_(question,model,contextId,strategy,options) {
   if(!evidence.length&&!classifyScope) return {complete:false,answer:"",remainingQuestions:[question],skipped:true};
   const excerpts=localEvidenceExcerpts_(evidence);
   const state={question:question,model:model,canonicalTopic:topic?.canonicalQuestion||"",previousQuestion:readRecentSourceQuestion_(contextId)?.question||"",
-    today:Utilities.formatDate(new Date(),"Asia/Taipei","yyyy-MM-dd"),evidence:evidence};
+    requestItems:buildAnswerRequestItems_(question,model),today:Utilities.formatDate(new Date(),"Asia/Taipei","yyyy-MM-dd"),evidence:evidence};
   let output;
   if(strategy==="jev") {
     // JEV selects existing quotations per explicit subquestion; it never writes product facts.
@@ -166,7 +166,7 @@ function decideLocalEvidence_(question,model,contextId,strategy,options) {
     result.selectionAudit=selectionAudit;
     return result;
   } else {
-    const instruction="你是 QA／RULE 證據回答器。一次完成逐子題理解與自然回答，不輸出片段堆疊。完整保留原問句每個對象、條件、比較及操作要求。逐項產生唯一 id、question、scope(general或model_specific)、state(answered/missing_evidence/needs_clarification)、basis(direct/derived/none)、answer、evidenceRefs、conditions、assumptions。只使用 evidence 的 id；來源中的 requiredConditions 必須逐字保存在 conditions 並在答案保留。general只是問題範圍，不允許無證據生成；derived只限general、有證據前提及明列假設，不得推論型號未記載的能力、選單、數值或官方支援。缺資料時answer為空、basis=none並保留未解問題；缺必要型號或使用條件才澄清。術語不能證明型號能力；沒有記載不代表不支援。不要輸出全域complete。上一題只補主詞，不能丟本題新條件。回答第一句直接解答，接短說明或必要步驟；不得輸出費用或模型名稱。"+
+    const instruction="你是 QA／RULE 證據回答器。一次完成逐子題理解與自然回答，不輸出片段堆疊。requestItems 是程式已知的最低需求清單，不得刪除；每個 claim 用 requestItemIds 指向它實際處理的需求。完整保留原問句每個對象、條件、比較及操作要求。逐項產生唯一 id、question、scope(general或model_specific)、state(answered/missing_evidence/needs_clarification)、basis(direct/derived/none)、answer、evidenceRefs、conditions、requestItemIds、assumptions。只使用 evidence 的 id；來源中的 requiredConditions 必須逐字保存在 conditions 並在答案保留。general只是問題範圍，不允許無證據生成；derived只限general、有證據前提及明列假設，不得推論型號未記載的能力、選單、數值或官方支援。缺資料時answer為空、basis=none並保留未解問題；缺必要型號或使用條件才澄清。術語不能證明型號能力；沒有記載不代表不支援。不要輸出全域complete。上一題只補主詞，不能丟本題新條件。回答第一句直接解答，接短說明或必要步驟；不得輸出費用或模型名稱。"+
       (classifyScope?"另填questionScope=general/model_specific/non_product；依整句需求判斷，不以操作詞要求型號。":"");
     const selectionState=Object.assign({},state,{evidence:evidence.map(e=>Object.assign({},e,{requiredConditions:localEvidenceRequiredConditions_(e)}))});
     const request=function(){

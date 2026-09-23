@@ -42,7 +42,7 @@ const context = {
   ANSWER_ENVELOPE_TTL_MS: 30 * 24 * 60 * 60 * 1000,
   Set,
   Date,
-  ANSWER_EVIDENCE_POLICY: "qa-rule-v324-7",
+  ANSWER_EVIDENCE_POLICY: "qa-rule-v325-1",
   Utilities: {
     newBlob: (text) => ({
       getBytes: () => Array.from(Buffer.from(String(text || ""), "utf8")),
@@ -81,6 +81,9 @@ vm.createContext(context);
 vm.runInContext(
   [
     extractFunction(answerV2, "uniqueAnswerStrings_"),
+    extractFunction(answerV2, "buildAnswerRequestItems_"),
+    extractFunction(answerV2, "normalizeAnswerCompareText_"),
+    extractFunction(answerV2, "mapClaimToRequestItemIds_"),
     extractFunction(answerV2, "normalizeAnswerEnvelopeV2_"),
     extractFunction(answerV2, "mergeAdvancedAnswerEnvelopeV2_"),
   ].join("\n\n"),

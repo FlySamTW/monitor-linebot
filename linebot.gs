@@ -12,8 +12,8 @@ const EXCHANGE_RATE = 32; // 匯率 USD -> TWD
 // 🔧 版本號 (每次修改必須更新！)
 // ════════════════════════════════════════════════════════════════
 // 更新版本號
-const GAS_VERSION = "v29.6.324"; // JEV typed Router final; temporary bootstrap removed
-const BUILD_TIMESTAMP = "2026-09-22 00:10";
+const GAS_VERSION = "v29.6.326"; // Verified-shared-PDF identity reuse + v325 answer/RAG integrity hardening
+const BUILD_TIMESTAMP = "2026-09-23 16:58";
 let quickReplyOptions = []; // Keep for backward compatibility if needed, but primary is param
 const MAX_ELABORATE_PER_ANSWER = 1;
 const ANSWER_ENVELOPE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -4290,6 +4290,7 @@ function buildAdvancedAnswerEnvelope_(
   }
   if (!base || Number(base.schemaVersion) !== 2) {
     const routeClaims = Array.isArray(input.routeClaims) ? input.routeClaims : [];
+    const requestItems = buildAnswerRequestItems_(originalQuestion, normalizedModel);
     const seededClaims = routeClaims.length
       ? routeClaims.map(function (claim, index) {
           const evidenceNeed = String(claim && claim.evidenceNeed || "");
@@ -4305,26 +4306,29 @@ function buildAdvancedAnswerEnvelope_(
             answer: "",
             evidenceRefs: [],
             conditions: [],
+            requestItemIds: mapClaimToRequestItemIds_(String(claim && claim.question || originalQuestion), requestItems),
             assumptions: [],
           };
         })
-      : [{
-          id: `advanced_${computeReplyAnchor_(originalQuestion).substring(0, 16) || "claim"}`,
-          question: String(originalQuestion || ""),
+      : requestItems.map(function(item,index){ return {
+          id: `advanced_request_${index+1}`,
+          question: item.question,
           scope: normalizedModel ? "model_specific" : "general",
           state: "missing_evidence",
           basis: "none",
           answer: "",
           evidenceRefs: [],
           conditions: [],
+          requestItemIds: [item.id],
           assumptions: [],
-        }];
+        };});
     base = normalizeAnswerEnvelopeV2_({
       schemaVersion: 2,
       version: GAS_VERSION,
       topicId: topicId,
       originalQuestion: originalQuestion,
       model: normalizedModel,
+      requestItems: requestItems,
       claims: seededClaims,
       execution: { state: "ok", code: "" },
       allowedActions: [],
@@ -4347,11 +4351,17 @@ function buildAdvancedAnswerEnvelope_(
   const explicitResolvedIds = uniqueAnswerStrings_(input.resolvedClaimIds).filter(function (id) {
     return targetIds.indexOf(id) >= 0;
   });
+  const resolvedRequestItemIds = new Set(uniqueAnswerStrings_(input.resolvedRequestItemIds));
+  const requestResolvedClaimIds = base.claims.filter(function(claim){
+    const ids=claim.requestItemIds||[];
+    return targetIds.includes(claim.id)&&ids.length>0&&ids.every(function(id){return resolvedRequestItemIds.has(id);});
+  }).map(function(claim){return claim.id;});
+  const allExplicitResolvedIds=uniqueAnswerStrings_(explicitResolvedIds.concat(requestResolvedClaimIds));
   const resolvedIds =
     succeeded && refs.length > 0
-      ? (explicitResolvedIds.length ? explicitResolvedIds : targetIds)
-      : partial && explicitResolvedIds.length && refs.length > 0
-        ? explicitResolvedIds
+      ? (allExplicitResolvedIds.length ? allExplicitResolvedIds : (targetIds.length === 1 ? targetIds : []))
+      : partial && allExplicitResolvedIds.length && refs.length > 0
+        ? allExplicitResolvedIds
         : [];
   const answerText = String(finalText || "")
     .replace(/[\[（\(]來源[：:][^\]）\)]*[\]）\)]/g, "")
@@ -4396,6 +4406,7 @@ function buildAdvancedAnswerEnvelope_(
     topicId: merged.topicId,
     originalQuestion: merged.originalQuestion,
     model: merged.model,
+    requestItems: merged.requestItems,
     claims: merged.claims,
     execution: merged.execution,
     allowedActions: allowedActions,
@@ -12701,6 +12712,7 @@ function executeAdvancedSourceQuery_(
       : normalizedQuery;
 
   let response = "";
+  let pageRagResolvedRequestItemIds = [];
   try {
     const pageRagResult = normalizedSource === "manual" && manualPageRagPlan
       ? callManualPageRag_(
@@ -12713,6 +12725,7 @@ function executeAdvancedSourceQuery_(
       : null;
     if (pageRagResult && pageRagResult.handled) {
       response = pageRagResult.response;
+      pageRagResolvedRequestItemIds = pageRagResult.resolvedRequestItemIds || [];
     } else {
       response = callLLMWithRetry(
         providerQuery,
@@ -13225,6 +13238,7 @@ function executeAdvancedSourceQuery_(
         contextId: contextId,
         routeClaims: pendingState && pendingState.routeClaims,
         targetClaimIds: pendingState && pendingState.unresolvedClaimIds,
+        resolvedRequestItemIds: pageRagResolvedRequestItemIds,
         executionState: advancedExecutionState,
         executionCode: advancedExecutionCode,
       },
@@ -16053,7 +16067,7 @@ function humanizeManualPageRagAnswer_(answerText) {
     );
 }
 
-function getManualPageRagResponseSchema_(evidenceIds) {
+function getManualPageRagResponseSchema_(evidenceIds, requestItemIds) {
   return {
     type: "OBJECT",
     properties: {
@@ -16068,8 +16082,9 @@ function getManualPageRagResponseSchema_(evidenceIds) {
           properties: {
             supportedAnswer: { type: "STRING" },
             evidenceId: { type: "STRING", enum: evidenceIds },
+            requestItemIds: { type: "ARRAY", items: { type: "STRING", enum: requestItemIds || [] } },
           },
-          required: ["supportedAnswer", "evidenceId"],
+          required: ["supportedAnswer", "evidenceId", "requestItemIds"],
         },
       },
     },
@@ -16270,6 +16285,7 @@ function callManualPageRag_(
       pageNumber: fragment.pageNumber,
       pageHeading: fragment.pageHeading,
       menuPathFromPrintedTable: fragment.menuPath || "",
+      requestItemIds: fragment.requestItemIds || [],
       officialManualText: fragment.evidenceText,
     };
   });
@@ -16283,6 +16299,7 @@ function callManualPageRag_(
     "你是三星台灣電腦螢幕官方手冊證據整理器。",
     "只能依輸入的 officialManualText 回答，不可用常識、其他型號或自行搜尋。",
     "每個 supportedAnswer 只能綁一個 evidenceId；頁碼與原文會由程式回填，你不要把頁碼寫進答案。",
+    "requestItems 是原題最低需求清單；每筆 evidence 必須填 requestItemIds，而且只能選該 evidenceCandidates 已標示可覆蓋的需求。沒有證據的需求不得宣告解決。",
     "明確禁止、不支援也是完整的否定答案，不是缺資料；適用條件吻合且全部主張都有答案才填 coverage=full，不再為相同主張要求其他來源。",
     "操作題須回答步驟／選單路徑，不重複功能用途。選單章節標題＋設定項目＋開關說明已構成入口，寫成『章節 → 項目』；不另猜首頁步驟。只有啟動後的說明不算完成。",
     "若使用者用詞不在手冊片段，但片段有能完成相同目的的入口，supportedAnswer 必須以『官方手冊中可查到的相近操作是「手冊實際名稱」：』開頭；不可宣稱兩者完全等同。",
@@ -16294,6 +16311,9 @@ function callManualPageRag_(
     documentRole: "官方使用手冊；型號綁定已由程式核對，段落內其他型號限定仍須遵守",
     answerShape: isManualActionPathQuestion_(question) ? "menu_path_or_steps" : "fact_or_conditions",
     question: stripInternalRoutingHints_(question),
+    requestItems: plan.requestItems || buildAnswerRequestItems_(question, plan.model),
+    retrievalTruncated: plan.retrievalTruncated === true,
+    retrievalDroppedRequestItemIds: plan.retrievalDroppedRequestItemIds || [],
     capabilityConfirmedByOfficialRule: localCapabilityAnchor || "",
     evidenceCandidates: fragments,
   };
@@ -16308,9 +16328,8 @@ function callManualPageRag_(
       thinkingConfig: providerThinkingConfigForModel_(GEMINI_MODEL_FAST),
       responseMimeType: "application/json",
       responseSchema: getManualPageRagResponseSchema_(
-        fragments.map(function (fragment) {
-          return fragment.evidenceId;
-        }),
+        fragments.map(function (fragment) { return fragment.evidenceId; }),
+        (plan.requestItems || []).map(function (item) { return item.id; }),
       ),
     },
   };
@@ -16367,6 +16386,21 @@ function callManualPageRag_(
       question,
       knownRuleAnswer,
     );
+    let resolvedRequestItemIds=[];
+    try {
+      const parsedForResolution=JSON.parse(joinedText);
+      const fragmentsById={};(plan.fragments||[]).forEach(function(fragment){fragmentsById[fragment.evidenceId]=fragment;});
+      const dropped=new Set(plan.retrievalDroppedRequestItemIds||[]);
+      const resolved=new Set();
+      (parsedForResolution.evidence||[]).forEach(function(item){
+        const fragment=fragmentsById[item.evidenceId];
+        if(!fragment)return;
+        (item.requestItemIds||[]).forEach(function(id){
+          if((fragment.requestItemIds||[]).includes(id)&&!dropped.has(id))resolved.add(id);
+        });
+      });
+      if(!isManualEvidenceFailureReply_(normalizedResponse))resolvedRequestItemIds=Array.from(resolved);
+    } catch(_resolutionError) {}
     try {
       const coverageAudit = JSON.parse(joinedText);
       const validationFailed = /\[MANUAL_(?:OUTPUT_FORMAT_ERROR|EVIDENCE_VALIDATION_ERROR)\]/.test(normalizedResponse);
@@ -16382,6 +16416,7 @@ function callManualPageRag_(
       attempted: true,
       response: normalizedResponse,
       plan: plan,
+      resolvedRequestItemIds: resolvedRequestItemIds,
     };
   } catch (error) {
     if (/^(?:PROVIDER_|SOURCE_QUOTA_)/.test(String(error && error.message || error))) {
@@ -17701,6 +17736,8 @@ function isKbPdfUriFreshForDriveCandidate_(kbItem, driveCandidate) {
     0;
   // 舊紀錄沒有上傳時間時先沿用；若已知 URI 上傳時間早於 Drive 修改，
   // 代表 metadata 已變新但實際 URI 還是舊 PDF，必須重新上傳。
+  const expiry=getManualPdfUriExpiryState_(existing,Date.now());
+  if(expiry.status==="expired")return false;
   return !uploadedAt || !driveUpdatedAt || uploadedAt >= driveUpdatedAt;
 }
 
@@ -18414,6 +18451,39 @@ function refreshMarkedPdfUris_() {
  * 讓約百本手冊在 40 小時內全部換新，並保留單題即時修復作最後保險。
  * 這裡只上傳檔案，不呼叫模型，不產生問答 token 費用。
  */
+function getManualPdfUriExpiryState_(item, nowMs) {
+  const now=Number(nowMs)||Date.now(), uploaded=Date.parse(String(item&&item.fileApiUploadedAt||""))||0;
+  let expires=Date.parse(String(item&&item.fileApiExpiresAt||""))||0, source=String(item&&item.fileApiExpirationSource||"");
+  if(!expires&&uploaded){expires=uploaded+48*60*60*1000;source="estimated_48h";}
+  const remaining=expires?expires-now:null;
+  return {expiresAtMs:expires,expirationSource:source||"unknown",remainingMs:remaining,
+    status:!expires?"unknown":remaining<=0?"expired":remaining<=12*60*60*1000?"expiring":"valid"};
+}
+function selectManualPdfRefreshCandidates_(catalog,currentByName,cursor,batchSize,permanentRejects) {
+  const files=Array.isArray(catalog)?catalog:[], now=Date.now(), rejects=permanentRejects||{};
+  const eligible=files.filter(function(file){
+    const key=String(file.getName()||"").trim().toUpperCase();
+    const identity=buildDrivePdfIdentity_(file.getId(),file.getLastUpdated(),file.getSize());
+    return rejects[key]!==identity;
+  });
+  const urgent=eligible.filter(function(file){
+    const key=String(file.getName()||"").trim().toUpperCase(),item=currentByName[key]||{};
+    const expiry=getManualPdfUriExpiryState_(item,now);
+    const retryAt=Number(item.fileApiNextRetryAt||0);
+    return !item.uri||expiry.status==="expired"||expiry.status==="expiring"||
+      (item.fileApiRefreshStatus==="retry_pending"&&(!retryAt||retryAt<=now));
+  }).sort(function(a,b){
+    const ak=String(a.getName()||"").trim().toUpperCase(),bk=String(b.getName()||"").trim().toUpperCase();
+    const ae=getManualPdfUriExpiryState_(currentByName[ak]||{},now).expiresAtMs||0;
+    const be=getManualPdfUriExpiryState_(currentByName[bk]||{},now).expiresAtMs||0;
+    return ae-be||ak.localeCompare(bk);
+  });
+  const start=eligible.length?((Number(cursor)||0)%eligible.length+eligible.length)%eligible.length:0;
+  const fair=eligible.slice(start).concat(eligible.slice(0,start));
+  const selected=[];
+  urgent.concat(fair).forEach(function(file){if(selected.length<batchSize&&!selected.includes(file))selected.push(file);});
+  return selected;
+}
 function refreshManualPdfUriBatch_(requestedBatchSize) {
   const batchSize = Math.max(1, Math.min(Number(requestedBatchSize) || 10, 10));
   if (!CONFIG.DRIVE_FOLDER_ID) return { refreshed: 0, attempted: 0 };
@@ -18470,10 +18540,7 @@ function refreshManualPdfUriBatch_(requestedBatchSize) {
 
     const rawCursor = Number(props.getProperty("PDF_ROLLING_REFRESH_CURSOR")) || 0;
     const cursor = ((rawCursor % catalog.length) + catalog.length) % catalog.length;
-    const selected = [];
-    for (let offset = 0; offset < Math.min(batchSize, catalog.length); offset++) {
-      selected.push(catalog[(cursor + offset) % catalog.length]);
-    }
+    let selected = [];
 
     let currentList = [];
     try {
@@ -18487,8 +18554,11 @@ function refreshManualPdfUriBatch_(requestedBatchSize) {
       const key = String((item && item.name) || "").trim().toUpperCase();
       if (key) currentByName[key] = item;
     });
+    let permanentRejects={};
+    try{permanentRejects=JSON.parse(props.getProperty("PDF_REFRESH_PERMANENT_REJECTS")||"{}");}catch(_){permanentRejects={};}
+    selected = selectManualPdfRefreshCandidates_(catalog,currentByName,cursor,batchSize,permanentRejects);
 
-    const refreshedItems = [];
+    const refreshedItems = [], statusItems = [];
     selected.forEach(function (file) {
       const fileSize = Number(file.getSize()) || 0;
       const blob = file.getBlob();
@@ -18519,8 +18589,11 @@ function refreshManualPdfUriBatch_(requestedBatchSize) {
         currentByName[String(file.getName() || "").trim().toUpperCase()] || null,
       );
       if (!baseItem) {
+        const rejectKey=String(file.getName()||"").trim().toUpperCase();
+        permanentRejects[rejectKey]=buildDrivePdfIdentity_(file.getId(),updatedAt,fileSize);
+        props.setProperty("PDF_REFRESH_PERMANENT_REJECTS",JSON.stringify(permanentRejects));
         writeLog(
-          `[PDF Rolling Refresh] provenance 未通過，未上傳也未寫回: ${file.getName()}`,
+          `[PDF Rolling Refresh] provenance 未通過，標記此 Drive 版本不再重試: ${file.getName()}`,
         );
         return;
       }
@@ -18530,15 +18603,26 @@ function refreshManualPdfUriBatch_(requestedBatchSize) {
         fileSize,
         "application/pdf",
       );
-      if (!uri) return;
+      const uploadMeta=lastGeminiFileUploadMeta_||{};
+      if (!uri) {
+        const previous=currentByName[String(file.getName()||"").trim().toUpperCase()];
+        if(previous&&previous.uri)statusItems.push(Object.assign({},previous,{
+          fileApiRefreshStatus:"retry_pending",fileApiLastFailureAt:new Date().toISOString(),
+          fileApiNextRetryAt:Date.now()+4*60*60*1000
+        }));
+        return;
+      }
       refreshedItems.push(Object.assign({}, baseItem, {
         uri: uri,
         source: "file_api_rolling_refresh",
-        fileApiUploadedAt: new Date().toISOString(),
+        fileApiUploadedAt: uploadMeta.uploadedAt || new Date().toISOString(),
+        fileApiExpiresAt: uploadMeta.expiresAt || new Date(Date.now()+48*60*60*1000).toISOString(),
+        fileApiExpirationSource: uploadMeta.expirationSource || "estimated_48h",
+        fileApiRefreshStatus: "valid",fileApiLastSuccessAt:new Date().toISOString(),fileApiNextRetryAt:0,
       }));
     });
-    if (refreshedItems.length > 0) {
-      persistPdfKbState(mergePdfKbItemsByName_(currentList, refreshedItems));
+    if (refreshedItems.length > 0 || statusItems.length > 0) {
+      persistPdfKbState(mergePdfKbItemsByName_(currentList, statusItems.concat(refreshedItems)));
     }
     props.setProperty(
       "PDF_ROLLING_REFRESH_CURSOR",
@@ -19413,7 +19497,9 @@ function syncGeminiKnowledgeBase(forceRebuild = false) {
 }
 
 // 上傳檔案至 Gemini
+let lastGeminiFileUploadMeta_ = null;
 function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
+  lastGeminiFileUploadMeta_ = null;
   try {
     assertProviderCredentialUsable_(apiKey);
     const initUrl = "https://generativelanguage.googleapis.com/upload/v1beta/files";
@@ -19485,7 +19571,9 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
     }
 
     const fileRes = JSON.parse(uploadReq.getContentText());
-    let state = fileRes.file.state;
+    const uploadedAt=new Date().toISOString();
+    let activeFile=fileRes.file||{};
+    let state = activeFile.state;
     let attempts = 0;
 
     while (state === "PROCESSING" && attempts < 30) {
@@ -19509,11 +19597,17 @@ function uploadFileToGemini(apiKey, blob, fileSize, mimeType) {
         );
         return null;
       }
-      state = JSON.parse(check.getContentText()).state;
+      activeFile = JSON.parse(check.getContentText()) || activeFile;
+      state = activeFile.state;
       attempts++;
     }
 
     if (state === "ACTIVE") {
+      const providerExpiry=String(activeFile.expirationTime||activeFile.expiration_time||fileRes.file.expirationTime||"");
+      const parsedExpiry=Date.parse(providerExpiry)||0;
+      lastGeminiFileUploadMeta_={uri:fileRes.file.uri,uploadedAt:uploadedAt,
+        expiresAt:parsedExpiry?new Date(parsedExpiry).toISOString():new Date(Date.now()+48*60*60*1000).toISOString(),
+        expirationSource:parsedExpiry?"provider":"estimated_48h"};
       return fileRes.file.uri;
     } else {
       writeLog(
@@ -20499,6 +20593,19 @@ function scanOfficialWebsiteForNewMonitors() {
     } catch (parseErr) {
       existingPending = [];
       writeLog(`[Auto Crawler Review] 舊待審核清單解析失敗: ${parseErr.message}`);
+    }
+    // AUTO_VALIDATION_RETRY 是舊版維護狀態；現行 worker 已改用
+    // INSPECTION_PENDING / PENDING_PAGE_INDEX / ACTIVE_WORKER_INDEX。
+    // 若型號目前已有可用官方手冊 coverage，保留舊 retry 只會造成 UI 假警報。
+    const legacyRetryBefore = existingPending.length;
+    existingPending = existingPending.filter(function (item) {
+      if (!item || item.manualStatus !== "AUTO_VALIDATION_RETRY") return true;
+      const model = normalizeModelForDisplay(item.model || item.fullSku || "");
+      return !model || !hasOfficialManualForModel_(model);
+    });
+    const clearedLegacyRetries = legacyRetryBefore - existingPending.length;
+    if (clearedLegacyRetries > 0) {
+      writeLog(`[Auto Crawler Review] 已清除 ${clearedLegacyRetries} 筆已有正式手冊 coverage 的舊 AUTO_VALIDATION_RETRY`);
     }
 
     const pendingByModel = {};

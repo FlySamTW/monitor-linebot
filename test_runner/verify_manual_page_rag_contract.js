@@ -241,6 +241,8 @@ const callContext = {
   },
   stripAnySourceTags: (value) => String(value || ""),
   stripInternalRoutingHints_: (value) => String(value || ""),
+  buildAnswerRequestItems_: (question,model) => [{id:"request_1",question:String(question),model:String(model||""),status:"pending"}],
+  isManualEvidenceFailureReply_: () => false,
   getManualPageRagResponseSchema_: () => ({}),
   providerThinkingConfigForModel_: () => ({thinkingLevel:"minimal"}),
   getGeminiApiKey_: () => "test-key",

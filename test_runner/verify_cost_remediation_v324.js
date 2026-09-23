@@ -26,7 +26,7 @@ test('未知付費嘗試收據不可被刪除後重送',()=>{const hash='d'.repe
 const evidence=[{id:'QA:x',kind:'qa',text:'這個型號不支援藍牙。HDMI：2 個。'}];
 test('答案不能從型號借數字',()=>assert.throws(()=>c.validateLocalEvidenceDecision_({complete:true,answers:[{text:'有32個HDMI',evidenceIds:['QA:x'],quotes:[{id:'QA:x',quote:'HDMI：2 個。'}]}],remainingQuestions:[]},evidence,'HDMI幾個','S32FM703UC'),/VALIDATION/));
 test('引用否定資料，不輸出模型反向改寫',()=>{const r=c.validateLocalEvidenceDecision_({complete:true,answers:[{text:'支援藍牙',evidenceIds:['QA:x'],quotes:[{id:'QA:x',quote:'這個型號不支援藍牙。'}]}],remainingQuestions:[]},evidence,'支援藍牙嗎','S32FM703UC');assert(r.answer.includes('不支援'));});
-test('同 SHA 新政策不能沿用舊抽取收據',()=>assert(c.manualIdentityKey_(pdfSha).includes('pymupdf-page1-v1_cover-v324-1')));
+test('同 SHA 新政策不能沿用舊抽取收據',()=>assert(c.manualIdentityKey_(pdfSha).includes('pymupdf-page1-v1_cover-v326-1')));
 test('格式失敗不能聲稱已搜尋或呼叫 Web',()=>{const answer=c.applyManualEvidenceGuard_('[MANUAL_OUTPUT_FORMAT_ERROR]','怎麼操作');assert(!/補查|AUTO_SEARCH_WEB/.test(answer));assert(source.includes('!executionFailure && (manualEvidenceNotFound || manualEvidencePartial || recommendedWeb)'));});
 test('首次核驗只排程，不包含整本生成與貴模型',()=>{const section=source.slice(source.indexOf('function validateOfficialManualFirstPage_'),source.indexOf('function stageOfficialTwManualCandidate_'));assert(!/generateContent|250000|GEMINI_MODEL_THINK/.test(section));});
 test('個案覆寫與空答重送保持移除',()=>{assert(!/PDF Mode Retry v29.6.123|Fake.Source.*6K/.test(source));assert(!/第四台|6K|8K/.test(fs.readFileSync(path.join(root,'local_evidence_gate.gs'),'utf8')));});

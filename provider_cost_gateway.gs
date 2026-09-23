@@ -662,9 +662,13 @@ function providerFetch_(url, rawOptions) {
         cost+=result.costTwd;reservation.queryCount=result.queryCount;searchUnknown=Boolean(result.unknown);
         reservation.searchAllowanceKnown=result.allowanceKnown;
         reservation.searchCostTwd=result.costTwd;
+        reservation.searchAudit=result.searchAudit||null;
         writeLog("[Search Execution Receipt] "+JSON.stringify({responseId:reservation.responseId,queryCount:result.queryCount,
+          queryOccurrences:result.searchAudit?.queryOccurrences?.length??null,uniqueQueries:result.searchAudit?.uniqueQueries?.length??null,
+          observedQueryCount:result.searchAudit?.observedQueryCount??null,providerGroundingCount:result.searchAudit?.providerGroundingCount??null,
+          toolCalls:result.searchAudit?.toolCalls?.map(function(call){return {callId:call.callId,queryCount:(call.queries||[]).length};})||[],
           traceCalls:(((body.candidates||[])[0]||{}).content?.parts||[]).filter(function(p){return p.toolCall;}).length,
-          groundingPresent:Boolean(((body.candidates||[])[0]||{}).groundingMetadata),costKnown:!result.unknown}));
+          groundingPresent:Boolean(((body.candidates||[])[0]||{}).groundingMetadata),metadataComplete:Boolean(result.searchAudit?.metadataComplete),costKnown:!result.unknown}));
         if(searchUnknown && currentRequestAudit)currentRequestAudit.uncertainCostTwd=(currentRequestAudit.uncertainCostTwd||0)+result.costTwd;
       }
       lastProviderReceipt_ = {signature: providerUsageSignature_(usage, modelName), audited: false};

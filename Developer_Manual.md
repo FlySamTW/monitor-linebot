@@ -1,8 +1,18 @@
-# Samsung LINE Bot 開發手冊 — v29.6.324 費用與證據契約
+# Samsung LINE Bot 開發手冊 — v29.6.326 回答完整性與 PDF 生命週期契約
 
-目前狀態以 [AI_CONTEXT.md](AI_CONTEXT.md) 與當次正式 health 為準。本節為 v324 現行契約；下方舊版本段落保留歷史與回復依據，有衝突以本節為準。
+目前狀態以 [AI_CONTEXT.md](AI_CONTEXT.md) 與當次正式 health 為準。 本節是目前唯一回答與守門契約。本節為 v325 現行契約；下方舊版本段落保留歷史與回復依據，有衝突以本節為準。
 
-## v324 費用、候選判讀與背景生命週期契約
+## v325 回答完整性、候選判讀與背景生命週期契約
+
+### 2026-09-23 v325 改善
+
+- Worker HMAC 明確使用 UTF-8；已以真實端點證明 ASCII inspect 可通過認證而 Unicode inspect 在舊版回 `WORKER_AUTH`。本機 worker 回報失敗採 best-effort，不再讓二次回報覆蓋原始進度。
+- AnswerEnvelope v2 新增 `requestItems` 最低需求清單；多子題沒有明確 `resolvedClaimIds`/request 對應時不得自動整題成功。數字以完整數值＋單位驗證，並零模型阻擋「來源切換→同時顯示」「HDMI→KVM」等能力擴張。
+- 必要條件區分使用者可見條件與內部驗證限制，補入「切勿／請勿／不要」及 `only / must / do not / depending on model`。答案政策統一為 `qa-rule-v325-1`。
+- 頁級 RAG 以 request item 分配最多五段證據，保存每段覆蓋需求與 `retrievalTruncated`；頁級命中仍只送文字片段給 Gemini 3.1 Flash-Lite，不附整本 PDF。
+- Files API 續期改記逐檔上傳／到期／成功／失敗狀態；過期及 12 小時內到期優先，provider 無到期時間才以 48 小時保守推定。永久 provenance 拒絕只跳過相同 Drive identity，新 URI 失敗保留舊有效 URI。
+- Web 搜尋收據額外保存 tool-call ID、query occurrences、request unique queries、provider grounding count 與 metadata 完整性；未知仍保守扣帳，不歸零。
+
 
 QA／RULE → PDF → WEB 是證據優先順序。免費精準答案／有效快取先回覆；相關 QA 答案和 RULE 必須先進候選判讀，只有未解子題交給 PDF 或一次 Web。來源次數用完仍可完成 QA 候選判讀。一般 Fast 使用精準候選；尚未回答時，升來源前允許判讀較廣候選，但不得在相同候選、相同問題下重做判讀。JEV 仍僅在原本模糊追問條件做路由，候選選答只供編輯者 A/B；正式候選採 Lite，發布前須有實問比較證據。
 
@@ -111,7 +121,7 @@ Gemini 回覆可含多個 parts；工具、思考或簽章可能在文字之前�
 
 1. 雲端核對官方下載 URL、support page 與單一 SKU，下載檔案取得原始 SHA，只排入 MANUAL_INSPECT_<SKU>；未核實文件不能直接入庫。
 2. 簽章本機 worker 用 PyMuPDF 抽真正第一頁文字。足夠識別即零 LLM；必要時送首頁文字或單頁 PNG，禁止 PDF file URI。圖片 SHA 僅作衍生證據，不取代原 PDF SHA。
-3. 抽取結果鍵含原 PDF SHA、pymupdf-page1-v1 與 cover-v324-1。相同內容跨 SKU 共用抽取，但 SKU／地區／使用手冊角色各自驗證；Product Guide／快速入門不可冒充使用手冊。
+3. 抽取結果鍵含原 PDF SHA、pymupdf-page1-v1 與 cover-v326-1。相同內容跨 SKU 共用抽取，但 SKU／地區／使用手冊角色各自驗證；Product Guide／快速入門不可冒充使用手冊。
 4. 抽取成功後寫獨立 receipt，SKU 通過才建 verified pending。單次付費嘗試先落盤，逾時／程序中斷也不得再次付費；後段失敗只接續未完成階段。
 5. 本機 content-cache 依 SHA／政策保存已下載 PDF、verified-index.json 與 index-receipt.json。重跑先重算檔案 SHA，通過才重用；抽字與建索引不叫 LLM。
 6. prepare 維持不可變 PDF/index、單一 MANUAL_WORKER_BUNDLE 原子切換；MANUAL_PROGRESS_<model> 先是 activated_pending_probe，實際 PDF 與 index 雙 SHA 讀回後才是 verified_ready。啟用後中斷可只 probe，不重新核驗或建索引。

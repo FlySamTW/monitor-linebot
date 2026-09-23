@@ -44,18 +44,12 @@ test('必要條件必須在最終可見答案出現，已包含時不重複',()=
   const repeated=c.validateLocalClaims_({claims:[{...item,answer:condition+item.answer}]},source,item.question,'');
   assert.equal(repeated.answer.split(condition).length-1,1);
 });
-test('引文存在不代表支持：拒絕主張而非重試或轉 Web',()=>{
-  c.resetRequestAudit_();const input=c.validateLocalClaims_({claims:[claim]},evidence,question,'S27H704EAC');
-  assert(input.complete,'fixture demonstrates the structural-only gap');
-  const before=h.fetches.length;h.setFetch((url,options)=>{
-    assert(url.includes('/alpha/decisions'));const payload=JSON.parse(options.payload);
-    assert.equal(payload.state.originalQuestion,question);assert.equal(payload.state.evidence[0].text,evidence[0].text);
-    return jev({coverage:verdict('complete'),claim_0:verdict('insufficient')});
-  });
-  let error;try{c.verifyLocalEvidenceSemantics_(input,evidence,question,'S27H704EAC');}catch(e){error=e;}
-  assert.equal(error.message,'SEMANTIC_VALIDATION_FAILED');assert.equal(error.partialResult.answer,'');
-  assert.equal(error.partialResult.envelope.execution.state,'validation_error');assert.equal(h.fetches.length-before,1);
-  assert.equal(h.run('currentRequestAudit.webCalls'),0);assert.equal(h.run('currentRequestAudit.evidence_verifyCalls'),1);
+test('引文存在不代表支持：能力擴張由零模型程式守門先拒絕',()=>{
+  c.resetRequestAudit_();const before=h.fetches.length;
+  let error;try{c.validateLocalClaims_({claims:[claim]},evidence,question,'S27H704EAC');}catch(e){error=e;}
+  assert(error&&/VALIDATION/.test(error.message));assert.equal(error.partialResult.answer,'');
+  assert.equal(error.partialResult.envelope.execution.state,'validation_error');assert.equal(h.fetches.length,before);
+  assert.equal(h.run('currentRequestAudit.webCalls'),0);assert(!h.run('currentRequestAudit.evidenceVerifyCalls'));
 });
 test('完整性拒絕保留已支持答案，但不宣稱整題完成',()=>{
   c.resetRequestAudit_();h.setFetch(()=>jev({coverage:verdict('incomplete'),claim_0:verdict('supported')}));
